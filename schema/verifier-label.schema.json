@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exemplar.internal/schema/verifier-label.schema.json",
+  "title": "VerifierLabel",
+  "description": "One labeled finding for verifier calibration (spec §6.8, PRD FR-X9): a PR, a candidate finding on it, and whether the finding is true or wrong. The verifier must refute at least 90% of known-wrong findings and at most 10% of known-true ones (global.yaml eval_thresholds.verifier). Labels from author feedback live in the verifier_labels table; these files are the seed set.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "description", "label", "fixture", "candidate"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "description": { "type": "string", "minLength": 1 },
+    "label": { "enum": ["true", "wrong"], "description": "true: the finding is correct; wrong: it is not." },
+    "fixture": { "$ref": "fixture.schema.json" },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "path", "start_line", "end_line", "claim"],
+      "properties": {
+        "rule": { "type": "string", "minLength": 1, "description": "The rule the finding is for; its severity and category frame the claim." },
+        "path": { "type": "string", "minLength": 1 },
+        "side": { "enum": ["RIGHT", "LEFT"] },
+        "start_line": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 },
+        "claim": { "type": "string", "minLength": 1, "maxLength": 2000, "description": "The finding's message, as the generator wrote it." }
+      }
+    }
+  }
+}

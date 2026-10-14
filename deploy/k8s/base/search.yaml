@@ -1,0 +1,192 @@
+# exemplar-search: the system's only git mirror and zoekt index (spec §6.4).
+# Two independent replicas, each with its own local SSD volume, mirror and
+# index; no shared state, so either serves any request (spec §6.4 "Deployment").
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: exemplar-search
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/name: exemplar-search
+    app.kubernetes.io/part-of: exemplar
+spec:
+  serviceName: exemplar-search-headless
+  replicas: 2
+  podManagementPolicy: Parallel
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: exemplar-search
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: exemplar-search
+        app.kubernetes.io/part-of: exemplar
+    spec:
+      serviceAccountName: exemplar-search
+      automountServiceAccountToken: false
+      # Shutdown (cmd/exemplar-search): readiness fails, --drain (5 s), then
+      # 20 s for requests and fetches to stop: 25 s.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      # The two replicas must not share a node: each is the other's backup.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels: {app.kubernetes.io/name: exemplar-search}
+      initContainers:
+        - name: config-sync
+          image: registry.k8s.io/git-sync/git-sync:v4.7.1@sha256:c5e1976da735bf0b53979f079a07475d77174c51863cd084e928ff6074480717
+          restartPolicy: Always
+          args:
+            - --repo=$(EXEMPLAR_CONFIG_GIT_URL)
+            - --ref=main
+            - --root=/config
+            - --link=current
+            - --period=60s
+            - --ssh-key-file=/etc/git-secret/ssh
+            - --ssh-known-hosts-file=/etc/git-secret/known_hosts
+            - --http-bind=:2020
+          env:
+            - name: EXEMPLAR_CONFIG_GIT_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_GIT_URL}}
+          ports:
+            - {name: sync, containerPort: 2020}
+          startupProbe:
+            httpGet: {path: /, port: sync}
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /, port: sync}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: config-git, mountPath: /etc/git-secret, readOnly: true}
+            - {name: sync-tmp, mountPath: /tmp}
+      containers:
+        - name: search
+          image: exemplar
+          command: ["/usr/local/bin/exemplar-search"]
+          args:
+            - serve
+            - --config=/config/current
+            - --root=/mnt/ssd/mirrors
+            - --index-root=/mnt/ssd/index
+            - --addr=:8080
+            - --require-ctags
+            - --drain=5s
+          ports:
+            - {name: http, containerPort: 8080}
+          # OTel destinations (internal/telemetry): optional, set per installation.
+          envFrom:
+            - configMapRef: {name: exemplar-otel, optional: true}
+            - secretRef: {name: exemplar-otel, optional: true}
+          env:
+            - name: EXEMPLAR_SEARCH_TOKEN
+              valueFrom: {secretKeyRef: {name: exemplar-search, key: token}}
+            - name: EXEMPLAR_GH_APP_ID
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_APP_ID}}
+            - name: EXEMPLAR_GH_INSTALLATION_ID
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_INSTALLATION_ID}}
+            - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
+            - name: EXEMPLAR_CONFIG_REPO
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          # Not ready until every mirror in scope has an index.
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          # zoekt keeps hot shards in page cache: memory is the index's
+          # working set. Final sizing comes from the benchmark (spec §6.4).
+          resources:
+            requests: {cpu: "2", memory: 8Gi}
+            limits: {cpu: "4", memory: 32Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
+            - {name: ssd, mountPath: /mnt/ssd}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          emptyDir: {sizeLimit: 256Mi}
+        - name: config-git
+          secret: {secretName: exemplar-config-git, defaultMode: 0400}
+        - name: sync-tmp
+          emptyDir: {sizeLimit: 64Mi}
+        - name: github-app
+          secret:
+            secretName: exemplar-github-app
+            items: [{key: private-key, path: private-key}]
+            defaultMode: 0400
+        - name: tmp
+          emptyDir: {sizeLimit: 2Gi}
+  # Rebuildable from GitHub (spec §3), so local SSD with no backup. Size at
+  # 3–4x the repos' checked-out source (spec §6.4); the overlay sets it from
+  # the benchmark.
+  volumeClaimTemplates:
+    - metadata:
+        name: ssd
+        labels: {app.kubernetes.io/name: exemplar-search, app.kubernetes.io/part-of: exemplar}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-ssd
+        resources:
+          requests: {storage: 500Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exemplar-search-headless
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-search, app.kubernetes.io/part-of: exemplar}
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/name: exemplar-search}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+# Workers call this Service; either ready replica answers.
+apiVersion: v1
+kind: Service
+metadata:
+  name: exemplar-search
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-search, app.kubernetes.io/part-of: exemplar}
+spec:
+  selector: {app.kubernetes.io/name: exemplar-search}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: exemplar-search
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-search, app.kubernetes.io/part-of: exemplar}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: exemplar-search}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exemplar.internal/schema/eligibility.schema.json",
+  "title": "Eligibility",
+  "description": "Repos that are never reviewed, mined, indexed or sent to a model provider (FR-H1). Owned by Security.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["denylist"],
+  "properties": {
+    "denylist": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repo", "reason"],
+        "properties": {
+          "repo": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

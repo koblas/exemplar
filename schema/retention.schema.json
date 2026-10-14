@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exemplar.internal/schema/retention.schema.json",
+  "title": "Retention",
+  "description": "Retention periods in days (FR-H7). Owned by Security.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["approval_decisions_days", "findings_days", "feedback_events_days", "model_calls_days", "transcripts_days", "gh_events_payload_days"],
+  "properties": {
+    "approval_decisions_days": { "type": "integer", "minimum": 1 },
+    "findings_days": { "type": "integer", "minimum": 1 },
+    "feedback_events_days": { "type": "integer", "minimum": 1 },
+    "model_calls_days": { "type": "integer", "minimum": 1 },
+    "transcripts_days": { "type": "integer", "minimum": 1 },
+    "gh_events_payload_days": { "type": "integer", "minimum": 1 }
+  }
+}

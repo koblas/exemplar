@@ -1,0 +1,51 @@
+{
+  "description": "Exemplar against the in-house baseline reviewer on the same PRs (FR-X8, spec §12.5). Baseline findings are stored in shadow, never posted.",
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT r.caller AS \"Reviewer\", count(DISTINCT (r.repo, r.pr_number, r.head_sha)) AS \"PR heads\",\n  count(f.id) AS \"Findings\", round(count(f.id)::numeric / nullif(count(DISTINCT (r.repo, r.pr_number, r.head_sha)), 0), 2) AS \"Per head\",\n  round(sum(DISTINCT r.cost_usd)::numeric, 2) AS \"Cost USD\"\nFROM reviews r LEFT JOIN rule_runs rr ON rr.review_id = r.id LEFT JOIN findings f ON f.rule_run_id = rr.id\nWHERE r.caller IN ('production', 'baseline') AND $__timeFilter(r.started_at)\n  AND (r.repo, r.pr_number, r.head_sha) IN (SELECT repo, pr_number, head_sha FROM reviews WHERE caller = 'baseline')\nGROUP BY r.caller ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Findings per reviewed PR",
+      "type": "table"
+    }
+  ],
+  "refresh": "15m",
+  "schemaVersion": 39,
+  "tags": [
+    "exemplar"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-28d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "title": "Exemplar: baseline comparison",
+  "uid": "exemplar-baseline",
+  "version": 1
+}

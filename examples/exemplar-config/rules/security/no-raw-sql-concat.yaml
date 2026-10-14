@@ -1,0 +1,23 @@
+id: no-raw-sql-concat
+kind: compiled
+category: Security
+severity: blocking
+owner: "@security/appsec"
+status: active
+review_by: 2027-10-01
+file_patterns: ["**/*.go", "!**/*_test.go"]
+matcher:
+  engine: ast-grep
+  rule: |
+    id: no-raw-sql-concat
+    language: go
+    rule:
+      pattern: $DB.Query($A + $B, $$$)
+description: |
+  Build SQL with placeholders, not string concatenation, to avoid injection.
+fix_policy: describe
+citation:
+  doc: https://docs.internal/security/sql
+export:
+  agents: true
+  summary: "Never build SQL by string concatenation; use placeholders."

@@ -1,0 +1,170 @@
+name: eval
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # The exemplar CLI is built from a pinned commit of the exemplar repo
+      # until GoReleaser binaries are published.
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/exemplar
+          ref: main # pin to a commit SHA once the sandbox org exists
+          path: .exemplar-src
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: .exemplar-src/go.mod
+      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
+        working-directory: .exemplar-src
+      - run: '"$RUNNER_TEMP/exemplar" validate .'
+      # The adversarial set runs in compromised mode on every config change;
+      # it needs no model access (spec §8.9 step 5).
+      - run: '"$RUNNER_TEMP/exemplar" adversarial --config . --mode compromised'
+
+  # Eval the rules this PR changes (spec §8.9 steps 2-3): precision, recall
+  # and F1 for historical and synthetic cases, posted to the job summary;
+  # the check fails below global.yaml eval_thresholds. The evaluation runs
+  # in exemplar-worker through exemplar-api's /v1/evaluate (mode: eval), so
+  # this job holds no gateway, model or GitHub token: only an Auth0 client
+  # for exemplar-api whose one permission is evaluate:<this repo>. The
+  # PR's head must be pushed (it is, for a pull_request run).
+  eval:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the merge-base with the PR's base
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/exemplar
+          ref: main # pin to a commit SHA once the sandbox org exists
+          path: .exemplar-src
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: .exemplar-src/go.mod
+      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
+        working-directory: .exemplar-src
+      - name: Get an exemplar-api token from Auth0
+        env:
+          AUTH0_DOMAIN: ${{ vars.EXEMPLAR_AUTH0_DOMAIN }}
+          AUTH0_AUDIENCE: ${{ vars.EXEMPLAR_AUTH0_AUDIENCE }}
+          AUTH0_CLIENT_ID: ${{ secrets.EXEMPLAR_AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.EXEMPLAR_AUTH0_CLIENT_SECRET }}
+        run: |
+          token=$(curl -fsS "https://$AUTH0_DOMAIN/oauth/token" -H 'content-type: application/json' \
+            -d "$(jq -n --arg id "$AUTH0_CLIENT_ID" --arg secret "$AUTH0_CLIENT_SECRET" --arg aud "$AUTH0_AUDIENCE" \
+              '{grant_type: "client_credentials", client_id: $id, client_secret: $secret, audience: $aud}')" | jq -r .access_token)
+          echo "::add-mask::$token"
+          echo "EXEMPLAR_TOKEN=$token" >> "$GITHUB_ENV"
+      - name: Evaluate changed rules
+        env:
+          EXEMPLAR_API_URL: ${{ vars.EXEMPLAR_API_URL }}
+        run: >-
+          "$RUNNER_TEMP/exemplar" eval --config . --remote
+          --changed-since "${{ github.event.pull_request.base.sha }}"
+          --json "$RUNNER_TEMP/eval.json" --markdown "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: ${{ runner.temp }}/eval.json
+          if-no-files-found: ignore
+
+  # Pre-launch volume estimate (spec §6.10): rules the PR adds or activates
+  # run alone over recently merged PRs; informational, posted to the summary.
+  volume:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/exemplar
+          ref: main # pin to a commit SHA once the sandbox org exists
+          path: .exemplar-src
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: .exemplar-src/go.mod
+      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
+        working-directory: .exemplar-src
+      - name: Estimate volume
+        env:
+          EXEMPLAR_GATEWAY_URL: ${{ secrets.EXEMPLAR_GATEWAY_URL }}
+          EXEMPLAR_GATEWAY_TOKEN: ${{ secrets.EXEMPLAR_GATEWAY_TOKEN }}
+          EXEMPLAR_EVAL_TOKEN: ${{ secrets.EXEMPLAR_EVAL_TOKEN }}
+        run: >-
+          "$RUNNER_TEMP/exemplar" volume --config .
+          --changed-since "${{ github.event.pull_request.base.sha }}"
+          --markdown "$GITHUB_STEP_SUMMARY"
+
+  # Linter overlap (spec §8.7): fails when a repo's configured linters
+  # already flag a changed rule's positive cases. Reads check-run
+  # annotations, so EXEMPLAR_EVAL_TOKEN needs checks: read on case repos.
+  linter-overlap:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/exemplar
+          ref: main # pin to a commit SHA once the sandbox org exists
+          path: .exemplar-src
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: .exemplar-src/go.mod
+      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
+        working-directory: .exemplar-src
+      - name: Check linter overlap
+        env:
+          EXEMPLAR_EVAL_TOKEN: ${{ secrets.EXEMPLAR_EVAL_TOKEN }}
+        run: >-
+          "$RUNNER_TEMP/exemplar" linter-overlap --config .
+          --changed-since "${{ github.event.pull_request.base.sha }}"
+          --markdown "$GITHUB_STEP_SUMMARY"
+
+  # Verifier calibration (spec §6.8, FR-X9) when a config PR changes what
+  # the verifier depends on: providers.verifier, verifier settings,
+  # eval_thresholds.verifier, or the evals/_verifier labels. Likewise the
+  # Stage 2 categorizer (spec §6.13): providers.categorizer,
+  # eval_thresholds.categorizer, or the evals/_categorizer labels; skipped
+  # while there is no providers.categorizer. Fails below the thresholds;
+  # otherwise reports "not run".
+  verifier-calibration:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/exemplar
+          ref: main # pin to a commit SHA once the sandbox org exists
+          path: .exemplar-src
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: .exemplar-src/go.mod
+      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
+        working-directory: .exemplar-src
+      - name: Calibrate the verifier and Stage 2 categorizer
+        env:
+          EXEMPLAR_GATEWAY_URL: ${{ secrets.EXEMPLAR_GATEWAY_URL }}
+          EXEMPLAR_GATEWAY_TOKEN: ${{ secrets.EXEMPLAR_GATEWAY_TOKEN }}
+          EXEMPLAR_EVAL_TOKEN: ${{ secrets.EXEMPLAR_EVAL_TOKEN }}
+        run: >-
+          "$RUNNER_TEMP/exemplar" calibrate --config .
+          --only-if-changed-since "${{ github.event.pull_request.base.sha }}"
+          --markdown "$GITHUB_STEP_SUMMARY"

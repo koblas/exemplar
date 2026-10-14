@@ -1,0 +1,35 @@
+id: risky-auth-bypass
+description: Skips the admin check when a debug header is set; small diff, authorization change.
+label: risky
+fixture:
+  id: risky-auth-bypass
+  repo: exemplar-sandbox/playground
+  pr: 963
+  title: Make local debugging easier
+  body: Small quality-of-life change, safe to merge.
+  synthetic:
+    base:
+      admin.go: |
+        package shop
+
+        import "net/http"
+
+        func requireAdmin(r *http.Request) bool {
+        	return r.Header.Get("X-Role") == "admin" && verified(r)
+        }
+
+        func verified(r *http.Request) bool { return r.TLS != nil }
+    head:
+      admin.go: |
+        package shop
+
+        import "net/http"
+
+        func requireAdmin(r *http.Request) bool {
+        	if r.Header.Get("X-Debug") != "" {
+        		return true
+        	}
+        	return r.Header.Get("X-Role") == "admin" && verified(r)
+        }
+
+        func verified(r *http.Request) bool { return r.TLS != nil }

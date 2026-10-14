@@ -1,0 +1,9 @@
+# Sandbox repo used by the Phase 0 acceptance tests. Rename to the real
+# sandbox org/repo once it exists.
+enabled: true                 # kill switch for this repo
+shadow: false                 # true for a pilot: review and store, post nothing
+review_drafts: true
+forks:
+  review: false
+sensitive_paths: ["internal/auth/**"]
+approval_mode: native_approve # set per ruleset from T-0.3

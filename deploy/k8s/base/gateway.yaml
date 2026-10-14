@@ -1,0 +1,153 @@
+# exemplar-gateway: the only process holding model provider keys (spec §5).
+# It reads global.yaml (provider routes, budgets) from an exemplar-config
+# checkout kept current by a git-sync sidecar.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exemplar-gateway
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/name: exemplar-gateway
+    app.kubernetes.io/part-of: exemplar
+spec:
+  # More than one replica needs EXEMPLAR_DATABASE_URL for shared batch
+  # records (cmd/exemplar-gateway).
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: exemplar-gateway
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: exemplar-gateway
+        app.kubernetes.io/part-of: exemplar
+    spec:
+      serviceAccountName: exemplar-gateway
+      automountServiceAccountToken: false
+      # Model calls stream for minutes; the server gets 25 s to finish
+      # (shutdownTimeout in cmd/exemplar-gateway, which must stay below
+      # this) and callers retry what it cuts off.
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-gateway}
+      initContainers:
+        # A native sidecar (restartPolicy: Always): it starts first, and the
+        # gateway starts once the first sync has landed (startup probe).
+        - name: config-sync
+          image: registry.k8s.io/git-sync/git-sync:v4.7.1@sha256:c5e1976da735bf0b53979f079a07475d77174c51863cd084e928ff6074480717
+          restartPolicy: Always
+          args:
+            - --repo=$(EXEMPLAR_CONFIG_GIT_URL)
+            - --ref=main
+            - --root=/config
+            - --link=current
+            - --period=60s
+            - --ssh-key-file=/etc/git-secret/ssh
+            - --ssh-known-hosts-file=/etc/git-secret/known_hosts
+            - --http-bind=:2020
+          env:
+            - name: EXEMPLAR_CONFIG_GIT_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_GIT_URL}}
+          ports:
+            - {name: sync, containerPort: 2020}
+          startupProbe:
+            httpGet: {path: /, port: sync}
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /, port: sync}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: config-git, mountPath: /etc/git-secret, readOnly: true}
+            - {name: sync-tmp, mountPath: /tmp}
+      containers:
+        - name: gateway
+          image: exemplar
+          command: ["/usr/local/bin/exemplar-gateway"]
+          ports:
+            - {name: http, containerPort: 8080}
+          # OTel destinations (internal/telemetry): optional, set per installation.
+          envFrom:
+            - configMapRef: {name: exemplar-otel, optional: true}
+            - secretRef: {name: exemplar-otel, optional: true}
+          env:
+            - {name: EXEMPLAR_GATEWAY_ADDR, value: ":8080"}
+            - {name: EXEMPLAR_CONFIG_DIR, value: /config/current}
+            - name: EXEMPLAR_GATEWAY_TOKEN
+              valueFrom: {secretKeyRef: {name: exemplar-gateway, key: token}}
+            - name: EXEMPLAR_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+            # Only the providers global.yaml routes to need credentials;
+            # Bedrock uses workload identity instead (see deploy/README.md).
+            - name: ANTHROPIC_API_KEY
+              valueFrom: {secretKeyRef: {name: exemplar-providers, key: anthropic-api-key, optional: true}}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            failureThreshold: 2
+          # A proxy: requests are small JSON and the work is network-bound.
+          resources:
+            requests: {cpu: 200m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          emptyDir: {sizeLimit: 256Mi}
+        - name: config-git
+          secret: {secretName: exemplar-config-git, defaultMode: 0400}
+        - name: sync-tmp
+          emptyDir: {sizeLimit: 64Mi}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exemplar-gateway
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-gateway, app.kubernetes.io/part-of: exemplar}
+spec:
+  selector: {app.kubernetes.io/name: exemplar-gateway}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: exemplar-gateway
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-gateway, app.kubernetes.io/part-of: exemplar}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: exemplar-gateway}

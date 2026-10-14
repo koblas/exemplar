@@ -1,0 +1,128 @@
+# exemplar-webhook: verifies, stores and enqueues GitHub deliveries; no
+# business logic, so it is small and stateless (spec §5: 2+ replicas).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exemplar-webhook
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/name: exemplar-webhook
+    app.kubernetes.io/part-of: exemplar
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: exemplar-webhook
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: exemplar-webhook
+        app.kubernetes.io/part-of: exemplar
+    spec:
+      serviceAccountName: exemplar-webhook
+      automountServiceAccountToken: false
+      # Readiness drains for --drain (5 s), then the server has 10 s to
+      # finish requests (cmd/exemplar-webhook): 15 s, well inside 30.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-webhook}
+      containers:
+        - name: webhook
+          image: exemplar
+          command: ["/usr/local/bin/exemplar-webhook"]
+          args: ["--addr=:8080", "--path=/webhook", "--drain=5s"]
+          ports:
+            - {name: http, containerPort: 8080}
+          # OTel destinations (internal/telemetry): optional, set per installation.
+          envFrom:
+            - configMapRef: {name: exemplar-otel, optional: true}
+            - secretRef: {name: exemplar-otel, optional: true}
+          env:
+            - name: EXEMPLAR_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+            - {name: EXEMPLAR_WEBHOOK_SECRET_FILE, value: /var/run/secrets/exemplar/github-app/webhook-secret}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            failureThreshold: 2
+          # Deliveries are at most 25 MB and stored, not processed.
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: github-app
+          secret:
+            secretName: exemplar-github-app
+            items: [{key: webhook-secret, path: webhook-secret}]
+            defaultMode: 0400
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exemplar-webhook
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-webhook, app.kubernetes.io/part-of: exemplar}
+spec:
+  selector: {app.kubernetes.io/name: exemplar-webhook}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+# The only public ingress besides exemplar-api (spec §13): GitHub posts
+# here. Host, class and TLS secret are set by the overlay.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: exemplar-webhook
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-webhook, app.kubernetes.io/part-of: exemplar}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [exemplar-webhook.example.invalid]
+      secretName: exemplar-webhook-tls
+  rules:
+    - host: exemplar-webhook.example.invalid
+      http:
+        paths:
+          - path: /webhook
+            pathType: Exact
+            backend:
+              service:
+                name: exemplar-webhook
+                port: {name: http}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: exemplar-webhook
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-webhook, app.kubernetes.io/part-of: exemplar}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: exemplar-webhook}

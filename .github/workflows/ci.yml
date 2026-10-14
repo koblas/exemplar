@@ -1,0 +1,130 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Postgres tests start their own pgvector container (testcontainers-go)
+      # on the runner's Docker; fail rather than skip if it is unavailable.
+      EXEMPLAR_REQUIRE_DB: "1"
+      # Real ast-grep, Semgrep and universal-ctags runs (Lane 1, compile
+      # attempts, exemplar-search symbols); fail rather than skip without them.
+      EXEMPLAR_REQUIRE_ENGINES: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # Same versions as devenv.nix.
+      - name: Install engines
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q universal-ctags clang-format
+          npm install -g @ast-grep/cli@0.45.1
+          pipx install semgrep==1.172.0
+          ast-grep --version && semgrep --version && ctags --version | head -1 && clang-format --version
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go test -race ./...
+
+  generated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: sqlc output is up to date
+        run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 diff -f db/sqlc.yaml
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14.0
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+  # Short fuzz runs on every change; seed corpora and saved regressions in
+  # testdata/fuzz already run as ordinary tests in the test job.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go test -run='^$' -fuzz='^FuzzParse$' -fuzztime=30s ./internal/scope
+      - run: go test -run='^$' -fuzz='^FuzzValidateAnchor$' -fuzztime=30s ./internal/scope
+
+  # T-0.5 on every change: the adversarial set in compromised mode needs no
+  # model access. Live mode runs where a gateway is available.
+  adversarial:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go run ./cmd/exemplar validate examples/exemplar-config
+      - run: go run ./cmd/exemplar adversarial --config examples/exemplar-config --mode compromised
+      - run: go run ./cmd/exemplar replay --config examples/exemplar-config --fixtures examples/fixtures --scripted --baseline --out replay.json
+
+  # Learning-plane Python jobs (learning/): lint, tests, and the check that
+  # the generated contract models match schema/.
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: learning
+    env:
+      EXEMPLAR_REQUIRE_DB: "1"  # the cluster job test needs Docker; fail rather than skip
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.0"
+      - run: uv sync --locked
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen ruff format --check .
+      - run: uv run --frozen pytest
+      - run: ./scripts/gen-contracts.sh --check
+
+  # The deploy images build (nothing is pushed; publishing is the release
+  # pipeline's), and the manifests are rendered and schema-checked.
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -f deploy/docker/Dockerfile -t exemplar:ci .
+      - run: docker build -f deploy/docker/learning.Dockerfile -t exemplar-learning:ci .
+      - name: Engines are in the image
+        run: docker run --rm --entrypoint sh exemplar:ci -c 'ast-grep --version && semgrep --version && ctags --version | head -1 && clang-format --version && git --version && exemplar-worker --help 2>&1 | head -1'
+      - name: Render and schema-check the manifests
+        run: |
+          kubectl kustomize deploy/k8s/base > rendered.yaml
+          go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered.yaml

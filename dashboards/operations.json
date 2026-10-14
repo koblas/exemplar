@@ -1,0 +1,283 @@
+{
+  "description": "Reviews, coverage, failures and queues (spec §12.5). Cost and duration are informational (PRD §13.2): no targets.",
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT day AS \"time\", caller AS \"metric\", sum(reviews)::float8 AS \"reviews\"\nFROM review_daily_stats WHERE $__timeFilter(day) GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Reviews per day",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT day AS \"time\", sum(incomplete)::float8 AS \"incomplete\", sum(degraded)::float8 AS \"degraded\"\nFROM review_daily_stats WHERE $__timeFilter(day) AND caller = 'production' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Incomplete and degraded reviews per day",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT day AS \"time\", avg(coverage_avg)::float8 AS \"coverage\"\nFROM review_daily_stats WHERE $__timeFilter(day) AND caller = 'production' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Average coverage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 4,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT day AS \"time\", avg(cost_p50)::float8 AS \"p50 USD\", max(cost_p95)::float8 AS \"p95 USD\"\nFROM review_daily_stats WHERE $__timeFilter(day) AND caller = 'production' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Cost per review, p50 and p95 (informational)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 5,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT day AS \"time\", max(dur_p95_s)::float8 AS \"p95 seconds\"\nFROM review_daily_stats WHERE $__timeFilter(day) AND caller = 'production' GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Review duration p95 (informational)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Zero-coverage, schema-error, timeout and error rates by rule, over production reviews in range.",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT rr.rule_id AS \"Rule\", rr.lane AS \"Lane\", count(*) AS \"Runs\",\n  round(avg((rr.status = 'zero_coverage')::int), 3) AS \"Zero coverage\",\n  round(avg((rr.status = 'schema_error')::int), 3) AS \"Schema error\",\n  round(avg((rr.status = 'timeout')::int), 3) AS \"Timeout\",\n  round(avg((rr.status = 'error')::int), 3) AS \"Error\",\n  round(avg(rr.context_degraded::int), 3) AS \"Context degraded\"\nFROM rule_runs rr JOIN reviews r ON r.id = rr.review_id\nWHERE r.caller = 'production' AND $__timeFilter(r.started_at)\nGROUP BY rr.rule_id, rr.lane ORDER BY avg((rr.status NOT IN ('ok', 'shed', 'deferred'))::int) DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Rule runs that did not complete",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "River jobs waiting or running, by queue (FR-D6: reviews queue per repo).",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 7,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT queue AS \"Queue\", state AS \"State\", count(*) AS \"Jobs\",\n  round(max(extract(epoch FROM now() - created_at)) / 60.0, 1) AS \"Oldest (min)\"\nFROM river_job WHERE state IN ('available', 'scheduled', 'retryable', 'running', 'pending')\nGROUP BY queue, state ORDER BY queue, state",
+          "refId": "A"
+        }
+      ],
+      "title": "Queue depth",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "id": 8,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT args-\u003e\u003e'repo' AS \"Repo\", count(*) FILTER (WHERE state = 'running') AS \"Running\",\n  count(*) FILTER (WHERE state IN ('available', 'scheduled', 'retryable', 'pending')) AS \"Waiting\",\n  round(max(extract(epoch FROM now() - created_at)) FILTER (WHERE state \u003c\u003e 'running') / 60.0, 1) AS \"Oldest waiting (min)\"\nFROM river_job WHERE kind = 'pr_review' AND state IN ('available', 'scheduled', 'retryable', 'running', 'pending')\nGROUP BY 1 ORDER BY \"Waiting\" DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Review queue by repo",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "id": 9,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT stage AS \"Stage\", provider AS \"Provider\", model AS \"Model\", count(*) AS \"Calls\",\n  round(avg(failover::int), 3) AS \"Failover rate\", round(sum(coalesce(cost_usd, 0))::numeric, 2) AS \"Cost USD\",\n  percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS \"Latency p95 ms\"\nFROM model_calls WHERE $__timeFilter(at) GROUP BY 1, 2, 3 ORDER BY \"Calls\" DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Model calls by stage and provider (informational)",
+      "type": "table"
+    }
+  ],
+  "refresh": "15m",
+  "schemaVersion": 39,
+  "tags": [
+    "exemplar"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-28d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "title": "Exemplar: operations",
+  "uid": "exemplar-operations",
+  "version": 1
+}

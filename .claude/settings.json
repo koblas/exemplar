@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"${CLAUDE_ENV_FILE:-}\" ]; then cd \"$CLAUDE_PROJECT_DIR\" && devenv_env=$(devenv --quiet print-dev-env --json) && devenv_exports=$(printf '%s' \"$devenv_env\" | jq -r '.variables | to_entries[] | select(.value.type == \"exported\") | \"export \\(.key)=\\(.value.value | @sh)\"') && printf '%s\\n' \"$devenv_exports\" >> \"$CLAUDE_ENV_FILE\"; fi",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(go version)",
+      "Bash(go test *)",
+      "Bash(go vet *)",
+      "Bash(go build *)",
+      "Bash(go mod *)",
+      "Bash(git add *)",
+      "Bash(gofmt *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
+    ],
+    "ask": [
+      "Bash(kubectl *)",
+      "Bash(helm *)",
+      "Bash(docker push *)",
+      "Bash(podman push *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  },
+  "sandbox": {
+    "network": {
+      "allowedDomains": ["proxy.golang.org", "sum.golang.org", "storage.googleapis.com"],
+      "allowLocalBinding": true
+    },
+    "excludedCommands": ["pg_ctl *"]
+  }
+}

@@ -1,0 +1,254 @@
+{
+  "description": "Counter-metrics (spec §12.5, PRD §13.1): change failure of auto-approved against human-approved merges, and incidents on quiet, quick merges.",
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Merged PRs whose head Exemplar's gates approved, later reverted or linked to an incident (PRD §13.1).",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE reverted OR incident) / nullif(count(*), 0), 1) AS \"Change-failure %\"\nFROM merge_outcomes WHERE auto_approved AND $__timeFilter(merged_at)",
+          "refId": "A"
+        }
+      ],
+      "title": "Change failure: auto-approved",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Every other merged PR, same definition.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE reverted OR incident) / nullif(count(*), 0), 1) AS \"Change-failure %\"\nFROM merge_outcomes WHERE NOT auto_approved AND $__timeFilter(merged_at)",
+          "refId": "A"
+        }
+      ],
+      "title": "Change failure: human-approved",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Merged PRs whose head passed every gate.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Merges\" FROM merge_outcomes WHERE auto_approved AND $__timeFilter(merged_at)",
+          "refId": "A"
+        }
+      ],
+      "title": "Auto-approved merges",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "All merged PRs later reverted or linked to an incident.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FILTER (WHERE reverted OR incident) AS \"Failed\" FROM merge_outcomes WHERE $__timeFilter(merged_at)",
+          "refId": "A"
+        }
+      ],
+      "title": "Reverted or incident-linked",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Share of each week's merges later reverted, auto-approved against human-approved.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "id": 5,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT date_trunc('week', merged_at) AS \"time\", CASE WHEN auto_approved THEN 'auto-approved' ELSE 'human-approved' END AS \"metric\",\n  (100.0 * count(*) FILTER (WHERE reverted) / count(*))::float8 AS \"revert %\"\nFROM merge_outcomes WHERE $__timeFilter(merged_at) GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Revert rate by week",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Merged PRs per week, auto-approved against human-approved.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT date_trunc('week', merged_at) AS \"time\", CASE WHEN auto_approved THEN 'auto-approved' ELSE 'human-approved' END AS \"metric\", count(*)::float8 AS \"merges\"\nFROM merge_outcomes WHERE $__timeFilter(merged_at) GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Merges by week",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Incident-linked merged PRs where Exemplar posted nothing and the merge came within an hour of its first review, or the gates approved it.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 7,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT o.merged_at AS \"Merged\", o.repo AS \"Repo\", o.pr_number AS \"PR\", 'https://github.com/' || o.repo || '/pull/' || o.pr_number AS \"Link\",\n  o.auto_approved AS \"Auto-approved\", round(extract(epoch FROM o.merged_at - min(r.started_at)) / 60.0) AS \"Minutes from first review\",\n  (SELECT string_agg(l.ref, ', ') FROM pr_links l WHERE l.repo = o.repo AND l.pr_number = o.pr_number AND l.kind = 'incident') AS \"Incidents\"\nFROM merge_outcomes o JOIN reviews r ON r.repo = o.repo AND r.pr_number = o.pr_number AND r.caller = 'production'\nWHERE o.incident AND o.findings_posted = 0 AND $__timeFilter(o.merged_at)\nGROUP BY o.merged_at, o.repo, o.pr_number, o.auto_approved\nHAVING o.auto_approved OR o.merged_at - min(r.started_at) < interval '1 hour'\nORDER BY 1 DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Incidents on quiet, quick merges",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Every merged PR later reverted or linked to an incident, with what Exemplar posted on it.",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 8,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT o.merged_at AS \"Merged\", o.repo AS \"Repo\", o.pr_number AS \"PR\", 'https://github.com/' || o.repo || '/pull/' || o.pr_number AS \"Link\",\n  o.auto_approved AS \"Auto-approved\", o.reviewed AS \"Reviewed\", o.findings_posted AS \"Findings posted\", o.reverted AS \"Reverted\", o.incident AS \"Incident\"\nFROM merge_outcomes o WHERE (o.reverted OR o.incident) AND $__timeFilter(o.merged_at) ORDER BY 1 DESC LIMIT 500",
+          "refId": "A"
+        }
+      ],
+      "title": "Failed merges",
+      "type": "table"
+    }
+  ],
+  "refresh": "1h",
+  "schemaVersion": 39,
+  "tags": [
+    "exemplar"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "title": "Exemplar: counter-metrics",
+  "uid": "exemplar-counter-metrics",
+  "version": 1
+}

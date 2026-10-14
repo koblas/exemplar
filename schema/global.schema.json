@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exemplar.internal/schema/global.schema.json",
+  "title": "GlobalConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["enabled", "auto_approve", "budgets", "degrade", "max_exemplar_rules", "queues", "concurrency", "providers", "verifier", "comment_budget", "baseline", "eval_thresholds"],
+  "$defs": {
+    "providerModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "standard": { "type": "string", "minLength": 1 },
+        "high": { "type": "string", "minLength": 1 }
+      },
+      "anyOf": [{ "required": ["model"] }, { "required": ["standard", "high"] }]
+    },
+    "providerList": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/providerModel" } },
+    "unit": { "type": "number", "minimum": 0, "maximum": 1 }
+  },
+  "properties": {
+    "enabled": { "type": "boolean" },
+    "auto_approve": { "type": "boolean" },
+    "cache_ttl_seconds": { "type": "integer", "minimum": 0 },
+    "budgets": {
+      "type": "object", "additionalProperties": false, "required": ["soft_ceiling_usd"],
+      "properties": { "soft_ceiling_usd": { "type": "number", "exclusiveMinimum": 0 } }
+    },
+    "degrade": {
+      "type": "object", "additionalProperties": false, "required": ["stage_timeout_seconds"],
+      "properties": { "stage_timeout_seconds": { "type": "integer", "minimum": 1 } }
+    },
+    "max_exemplar_rules": { "type": "integer", "minimum": 1 },
+    "queues": {
+      "type": "object", "additionalProperties": false, "required": ["per_repo_concurrency"],
+      "properties": {
+        "per_repo_concurrency": { "type": "integer", "minimum": 1 },
+        "large_repos": { "type": "array", "items": { "type": "string", "pattern": "^[^/]+/[^/]+$" } }
+      }
+    },
+    "concurrency": {
+      "type": "object", "additionalProperties": false, "required": ["agents_per_review"],
+      "properties": { "agents_per_review": { "type": "integer", "minimum": 1, "maximum": 3 } }
+    },
+    "providers": {
+      "type": "object", "additionalProperties": false, "required": ["generator", "verifier", "light"],
+      "properties": {
+        "generator": { "$ref": "#/$defs/providerList" },
+        "verifier": { "$ref": "#/$defs/providerList" },
+        "light": { "$ref": "#/$defs/providerList" },
+        "categorizer": {
+          "type": "object", "additionalProperties": false, "required": ["a", "b"],
+          "properties": { "a": { "$ref": "#/$defs/providerModel" }, "b": { "$ref": "#/$defs/providerModel" } }
+        }
+      }
+    },
+    "merge_safety": {
+      "type": "object", "additionalProperties": false, "required": ["weights"],
+      "properties": {
+        "weights": {
+          "type": "object", "additionalProperties": false,
+          "description": "Penalties per term (spec §6.13). A term left out keeps its default; set 0 to disable one.",
+          "properties": {
+            "incident_180d": { "$ref": "#/$defs/unit" },
+            "revert_180d": { "$ref": "#/$defs/unit" },
+            "churn_30d": { "$ref": "#/$defs/unit" },
+            "no_tests": { "$ref": "#/$defs/unit" },
+            "sensitive_path": { "$ref": "#/$defs/unit" },
+            "new_author": { "$ref": "#/$defs/unit" },
+            "force_push": { "$ref": "#/$defs/unit" }
+          }
+        }
+      }
+    },
+    "verifier": {
+      "type": "object", "additionalProperties": false, "required": ["importance_min", "max_candidates_per_call"],
+      "properties": {
+        "importance_min": { "$ref": "#/$defs/unit" },
+        "max_candidates_per_call": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "comment_budget": {
+      "type": "object", "additionalProperties": false, "required": ["per_pr", "per_file"],
+      "properties": { "per_pr": { "type": "integer", "minimum": 1 }, "per_file": { "type": "integer", "minimum": 1 } }
+    },
+    "linter_wait_seconds": { "type": "integer", "minimum": 0 },
+    "bug_lane": {
+      "type": "object", "additionalProperties": false, "required": ["min_changed_lines", "importance_min", "classes"],
+      "properties": {
+        "min_changed_lines": { "type": "integer", "minimum": 0 },
+        "importance_min": { "$ref": "#/$defs/unit" },
+        "classes": {
+          "type": "object",
+          "propertyNames": { "pattern": "^bug\\.[a-z0-9-]+$" },
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false, "required": ["enabled"],
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "post_on_critical_paths": { "type": "boolean", "description": "Post this class's findings in a repo's bug_lane.critical_paths; elsewhere, and by default, it stays in shadow (spec §16 Phase 4)." }
+            }
+          }
+        }
+      }
+    },
+    "baseline": {
+      "type": "object", "additionalProperties": false, "required": ["sample_rate"],
+      "properties": {
+        "sample_rate": { "$ref": "#/$defs/unit" },
+        "strata": { "type": "array", "items": { "enum": ["repo", "size_bucket"] } }
+      }
+    },
+    "eval_thresholds": {
+      "type": "object", "additionalProperties": false, "required": ["min_cases", "precision", "recall"],
+      "properties": {
+        "min_cases": { "type": "integer", "minimum": 1 },
+        "precision": { "$ref": "#/$defs/unit" },
+        "recall": { "$ref": "#/$defs/unit" },
+        "verifier": {
+          "type": "object", "additionalProperties": false, "required": ["known_wrong_refuted_min", "known_true_refuted_max"],
+          "properties": {
+            "known_wrong_refuted_min": { "$ref": "#/$defs/unit" },
+            "known_true_refuted_max": { "$ref": "#/$defs/unit" }
+          }
+        },
+        "categorizer": {
+          "type": "object", "additionalProperties": false, "required": ["known_risky_approved_max", "known_safe_approved_min"],
+          "description": "Stage 2 categorizer calibration (spec §6.8, §6.13): the share of labeled risky PRs it would approve, and of safe ones.",
+          "properties": {
+            "known_risky_approved_max": { "$ref": "#/$defs/unit" },
+            "known_safe_approved_min": { "$ref": "#/$defs/unit" },
+            "min_review_confidence": { "$ref": "#/$defs/unit", "description": "The bar a PR must reach to count as approved: 0.8 by default, and never lower." }
+          }
+        }
+      }
+    },
+    "feedback": {
+      "type": "object", "additionalProperties": false,
+      "required": ["efp_bar", "role_weights", "reaction_weight", "demotion_wilson_floor", "demotion_requires", "owner_response_days"],
+      "properties": {
+        "efp_bar": { "$ref": "#/$defs/unit" },
+        "role_weights": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "reaction_weight": { "type": "number", "minimum": 0 },
+        "demotion_wilson_floor": { "$ref": "#/$defs/unit" },
+        "demotion_requires": { "enum": ["owner_adjudication_or_two_non_author_actors"] },
+        "owner_response_days": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "expiry": {
+      "type": "object", "additionalProperties": false, "required": ["default_months", "auto_demote_after_days"],
+      "properties": {
+        "default_months": { "type": "integer", "minimum": 1 },
+        "auto_demote_after_days": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

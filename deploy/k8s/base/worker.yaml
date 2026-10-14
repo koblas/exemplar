@@ -1,0 +1,178 @@
+# exemplar-worker: routes events and reviews live PRs (orchestrator, worker
+# and poster in one process, spec §5), and runs the periodic jobs on
+# River's leader. Agents run in this process with read-only tools, so it
+# never holds a config-writer token (§5); its config checkout comes from a
+# git-sync sidecar with a read-only deploy key.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exemplar-worker
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/name: exemplar-worker
+    app.kubernetes.io/part-of: exemplar
+spec:
+  # Reviews of one repo are limited across replicas by Postgres advisory
+  # slots (queues.per_repo_concurrency), so replicas scale freely.
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: exemplar-worker
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: exemplar-worker
+        app.kubernetes.io/part-of: exemplar
+    spec:
+      serviceAccountName: exemplar-worker
+      automountServiceAccountToken: false
+      # Shutdown (cmd/exemplar-worker): readiness drains for --drain (5 s);
+      # running reviews get --stop-timeout (60 s) before they are
+      # cancelled, River then has 10 s and the health server 5 s: 80 s.
+      # A cancelled review is retried by River on another pod.
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-worker}
+      initContainers:
+        - name: config-sync
+          image: registry.k8s.io/git-sync/git-sync:v4.7.1@sha256:c5e1976da735bf0b53979f079a07475d77174c51863cd084e928ff6074480717
+          restartPolicy: Always
+          args:
+            - --repo=$(EXEMPLAR_CONFIG_GIT_URL)
+            - --ref=main
+            - --root=/config
+            - --link=current
+            - --period=60s
+            - --ssh-key-file=/etc/git-secret/ssh
+            - --ssh-known-hosts-file=/etc/git-secret/known_hosts
+            - --http-bind=:2020
+          env:
+            - name: EXEMPLAR_CONFIG_GIT_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_GIT_URL}}
+          ports:
+            - {name: sync, containerPort: 2020}
+          startupProbe:
+            httpGet: {path: /, port: sync}
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /, port: sync}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: config-git, mountPath: /etc/git-secret, readOnly: true}
+            - {name: sync-tmp, mountPath: /tmp}
+      containers:
+        - name: worker
+          image: exemplar
+          command: ["/usr/local/bin/exemplar-worker"]
+          args:
+            - serve
+            - --config=/config/current
+            - --work-dir=/var/lib/exemplar/work
+            - --addr=:8080
+            - --concurrency=4
+            - --drain=5s
+            - --stop-timeout=60s
+          ports:
+            - {name: http, containerPort: 8080}
+          # OTel destinations (internal/telemetry): optional, set per installation.
+          envFrom:
+            - configMapRef: {name: exemplar-otel, optional: true}
+            - secretRef: {name: exemplar-otel, optional: true}
+          env:
+            - name: EXEMPLAR_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+            - name: EXEMPLAR_GH_APP_ID
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_APP_ID}}
+            - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
+            - name: EXEMPLAR_CONFIG_REPO
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
+            - name: EXEMPLAR_GATEWAY_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
+            - name: EXEMPLAR_GATEWAY_TOKEN
+              valueFrom: {secretKeyRef: {name: exemplar-gateway, key: token}}
+            - name: EXEMPLAR_SEARCH_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_SEARCH_URL}}
+            - name: EXEMPLAR_SEARCH_TOKEN
+              valueFrom: {secretKeyRef: {name: exemplar-search, key: token}}
+            - {name: EXEMPLAR_AST_GREP, value: /usr/local/bin/ast-grep}
+            # Signed feedback links in comments (spec §6.12).
+            - name: EXEMPLAR_API_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
+            - {name: EXEMPLAR_LINK_KEY_FILE, value: /var/run/secrets/exemplar/api/link-key}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            failureThreshold: 2
+          # Four concurrent reviews, each a checkout plus git, ast-grep and
+          # Semgrep runs. Re-size from the Phase 0 monorepo benchmark (T-0.4).
+          resources:
+            requests: {cpu: "1", memory: 2Gi, ephemeral-storage: 20Gi}
+            limits: {cpu: "4", memory: 8Gi, ephemeral-storage: 40Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
+            - {name: link-key, mountPath: /var/run/secrets/exemplar/api, readOnly: true}
+            - {name: work, mountPath: /var/lib/exemplar/work}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          emptyDir: {sizeLimit: 256Mi}
+        - name: config-git
+          secret: {secretName: exemplar-config-git, defaultMode: 0400}
+        - name: sync-tmp
+          emptyDir: {sizeLimit: 64Mi}
+        - name: github-app
+          secret:
+            secretName: exemplar-github-app
+            items: [{key: private-key, path: private-key}]
+            defaultMode: 0400
+        - name: link-key
+          secret:
+            secretName: exemplar-api
+            items: [{key: link-key, path: link-key}]
+            defaultMode: 0400
+        # One checkout per running review, removed when it ends.
+        - name: work
+          emptyDir: {sizeLimit: 32Gi}
+        - name: tmp
+          emptyDir: {sizeLimit: 4Gi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: exemplar-worker
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-worker, app.kubernetes.io/part-of: exemplar}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: exemplar-worker}

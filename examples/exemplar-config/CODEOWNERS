@@ -1,0 +1,9 @@
+# The human gate: every change here needs an owner's approval, and the eval
+# workflow must pass (enforced by a ruleset on this repo).
+*                       @platform/exemplar
+/platform/              @security/appsec
+/rules/security/        @security/appsec
+/evals/_adversarial/    @security/appsec @platform/exemplar
+# The workflows enforce eval and the export approval; a PR that edits them
+# could switch those checks off, so the platform owns them.
+/.github/               @platform/exemplar @platform/devex

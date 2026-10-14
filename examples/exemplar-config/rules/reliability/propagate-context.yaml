@@ -1,0 +1,27 @@
+id: propagate-context
+kind: exemplar
+category: Reliability
+severity: important
+owner: "@platform/backend"
+status: active
+review_by: 2027-10-01
+file_patterns: ["**/*.go", "!**/*_test.go"]
+description: |
+  Code on a request path must pass the caller's context.Context to every
+  downstream call that does I/O (HTTP, database, RPC, queue), so cancellation
+  and deadlines reach them.
+preferred_approach: |
+  Accept ctx as the first parameter and pass it through. Use
+  http.NewRequestWithContext, db.QueryContext, and similar context-aware APIs.
+what_to_flag: |
+  - context.Background() or context.TODO() created inside a function that
+    already has a ctx parameter or is called from a request handler.
+  - I/O calls that have a context-aware variant but use the plain one
+    (http.Get, db.Query, db.Exec) on a request path.
+  Do not flag main(), tests, or one-off CLI setup code.
+fix_policy: suggest
+citation:
+  doc: https://go.dev/blog/context
+export:
+  agents: true
+  summary: "Pass the caller's context.Context to every I/O call on a request path."

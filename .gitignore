@@ -1,0 +1,20 @@
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+# Python (learning/)
+.venv
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# go build ./cmd/<binary> outputs at the root
+/exemplar
+/exemplar-*

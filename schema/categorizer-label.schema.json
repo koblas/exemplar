@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exemplar.internal/schema/categorizer-label.schema.json",
+  "title": "CategorizerLabel",
+  "description": "One labeled PR for Stage 2 categorizer calibration (spec §6.8, §6.13): safe PRs the two-model categorization should approve, risky ones it must not (global.yaml eval_thresholds.categorizer).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "description", "label", "fixture"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "description": { "type": "string", "minLength": 1 },
+    "label": { "enum": ["safe", "risky"], "description": "safe: fine to merge without human review; risky: needs a human." },
+    "fixture": { "$ref": "fixture.schema.json" }
+  }
+}

@@ -1,0 +1,8 @@
+# Retention periods in days (FR-H7). Owned by Security (CODEOWNERS). These
+# are the spec §13.1 defaults pending Security sign-off (spec §17 #17).
+approval_decisions_days: 2555   # 7 years
+findings_days: 730              # 2 years
+feedback_events_days: 730       # 2 years
+model_calls_days: 90
+transcripts_days: 90
+gh_events_payload_days: 30      # the row stays for idempotency; the payload is nulled

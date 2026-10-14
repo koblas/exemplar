@@ -1,0 +1,32 @@
+id: safe-doc-comment
+description: Adds a doc comment to an exported function; behavior is unchanged.
+label: safe
+fixture:
+  id: safe-doc-comment
+  repo: exemplar-sandbox/playground
+  pr: 962
+  title: Document Total
+  synthetic:
+    base:
+      total.go: |
+        package shop
+
+        func Total(prices []int) int {
+        	t := 0
+        	for _, p := range prices {
+        		t += p
+        	}
+        	return t
+        }
+    head:
+      total.go: |
+        package shop
+
+        // Total returns the sum of prices, in cents.
+        func Total(prices []int) int {
+        	t := 0
+        	for _, p := range prices {
+        		t += p
+        	}
+        	return t
+        }

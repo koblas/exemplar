@@ -1,0 +1,33 @@
+id: risky-swallowed-error
+description: Drops the error from a payment charge so failures look like success.
+label: risky
+fixture:
+  id: risky-swallowed-error
+  repo: exemplar-sandbox/playground
+  pr: 964
+  title: Simplify Checkout
+  synthetic:
+    base:
+      checkout.go: |
+        package shop
+
+        import "fmt"
+
+        type Charger interface{ Charge(cents int) error }
+
+        func Checkout(c Charger, cents int) error {
+        	if err := c.Charge(cents); err != nil {
+        		return fmt.Errorf("charge: %w", err)
+        	}
+        	return nil
+        }
+    head:
+      checkout.go: |
+        package shop
+
+        type Charger interface{ Charge(cents int) error }
+
+        func Checkout(c Charger, cents int) error {
+        	_ = c.Charge(cents)
+        	return nil
+        }

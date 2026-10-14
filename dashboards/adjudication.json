@@ -1,0 +1,80 @@
+{
+  "description": "Owner adjudication queue and outcomes (spec §9.4, §12.5).",
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Findings an author marked wrong or disagreed with (their latest signal), with no adjudication yet, per owning team.",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT m.owner AS \"Owner\", count(DISTINCT e.finding_id) AS \"Waiting\",\n  round(max(extract(epoch FROM now() - e.observed_at)) / 86400.0, 1) AS \"Oldest (days)\"\nFROM effective_events e\nJOIN findings o ON o.id = e.finding_id\nLEFT JOIN LATERAL (\n  SELECT ru.status, ru.owner FROM rule_runs rr\n  JOIN rules ru ON ru.rule_id = rr.rule_id AND ru.version_sha = rr.rule_version\n  WHERE rr.rule_id = o.rule_id ORDER BY rr.id DESC LIMIT 1) m ON true\nWHERE e.role = 'author' AND e.kind IN ('fb_wrong', 'fb_disagree')\n  AND NOT EXISTS (SELECT 1 FROM feedback_events a WHERE a.finding_id = e.finding_id AND a.kind LIKE 'adjudicated\\_%')\nGROUP BY m.owner ORDER BY \"Waiting\" DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Waiting for the owner",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT f.rule_id AS \"Rule\", count(*) FILTER (WHERE e.kind = 'adjudicated_uphold') AS \"Upheld\",\n  count(*) FILTER (WHERE e.kind = 'adjudicated_overturn') AS \"Overturned\"\nFROM feedback_events e JOIN findings f ON f.id = e.finding_id\nWHERE e.kind LIKE 'adjudicated\\_%' AND $__timeFilter(e.observed_at)\nGROUP BY f.rule_id ORDER BY 3 DESC, 2 DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Uphold and overturn by rule",
+      "type": "table"
+    }
+  ],
+  "refresh": "15m",
+  "schemaVersion": 39,
+  "tags": [
+    "exemplar"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-28d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "title": "Exemplar: adjudication",
+  "uid": "exemplar-adjudication",
+  "version": 1
+}

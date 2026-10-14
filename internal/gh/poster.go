@@ -1,0 +1,274 @@
+package gh
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/go-github/v88/github"
+)
+
+// PR identifies a pull request at one head commit.
+type PR struct {
+	Owner   string
+	Repo    string
+	Number  int
+	HeadSHA string
+}
+
+// ParsePR builds a PR from "owner/name".
+func ParsePR(fullName string, number int, headSHA string) (PR, error) {
+	owner, repo, ok := strings.Cut(fullName, "/")
+	if !ok || owner == "" || repo == "" {
+		return PR{}, fmt.Errorf("gh: repo %q must be owner/name", fullName)
+	}
+	return PR{Owner: owner, Repo: repo, Number: number, HeadSHA: headSHA}, nil
+}
+
+// Comment is one inline review comment. Anchors must already have passed
+// scope.ValidateAnchor; the poster does not adjust them.
+type Comment struct {
+	Path      string
+	Side      string // RIGHT or LEFT
+	StartLine int
+	EndLine   int
+	Body      string
+}
+
+// ReviewPost is what the poster submits for one Exemplar review.
+type ReviewPost struct {
+	// ReviewID is Exemplar's reviews.id; it goes into the hidden marker that
+	// makes posting idempotent.
+	ReviewID int64
+	Summary  string
+	Comments []Comment
+}
+
+// Poster submits reviews and check runs. It must be built from a
+// FlavorPoster client. It posts COMMENT reviews and, only when every
+// auto-approve gate passed, an APPROVE (Approve). Exemplar never blocks a
+// merge (FR-E8), so there is no REQUEST_CHANGES path.
+type Poster struct {
+	gh *github.Client
+}
+
+// NewPoster wraps a poster-flavor client.
+func NewPoster(c *github.Client) *Poster { return &Poster{gh: c} }
+
+// Marker is the hidden tag that identifies an Exemplar review on a head.
+func Marker(reviewID int64, headSHA string) string {
+	return fmt.Sprintf("<!-- exemplar:review id=%d head=%s -->", reviewID, headSHA)
+}
+
+// PostReview submits one COMMENT review carrying every comment. If a review
+// with this review's marker already exists on the head (a retried job), it
+// returns that review's id and posted=false instead of posting again.
+func (p *Poster) PostReview(ctx context.Context, pr PR, rv ReviewPost) (ghReviewID int64, posted bool, err error) {
+	marker := Marker(rv.ReviewID, pr.HeadSHA)
+	existing, err := p.findReview(ctx, pr, marker)
+	if err != nil {
+		return 0, false, err
+	}
+	if existing != 0 {
+		return existing, false, nil
+	}
+
+	req := &github.PullRequestReviewRequest{
+		CommitID: github.Ptr(pr.HeadSHA),
+		Body:     github.Ptr(strings.TrimSpace(rv.Summary) + "\n\n" + marker),
+		Event:    github.Ptr("COMMENT"),
+	}
+	for _, c := range rv.Comments {
+		if c.StartLine < 1 || c.EndLine < c.StartLine {
+			return 0, false, fmt.Errorf("gh: invalid comment range %s:%d-%d", c.Path, c.StartLine, c.EndLine)
+		}
+		dc := &github.DraftReviewComment{
+			Path: github.Ptr(c.Path),
+			Body: github.Ptr(c.Body),
+			Side: github.Ptr(c.Side),
+			Line: github.Ptr(c.EndLine),
+		}
+		if c.StartLine != c.EndLine {
+			dc.StartLine = github.Ptr(c.StartLine)
+			dc.StartSide = github.Ptr(c.Side)
+		}
+		req.Comments = append(req.Comments, dc)
+	}
+	review, _, err := p.gh.PullRequests.CreateReview(ctx, pr.Owner, pr.Repo, pr.Number, req)
+	if err != nil {
+		return 0, false, fmt.Errorf("gh: create review on %s/%s#%d: %w", pr.Owner, pr.Repo, pr.Number, err)
+	}
+	return review.GetID(), true, nil
+}
+
+func (p *Poster) findReview(ctx context.Context, pr PR, marker string) (int64, error) {
+	opts := &github.ListOptions{PerPage: 100}
+	for {
+		reviews, resp, err := p.gh.PullRequests.ListReviews(ctx, pr.Owner, pr.Repo, pr.Number, opts)
+		if err != nil {
+			return 0, fmt.Errorf("gh: list reviews: %w", err)
+		}
+		for _, r := range reviews {
+			if r.GetCommitID() == pr.HeadSHA && strings.Contains(r.GetBody(), marker) {
+				return r.GetID(), nil
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return 0, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
+// CheckName is the check run Exemplar reports on every reviewed head.
+const CheckName = "exemplar"
+
+// RerunAction is the check-run action identifier that re-enqueues an
+// incomplete review (spec §6.15).
+const RerunAction = "rerun"
+
+// StartCheck creates the in-progress check run for a head.
+func (p *Poster) StartCheck(ctx context.Context, pr PR, externalID string) (int64, error) {
+	run, _, err := p.gh.Checks.CreateCheckRun(ctx, pr.Owner, pr.Repo, github.CreateCheckRunOptions{
+		Name:       CheckName,
+		HeadSHA:    pr.HeadSHA,
+		ExternalID: github.Ptr(externalID),
+		Status:     github.Ptr("in_progress"),
+		StartedAt:  &github.Timestamp{Time: time.Now()},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("gh: create check run: %w", err)
+	}
+	return run.GetID(), nil
+}
+
+// CheckResult completes a check run.
+type CheckResult struct {
+	// Conclusion is "neutral" for every completed review: the check informs
+	// and never fails the PR. Incomplete runs are also "neutral" and carry
+	// the Re-run action.
+	Conclusion string
+	Title      string
+	Summary    string
+	Text       string
+	Incomplete bool
+}
+
+// CompleteCheck finishes a check run.
+func (p *Poster) CompleteCheck(ctx context.Context, pr PR, checkRunID int64, res CheckResult) error {
+	if res.Conclusion == "" {
+		return errors.New("gh: check conclusion is required")
+	}
+	opts := github.UpdateCheckRunOptions{
+		Name:        CheckName,
+		Status:      github.Ptr("completed"),
+		Conclusion:  github.Ptr(res.Conclusion),
+		CompletedAt: &github.Timestamp{Time: time.Now()},
+		Output: &github.CheckRunOutput{
+			Title:   github.Ptr(res.Title),
+			Summary: github.Ptr(res.Summary),
+			Text:    github.Ptr(res.Text),
+		},
+	}
+	if res.Incomplete {
+		opts.Actions = []*github.CheckRunAction{{
+			Label:       "Re-run",
+			Description: "Re-run the Exemplar review",
+			Identifier:  RerunAction,
+		}}
+	}
+	if _, _, err := p.gh.Checks.UpdateCheckRun(ctx, pr.Owner, pr.Repo, checkRunID, opts); err != nil {
+		return fmt.Errorf("gh: complete check run: %w", err)
+	}
+	return nil
+}
+
+// MergePolicyCheckName is the check merge_policy_check repos require
+// instead of counting Exemplar's APPROVE (spec §6.13).
+const MergePolicyCheckName = "exemplar/merge-policy"
+
+// SetMergePolicy reports exemplar/merge-policy on the head: completed with
+// success when pass, otherwise in progress with what it waits for, so the
+// repo's required check holds the merge until people approve. The repo
+// chose this check in place of an approval requirement, so it is the one
+// way Exemplar's result can hold a merge; Exemplar's own review check
+// stays neutral (FR-E8). Each call adds a run; GitHub uses the latest.
+func (p *Poster) SetMergePolicy(ctx context.Context, pr PR, pass bool, title, summary string) error {
+	opts := github.CreateCheckRunOptions{
+		Name:    MergePolicyCheckName,
+		HeadSHA: pr.HeadSHA,
+		Output:  &github.CheckRunOutput{Title: github.Ptr(title), Summary: github.Ptr(summary)},
+	}
+	if pass {
+		opts.Status, opts.Conclusion = github.Ptr("completed"), github.Ptr("success")
+		opts.CompletedAt = &github.Timestamp{Time: time.Now()}
+	} else {
+		opts.Status = github.Ptr("in_progress")
+		opts.StartedAt = &github.Timestamp{Time: time.Now()}
+	}
+	if _, _, err := p.gh.Checks.CreateCheckRun(ctx, pr.Owner, pr.Repo, opts); err != nil {
+		return fmt.Errorf("gh: set %s: %w", MergePolicyCheckName, err)
+	}
+	return nil
+}
+
+// ApproveMarker identifies an Exemplar approval on a head.
+func ApproveMarker(reviewID int64, headSHA string) string {
+	return fmt.Sprintf("<!-- exemplar:approve id=%d head=%s -->", reviewID, headSHA)
+}
+
+const approvePrefix = "<!-- exemplar:approve "
+
+// Approve submits Exemplar's native APPROVE on the head (spec §6.13): the
+// caller must only call it when every Stage 1 and Stage 2 gate passed. It
+// is idempotent per review, like PostReview.
+func (p *Poster) Approve(ctx context.Context, pr PR, reviewID int64, summary string) (int64, bool, error) {
+	marker := ApproveMarker(reviewID, pr.HeadSHA)
+	existing, err := p.findReview(ctx, pr, marker)
+	if err != nil || existing != 0 {
+		return existing, false, err
+	}
+	review, _, err := p.gh.PullRequests.CreateReview(ctx, pr.Owner, pr.Repo, pr.Number, &github.PullRequestReviewRequest{
+		CommitID: github.Ptr(pr.HeadSHA),
+		Body:     github.Ptr(strings.TrimSpace(summary) + "\n\n" + marker),
+		Event:    github.Ptr("APPROVE"),
+	})
+	if err != nil {
+		return 0, false, fmt.Errorf("gh: approve %s/%s#%d: %w", pr.Owner, pr.Repo, pr.Number, err)
+	}
+	return review.GetID(), true, nil
+}
+
+// DismissApprovals dismisses every standing Exemplar approval on an
+// earlier head of the PR (FR-A9: an approval never carries forward to a
+// new push). Only reviews that carry Exemplar's approve marker and come
+// from a bot account are touched, so a human's approval is never
+// dismissed; one on pr.HeadSHA (a retried review) is kept. It returns how
+// many were dismissed.
+func (p *Poster) DismissApprovals(ctx context.Context, pr PR, message string) (int, error) {
+	n := 0
+	opts := &github.ListOptions{PerPage: 100}
+	for {
+		reviews, resp, err := p.gh.PullRequests.ListReviews(ctx, pr.Owner, pr.Repo, pr.Number, opts)
+		if err != nil {
+			return n, fmt.Errorf("gh: list reviews on %s/%s#%d: %w", pr.Owner, pr.Repo, pr.Number, err)
+		}
+		for _, r := range reviews {
+			if r.GetState() != "APPROVED" || r.GetUser().GetType() != "Bot" || !strings.Contains(r.GetBody(), approvePrefix) ||
+				r.GetCommitID() == pr.HeadSHA {
+				continue
+			}
+			if _, _, err := p.gh.PullRequests.DismissReview(ctx, pr.Owner, pr.Repo, pr.Number, r.GetID(),
+				&github.PullRequestReviewDismissalRequest{Message: github.Ptr(message)}); err != nil {
+				return n, fmt.Errorf("gh: dismiss review %d on %s/%s#%d: %w", r.GetID(), pr.Owner, pr.Repo, pr.Number, err)
+			}
+			n++
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return n, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}

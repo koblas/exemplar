@@ -1,0 +1,34 @@
+name: nightly
+
+# Nightly (spec §8.9): verifier calibration over the seed labels and, where
+# the database is reachable, verifier_labels from author feedback.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verifier-calibration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/exemplar
+          ref: main # pin to a commit SHA once the sandbox org exists
+          path: .exemplar-src
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: .exemplar-src/go.mod
+      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
+        working-directory: .exemplar-src
+      - name: Calibrate the verifier
+        env:
+          EXEMPLAR_GATEWAY_URL: ${{ secrets.EXEMPLAR_GATEWAY_URL }}
+          EXEMPLAR_GATEWAY_TOKEN: ${{ secrets.EXEMPLAR_GATEWAY_TOKEN }}
+          EXEMPLAR_EVAL_TOKEN: ${{ secrets.EXEMPLAR_EVAL_TOKEN }}
+          EXEMPLAR_DATABASE_URL: ${{ secrets.EXEMPLAR_CALIBRATION_DATABASE_URL }}
+        run: '"$RUNNER_TEMP/exemplar" calibrate --config . --markdown "$GITHUB_STEP_SUMMARY"'

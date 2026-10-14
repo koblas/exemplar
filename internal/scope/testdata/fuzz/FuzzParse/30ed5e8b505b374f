@@ -1,0 +1,2 @@
+go test fuzz v1
+string("--- 0\n+++ 0\n@@ -0,6 +0,7 @@\n \n \n \n+\n \n \n \n@@ -0,4 +0,3 @@\n \n\n\n-")

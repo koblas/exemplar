@@ -1,0 +1,34 @@
+id: true-db-query-in-handler
+description: A handler with a ctx runs db.Query instead of db.QueryContext.
+label: "true"
+fixture:
+  id: true-db-query-in-handler
+  repo: exemplar-sandbox/playground
+  pr: 951
+  title: List orders
+  synthetic:
+    base:
+      orders.go: |
+        package shop
+    head:
+      orders.go: |
+        package shop
+
+        import (
+        	"context"
+        	"database/sql"
+        )
+
+        func ListOrders(ctx context.Context, db *sql.DB) error {
+        	rows, err := db.Query("SELECT id FROM orders")
+        	if err != nil {
+        		return err
+        	}
+        	return rows.Close()
+        }
+candidate:
+  rule: propagate-context
+  path: orders.go
+  start_line: 9
+  end_line: 9
+  claim: ListOrders receives ctx but calls db.Query; db.QueryContext would let cancellation reach the query.

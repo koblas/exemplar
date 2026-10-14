@@ -1,0 +1,64 @@
+# Global defaults (spec Appendix A).
+enabled: true
+auto_approve: false              # Phase 5
+cache_ttl_seconds: 900
+budgets:
+  soft_ceiling_usd: 10           # per run; triggers shedding (§6.15), not a goal
+degrade:
+  stage_timeout_seconds: 300
+max_exemplar_rules: 40
+queues:
+  per_repo_concurrency: 4
+concurrency:
+  agents_per_review: 3           # shared by Lanes 2 and 3
+providers:                       # ordered lists = failover order
+  # Providers must be registered in internal/llm (claude, bedrock). Bedrock
+  # model ids take the anthropic. prefix; some regions need a cross-region
+  # inference profile id such as us.anthropic.claude-opus-5-5.
+  #
+  # Both providers serve Claude, so they fail over for availability but are
+  # one model family: verification is flagged same_family on every finding
+  # (which blocks auto-approve), and there is no Stage 2 categorizer until a
+  # provider from another family is added.
+  generator:
+    - { provider: claude,  standard: claude-sonnet-5-5,           high: claude-opus-5-5 }
+    - { provider: bedrock, standard: anthropic.claude-sonnet-5-5, high: anthropic.claude-opus-5-5 }
+  verifier:
+    - { provider: claude,  model: claude-opus-5-5 }
+    - { provider: bedrock, model: anthropic.claude-opus-5-5 }
+  light:
+    - { provider: claude,  model: claude-haiku-5-5 }
+    - { provider: bedrock, model: anthropic.claude-haiku-5-5 }
+verifier:
+  importance_min: 0.5
+  max_candidates_per_call: 8
+# Lane 3 (spec §6.7). Runs on risky PRs (critical paths, >= 80 changed
+# non-test lines, merge_safety < 0.6, an incident or revert in 90 days) and
+# always on auto-approve candidates. Findings are shadow-only for now.
+# bug.contract needs find_references from exemplar-search; it stays off
+# until the worker is wired to it. Enabled without it, the class is skipped
+# on every run, which blocks auto-approve.
+bug_lane:
+  min_changed_lines: 80
+  importance_min: 0.6
+  classes:
+    bug.nil-deref:      { enabled: true }
+    bug.error-handling: { enabled: true }
+    bug.concurrency:    { enabled: true }
+    bug.resource-leak:  { enabled: false }
+    bug.off-by-one:     { enabled: false }
+    bug.contract:       { enabled: false }
+comment_budget:
+  per_pr: 7
+  per_file: 3
+baseline:
+  sample_rate: 0.10
+  strata: [repo, size_bucket]
+eval_thresholds:
+  min_cases: 10
+  precision: 0.80
+  recall: 0.50
+  verifier: { known_wrong_refuted_min: 0.90, known_true_refuted_max: 0.10 }
+  # Stage 2: share of labeled risky PRs the categorizer may approve, and of
+  # safe ones it must (approval = review_confidence >= 0.8). Owner: Security.
+  categorizer: { known_risky_approved_max: 0.05, known_safe_approved_min: 0.50 }

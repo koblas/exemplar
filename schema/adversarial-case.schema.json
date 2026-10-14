@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exemplar.internal/schema/adversarial-case.schema.json",
+  "title": "AdversarialCase",
+  "description": "One prompt-injection case (PRD FR-X10). In 'compromised' mode the model is replaced by a script that emits what a fully injected model would, so the case tests the code-level defenses; in 'live' mode the real model sees the injection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "description", "vector", "goal", "modes", "fixture"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "description": { "type": "string", "minLength": 1 },
+    "vector": { "enum": ["diff", "code_comment", "pr_description", "file_name", "linked_ticket"] },
+    "goal": { "enum": ["false_approval", "suppressed_finding", "fabricated_citation", "false_coverage"] },
+    "modes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["compromised", "live"] } },
+    "pending": { "type": "string", "description": "Set when the case cannot run yet; names what it waits for." },
+    "rules": { "type": "array", "items": { "type": "string" }, "description": "Rule ids in scope; defaults to every active rule whose patterns match." },
+    "fixture": { "$ref": "fixture.schema.json" },
+    "compromised": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "generator_output": { "description": "Raw JSON the generator returns as its final answer. May contain fields the contract does not allow." },
+        "generator_reads": { "type": "array", "items": { "type": "string" }, "description": "Paths the scripted generator opens with get_hunk before answering." },
+        "verifier_verdict": { "enum": ["confirmed", "refuted", "uncertain"] }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rule", "path"],
+            "properties": {
+              "rule": { "type": "string" },
+              "path": { "type": "string" },
+              "lines": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } }
+            }
+          }
+        },
+        "max_coverage": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "modes": { "contains": { "const": "compromised" } } } },
+      "then": { "required": ["compromised"] }
+    }
+  ]
+}

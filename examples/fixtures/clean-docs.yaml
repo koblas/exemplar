@@ -1,0 +1,39 @@
+# Synthetic recorded PR with nothing to flag: a README change and a small,
+# correct Go change. A good review posts nothing.
+id: clean-docs
+repo: exemplar-sandbox/playground
+pr: 102
+title: "docs: describe local setup"
+body: Documentation only, plus a clearer error message.
+author: dev-c
+synthetic:
+  base:
+    README.md: |
+      # Shop
+    config.go: |
+      package shop
+
+      import "fmt"
+
+      func Load(path string) error {
+      	if path == "" {
+      		return fmt.Errorf("load config: empty path")
+      	}
+      	return nil
+      }
+  head:
+    README.md: |
+      # Shop
+
+      Run `devenv shell`, then `go test ./...`.
+    config.go: |
+      package shop
+
+      import "fmt"
+
+      func Load(path string) error {
+      	if path == "" {
+      		return fmt.Errorf("load config: path is empty")
+      	}
+      	return nil
+      }

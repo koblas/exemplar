@@ -1,0 +1,254 @@
+{
+  "description": "Shift left: rule exports to coding-agent instruction files and their drift (spec §10.2, PRD FR-S6).",
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Repos with at least one exported instruction file.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Repos\" FROM export_drift",
+          "refId": "A"
+        }
+      ],
+      "title": "Repos exporting",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Repos whose every exported file matches the latest rendering.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Current\" FROM export_drift WHERE versions_behind = 0",
+          "refId": "A"
+        }
+      ],
+      "title": "Current",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Repos whose exports are more than two exported config versions behind (spec §10.2); they also appear in the platform digest.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Behind\" FROM export_drift WHERE versions_behind > 2",
+          "refId": "A"
+        }
+      ],
+      "title": "More than two versions behind",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Generated blocks someone edited by hand; the export job leaves them until resolved.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(edited), 0) AS \"Edited\" FROM export_drift",
+          "refId": "A"
+        }
+      ],
+      "title": "Hand-edited files",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Per repo: versions behind (config versions exported since its furthest-behind file last matched), files, open proposals, hand edits, and the open export PR.",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "id": 5,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT repo AS \"Repo\", versions_behind AS \"Versions behind\", files AS \"Files\", proposed AS \"Proposed\", edited AS \"Edited\",\n  round(extract(epoch FROM now() - oldest_change) / 86400.0, 1) AS \"Oldest change (days)\", pr_url AS \"Export PR\"\nFROM export_drift ORDER BY versions_behind DESC, repo",
+          "refId": "A"
+        }
+      ],
+      "title": "Export drift by repo",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Exported files per target (AGENTS.md, CLAUDE.md, Copilot, Cursor) and state.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT target AS \"Target\", count(*) FILTER (WHERE state = 'current') AS \"Current\", count(*) FILTER (WHERE state = 'proposed') AS \"Proposed\",\n  count(*) FILTER (WHERE state = 'edited') AS \"Edited\", count(*) FILTER (WHERE auto_merged) AS \"Auto-merge set\"\nFROM exports GROUP BY target ORDER BY target",
+          "refId": "A"
+        }
+      ],
+      "title": "Files by target and state",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Config versions the export job has rendered, per week.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 7,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT date_trunc('week', first_seen) AS \"time\", count(*) AS \"Versions\"\nFROM export_runs WHERE $__timeFilter(first_seen) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Config versions exported",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Per exported rule (spec §10.4): violations per in-scope PR when the PR's coding agent read the rule's export, against the rest, and in exporting repos before and after the export landed. The digest asks the owner to rewrite a summary when no measurable comparison drops by 20%.",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 8,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT rule_id AS \"Rule\",\n  count(*) FILTER (WHERE received) AS \"Agent read it (PRs)\",\n  round(avg(violations) FILTER (WHERE received), 2) AS \"Violations/PR\",\n  count(*) FILTER (WHERE NOT received) AS \"Others (PRs)\",\n  round(avg(violations) FILTER (WHERE NOT received), 2) AS \"Others violations/PR\",\n  round(avg(violations) FILTER (WHERE export_landed > first_review), 2) AS \"Before landing\",\n  round(avg(violations) FILTER (WHERE export_landed <= first_review), 2) AS \"After landing\"\nFROM upstream_pr_rule WHERE $__timeFilter(first_review)\nGROUP BY rule_id ORDER BY rule_id",
+          "refId": "A"
+        }
+      ],
+      "title": "Upstream effectiveness",
+      "type": "table"
+    }
+  ],
+  "refresh": "1h",
+  "schemaVersion": 39,
+  "tags": [
+    "exemplar"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "title": "Exemplar: shift left",
+  "uid": "exemplar-shift-left",
+  "version": 1
+}

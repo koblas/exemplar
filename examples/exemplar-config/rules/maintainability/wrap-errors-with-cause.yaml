@@ -1,0 +1,23 @@
+id: wrap-errors-with-cause
+kind: exemplar
+category: Maintainability
+severity: suggestion
+owner: "@platform/backend"
+status: active
+review_by: 2027-10-01
+file_patterns: ["**/*.go"]
+description: |
+  Errors returned up the stack should carry context and keep their cause, so
+  callers can use errors.Is and errors.As and logs say what failed.
+preferred_approach: |
+  fmt.Errorf("load config %s: %w", path, err)
+what_to_flag: |
+  - Returning a new error that drops the original (fmt.Errorf with %v or %s
+    on an error value, or errors.New with the message pasted in).
+  - Bare `return err` where the function adds no context and the caller
+    cannot tell which step failed, when there are several fallible steps.
+  Do not flag sentinel errors declared with errors.New at package level.
+fix_policy: suggest
+export:
+  agents: true
+  summary: "Wrap returned errors with context using %w so the cause is kept."

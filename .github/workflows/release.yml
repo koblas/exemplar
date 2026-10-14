@@ -1,0 +1,59 @@
+name: release
+
+# The exemplar CLI (spec §10.1), built when a maintainer pushes a v* tag.
+# Each platform builds natively: the CLI embeds the tree-sitter grammars
+# (cgo), so it cannot be cross-compiled from one runner. Archives and
+# SHA256SUMS go to the tag's GitHub release.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - {runner: ubuntu-latest, os: linux, arch: amd64}
+          - {runner: ubuntu-24.04-arm, os: linux, arch: arm64}
+          - {runner: macos-latest, os: darwin, arch: arm64}
+          - {runner: macos-13, os: darwin, arch: amd64}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          VERSION: ${{ github.ref_name }}
+        run: |
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o dist/exemplar ./cmd/exemplar
+          ./dist/exemplar --version
+          tar -C dist -czf "exemplar_${VERSION}_${{ matrix.os }}_${{ matrix.arch }}.tar.gz" exemplar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exemplar-${{ matrix.os }}-${{ matrix.arch }}
+          path: exemplar_*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum exemplar_*.tar.gz > SHA256SUMS
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "exemplar $TAG" \
+            --notes "The exemplar CLI. Verify with: sha256sum -c SHA256SUMS --ignore-missing" exemplar_*.tar.gz SHA256SUMS

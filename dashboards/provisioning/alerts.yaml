@@ -1,0 +1,111 @@
+# Counter-metric and auto-approve alerts (spec §12.5, §16 Phase 5: "no
+# counter-metric alarms over 4 weeks" before auto-approve widens). Each
+# rule's query returns one number; the alert fires above its threshold.
+# Notification routing (contact points, policies) belongs to the Grafana
+# installation, not this file; rules carry team=platform for it.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: exemplar-counter-metrics
+    folder: Exemplar
+    interval: 1h
+    rules:
+      - uid: exemplar-auto-approved-failed
+        title: An auto-approved merge was reverted or linked to an incident
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 2419200, to: 0}
+            datasourceUid: exemplar-pg
+            model:
+              refId: A
+              editorMode: code
+              format: table
+              rawQuery: true
+              rawSql: |-
+                SELECT count(*)::float8 AS failed FROM merge_outcomes
+                WHERE auto_approved AND (reverted OR incident) AND merged_at > now() - interval '28 days'
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {team: platform}
+        annotations:
+          summary: An auto-approved merge failed in the last 28 days. See the counter-metrics board's failed merges; consider the kill switch.
+      - uid: exemplar-auto-approved-failure-rate
+        title: Auto-approved merges fail more often than human-approved ones
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 2419200, to: 0}
+            datasourceUid: exemplar-pg
+            model:
+              refId: A
+              editorMode: code
+              format: table
+              rawQuery: true
+              # Percentage points of change failure above human-approved
+              # merges, once there are 20 auto-approved merges.
+              rawSql: |-
+                SELECT coalesce(CASE WHEN count(*) FILTER (WHERE auto_approved) >= 20 THEN
+                  100.0 * count(*) FILTER (WHERE auto_approved AND (reverted OR incident)) / count(*) FILTER (WHERE auto_approved)
+                  - 100.0 * count(*) FILTER (WHERE NOT auto_approved AND (reverted OR incident)) / nullif(count(*) FILTER (WHERE NOT auto_approved), 0)
+                END, 0)::float8 AS excess
+                FROM merge_outcomes WHERE merged_at > now() - interval '28 days'
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {team: platform}
+        annotations:
+          summary: Over 28 days, auto-approved merges were reverted or incident-linked more often than human-approved ones.
+      - uid: exemplar-degraded-approval
+        title: An approval came from a degraded or incomplete review
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 86400, to: 0}
+            datasourceUid: exemplar-pg
+            model:
+              refId: A
+              editorMode: code
+              format: table
+              rawQuery: true
+              rawSql: |-
+                SELECT count(*)::float8 AS approvals FROM approval_decisions d JOIN reviews r ON r.id = d.review_id
+                WHERE r.caller = 'production' AND d.decision = 'approved' AND (r.degraded OR r.status <> 'done')
+                  AND coalesce(r.finished_at, r.started_at) > now() - interval '1 day'
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {team: platform}
+        annotations:
+          summary: Stage 1 must refuse degraded and incomplete reviews; an approval from one means a gate is broken. Turn auto-approve off globally.

@@ -1,0 +1,34 @@
+id: true-http-get-in-handler
+description: A request handler that has a ctx makes a plain http.Get, so cancellation never reaches the call.
+label: "true"
+fixture:
+  id: true-http-get-in-handler
+  repo: exemplar-sandbox/playground
+  pr: 950
+  title: Load inventory in the item handler
+  synthetic:
+    base:
+      handler.go: |
+        package shop
+    head:
+      handler.go: |
+        package shop
+
+        import (
+        	"context"
+        	"net/http"
+        )
+
+        func ItemHandler(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+        	resp, err := http.Get("https://inventory.internal/items")
+        	if err != nil {
+        		return
+        	}
+        	defer resp.Body.Close()
+        }
+candidate:
+  rule: propagate-context
+  path: handler.go
+  start_line: 9
+  end_line: 9
+  claim: ItemHandler has ctx but calls http.Get, which ignores it; use http.NewRequestWithContext.

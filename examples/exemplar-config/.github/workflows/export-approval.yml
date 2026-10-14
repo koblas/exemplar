@@ -1,0 +1,47 @@
+name: export-approval
+
+# Changes to a rule's export: block reach every coding agent in the org
+# through exported instruction files, so they need an approval from
+# @platform/devex in addition to the rule owner (spec §8.9, §10.2).
+# CODEOWNERS works per file, not per YAML key, hence this check. It reruns
+# on reviews, and counts only approvals of the PR's current head.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  export-approval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0 # the diff against the PR's base
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/exemplar
+          ref: main # pin to a commit SHA once the sandbox org exists
+          path: .exemplar-src
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: .exemplar-src/go.mod
+      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
+        working-directory: .exemplar-src
+      - name: Check export approval
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # reads this PR's reviews
+          # Reads @platform/devex membership (members: read); GITHUB_TOKEN cannot.
+          EXEMPLAR_TEAMS_TOKEN: ${{ secrets.EXEMPLAR_TEAMS_TOKEN }}
+        run: >-
+          "$RUNNER_TEMP/exemplar" export-approval --config .
+          --changed-since "${{ github.event.pull_request.base.sha }}"
+          --pr "${{ github.event.pull_request.number }}"
+          --head-sha "${{ github.event.pull_request.head.sha }}"
+          --author "${{ github.event.pull_request.user.login }}"
+          --markdown "$GITHUB_STEP_SUMMARY"

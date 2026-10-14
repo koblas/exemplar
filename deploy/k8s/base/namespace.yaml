@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exemplar
+  labels:
+    app.kubernetes.io/part-of: exemplar
+    # Restricted Pod Security: every pod here runs non-root, with no
+    # capabilities, no privilege escalation and RuntimeDefault seccomp.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.33

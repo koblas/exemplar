@@ -1,0 +1,24 @@
+# Render: kubectl kustomize deploy/k8s/base (or an overlay built on it).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - settings.yaml
+  - serviceaccounts.yaml
+  - networkpolicies.yaml
+  - webhook.yaml
+  - api.yaml
+  - gateway.yaml
+  - worker.yaml
+  - search.yaml
+  - learn.yaml
+# Manifests name the two images by family; the release pipeline pins each to
+# the digest it built. The all-zero digests make an unpinned deploy fail to
+# pull rather than run something unknown.
+images:
+  - name: exemplar
+    newName: registry.example.invalid/koblas/exemplar
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: exemplar-learning
+    newName: registry.example.invalid/koblas/exemplar-learning
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

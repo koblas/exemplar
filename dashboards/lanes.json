@@ -1,0 +1,167 @@
+{
+  "description": "Findings and acceptance by lane, verifier refutation, held-back counts and fixes (spec §12.5).",
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT f.lane AS \"Lane\", f.state AS \"State\", count(*) AS \"Findings\"\nFROM findings f JOIN rule_runs rr ON rr.id = f.rule_run_id JOIN reviews r ON r.id = rr.review_id\nWHERE r.caller = 'production' AND $__timeFilter(f.created_at) GROUP BY 1, 2 ORDER BY 1, 3 DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Findings by lane and state",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(f.suppressed_reason, '(none)') AS \"Reason\", count(*) AS \"Findings\"\nFROM findings f JOIN rule_runs rr ON rr.id = f.rule_run_id JOIN reviews r ON r.id = rr.review_id\nWHERE r.caller = 'production' AND f.state \u003c\u003e 'posted' AND $__timeFilter(f.created_at) GROUP BY 1 ORDER BY 2 DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Held back, by reason",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "A rule refuted more than half the time needs a better prompt.",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT f.rule_id AS \"Rule\", count(*) FILTER (WHERE f.verify_verdict IS NOT NULL) AS \"Verified\",\n  round(avg((f.verify_verdict = 'refuted')::int) FILTER (WHERE f.verify_verdict IS NOT NULL), 3) AS \"Refuted\",\n  round(avg((f.verify_verdict = 'uncertain')::int) FILTER (WHERE f.verify_verdict IS NOT NULL), 3) AS \"Uncertain\",\n  round(avg(f.verify_same_family::int) FILTER (WHERE f.verify_verdict IS NOT NULL), 3) AS \"Same family\"\nFROM findings f JOIN rule_runs rr ON rr.id = f.rule_run_id JOIN reviews r ON r.id = rr.review_id\nWHERE r.caller = 'production' AND $__timeFilter(f.created_at)\nGROUP BY f.rule_id HAVING count(*) FILTER (WHERE f.verify_verdict IS NOT NULL) \u003e 0 ORDER BY \"Refuted\" DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Verifier refutation by rule",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Share of posted findings with a suggested fix, how many validated, and how many were committed (applied_suggestion).",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 4,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT f.rule_id AS \"Rule\", count(*) AS \"Posted\",\n  count(*) FILTER (WHERE f.suggested_fix IS NOT NULL) AS \"With fix\",\n  count(*) FILTER (WHERE f.fix_valid) AS \"Valid fix\",\n  count(DISTINCT e.finding_id) AS \"Applied\"\nFROM findings f JOIN rule_runs rr ON rr.id = f.rule_run_id JOIN reviews r ON r.id = rr.review_id\nLEFT JOIN feedback_events e ON e.finding_id = f.id AND e.kind = 'applied_suggestion'\nWHERE r.caller = 'production' AND f.gh_comment_id IS NOT NULL AND $__timeFilter(f.created_at)\nGROUP BY f.rule_id ORDER BY \"Posted\" DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Fixes",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "id": 5,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT o.lane AS \"Lane\", count(*) FILTER (WHERE o.seen) AS \"Posted\",\n  round(count(*) FILTER (WHERE o.seen AND o.accepted)::numeric\n        / nullif(count(*) FILTER (WHERE o.seen AND (o.accepted OR o.rejected OR o.ignored)), 0), 3) AS \"Acceptance\",\n  round(sum(o.neg_w)::numeric / nullif(sum(o.neg_w + o.pos_w), 0)::numeric, 3) AS \"eFP (weighted)\"\nFROM finding_outcomes o WHERE $__timeFilter(o.created_at) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Acceptance by lane",
+      "type": "table"
+    }
+  ],
+  "refresh": "15m",
+  "schemaVersion": 39,
+  "tags": [
+    "exemplar"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-28d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "title": "Exemplar: lanes and verifier",
+  "uid": "exemplar-lanes",
+  "version": 1
+}

@@ -1,0 +1,27 @@
+# Grafana datasource for the dashboards (spec §12.4): the Postgres read
+# replica, as a read-only role that can SELECT the views and the tables
+# the panels read (see dashboards/README.md). Values come from Grafana's
+# environment; nothing secret is in this file.
+apiVersion: 1
+datasources:
+  - name: Exemplar
+    uid: exemplar-pg
+    type: grafana-postgresql-datasource
+    url: ${EXEMPLAR_GRAFANA_PG_HOST}
+    user: ${EXEMPLAR_GRAFANA_PG_USER}
+    secureJsonData:
+      password: ${EXEMPLAR_GRAFANA_PG_PASSWORD}
+    jsonData:
+      database: ${EXEMPLAR_GRAFANA_PG_DATABASE}
+      sslmode: require
+      postgresVersion: 1600
+    editable: false
+  # OTel metrics (internal/telemetry), wherever the OTLP endpoint lands
+  # them, read through a Prometheus-compatible query API.
+  - name: Exemplar metrics
+    uid: exemplar-metrics
+    type: prometheus
+    url: ${EXEMPLAR_GRAFANA_METRICS_URL}
+    jsonData:
+      httpMethod: POST
+    editable: false

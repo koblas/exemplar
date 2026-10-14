@@ -1,0 +1,64 @@
+# Non-secret settings shared by the services. Secrets are referenced by
+# name only and supplied outside this repository (see deploy/README.md):
+#   exemplar-database        url
+#   exemplar-github-app      private-key, webhook-secret
+#   exemplar-exports-app     private-key (the separate exports app, spec §5)
+#   exemplar-gateway         token
+#   exemplar-providers       anthropic-api-key
+#   exemplar-search          token
+#   exemplar-config-git      ssh (a read-only deploy key on exemplar-config), known_hosts
+#   exemplar-pseudonym       key (at least 32 bytes, from the KMS-held secret)
+#   exemplar-api             link-key, session-key (each at least 32 bytes), oauth-client-secret
+#   exemplar-oidc            client-secret (optional: the OIDC sign-in client's)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-settings
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/part-of: exemplar
+data:
+  # Set per installation by the overlay.
+  EXEMPLAR_CONFIG_REPO: "example-org/exemplar-config"
+  EXEMPLAR_CONFIG_GIT_URL: "git@github.com:example-org/exemplar-config.git"
+  EXEMPLAR_GH_APP_ID: "0"
+  EXEMPLAR_GH_INSTALLATION_ID: "0"
+  # The exports app (rule exports, spec §10.2); 0 until it is registered.
+  EXEMPLAR_EXPORTS_APP_ID: "0"
+  # exemplar-api's public URL, and the review app's OAuth client id.
+  EXEMPLAR_API_URL: "https://exemplar.example.invalid"
+  EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID: "Iv1.example"
+  # Auth0 tenant domain and API audience for service callers of
+  # /v1/evaluate; both empty turns service callers off.
+  EXEMPLAR_AUTH0_DOMAIN: ""
+  EXEMPLAR_AUTH0_AUDIENCE: ""
+  # In-cluster services.
+  EXEMPLAR_GATEWAY_URL: "http://exemplar-gateway.exemplar.svc"
+  EXEMPLAR_SEARCH_URL: "http://exemplar-search.exemplar.svc"
+---
+# Sign-in sources for exemplar-api, Coder-style (internal/api/signin.go).
+# GitHub OAuth is on when exemplar-settings has
+# EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID; it needs ALLOWED_ORGS or
+# ALLOW_EVERYONE=true. OIDC is on when EXEMPLAR_OIDC_ISSUER_URL is set,
+# with its client secret in the exemplar-oidc Secret (client-secret).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-auth
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/part-of: exemplar
+data:
+  EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS: "example-org"
+  # EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL: "https://github.example.com"
+  # EXEMPLAR_OIDC_ISSUER_URL: "https://acme.okta.com"
+  # EXEMPLAR_OIDC_CLIENT_ID: "0oa..."
+  # EXEMPLAR_OIDC_CLI_CLIENT_ID: "0ob..."
+  # EXEMPLAR_OIDC_EMAIL_DOMAIN: "acme.com"
+  # EXEMPLAR_OIDC_USERNAME_FIELD: "github_username"
+  # EXEMPLAR_OIDC_ALLOWED_GROUPS: "engineering"
+  # EXEMPLAR_OIDC_GROUP_REPOS: '{"engineering": ["acme/*"]}'
+  # With both sources: connect GitHub after OIDC sign-in (required | optional | off),
+  # and GitHub as a connect step only, not a sign-in button.
+  # EXEMPLAR_OIDC_GITHUB_LINK: "required"
+  # EXEMPLAR_OAUTH2_GITHUB_SIGN_IN: "false"

@@ -1,0 +1,109 @@
+{
+  "description": "Per-rule acceptance, rejection, weighted eFP and the demotion test's inputs (spec §9.2, §9.4, §12.5). Aggregates only; links go to GitHub.",
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Over the dashboard's time range. Wilson is the 95% lower bound of unweighted precision over judged findings; demotion needs eFP above the bar and Wilson below the floor (§9.4).",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT o.rule_id AS \"Rule\", m.status AS \"Status\", m.owner AS \"Owner\", o.lane AS \"Lane\",\n  count(*) FILTER (WHERE o.seen) AS \"Posted\",\n  count(*) FILTER (WHERE o.seen AND o.accepted) AS \"Accepted\",\n  count(*) FILTER (WHERE o.seen AND o.rejected) AS \"Rejected\",\n  count(*) FILTER (WHERE o.seen AND o.ignored) AS \"Ignored\",\n  count(*) FILTER (WHERE o.human_agreed) AS \"Human agreed\",\n  round(count(*) FILTER (WHERE o.seen AND o.accepted)::numeric\n        / nullif(count(*) FILTER (WHERE o.seen AND (o.accepted OR o.rejected OR o.ignored)), 0), 3) AS \"Acceptance\",\n  round(sum(o.neg_w)::numeric / nullif(sum(o.neg_w + o.pos_w), 0)::numeric, 3) AS \"eFP (weighted)\",\n  count(*) FILTER (WHERE o.pos_w \u003e 0 OR o.neg_w \u003e 0) AS \"Judged\",\n  round(w.wilson::numeric, 3) AS \"Wilson lower\",\n  count(*) FILTER (WHERE o.owner_overturned) AS \"Overturned\"\nFROM finding_outcomes o\nLEFT JOIN LATERAL (\n  SELECT ru.status, ru.owner FROM rule_runs rr\n  JOIN rules ru ON ru.rule_id = rr.rule_id AND ru.version_sha = rr.rule_version\n  WHERE rr.rule_id = o.rule_id ORDER BY rr.id DESC LIMIT 1) m ON true\nLEFT JOIN LATERAL (\n  SELECT CASE WHEN n = 0 THEN NULL ELSE\n    (p + 1.959964^2/(2*n) - 1.959964*sqrt(p*(1-p)/n + 1.959964^2/(4*n*n))) / (1 + 1.959964^2/n) END AS wilson\n  FROM (SELECT count(*)::float8 AS n,\n               CASE WHEN count(*) = 0 THEN 0 ELSE count(*) FILTER (WHERE j.neg_w \u003c= j.pos_w)::float8 / count(*) END AS p\n        FROM finding_outcomes j WHERE j.rule_id = o.rule_id AND (j.pos_w \u003e 0 OR j.neg_w \u003e 0) AND $__timeFilter(j.created_at)) c) w ON true\nWHERE $__timeFilter(o.created_at)\nGROUP BY o.rule_id, o.lane, m.status, m.owner, w.wilson\nORDER BY \"eFP (weighted)\" DESC NULLS LAST, \"Posted\" DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Rules",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT week AS \"time\", rule_id AS \"metric\", acceptance_rate::float8 AS \"acceptance\"\nFROM rule_weekly_stats WHERE $__timeFilter(week) AND acceptance_rate IS NOT NULL ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Weekly acceptance by rule",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT week AS \"time\", rule_id AS \"metric\", effective_fp_weighted::float8 AS \"eFP\"\nFROM rule_weekly_stats WHERE $__timeFilter(week) AND effective_fp_weighted IS NOT NULL ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Weekly weighted eFP by rule",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "15m",
+  "schemaVersion": 39,
+  "tags": [
+    "exemplar"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-28d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "title": "Exemplar: rule health",
+  "uid": "exemplar-rule-health",
+  "version": 1
+}

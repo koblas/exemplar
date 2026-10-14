@@ -1,0 +1,138 @@
+{
+  "description": "Every approval decision with its gate trace (spec §6.13, §12.5). Auto-approve stays off in config until Phase 5.",
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT date_trunc('day', coalesce(r.finished_at, r.started_at)) AS \"time\", d.decision AS \"metric\", count(*)::float8 AS \"decisions\"\nFROM approval_decisions d JOIN reviews r ON r.id = d.review_id\nWHERE r.caller = 'production' AND $__timeFilter(coalesce(r.finished_at, r.started_at)) GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Decisions per day",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Stage 1 reasons, the merge safety score and Stage 2's decision. The PR link opens GitHub, which enforces repo access.",
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(r.finished_at, r.started_at) AS \"When\", r.repo AS \"Repo\", r.pr_number AS \"PR\",\n  'https://github.com/' || r.repo || '/pull/' || r.pr_number AS \"Link\", left(r.head_sha, 12) AS \"Head\",\n  d.decision AS \"Decision\", (d.stage1->>'eligible')::boolean AS \"Stage 1 eligible\",\n  (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(coalesce(d.stage1->'reasons', '[]'::jsonb)) x) AS \"Stage 1 reasons\",\n  (d.stage1->'merge_safety'->>'score')::float8 AS \"Merge safety\",\n  d.stage2->>'decision' AS \"Stage 2\", (d.stage2->'categorization'->>'review_confidence')::float8 AS \"Review confidence\"\nFROM approval_decisions d JOIN reviews r ON r.id = d.review_id\nWHERE r.caller = 'production' AND $__timeFilter(coalesce(r.finished_at, r.started_at))\nORDER BY 1 DESC LIMIT 500",
+          "refId": "A"
+        }
+      ],
+      "title": "Decisions",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Merged PRs whose head the gates approved, later reverted or linked to an incident (spec §12.5).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT o.merged_at AS \"Merged\", o.repo AS \"Repo\", o.pr_number AS \"PR\", 'https://github.com/' || o.repo || '/pull/' || o.pr_number AS \"Link\",\n  left(o.head_sha, 12) AS \"Head\", o.reverted AS \"Reverted\", o.incident AS \"Incident\"\nFROM merge_outcomes o WHERE o.auto_approved AND (o.reverted OR o.incident) AND $__timeFilter(o.merged_at) ORDER BY 1 DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Auto-approved merges that failed",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Each repo's auto-approve kill switch as its latest production decision saw it: off globally, off for the repo, or on.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "id": 4,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT DISTINCT ON (r.repo) r.repo AS \"Repo\",\n  CASE WHEN d.stage1->'reasons' ? 'auto_approve_disabled_globally' THEN 'off (global)'\n       WHEN d.stage1->'reasons' ? 'auto_approve_disabled_for_repo' THEN 'off (repo)' ELSE 'on' END AS \"Auto-approve\",\n  coalesce(r.finished_at, r.started_at) AS \"As of\"\nFROM approval_decisions d JOIN reviews r ON r.id = d.review_id\nWHERE r.caller = 'production'\nORDER BY r.repo, r.id DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Kill switches",
+      "type": "table"
+    }
+  ],
+  "refresh": "15m",
+  "schemaVersion": 39,
+  "tags": [
+    "exemplar"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-28d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "title": "Exemplar: auto-approve audit",
+  "uid": "exemplar-auto-approve",
+  "version": 1
+}

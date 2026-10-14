@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exemplar.internal/schema/fixture.schema.json",
+  "title": "RecordedPR",
+  "description": "A recorded pull request for the replay harness. Either names real commits (base_sha, head_sha) in a repository reachable at clone_url, or carries a small synthetic repository inline.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "repo", "pr", "title"],
+  "$defs": {
+    "files": { "type": "object", "additionalProperties": { "type": "string" } },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "humanComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line", "body"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "side": { "enum": ["RIGHT", "LEFT"] },
+        "body": { "type": "string" },
+        "author": { "type": "string" }
+      }
+    }
+  },
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "repo": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+    "pr": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string" },
+    "body": { "type": "string" },
+    "author": { "type": "string" },
+    "draft": { "type": "boolean" },
+    "clone_url": { "type": "string", "minLength": 1 },
+    "base_sha": { "$ref": "#/$defs/sha" },
+    "head_sha": { "$ref": "#/$defs/sha" },
+    "synthetic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "head"],
+      "properties": {
+        "base": { "$ref": "#/$defs/files" },
+        "head": { "$ref": "#/$defs/files" },
+        "deleted": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "human_comments": { "type": "array", "items": { "$ref": "#/$defs/humanComment" } }
+  },
+  "oneOf": [
+    { "required": ["synthetic"], "not": { "anyOf": [{ "required": ["base_sha"] }, { "required": ["head_sha"] }] } },
+    { "required": ["base_sha", "head_sha"], "not": { "required": ["synthetic"] } }
+  ]
+}

@@ -1,0 +1,40 @@
+name: calibration
+
+# Verifier and Stage 2 categorizer calibration on every change to their
+# prompts, decision code or model routing (spec §6.8, §6.13, FR-X9),
+# against the example config's seed labels. The categorizer half is
+# skipped while the example config has no providers.categorizer. It needs a gateway; without the secrets it fails rather
+# than letting an uncalibrated verifier change merge.
+on:
+  pull_request:
+    paths:
+      - internal/engine/prompts.go
+      - internal/engine/verify.go
+      - internal/engine/verifyonly.go
+      - internal/llm/**
+      - internal/engine/categorize.go
+      - internal/gates/stage2.go
+      - examples/exemplar-config/evals/_verifier/**
+      - examples/exemplar-config/evals/_categorizer/**
+
+permissions:
+  contents: read
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Calibrate the verifier and categorizer
+        env:
+          EXEMPLAR_GATEWAY_URL: ${{ secrets.EXEMPLAR_GATEWAY_URL }}
+          EXEMPLAR_GATEWAY_TOKEN: ${{ secrets.EXEMPLAR_GATEWAY_TOKEN }}
+        run: |
+          if [ -z "$EXEMPLAR_GATEWAY_URL" ] || [ -z "$EXEMPLAR_GATEWAY_TOKEN" ]; then
+            echo "::error::calibration needs the EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN secrets"
+            exit 1
+          fi
+          go run ./cmd/exemplar calibrate --config examples/exemplar-config --markdown "$GITHUB_STEP_SUMMARY"

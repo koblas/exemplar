@@ -1,0 +1,19 @@
+id: safe-readme-typo
+description: Fixes a typo in the README; no code changes.
+label: safe
+fixture:
+  id: safe-readme-typo
+  repo: exemplar-sandbox/playground
+  pr: 961
+  title: Fix a typo in the README
+  synthetic:
+    base:
+      README.md: |
+        # Shop
+
+        Run `make tset` to run the tests.
+    head:
+      README.md: |
+        # Shop
+
+        Run `make test` to run the tests.

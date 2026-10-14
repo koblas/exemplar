@@ -1,0 +1,11 @@
+# Provision every dashboard in this directory, read-only: they are reviewed
+# like code (spec §12.4), so edits in the UI are not kept.
+apiVersion: 1
+providers:
+  - name: exemplar
+    folder: Exemplar
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/exemplar

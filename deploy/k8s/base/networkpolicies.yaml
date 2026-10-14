@@ -1,0 +1,222 @@
+# Default-deny with an explicit list per binary (spec §13 "Default-deny
+# NetworkPolicy"). Plain NetworkPolicy matches addresses, not host names:
+# "HTTPS out" below is any address on 443 outside private ranges. The
+# per-host lists the spec names (GitHub only, providers only, Jira) need an
+# FQDN-aware CNI policy (e.g. Cilium toFQDNs) layered on top; see
+# deploy/README.md. Postgres is outside the cluster, reached on 5432.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: exemplar
+  labels: {app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Every pod resolves names.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: exemplar
+  labels: {app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# Every pod may export OTLP over HTTP (4318) to an in-cluster OpenTelemetry
+# Collector, matched by the OpenTelemetry Operator's component label in any
+# namespace. Point OTEL_EXPORTER_OTLP_ENDPOINT (ConfigMap exemplar-otel) at
+# it; an overlay changes the selector for another collector.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otel
+  namespace: exemplar
+  labels: {app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels: {app.kubernetes.io/component: opentelemetry-collector}
+      ports:
+        - {protocol: TCP, port: 4318}
+---
+# exemplar-webhook: in from the ingress controller; out to Postgres only.
+# It never reaches GitHub or a model.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-webhook
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-webhook, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-webhook}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - ports:
+        - {protocol: TCP, port: 5432}
+---
+# exemplar-gateway: in from the worker and the learning jobs; out to the
+# model providers (HTTPS), Postgres, and GitHub over SSH for its config.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-gateway
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-gateway, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-gateway}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-worker}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-learn}
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 22}
+    - ports:
+        - {protocol: TCP, port: 5432}
+---
+# exemplar-worker: out to the gateway, exemplar-search, GitHub and Jira
+# (HTTPS), GitHub over SSH for its config, and Postgres. Nothing in.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-worker
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-worker, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-worker}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-gateway}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-search}
+      ports:
+        - {protocol: TCP, port: 8080}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 22}
+    - ports:
+        - {protocol: TCP, port: 5432}
+---
+# exemplar-search: in from workers only; out to GitHub (HTTPS fetches, SSH
+# for its config). No database.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-search
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-search, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-search}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-worker}
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 22}
+---
+# exemplar-learn and the Python jobs: out to GitHub (HTTPS, SSH for
+# config), the gateway, and Postgres. Nothing in.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-learn
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-learn, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-learn}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-gateway}
+      ports:
+        - {protocol: TCP, port: 8080}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 22}
+    - ports:
+        - {protocol: TCP, port: 5432}
+---
+# exemplar-api: in from the ingress controller; out to Postgres and GitHub
+# (HTTPS, for user OAuth).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-api
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-api}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
+    - ports:
+        - {protocol: TCP, port: 5432}

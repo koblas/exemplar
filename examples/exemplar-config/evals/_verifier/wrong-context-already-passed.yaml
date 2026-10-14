@@ -1,0 +1,38 @@
+id: wrong-context-already-passed
+description: The finding claims ctx is ignored, but the request is built with http.NewRequestWithContext(ctx, ...).
+label: wrong
+fixture:
+  id: wrong-context-already-passed
+  repo: exemplar-sandbox/playground
+  pr: 952
+  title: Fetch prices with the caller's context
+  synthetic:
+    base:
+      prices.go: |
+        package shop
+    head:
+      prices.go: |
+        package shop
+
+        import (
+        	"context"
+        	"net/http"
+        )
+
+        func Prices(ctx context.Context, c *http.Client) error {
+        	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://prices.internal/", nil)
+        	if err != nil {
+        		return err
+        	}
+        	resp, err := c.Do(req)
+        	if err != nil {
+        		return err
+        	}
+        	return resp.Body.Close()
+        }
+candidate:
+  rule: propagate-context
+  path: prices.go
+  start_line: 13
+  end_line: 13
+  claim: c.Do(req) does not pass ctx, so the call cannot be cancelled.

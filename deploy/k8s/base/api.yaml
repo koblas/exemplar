@@ -1,0 +1,146 @@
+# exemplar-api: serves the signed feedback links (spec §6.12) behind org SSO
+# at the ingress; stateless. It holds no installation credentials.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exemplar-api
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/name: exemplar-api
+    app.kubernetes.io/part-of: exemplar
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: exemplar-api
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: exemplar-api
+        app.kubernetes.io/part-of: exemplar
+    spec:
+      serviceAccountName: exemplar-api
+      automountServiceAccountToken: false
+      # Readiness drains for --drain (5 s), then the server has 10 s to
+      # finish requests (cmd/exemplar-api): 15 s, well inside 30.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-api}
+      containers:
+        - name: api
+          image: exemplar
+          command: ["/usr/local/bin/exemplar-api"]
+          args: ["--addr=:8080", "--drain=5s"]
+          ports:
+            - {name: http, containerPort: 8080}
+          # OTel destinations (internal/telemetry): optional, set per installation.
+          envFrom:
+            - configMapRef: {name: exemplar-otel, optional: true}
+            # Sign-in sources (internal/api/signin.go), Coder-style:
+            # EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS / _ALLOW_EVERYONE /
+            # _ENTERPRISE_BASE_URL and the EXEMPLAR_OIDC_* settings.
+            - configMapRef: {name: exemplar-auth, optional: true}
+            - secretRef: {name: exemplar-otel, optional: true}
+          env:
+            - name: EXEMPLAR_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+            - name: EXEMPLAR_API_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
+            - name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID}}
+            # Service callers of /v1/evaluate (Auth0); empty turns them off.
+            - name: EXEMPLAR_AUTH0_DOMAIN
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_AUTH0_DOMAIN}}
+            - name: EXEMPLAR_AUTH0_AUDIENCE
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_AUTH0_AUDIENCE}}
+            - {name: EXEMPLAR_LINK_KEY_FILE, value: /var/run/secrets/exemplar/api/link-key}
+            - {name: EXEMPLAR_SESSION_KEY_FILE, value: /var/run/secrets/exemplar/api/session-key}
+            - {name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_SECRET_FILE, value: /var/run/secrets/exemplar/api/oauth-client-secret}
+            # Read only when EXEMPLAR_OIDC_ISSUER_URL is set (exemplar-auth).
+            - {name: EXEMPLAR_OIDC_CLIENT_SECRET_FILE, value: /var/run/secrets/exemplar/oidc/client-secret}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            failureThreshold: 2
+          # Small pages and one River insert per confirmation.
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: api-secrets, mountPath: /var/run/secrets/exemplar/api, readOnly: true}
+            - {name: oidc-secret, mountPath: /var/run/secrets/exemplar/oidc, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: api-secrets
+          secret: {secretName: exemplar-api, defaultMode: 0400}
+        - name: oidc-secret
+          secret: {secretName: exemplar-oidc, defaultMode: 0400, optional: true}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exemplar-api
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+spec:
+  selector: {app.kubernetes.io/name: exemplar-api}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+# Public (spec §13 IN-2): people open feedback links here. The overlay
+# sets host, class and TLS, and puts org SSO in front (an IdP-aware proxy
+# or ingress auth annotations) for the whole host.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: exemplar-api
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [exemplar-api.example.invalid]
+      secretName: exemplar-api-tls
+  rules:
+    - host: exemplar-api.example.invalid
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: exemplar-api
+                port: {name: http}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: exemplar-api
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: exemplar-api}
