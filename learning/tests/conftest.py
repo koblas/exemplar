@@ -46,8 +46,19 @@ def migrate(conn: psycopg.Connection) -> None:
         " is_applied boolean NOT NULL, tstamp timestamp DEFAULT now())"
     )
     for path in sorted(MIGRATIONS.glob("*.sql")):
-        up = path.read_text().split("-- +goose Up", 1)[1].split("-- +goose Down", 1)[0]
-        conn.execute(up)
+        text = path.read_text()
+        up = text.split("-- +goose Up", 1)[1].split("-- +goose Down", 1)[0]
+        if "-- +goose NO TRANSACTION" in text:
+            # Like goose: outside a transaction, one statement at a time
+            # (CREATE INDEX CONCURRENTLY refuses even an implicit block).
+            conn.commit()
+            conn.autocommit = True
+            for stmt in up.split(";"):
+                if stmt.strip():
+                    conn.execute(stmt)
+            conn.autocommit = False
+        else:
+            conn.execute(up)
         version = int(re.match(r"(\d+)_", path.name).group(1))
         conn.execute(
             "INSERT INTO goose_db_version (version_id, is_applied) VALUES (%s, true)", (version,)
