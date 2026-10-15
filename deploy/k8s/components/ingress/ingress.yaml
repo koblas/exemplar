@@ -1,0 +1,84 @@
+# GitHub posts here (spec §13 IN-1). Host, class and TLS secret are set by
+# the overlay; restrict it to GitHub's hook CIDRs (api.github.com/meta).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: exemplar-webhook
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-webhook, app.kubernetes.io/part-of: exemplar}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [exemplar-webhook.example.invalid]
+      secretName: exemplar-webhook-tls
+  rules:
+    - host: exemplar-webhook.example.invalid
+      http:
+        paths:
+          - path: /webhook
+            pathType: Exact
+            backend:
+              service:
+                name: exemplar-webhook
+                port: {name: http}
+---
+# People open feedback links here (spec §13 IN-2). The overlay sets host,
+# class and TLS, and puts org SSO in front (an IdP-aware proxy or ingress
+# auth annotations) for the whole host.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: exemplar-api
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [exemplar-api.example.invalid]
+      secretName: exemplar-api-tls
+  rules:
+    - host: exemplar-api.example.invalid
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: exemplar-api
+                port: {name: http}
+---
+# The controller's namespace may reach the webhook and the API. Change the
+# namespace to match the cluster's controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-webhook-from-ingress
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-webhook, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-webhook}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+      ports:
+        - {protocol: TCP, port: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-api-from-ingress
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-api}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+      ports:
+        - {protocol: TCP, port: 8080}

@@ -124,7 +124,13 @@ jobs:
       - run: docker build -f deploy/docker/learning.Dockerfile -t exemplar-learning:ci .
       - name: Engines are in the image
         run: docker run --rm --entrypoint sh exemplar:ci -c 'ast-grep --version && semgrep --version && ctags --version | head -1 && clang-format --version && git --version && exemplar-worker --help 2>&1 | head -1'
+      # Each inbound build: the tunnel default, an Ingress, and both (an
+      # overlay of the default with the ingress component).
       - name: Render and schema-check the manifests
         run: |
-          kubectl kustomize deploy/k8s/base > rendered.yaml
-          go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered.yaml
+          mkdir -p deploy/k8s/ci-both
+          printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: [../base]\ncomponents: [../components/ingress]\n' > deploy/k8s/ci-both/kustomization.yaml
+          for v in base direct ci-both; do
+            kubectl kustomize deploy/k8s/$v > rendered-$v.yaml
+            go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-$v.yaml
+          done

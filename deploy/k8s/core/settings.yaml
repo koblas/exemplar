@@ -10,6 +10,7 @@
 #   exemplar-pseudonym       key (at least 32 bytes, from the KMS-held secret)
 #   exemplar-api             link-key, session-key (each at least 32 bytes), oauth-client-secret
 #   exemplar-oidc            client-secret (optional: the OIDC sign-in client's)
+#   exemplar-cloudflared     credentials.json (the tunnel's, Cloudflare Tunnel builds only)
 apiVersion: v1
 kind: ConfigMap
 metadata:

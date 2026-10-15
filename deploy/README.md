@@ -2,7 +2,7 @@
 
 Kubernetes manifests for the services (spec §2.2, §13) and the images they run. Nothing here has been applied to a cluster. Locally:
 - `go test ./deploy` checks the manifests against the code;
-- `kubectl kustomize` renders the base (48 resources), and kubeconform v0.7.0 `-strict` for Kubernetes 1.33 found all valid;
+- `kubectl kustomize` renders each build (the default `base`, 53 resources; `direct`, 50; both ways in, 57), and kubeconform v0.7.0 `-strict` for Kubernetes 1.33 found all valid;
 - both images build, and run with a read-only root as UID 65532 with every engine present.
 
 CI repeats the build, render and schema check (the `images` job).
@@ -13,8 +13,35 @@ CI repeats the build, render and schema check (the `images` job).
 |---|---|
 | `docker/Dockerfile` | The Go services image: every `cmd/` binary, plus git, universal-ctags, ast-grep 0.45.1, Semgrep 1.172.0, unshare and prlimit. Base images are pinned by digest, ast-grep by checksum. Built for linux/amd64 only. |
 | `docker/learning.Dockerfile` | The Python learning image (`learning/`: cluster, rank), with dependencies from `uv.lock`. |
-| `k8s/base/` | Plain manifests with a `kustomization.yaml`. Render with `kubectl kustomize deploy/k8s/base`. |
+| `k8s/core/` | Plain manifests for everything but inbound, with a `kustomization.yaml` (and the image pins). Not built alone. |
+| `k8s/components/cloudflare-tunnel/` | Inbound through a Cloudflare Tunnel: the `exemplar-cloudflared` Deployment, its routes, and the NetworkPolicies that let it reach the webhook and the API. |
+| `k8s/components/ingress/` | Inbound through an Ingress controller: the two Ingresses and the NetworkPolicies that admit `ingress-nginx`. |
+| `k8s/base/` | **The default build:** core plus the tunnel. Render with `kubectl kustomize deploy/k8s/base`. |
+| `k8s/direct/` | Core plus the Ingresses, with no tunnel. Render with `kubectl kustomize deploy/k8s/direct`. |
 | `manifests_test.go` | Checks the manifests against the code (below). |
+
+## Inbound
+
+GitHub and people reach exemplar-webhook and exemplar-api one of three ways. Core's NetworkPolicies admit nothing to either; each component adds its own allow (`exemplar-webhook-from-tunnel`, `exemplar-webhook-from-ingress`, and the same for the API), so a build admits exactly the sources it ships.
+
+| Build | How | Admits |
+|---|---|---|
+| `base` (**default**) | `exemplar-cloudflared` dials out to Cloudflare on 7844 (QUIC, falling back to HTTP/2 over TCP). Cloudflare balances between its 2 replicas. | Only `exemplar-cloudflared` pods |
+| `direct` | Ingresses on the cluster's controller | Only the `ingress-nginx` namespace |
+| `base` + `components/ingress`, in an overlay | Both, on different host names | Both |
+
+The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMap, so it's reviewed with the rest of the manifests rather than set in the dashboard.
+- Only `^/webhook$` on the webhook host reaches the webhook, as the Ingress's `Exact` path did.
+- Any other host gets a 404 from the catch-all rule.
+- cloudflared reads the file at start, so restart the Deployment after changing it.
+
+cloudflared runs as its own Deployment, never a sidecar. The tunnel credentials stay out of the webhook and API pods, and the webhook's egress stays Postgres only.
+
+With the tunnel, Cloudflare does the work the Ingress did, and an installation must set it up there:
+- **IN-1:** a WAF rule limits the webhook host to GitHub's hook ranges, with no Access policy on it.
+- **IN-2:** an Access application puts org SSO in front of the API host.
+
+Cloudflare ends TLS at its edge and sees requests in clear text. The webhook still checks each delivery's HMAC. Its rejection log's `remote` is a cloudflared pod's address, not GitHub's.
 
 ## Workloads
 
@@ -27,6 +54,7 @@ CI repeats the build, render and schema check (the `images` job).
 | `exemplar-search` | StatefulSet + 2 Services | 2, on different nodes | 25 s → 45 s | Local SSD per replica (`local-ssd`, 500Gi placeholder) |
 | `exemplar-learn` | 11 CronJobs | — | — | ingest, path-events, extract, evals, compile (suspended), propose, demote, expiry, teach, digest, export |
 | `exemplar-learning` | 2 CronJobs | — | — | cluster, rank |
+| `exemplar-cloudflared` | Deployment | 2 | 20 s → 30 s | Tunnel builds only. cloudflared 2026.9.3, pinned by digest. Egress to Cloudflare on 7844 and the webhook and API. `/healthcheck` (liveness) and `/ready` (an edge connection) on port 2000 |
 
 Every pod:
 - runs as UID 65532 with a read-only root filesystem, no capabilities, no privilege escalation and RuntimeDefault seccomp, so it passes the namespace's `restricted` Pod Security level;
@@ -54,7 +82,9 @@ images:
 The base's all-zero digests make an unpinned deploy fail to pull.
 
 **Settings.** An overlay patches the `exemplar-settings` ConfigMap: `EXEMPLAR_CONFIG_REPO`, `EXEMPLAR_CONFIG_GIT_URL`, `EXEMPLAR_GH_APP_ID`, `EXEMPLAR_GH_INSTALLATION_ID`, `EXEMPLAR_EXPORTS_APP_ID`, `EXEMPLAR_API_URL`, `EXEMPLAR_AUTH0_DOMAIN` and `EXEMPLAR_AUTH0_AUDIENCE` (service callers of `/v1/evaluate`; both empty turns them off) and `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` (GitHub sign-in; leave it out for OIDC only). It also sets:
-- the webhook and API Ingress hosts, classes and TLS secrets, and org SSO in front of the API (an IdP-aware proxy or ingress auth annotations);
+- inbound:
+  - **Tunnel:** the `exemplar-cloudflared` ConfigMap's `config.yaml`, with the tunnel id and host names.
+  - **Ingress:** the Ingress hosts, classes and TLS secrets, and org SSO in front of the API (an IdP-aware proxy or ingress auth annotations).
 - the search volume size (from the T-0.4 benchmark);
 - the storage class.
 
@@ -71,6 +101,7 @@ The base's all-zero digests make an unpinned deploy fail to pull.
 | `exemplar-config-git` | `ssh`, `known_hosts` | every git-sync |
 | `exemplar-pseudonym` | `key` (at least 32 bytes) | ingest, path-events |
 | `exemplar-api` | `link-key`, `session-key` (each at least 32 bytes), `oauth-client-secret` | api; worker (`link-key` only) |
+| `exemplar-cloudflared` | `credentials.json` (from `cloudflared tunnel create`) | cloudflared, tunnel builds only |
 
 **Merge policy repos.** A repo with `approval_mode: merge_policy_check` requires the `exemplar/merge-policy` check, restricted to the review app as its source, in its ruleset in place of a code-owner review requirement. It keeps a break-glass bypass actor for incidents. Exemplar never sets that actor.
 
@@ -92,7 +123,12 @@ go test ./deploy
 ```
 
 It checks:
-- **Rendering:** every manifest in `k8s/base` is listed in `kustomization.yaml`, and no YAML anchors (kustomize mishandles them).
+- **Builds:** every check runs on each of the three builds: `base`, `direct`, and `base` with the ingress component.
+- **Rendering:**
+  - every manifest in each directory a build uses is listed in its `kustomization.yaml`;
+  - no YAML anchors (kustomize mishandles them);
+  - no patches, since the test reads manifests without kustomize;
+  - no object defined twice.
 - **Pods and containers:**
   - pods run non-root with RuntimeDefault seccomp and no token;
   - containers are read-only, drop all capabilities, have CPU and memory requests and limits, and a writable `/tmp`;
@@ -101,9 +137,15 @@ It checks:
 - **Workloads:**
   - each long-running workload's selector matches its pods;
   - it listens on the port it exposes;
-  - its probes are `/healthz` and `/readyz` on that port;
+  - its probes are `/healthz` and `/readyz` on that port (cloudflared: `/healthcheck` and `/ready` on its metrics port);
   - `terminationGracePeriodSeconds` outlasts the shutdown deadlines read from the binary's source and args.
-- **Selectors:** every Service, PodDisruptionBudget and NetworkPolicy selects a workload; each workload has its own NetworkPolicy; the webhook's only egress is Postgres.
+- **Selectors:** every Service, PodDisruptionBudget and NetworkPolicy selects a workload, and each workload has its own NetworkPolicy.
+- **Inbound:**
+  - the build has the Ingresses it should (none in the default);
+  - each Ingress and tunnel route goes to a Service port;
+  - the tunnel's routes end in a catch-all;
+  - the webhook and the API admit exactly the build's sources;
+  - the webhook's only egress is Postgres, whichever policies select it.
 - **Environment:** every `EXEMPLAR_*` variable is one the Go or Python code actually reads.
 
 Devenv has no kubectl, Kustomize or kubeconform. These ran with OrbStack's kubectl (`kubectl kustomize` renders locally and contacts no cluster) and kubeconform through `go run`, as CI does:
@@ -111,6 +153,8 @@ Devenv has no kubectl, Kustomize or kubeconform. These ran with OrbStack's kubec
 ```bash
 kubectl kustomize deploy/k8s/base > rendered.yaml
 ```
+
+Use `deploy/k8s/direct` for the Ingress build. CI also renders `base` with the ingress component.
 
 ```bash
 kubeconform -strict -summary -kubernetes-version 1.33.0 rendered.yaml
@@ -130,7 +174,9 @@ A schema check is still not proof of admission or runtime health.
 - **Egress by host name.** NetworkPolicy matches addresses, so "HTTPS out" is any public address on 443 (and 22 for git-sync). The spec's per-host lists (GitHub only for search, providers only for the gateway, GitHub and Jira for the worker) need an FQDN-aware policy from the CNI, such as Cilium `toFQDNs`, on top of these.
 - **The compile CronJob is suspended.** It runs model-written rules only inside an `unshare --net --map-root-user` sandbox. Unprivileged user namespaces are normally refused under RuntimeDefault seccomp at the restricted level. Enable it once the cluster provides user namespaces (for example `hostUsers: false` with a seccomp profile that allows them). Never turn off `--require-sandbox` instead.
 - **The App private key is in the worker.** It mints scoped tokens per job, but the key could mint any flavor, including config-writer, which spec §5 keeps away from agent processes. A token-minting service that holds the key and hands out only the worker's flavors would close this. The model's tools themselves make no network calls.
-- **The ingress namespace.** The webhook's ingress rule allows the `ingress-nginx` namespace; change it to match the cluster's controller.
+- **The ingress namespace.** In Ingress builds, `exemplar-webhook-from-ingress` and `exemplar-api-from-ingress` admit the `ingress-nginx` namespace; change it to match the cluster's controller.
+- **The tunnel's egress** is any public address on 7844, like the other address-only rules. Cloudflare's edge ranges (or an FQDN policy for `region1.v2.argotunnel.com` and `region2.v2.argotunnel.com`) would narrow it.
+- **The tunnel's edge rules are outside the repo.** Without the WAF rule, anyone can post to `/webhook`, though deliveries are still HMAC-checked. Without Access, the API's own sign-in is the only gate. Both are installation steps, and nothing in the cluster can check them.
 - **Sizing.** Worker, search and storage requests are starting points. Re-size from the Phase 0 monorepo benchmark (T-0.4).
 - **Debian packages** float within the pinned base snapshot. Rebuild on a new base digest to update them.
 - **The gateway** marks itself unready and starts shutting down at the same moment. A request routed in that window is retried by the caller.

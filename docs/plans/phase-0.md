@@ -2144,3 +2144,38 @@ Spec §12.8 "sign-in sources". With OIDC replacing GitHub for authorization, peo
   - Connect-only GitHub: no button, no `/oauth/start`, connecting still works, and it is refused without OIDC.
   - `/v1/evaluate`: linked, unlinked-required and unlinked-optional people.
   - The Postgres identity store: link, conflict, switch, and a freed account.
+
+### Head start: inbound through a Cloudflare Tunnel by default (2026-10-15)
+
+Spec §13 IN-1 and IN-2. The user asked for inbound to support a Cloudflare Tunnel, a direct Ingress, or both, with the tunnel as the default, so a cluster needs no public ingress.
+- **Layout:**
+  - `deploy/k8s/core` holds everything but inbound (moved from `base`, with the image pins).
+  - Two components hold the ways in: `components/cloudflare-tunnel` and `components/ingress` (the two Ingresses that were in `webhook.yaml` and `api.yaml`).
+  - `deploy/k8s/base` is now core plus the tunnel, so the path CI, the READMEs and overlays use renders the default.
+  - `deploy/k8s/direct` is core plus the Ingresses.
+  - Both ways in is an overlay of `base` that adds the ingress component.
+- **NetworkPolicy:**
+  - Core's `exemplar-webhook` and `exemplar-api` policies admit nothing.
+  - Each component adds its own allow: `exemplar-{webhook,api}-from-tunnel` (the cloudflared pods) and `-from-ingress` (the `ingress-nginx` namespace). Policies are additive, so no patches are needed.
+  - The webhook's egress is unchanged: Postgres only.
+- **`exemplar-cloudflared`:**
+  - A locally-managed tunnel run as its own Deployment rather than a sidecar, so its credentials stay out of the webhook and API pods.
+  - 2 replicas (connectors of one tunnel), a PDB and a topology spread.
+  - cloudflared 2026.9.3, pinned by its multi-arch digest; UID 65532 with a read-only root.
+  - Liveness on `/healthcheck` (process only, so an edge outage never restarts it); readiness on `/ready` (an edge connection).
+  - `--grace-period=20s` under a 30 s grace.
+  - `--no-autoupdate`, and `--no-prechecks`: the startup pre-checks also probe `api.cloudflare.com:443`, which the policy blocks on purpose, so they would only log a false warning.
+  - Egress to public addresses on 7844 (UDP and TCP), and to the webhook and API on 8080.
+  - Routes are in the `exemplar-cloudflared` ConfigMap: only `^/webhook$` on the webhook host, the API host, and a 404 catch-all. Its credentials are in the `exemplar-cloudflared` Secret (`credentials.json`).
+- **What moves to Cloudflare:** with the tunnel, IN-1's GitHub-CIDR restriction is a WAF rule on the webhook host, and IN-2's org SSO is an Access application on the API host. The READMEs make both installation steps. Cloudflare ends TLS, and the webhook still verifies every HMAC.
+- **Tests:**
+  - `go test ./deploy` follows resource directories and components without kustomize (patches are refused).
+  - It runs every check on the three builds, and the binary checks know cloudflared's port, probes and grace period.
+  - New inbound checks: Ingress count per build; Ingress and tunnel routes reach Service ports; the routes end in a catch-all; the webhook and API admit exactly the build's sources; and no policy adds webhook egress.
+  - A mutation (a 40 s grace period, a route to a missing Service) fails as expected.
+  - CI renders and kubeconform-checks all three builds.
+- **Checked:**
+  - `go vet` and `go test ./deploy` pass.
+  - OrbStack's `kubectl kustomize` renders `base` (53 resources), `direct` (50) and both (57).
+  - kubeconform v0.7.0 `-strict` for 1.33 found all valid.
+  - Not checked: an actual tunnel or cluster.
