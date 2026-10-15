@@ -21,7 +21,9 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-const base = "k8s/base"
+// core holds everything but inbound; settings.yaml there documents the
+// secrets every build references.
+const core = "k8s/core"
 
 type obj = map[string]any
 
@@ -46,57 +48,105 @@ func list(o any, path ...string) []any {
 	return l
 }
 
-// load reads every document of every manifest the kustomization lists.
-func load(t *testing.T) (docs []obj, kustom obj) {
+// variants are the builds the repository ships, plus the one an
+// installation composes for both ways in (base with components/ingress).
+var variants = []struct {
+	name      string
+	roots     []string
+	workloads int      // long-running services and CronJobs
+	ingresses int      // Ingress objects
+	inbound   []string // who may reach the webhook and the API
+}{
+	{"tunnel", []string{"k8s/base"}, 19, 0, []string{"pod exemplar-cloudflared"}},
+	{"direct", []string{"k8s/direct"}, 18, 2, []string{"namespace ingress-nginx"}},
+	{"both", []string{"k8s/base", "k8s/components/ingress"}, 19, 2, []string{"namespace ingress-nginx", "pod exemplar-cloudflared"}},
+}
+
+// load reads every document of every manifest the kustomizations under
+// roots list, following resource directories and components. It returns
+// the documents and every kustomization's images.
+func load(t *testing.T, roots ...string) (docs []obj, images []any) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(base, "kustomization.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := yaml.Unmarshal(raw, &kustom); err != nil {
-		t.Fatal(err)
-	}
-	listed := map[string]bool{}
-	for _, r := range list(kustom, "resources") {
-		listed[r.(string)] = true
-	}
-	files, _ := filepath.Glob(filepath.Join(base, "*.yaml"))
-	for _, f := range files {
-		name := filepath.Base(f)
-		if name == "kustomization.yaml" {
-			continue
+	seen := map[string]bool{}
+	var walk func(dir string)
+	walk = func(dir string) {
+		dir = filepath.Clean(dir)
+		if seen[dir] {
+			return
 		}
-		if !listed[name] {
-			t.Errorf("%s is not in kustomization.yaml resources", name)
-		}
-		delete(listed, name)
-		data, err := os.ReadFile(f)
+		seen[dir] = true
+		var kustom obj
+		raw, err := os.ReadFile(filepath.Join(dir, "kustomization.yaml"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(data, []byte("&")) && regexp.MustCompile(`:\s+&\w`).Match(data) {
-			t.Errorf("%s uses a YAML anchor; spell blocks out for kustomize", name)
+		if err := yaml.Unmarshal(raw, &kustom); err != nil {
+			t.Fatal(err)
 		}
-		dec := yaml.NewDecoder(bytes.NewReader(data))
-		for {
-			var d obj
-			err := dec.Decode(&d)
-			if errors.Is(err, io.EOF) {
-				break
+		images = append(images, list(kustom, "images")...)
+		if len(list(kustom, "patches")) > 0 || get(kustom, "patchesStrategicMerge") != nil {
+			t.Errorf("%s: patches are not modelled here; add resources instead", dir)
+		}
+		listed := map[string]bool{}
+		for _, r := range list(kustom, "resources") {
+			if fi, err := os.Stat(filepath.Join(dir, r.(string))); err == nil && fi.IsDir() {
+				walk(filepath.Join(dir, r.(string)))
+				continue
 			}
+			listed[r.(string)] = true
+		}
+		for _, c := range list(kustom, "components") {
+			walk(filepath.Join(dir, c.(string)))
+		}
+		files, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
+		for _, f := range files {
+			name := filepath.Base(f)
+			if name == "kustomization.yaml" {
+				continue
+			}
+			if !listed[name] {
+				t.Errorf("%s is not in %s/kustomization.yaml resources", name, dir)
+			}
+			delete(listed, name)
+			data, err := os.ReadFile(f)
 			if err != nil {
-				t.Fatalf("%s: %v", name, err)
+				t.Fatal(err)
 			}
-			if d != nil {
-				d["_file"] = name
-				docs = append(docs, d)
+			if bytes.Contains(data, []byte("&")) && regexp.MustCompile(`:\s+&\w`).Match(data) {
+				t.Errorf("%s uses a YAML anchor; spell blocks out for kustomize", name)
+			}
+			dec := yaml.NewDecoder(bytes.NewReader(data))
+			for {
+				var d obj
+				err := dec.Decode(&d)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					t.Fatalf("%s: %v", f, err)
+				}
+				if d != nil {
+					d["_file"] = filepath.Join(dir, name)
+					docs = append(docs, d)
+				}
 			}
 		}
+		for name := range listed {
+			t.Errorf("%s/kustomization.yaml lists missing %s", dir, name)
+		}
 	}
-	for name := range listed {
-		t.Errorf("kustomization.yaml lists missing %s", name)
+	for _, r := range roots {
+		walk(r)
 	}
-	return docs, kustom
+	ids := map[string]string{}
+	for _, d := range docs {
+		id := str(d, "kind") + "/" + str(d, "metadata", "name")
+		if f, dup := ids[id]; dup {
+			t.Errorf("%s is in both %s and %s", id, f, d["_file"])
+		}
+		ids[id] = d["_file"].(string)
+	}
+	return docs, images
 }
 
 // workload is a pod template with what owns it.
@@ -147,10 +197,19 @@ func matches(selector, labels obj) bool {
 }
 
 func TestManifests(t *testing.T) {
-	docs, kustom := load(t)
+	for _, v := range variants {
+		t.Run(v.name, func(t *testing.T) {
+			docs, images := load(t, v.roots...)
+			checkManifests(t, docs, images, v.workloads)
+			checkInbound(t, docs, v.ingresses, v.inbound)
+		})
+	}
+}
+
+func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 	ws := workloads(docs)
-	if len(ws) != 18 { // 5 services and 13 CronJobs
-		t.Errorf("workloads = %d", len(ws))
+	if len(ws) != want {
+		t.Errorf("workloads = %d, want %d", len(ws), want)
 	}
 
 	accounts, settings, secrets := map[string]bool{}, obj{}, map[string]bool{}
@@ -176,13 +235,13 @@ func TestManifests(t *testing.T) {
 		}
 	}
 	// The secrets settings.yaml documents; anything else is a typo.
-	settingsDoc, _ := os.ReadFile(filepath.Join(base, "settings.yaml"))
+	settingsDoc, _ := os.ReadFile(filepath.Join(core, "settings.yaml"))
 	for _, m := range regexp.MustCompile(`#\s+(exemplar-[a-z-]+)\s{2,}`).FindAllStringSubmatch(string(settingsDoc), -1) {
 		secrets[m[1]] = true
 	}
 
 	managed := map[string]bool{}
-	for _, im := range list(kustom, "images") {
+	for _, im := range images {
 		managed[str(im, "name")] = true
 		if !strings.HasPrefix(str(im, "digest"), "sha256:") {
 			t.Errorf("image %s is not pinned by digest", str(im, "name"))
@@ -288,6 +347,8 @@ func shutdown(t *testing.T, binary string, args []string) time.Duration {
 		return flag("drain", 5*time.Second) + src("serve.go", `sctx, cancel := context\.WithTimeout\(context\.Background\(\), (\d+)\*time\.Second\)`)
 	case "exemplar-worker":
 		return flag("drain", 5*time.Second) + flag("stop-timeout", 60*time.Second) + 10*time.Second + 5*time.Second
+	case "cloudflared":
+		return flag("grace-period", 30*time.Second)
 	}
 	t.Fatalf("no shutdown budget for %s", binary)
 	return 0
@@ -314,15 +375,20 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 			args = append(args, a.(string))
 		}
 		binary := filepath.Base(cmd[0])
+		// Exemplar's binaries serve /healthz and /readyz on --addr (default
+		// :8080) as the http port; cloudflared serves its own on --metrics.
+		portName, addrFlag, addr, live, ready := "http", "--addr=", ":8080", "/healthz", "/readyz"
+		if binary == "cloudflared" {
+			portName, addrFlag, addr, live, ready = "metrics", "--metrics=", "", "/healthcheck", "/ready"
+		}
 		port := 0
 		for _, p := range list(main, "ports") {
-			if str(p, "name") == "http" {
+			if str(p, "name") == portName {
 				port = int(get(p, "containerPort").(uint64))
 			}
 		}
-		addr := ":8080" // every binary's default
 		for _, a := range args {
-			if v, ok := strings.CutPrefix(a, "--addr="); ok {
+			if v, ok := strings.CutPrefix(a, addrFlag); ok {
 				addr = v
 			}
 		}
@@ -331,12 +397,12 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 				addr = str(e, "value")
 			}
 		}
-		if addr != ":"+strconv.Itoa(port) {
-			t.Errorf("%s: listens on %s but exposes port %d", w.name, addr, port)
+		if _, p, _ := strings.Cut(addr, ":"); port == 0 || p != strconv.Itoa(port) {
+			t.Errorf("%s: listens on %q but exposes %s port %d", w.name, addr, portName, port)
 		}
-		if str(main, "livenessProbe", "httpGet", "path") != "/healthz" || str(main, "readinessProbe", "httpGet", "path") != "/readyz" ||
-			str(main, "livenessProbe", "httpGet", "port") != "http" || str(main, "readinessProbe", "httpGet", "port") != "http" {
-			t.Errorf("%s: probes must be /healthz and /readyz on the http port", w.name)
+		if str(main, "livenessProbe", "httpGet", "path") != live || str(main, "readinessProbe", "httpGet", "path") != ready ||
+			str(main, "livenessProbe", "httpGet", "port") != portName || str(main, "readinessProbe", "httpGet", "port") != portName {
+			t.Errorf("%s: probes must be %s and %s on the %s port", w.name, live, ready, portName)
 		}
 		grace := time.Duration(get(w.spec, "terminationGracePeriodSeconds").(uint64)) * time.Second
 		if need := shutdown(t, binary, args); grace <= need {
@@ -385,12 +451,99 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 			t.Errorf("%s has no NetworkPolicy of its own", w.name)
 		}
 	}
-	// The webhook reaches Postgres and nothing else (spec §13).
+}
+
+// checkInbound checks how traffic gets in: the Ingresses there are, who the
+// NetworkPolicies admit to the webhook and the API, the webhook's
+// Postgres-only egress (spec §13), and the tunnel's routes.
+func checkInbound(t *testing.T, docs []obj, ingresses int, inbound []string) {
+	services := map[string]bool{}
 	for _, d := range docs {
-		if str(d, "kind") == "NetworkPolicy" && str(d, "metadata", "name") == "exemplar-webhook" {
+		if str(d, "kind") == "Service" {
+			for _, p := range list(d, "spec", "ports") {
+				services[str(d, "metadata", "name")+":"+strconv.Itoa(int(get(p, "port").(uint64)))] = true
+				services[str(d, "metadata", "name")+":"+str(p, "name")] = true
+			}
+		}
+	}
+	n := 0
+	for _, d := range docs {
+		if str(d, "kind") != "Ingress" {
+			continue
+		}
+		n++
+		for _, r := range list(d, "spec", "rules") {
+			for _, p := range list(r, "http", "paths") {
+				b := get(p, "backend", "service")
+				if !services[str(b, "name")+":"+str(b, "port", "name")] {
+					t.Errorf("ingress %s routes to unknown %s:%s", str(d, "metadata", "name"), str(b, "name"), str(b, "port", "name"))
+				}
+			}
+		}
+	}
+	if n != ingresses {
+		t.Errorf("ingresses = %d, want %d", n, ingresses)
+	}
+
+	for _, app := range []string{"exemplar-webhook", "exemplar-api"} {
+		var from []string
+		for _, d := range docs {
+			if str(d, "kind") != "NetworkPolicy" || str(d, "spec", "podSelector", "matchLabels", "app.kubernetes.io/name") != app {
+				continue
+			}
+			for _, rule := range list(d, "spec", "ingress") {
+				for _, peer := range list(rule, "from") {
+					switch {
+					case get(peer, "namespaceSelector") != nil:
+						from = append(from, "namespace "+str(peer, "namespaceSelector", "matchLabels", "kubernetes.io/metadata.name"))
+					case get(peer, "podSelector") != nil:
+						from = append(from, "pod "+str(peer, "podSelector", "matchLabels", "app.kubernetes.io/name"))
+					default:
+						from = append(from, "anything")
+					}
+				}
+			}
+			if app != "exemplar-webhook" {
+				continue
+			}
+			// The webhook reaches Postgres and nothing else (spec §13).
 			eg := list(d, "spec", "egress")
+			if str(d, "metadata", "name") != app {
+				if len(eg) > 0 {
+					t.Errorf("NetworkPolicy %s adds webhook egress %v", str(d, "metadata", "name"), eg)
+				}
+				continue
+			}
 			if len(eg) != 1 || len(list(eg[0], "ports")) != 1 || get(list(eg[0], "ports")[0], "port") != uint64(5432) {
 				t.Errorf("webhook egress = %v", eg)
+			}
+		}
+		slices.Sort(from)
+		if !slices.Equal(from, inbound) {
+			t.Errorf("%s admits %v, want %v", app, from, inbound)
+		}
+	}
+
+	// Every tunnel route goes to a Service port, and the last one is the
+	// catch-all, so an unknown host never reaches a pod.
+	for _, d := range docs {
+		if str(d, "kind") != "ConfigMap" || str(d, "metadata", "name") != "exemplar-cloudflared" {
+			continue
+		}
+		var cfg obj
+		if err := yaml.Unmarshal([]byte(str(d, "data", "config.yaml")), &cfg); err != nil {
+			t.Fatalf("exemplar-cloudflared config.yaml: %v", err)
+		}
+		rules := list(cfg, "ingress")
+		if len(rules) == 0 || str(rules[len(rules)-1], "hostname") != "" || !strings.HasPrefix(str(rules[len(rules)-1], "service"), "http_status:") {
+			t.Errorf("tunnel routes must end with an http_status catch-all: %v", rules)
+		}
+		for _, r := range rules[:max(len(rules)-1, 0)] {
+			u, ok := strings.CutPrefix(str(r, "service"), "http://")
+			host, port, _ := strings.Cut(u, ":")
+			name, ns, _ := strings.Cut(host, ".")
+			if !ok || str(r, "hostname") == "" || !strings.HasPrefix(ns, "exemplar.svc") || !services[name+":"+port] {
+				t.Errorf("tunnel route %v is not a host to an exemplar Service port", r)
 			}
 		}
 	}

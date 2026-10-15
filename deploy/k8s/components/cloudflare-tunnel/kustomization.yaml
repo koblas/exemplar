@@ -1,0 +1,9 @@
+# Inbound through a Cloudflare Tunnel (the default, deploy/k8s/base):
+# cloudflared dials out to Cloudflare's edge, so nothing in the cluster is
+# public. Routing is in the exemplar-cloudflared ConfigMap, in the repo, not
+# the Cloudflare dashboard.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - cloudflared.yaml
+  - networkpolicies.yaml

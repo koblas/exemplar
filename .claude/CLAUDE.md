@@ -14,8 +14,11 @@ find_definition, find_references, dependents), `cmd/exemplar-webhook` (GitHub
 webhook receiver), `cmd/exemplar-worker` (routes events, reviews live PRs and
 `exemplar review` evaluations), `cmd/exemplar-learn` (learning-plane jobs),
 `cmd/exemplar-api` (signed feedback links, `/v1/evaluate`, the `/ui/` web UI).
-Manifests are plain Kustomize in `deploy/k8s/base`, images in `deploy/docker`; `go test ./deploy`
-checks them against the code (see `deploy/README.md`). Grafana boards and alerts
+Manifests are plain Kustomize: `deploy/k8s/core` (everything but inbound), inbound
+components in `deploy/k8s/components` (`cloudflare-tunnel`, `ingress`), and the builds
+`deploy/k8s/base` (default: core + tunnel) and `deploy/k8s/direct` (core + Ingress); images
+are in `deploy/docker`. `go test ./deploy` checks every build against the code (see
+`deploy/README.md`); keep components resource-only, since it reads them without kustomize. Grafana boards and alerts
 are in `dashboards/`; `go test ./dashboards` runs their SQL.
 Postgres tests start a pgvector container with testcontainers-go (needs a
 container runtime such as Docker or Podman); they skip without one unless

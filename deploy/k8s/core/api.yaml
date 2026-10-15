@@ -98,6 +98,8 @@ spec:
         - name: tmp
           emptyDir: {sizeLimit: 64Mi}
 ---
+# People reach the Service (spec §13 IN-2) through the inbound component the
+# build picks, with org SSO in front of the whole host; see deploy/README.md.
 apiVersion: v1
 kind: Service
 metadata:
@@ -108,31 +110,6 @@ spec:
   selector: {app.kubernetes.io/name: exemplar-api}
   ports:
     - {name: http, port: 80, targetPort: http}
----
-# Public (spec §13 IN-2): people open feedback links here. The overlay
-# sets host, class and TLS, and puts org SSO in front (an IdP-aware proxy
-# or ingress auth annotations) for the whole host.
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: exemplar-api
-  namespace: exemplar
-  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts: [exemplar-api.example.invalid]
-      secretName: exemplar-api-tls
-  rules:
-    - host: exemplar-api.example.invalid
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: exemplar-api
-                port: {name: http}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

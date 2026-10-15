@@ -1,0 +1,6 @@
+# Inbound through the cluster's Ingress controller: public Ingresses for the
+# webhook and the API, and the NetworkPolicies that let the controller in.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - ingress.yaml

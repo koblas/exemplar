@@ -48,13 +48,13 @@ Nothing below touches a cluster until step 8 tells you to.
 | You need | Notes |
 |---|---|
 | Kubernetes **1.29+** | Native sidecars (git-sync) need 1.29. The manifests are written against 1.33. The namespace runs at the `restricted` Pod Security level. |
-| An ingress controller, with TLS | Two public hosts: one for GitHub's webhooks, one for people (exemplar-api). The base assumes `ingress-nginx`. |
+| A way in, with TLS | Two public hosts: one for GitHub's webhooks, one for people (exemplar-api). **Default:** a Cloudflare Tunnel (a Cloudflare account and a zone for the hosts); the cluster then needs no public ingress at all. **Or** an ingress controller (`deploy/k8s/direct`, which assumes `ingress-nginx`), or both. See step 7. |
 | A storage class for local SSD | `exemplar-search` asks for 500Gi per replica on `local-ssd`. Change both in the overlay. |
 | **Postgres 16** with **pgvector** | Reachable from the cluster on 5432. Use a read replica for Grafana if you add it. |
 | A container registry | The cluster must be able to pull from it. |
 | A model provider | An Anthropic API key, or AWS Bedrock through workload identity (see `global.yaml` `providers`). |
 | GitHub org owner rights | To register and install the GitHub App. GitHub Enterprise Server works too (see step 7). |
-| Tooling on your machine | Docker with BuildKit (`docker buildx`), `kubectl`, Go 1.27 (for the CLI and checks), `openssl`, and `git`. |
+| Tooling on your machine | Docker with BuildKit (`docker buildx`), `kubectl`, Go 1.27 (for the CLI and checks), `openssl`, `git`, and `cloudflared` (to create the tunnel, unless you use `deploy/k8s/direct`). |
 
 ### 2. Build and publish the images
 
@@ -202,6 +202,7 @@ openssl rand -base64 48 > link-key
 | `exemplar-pseudonym` | `key` | A random key, for pseudonymizing reviewers in mined comments |
 | `exemplar-exports-app` | `private-key` | Only with the exports app |
 | `exemplar-oidc` | `client-secret` | Only with OIDC sign-in |
+| `exemplar-cloudflared` | `credentials.json` | Only with the Cloudflare Tunnel (the default): the tunnel's credentials file (step 7) |
 
 For example:
 
@@ -219,13 +220,50 @@ kubectl -n exemplar create secret generic exemplar-config-git --from-file=ssh=ex
 
 ### 7. Write a Kustomize overlay
 
-The base (`deploy/k8s/base`) is complete except for your installation's values. Put those in an overlay, kept wherever you keep deployment config:
+Pick how traffic gets in:
+
+| Build | Inbound | Public in the cluster |
+|---|---|---|
+| `deploy/k8s/base` (**default**) | A Cloudflare Tunnel: `exemplar-cloudflared` dials out to Cloudflare | Nothing |
+| `deploy/k8s/direct` | Ingresses on your controller | The two Ingress hosts |
+| `deploy/k8s/base` plus the `components/ingress` component | Both, on different host names | The two Ingress hosts |
+
+**Create the tunnel** (default) with `cloudflared` on your machine. Routes stay in the repo's ConfigMap, not the dashboard:
+
+```bash
+cloudflared tunnel login
+```
+
+```bash
+cloudflared tunnel create exemplar
+```
+
+```bash
+cloudflared tunnel route dns exemplar exemplar-webhook.acme.com
+```
+
+```bash
+cloudflared tunnel route dns exemplar exemplar.acme.com
+```
+
+```bash
+kubectl -n exemplar create secret generic exemplar-cloudflared --from-file=credentials.json=$HOME/.cloudflared/<tunnel-id>.json
+```
+
+Then, in the Cloudflare dashboard. These take over from the Ingress's controls (spec §13 IN-1, IN-2), so a tunnel install is not done without them:
+- **Webhook host:** a WAF custom rule that blocks any source outside GitHub's `hooks` ranges (`https://api.github.com/meta`). Put **no** Access policy on it: GitHub can't sign in. The webhook still checks every delivery's signature.
+- **API host:** an Access application with your org's IdP in front of the whole host (org SSO), unless OIDC sign-in alone is enough for you.
+
+Cloudflare ends TLS at its edge, so it sees requests in clear text, webhook payloads included. If that's not acceptable, use `deploy/k8s/direct`.
+
+The build is complete except for your installation's values. Put those in an overlay, kept wherever you keep deployment config:
 
 ```text
 overlays/acme/
   kustomization.yaml
   settings.yaml
   auth.yaml
+  tunnel.yaml
 ```
 
 **`kustomization.yaml`:**
@@ -235,6 +273,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - <path-to-this-repo>/deploy/k8s/base
+# For both ways in, also:
+# components:
+#   - <path-to-this-repo>/deploy/k8s/components/ingress
 # Match the names the base renders, and pin the digests from step 2.
 images:
   - name: registry.example.invalid/koblas/exemplar
@@ -246,6 +287,12 @@ images:
 patches:
   - path: settings.yaml
   - path: auth.yaml
+  - path: tunnel.yaml
+```
+
+With `deploy/k8s/direct` (or the ingress component), drop `tunnel.yaml` and patch the Ingress hosts instead:
+
+```yaml
   - target: {kind: Ingress, name: exemplar-webhook}
     patch: |-
       - {op: replace, path: /spec/rules/0/host, value: exemplar-webhook.acme.com}
@@ -275,6 +322,27 @@ data:
   EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID: "<Client ID>"
 ```
 
+**`tunnel.yaml`** sets the tunnel id and host names. Keep the path rule and the catch-all:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-cloudflared
+  namespace: exemplar
+data:
+  config.yaml: |
+    tunnel: <tunnel-id>
+    credentials-file: /etc/cloudflared/credentials/credentials.json
+    ingress:
+      - hostname: exemplar-webhook.acme.com
+        path: ^/webhook$
+        service: http://exemplar-webhook.exemplar.svc:80
+      - hostname: exemplar.acme.com
+        service: http://exemplar-api.exemplar.svc:80
+      - service: http_status:404
+```
+
 **`auth.yaml`** chooses who may sign in. It mirrors Coder's settings (see *Sign-in* below):
 
 ```yaml
@@ -288,10 +356,10 @@ data:
 ```
 
 **Other patches the overlay usually needs:**
-- **Ingress:** the TLS secret names (`exemplar-webhook-tls`, `exemplar-api-tls`) and `ingressClassName`.
-- **Org SSO:** put it in front of the API host, as an IdP-aware proxy or ingress auth annotations, unless you use OIDC sign-in.
+- **Ingress** (direct builds only): the TLS secret names (`exemplar-webhook-tls`, `exemplar-api-tls`) and `ingressClassName`.
+- **Org SSO:** put it in front of the API host, unless you use OIDC sign-in: Cloudflare Access with the tunnel; an IdP-aware proxy or ingress auth annotations with an Ingress.
 - **Search storage:** the `storageClassName` and size on the `exemplar-search` StatefulSet.
-- **Ingress controller namespace:** if your controller doesn't run in `ingress-nginx`, change the namespace the webhook and API NetworkPolicies admit.
+- **Ingress controller namespace** (direct builds only): if your controller doesn't run in `ingress-nginx`, change the namespace `exemplar-webhook-from-ingress` and `exemplar-api-from-ingress` admit.
 - **GitHub Enterprise Server:** set `EXEMPLAR_GH_WEB_URL` (`https://<host>/`) and `EXEMPLAR_GH_API_URL` (`https://<host>/api/v3/`) in `exemplar-settings`. Set `EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL` in `exemplar-auth`.
 
 #### Sign-in
@@ -325,7 +393,7 @@ kubectl kustomize overlays/acme > rendered.yaml
 go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered.yaml
 ```
 
-From this repository, `go test ./deploy` also checks the base manifests against the code. That covers ports, probes, shutdown deadlines, every environment variable, and the security context. The base renders 48 resources.
+From this repository, `go test ./deploy` also checks every build's manifests against the code. That covers ports, probes, shutdown deadlines, every environment variable, the security context, and who may reach the webhook and the API. The default build renders 53 resources, `direct` 50, and both ways in 57.
 
 Then apply it. Name the context and namespace explicitly:
 
@@ -341,7 +409,7 @@ kubectl --context <your-cluster> -n exemplar apply -f rendered.yaml
    kubectl --context <your-cluster> -n exemplar get pods
    ```
 
-   Each service answers `/healthz` (liveness) and `/readyz` (readiness, including the database). git-sync must finish its first sync before the main containers start.
+   Each service answers `/healthz` (liveness) and `/readyz` (readiness, including the database). git-sync must finish its first sync before the main containers start. With the tunnel, `exemplar-cloudflared` is ready once it holds a connection to Cloudflare, and the tunnel shows as healthy in the dashboard.
 2. **Webhooks.** In the GitHub App's *Advanced → Recent deliveries*, the ping and later deliveries show `202`.
 3. **Sign-in.** Open `https://<api-host>/ui/` and sign in. You should see the rules from `exemplar-config`.
 4. **A first review.** Open a pull request in the shadow repo from step 3. The worker reviews it and stores the result, but posts nothing in shadow mode. Look for it on the web UI and on the Grafana boards (step 11). When the findings look right, set `shadow: false` in that repo's file in `exemplar-config` and merge. The next push gets the `exemplar` check run and review comments.

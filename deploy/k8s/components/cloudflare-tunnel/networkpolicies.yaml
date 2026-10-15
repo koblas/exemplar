@@ -1,0 +1,63 @@
+# exemplar-cloudflared: out to Cloudflare's edge on 7844 (QUIC over UDP,
+# falling back to HTTP/2 over TCP) and to the webhook and the API. Nothing
+# in: the kubelet's probes are not subject to NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-cloudflared
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-cloudflared, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-cloudflared}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - {protocol: UDP, port: 7844}
+        - {protocol: TCP, port: 7844}
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-webhook}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-api}
+      ports:
+        - {protocol: TCP, port: 8080}
+---
+# The tunnel may reach the webhook and the API; nothing else is let in.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-webhook-from-tunnel
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-webhook, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-webhook}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-cloudflared}
+      ports:
+        - {protocol: TCP, port: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-api-from-tunnel
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-api}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-cloudflared}
+      ports:
+        - {protocol: TCP, port: 8080}

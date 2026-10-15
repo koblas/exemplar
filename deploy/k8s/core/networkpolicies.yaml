@@ -55,8 +55,9 @@ spec:
       ports:
         - {protocol: TCP, port: 4318}
 ---
-# exemplar-webhook: in from the ingress controller; out to Postgres only.
-# It never reaches GitHub or a model.
+# exemplar-webhook: out to Postgres only; it never reaches GitHub or a
+# model. Nothing in until an inbound component adds its own allow
+# (exemplar-webhook-from-tunnel, exemplar-webhook-from-ingress).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -67,12 +68,6 @@ spec:
   podSelector:
     matchLabels: {app.kubernetes.io/name: exemplar-webhook}
   policyTypes: [Ingress, Egress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
-      ports:
-        - {protocol: TCP, port: 8080}
   egress:
     - ports:
         - {protocol: TCP, port: 5432}
@@ -193,8 +188,8 @@ spec:
     - ports:
         - {protocol: TCP, port: 5432}
 ---
-# exemplar-api: in from the ingress controller; out to Postgres and GitHub
-# (HTTPS, for user OAuth).
+# exemplar-api: out to Postgres and GitHub (HTTPS, for user OAuth). Nothing
+# in until an inbound component adds its own allow.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -205,12 +200,6 @@ spec:
   podSelector:
     matchLabels: {app.kubernetes.io/name: exemplar-api}
   policyTypes: [Ingress, Egress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
-      ports:
-        - {protocol: TCP, port: 8080}
   egress:
     - to:
         - ipBlock:

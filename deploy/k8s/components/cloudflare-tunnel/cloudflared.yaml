@@ -1,0 +1,137 @@
+# exemplar-cloudflared: a locally-managed Cloudflare Tunnel. It is its own
+# Deployment, not a sidecar, so the tunnel credentials never enter the
+# webhook or API pods and the webhook keeps its Postgres-only egress.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: exemplar-cloudflared
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-cloudflared, app.kubernetes.io/part-of: exemplar}
+automountServiceAccountToken: false
+---
+# The tunnel's routing. The overlay replaces config.yaml with its tunnel id
+# and host names. Only POST /webhook reaches the webhook (as the Ingress's
+# Exact path did); anything unmatched gets a 404 at the edge connector.
+# cloudflared reads it at start: restart the Deployment after a change.
+# At Cloudflare, an installation also:
+#   - limits the webhook host to GitHub's hook CIDRs (api.github.com/meta)
+#     with a WAF custom rule, and puts no Access policy on it;
+#   - puts an Access application (org SSO) on the API host.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-cloudflared
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-cloudflared, app.kubernetes.io/part-of: exemplar}
+data:
+  config.yaml: |
+    tunnel: 00000000-0000-0000-0000-000000000000
+    credentials-file: /etc/cloudflared/credentials/credentials.json
+    ingress:
+      - hostname: exemplar-webhook.example.invalid
+        path: ^/webhook$
+        service: http://exemplar-webhook.exemplar.svc:80
+      - hostname: exemplar-api.example.invalid
+        service: http://exemplar-api.exemplar.svc:80
+      - service: http_status:404
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exemplar-cloudflared
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/name: exemplar-cloudflared
+    app.kubernetes.io/part-of: exemplar
+spec:
+  # Each replica is a connector of the same tunnel; Cloudflare balances
+  # between them.
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: exemplar-cloudflared
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: exemplar-cloudflared
+        app.kubernetes.io/part-of: exemplar
+    spec:
+      serviceAccountName: exemplar-cloudflared
+      automountServiceAccountToken: false
+      # cloudflared stops taking requests and waits --grace-period (20 s)
+      # for in-flight ones: well inside 30.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-cloudflared}
+      containers:
+        - name: cloudflared
+          # 2026.9.3, the multi-arch index; the image runs as 65532.
+          image: docker.io/cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+          command: ["cloudflared"]
+          args:
+            - tunnel
+            - --config=/etc/cloudflared/config/config.yaml
+            - --no-autoupdate
+            # The startup pre-checks also probe api.cloudflare.com:443, which
+            # the NetworkPolicy blocks; they would only log a false warning.
+            - --no-prechecks
+            - --metrics=0.0.0.0:2000
+            - --grace-period=20s
+            - run
+          ports:
+            - {name: metrics, containerPort: 2000}
+          # /healthcheck answers while the process runs; /ready only once a
+          # connection to the edge is up, so an edge outage never restarts it.
+          livenessProbe:
+            httpGet: {path: /healthcheck, port: metrics}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /ready, port: metrics}
+            periodSeconds: 5
+            failureThreshold: 2
+          # Webhook deliveries (at most 25 MB) and the API's small pages.
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /etc/cloudflared/config, readOnly: true}
+            - {name: credentials, mountPath: /etc/cloudflared/credentials, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap: {name: exemplar-cloudflared}
+        - name: credentials
+          secret:
+            secretName: exemplar-cloudflared
+            items: [{key: credentials.json, path: credentials.json}]
+            defaultMode: 0400
+        - name: tmp
+          emptyDir: {sizeLimit: 16Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: exemplar-cloudflared
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-cloudflared, app.kubernetes.io/part-of: exemplar}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: exemplar-cloudflared}
