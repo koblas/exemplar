@@ -2216,3 +2216,15 @@ The user asked for the lint configuration to match their usual setup (`default: 
 - **What:** a top-level [`ARCHITECTURE.md`](../../ARCHITECTURE.md) with Mermaid diagrams (GitHub renders them): system context, components, the online PR review sequence, the engine stages, the learning plane, the feedback loop, shift left, trust boundaries, and a code map. Linked from the README.
 - **Decision:** it describes the code and manifests as built, not the spec's target. Where they differ (the orchestrator, poster and feedback roles run as jobs in `exemplar-worker`; there is no `embed` job yet) it says so and links the spec. Network edges follow `deploy/k8s/core/networkpolicies.yaml`. Build status stays in `docs/plans/README.md` rather than being copied.
 - **Checked:** every relative link resolves. Not checked: Mermaid rendering (no renderer in devenv); confirm on GitHub.
+
+### Tooling: Makefiles (2026-10-16)
+
+- **What:** a root `Makefile` and `learning/Makefile`, so the CI commands run the same way locally. `make help` lists targets: `build`, `bins` (every `cmd/` binary into `out/bin`), `vet`, `test`, `test-race`, `lint`, `fmt`, `fmt-check`, `vuln`, `fuzz`, `sqlc`, `sqlc-check`, `contracts`, `generate`, `adversarial`, `py-*`, `images`, `manifests`, `deploy-test`, and the aggregates `check` (quick gate) and `ci` (ci.yml minus the images job, with `EXEMPLAR_REQUIRE_DB=1` and `EXEMPLAR_REQUIRE_ENGINES=1`).
+- **Decisions:**
+  - Tool versions (sqlc v1.31.1, govulncheck v1.8.0, kubeconform v0.7.0, Kubernetes 1.33.0) are `?=` variables matching ci.yml, and run through `go run`, so sqlc no longer has to be installed.
+  - Outputs go to `out/` (gitignored), including `replay.json`, which CI writes to the root.
+  - `manifests` writes the "both" overlay to `deploy/k8s/.make-both` and removes it on exit.
+  - The Makefile exports `NIX_ENFORCE_PURITY=0`: under devenv the nix cc wrapper's purity check otherwise rejects the tree-sitter grammars' cgo include paths (a forced `go build -a` fails with or without `-trimpath`). It has no effect outside nix. `bins` keeps `-trimpath`, as release.yml does.
+  - `out/` is in `.dockerignore`, so `make bins` output never reaches an image build context.
+  - CI still calls the commands directly; switching it to `make` is a separate decision.
+- **Checked:** `build`, `vet`, `lint`, `fmt-check` (exits 1 on an unformatted probe file), `sqlc-check`, `adversarial`, `bins` (forced rebuild with `GOFLAGS=-a`), `deploy-test`, and `learning` `lint`, `test`, `contracts-check` pass. `learning` `sync` (`uv sync --locked`) failed here because the local uv config sets a global `exclude-newer` that predates `anthropic>=1.13.0`; it is unrelated to the Makefile. Not run: `test`, `test-race`, `vuln`, `fuzz`, `images`, `manifests` (no kubectl or Docker check here), so `ci` was dry-run only.

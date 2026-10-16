@@ -3,3 +3,6 @@
 .direnv
 learning/.venv
 **/__pycache__
+
+# make outputs (binaries, replay, rendered manifests)
+out
