@@ -93,7 +93,7 @@ jobs:
             echo '```'
             echo "Kustomize pin:"
             echo '```yaml'
-            echo "  - name: registry.example.invalid/koblas/${NAME}"
+            echo "  - name: ${NAME}"
             echo "    newName: docker.io/${IMAGE}"
             echo "    digest: ${DIGEST}"
             echo '```'
