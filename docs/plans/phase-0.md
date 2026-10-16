@@ -2179,3 +2179,9 @@ Spec §13 IN-1 and IN-2. The user asked for inbound to support a Cloudflare Tunn
   - OrbStack's `kubectl kustomize` renders `base` (53 resources), `direct` (50) and both (57).
   - kubeconform v0.7.0 `-strict` for 1.33 found all valid.
   - Not checked: an actual tunnel or cluster.
+
+### Docs: ARCHITECTURE.md (2026-10-16)
+
+- **What:** a top-level [`ARCHITECTURE.md`](../../ARCHITECTURE.md) with Mermaid diagrams (GitHub renders them): system context, components, the online PR review sequence, the engine stages, the learning plane, the feedback loop, shift left, trust boundaries, and a code map. Linked from the README.
+- **Decision:** it describes the code and manifests as built, not the spec's target. Where they differ (the orchestrator, poster and feedback roles run as jobs in `exemplar-worker`; there is no `embed` job yet) it says so and links the spec. Network edges follow `deploy/k8s/core/networkpolicies.yaml`. Build status stays in `docs/plans/README.md` rather than being copied.
+- **Checked:** every relative link resolves. Not checked: Mermaid rendering (no renderer in devenv); confirm on GitHub.

@@ -2,6 +2,7 @@
 
 Exemplar is a self-correcting AI code reviewer for GitHub. It reviews pull requests against rules your teams own in a git repository (`exemplar-config`). It learns new rules from your reviewers' comments, and demotes rules people say are wrong. It can auto-approve low-risk changes once a set of deterministic gates pass.
 
+- **Architecture:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (components and workflows as built, with diagrams)
 - **Spec:** [`docs/spec/technical-spec.md`](docs/spec/technical-spec.md) (`§` references point here)
 - **PRD:** [`docs/spec/prd.md`](docs/spec/prd.md) (`FR-…` requirement ids)
 - **Roadmap and status:** [`docs/plans/README.md`](docs/plans/README.md), with a log of every step in [`docs/plans/phase-0.md`](docs/plans/phase-0.md)
