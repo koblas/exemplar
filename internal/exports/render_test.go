@@ -9,8 +9,10 @@ import (
 )
 
 func rule(id, severity, summary string, patterns ...string) config.Rule {
-	return config.Rule{Rule: schema.Rule{ID: id, Severity: severity, Status: schema.StatusActive, FilePatterns: patterns,
-		Export: &schema.Export{Agents: true, Summary: summary}}}
+	return config.Rule{
+		ID: id, Severity: severity, Status: schema.StatusActive, FilePatterns: patterns,
+		Export: &schema.Export{Agents: true, Summary: summary},
+	}
 }
 
 func TestArea(t *testing.T) {
@@ -42,8 +44,10 @@ func TestRender(t *testing.T) {
 	for _, f := range files {
 		byPath[f.Path] = f
 	}
-	want := []string{"AGENTS.md", "src/net/AGENTS.md", "CLAUDE.md", "src/net/CLAUDE.md", ".github/copilot-instructions.md",
-		".github/instructions/src-net.instructions.md", ".cursor/rules/exemplar.mdc", ".cursor/rules/exemplar-src-net.mdc"}
+	want := []string{
+		"AGENTS.md", "src/net/AGENTS.md", "CLAUDE.md", "src/net/CLAUDE.md", ".github/copilot-instructions.md",
+		".github/instructions/src-net.instructions.md", ".cursor/rules/exemplar.mdc", ".cursor/rules/exemplar-src-net.mdc",
+	}
 	if len(files) != len(want) {
 		t.Fatalf("files = %d", len(files))
 	}
@@ -67,7 +71,7 @@ func TestRender(t *testing.T) {
 }
 
 func TestBudget(t *testing.T) {
-	var rules []config.Rule
+	rules := make([]config.Rule, 0, 80)
 	for i := range 80 {
 		rules = append(rules, rule(strings.Repeat("r", 10)+string(rune('a'+i%26))+string(rune('a'+i/26)), "important", strings.Repeat("Do the thing properly. ", 3), "**/*.go"))
 	}

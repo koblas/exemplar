@@ -37,7 +37,7 @@ const schemaBase = "https://exemplar.internal/schema/"
 var (
 	compileOnce sync.Once
 	compiled    map[Document]*jsonschema.Schema
-	compileErr  error
+	compileErr  error //nolint:errname // compileAll's cached result, not a sentinel
 )
 
 func compileAll() {
@@ -122,8 +122,7 @@ func Decode(d Document, data []byte, out any) error {
 		return fmt.Errorf("parse %s: %w", d, err)
 	}
 	if err := s.Validate(inst); err != nil {
-		var ve *jsonschema.ValidationError
-		if errors.As(err, &ve) {
+		if ve, ok := errors.AsType[*jsonschema.ValidationError](err); ok {
 			return &ValidationError{Document: d, Err: ve}
 		}
 		return fmt.Errorf("validate %s: %w", d, err)

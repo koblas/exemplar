@@ -2,6 +2,7 @@ package precheck
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -105,9 +106,11 @@ type fakeTrial struct{ runs int }
 func (f *fakeTrial) RunPR(_ context.Context, _ *config.Snapshot, ids []string, pr gh.PullRequest) (playground.Trial, error) {
 	f.runs++
 	res := &engine.Result{Runs: []engine.RunResult{{RuleID: ids[0], CostUSD: 0.01}}}
-	for i := 0; i < pr.Number; i++ {
-		res.Findings = append(res.Findings, engine.Finding{RuleID: ids[0], State: engine.StateShadow,
-			Anchor: scope.Anchor{Path: fmt.Sprintf("f%d.go", i%2), StartLine: i + 1, EndLine: i + 1}})
+	for i := range pr.Number {
+		res.Findings = append(res.Findings, engine.Finding{
+			RuleID: ids[0], State: engine.StateShadow,
+			Anchor: scope.Anchor{Path: fmt.Sprintf("f%d.go", i%2), StartLine: i + 1, EndLine: i + 1},
+		})
 	}
 	res.Findings = append(res.Findings, engine.Finding{RuleID: ids[0], State: engine.StateDropped, Anchor: scope.Anchor{Path: "x.go"}})
 	return playground.Trial{Result: res}, nil
@@ -197,7 +200,7 @@ func TestCheckExportApproval(t *testing.T) {
 	if got, _ := CheckExportApproval(t.Context(), nil, ExportTeam, "ari", "h2", nil, member); !got.Pass {
 		t.Error("no export changes must pass")
 	}
-	failing := func(context.Context, string, string) (bool, error) { return false, fmt.Errorf("github down") }
+	failing := func(context.Context, string, string) (bool, error) { return false, errors.New("github down") }
 	if _, err := CheckExportApproval(t.Context(), changes, ExportTeam, "ari", "h2", []gh.Review{{User: "dana", State: "APPROVED", CommitID: "h2"}}, failing); err == nil {
 		t.Error("a failed membership check must be an error, not a pass")
 	}

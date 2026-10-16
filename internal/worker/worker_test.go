@@ -39,7 +39,8 @@ const (
 	header = "package main\n\nimport (\n\t\"context\"\n\t\"net/http\"\n)\n\n"
 )
 
-var headMain = header + "func handler(ctx context.Context) {\n\tresp, err := http.Get(\"https://inventory.internal/items\")\n\tif err != nil {\n\t\treturn\n\t}\n\tdefer resp.Body.Close()\n\t_ = ctx\n}\n"
+var headMain = header + "func handler(ctx context.Context) {\n\tresp, err := http.Get(\"https://inventory.internal/items\")\n" +
+	"\tif err != nil {\n\t\treturn\n\t}\n\tdefer resp.Body.Close()\n\t_ = ctx\n}\n"
 
 // fakeGitHub answers the REST calls a review makes and records writes.
 type fakeGitHub struct {
@@ -81,10 +82,18 @@ type fakeGitHub struct {
 }
 
 func newFakeGitHub(t *testing.T, repoName, head, base string) *fakeGitHub {
+	t.Helper()
 	f := &fakeGitHub{t: t, repo: repoName, state: "open", head: head, base: base}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
+}
+
+// writeJSON encodes v as the response, failing the test if it cannot.
+func (f *fakeGitHub) writeJSON(w http.ResponseWriter, v any) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		f.t.Errorf("encode response: %v", err)
+	}
 }
 
 func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
@@ -119,14 +128,16 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == pr+"/reviews":
 		var out []map[string]any
 		if f.existingApproval {
-			out = append(out, map[string]any{"id": 1, "state": "APPROVED", "commit_id": "0ld", "user": map[string]any{"type": "Bot"},
-				"body": gh.ApproveMarker(1, "0ld")})
+			out = append(out, map[string]any{
+				"id": 1, "state": "APPROVED", "commit_id": "0ld", "user": map[string]any{"type": "Bot"},
+				"body": gh.ApproveMarker(1, "0ld"),
+			})
 		}
 		for i, a := range f.approvals {
 			parts := strings.Split(a, ":")
 			out = append(out, map[string]any{"id": 10 + i, "state": parts[1], "commit_id": parts[2], "user": map[string]any{"login": parts[0], "type": "User"}})
 		}
-		_ = json.NewEncoder(w).Encode(out)
+		f.writeJSON(w, out)
 	case r.Method == http.MethodGet && r.URL.Path == pr+"/files":
 		_, _ = w.Write([]byte(`[{"filename": "main.go", "status": "modified"}]`))
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/contents/"):
@@ -158,8 +169,9 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 				}
 				nodes = append(nodes, map[string]any{"comments": map[string]any{"nodes": []any{cm}}})
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
-				"reviewThreads": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false}}}}}})
+			f.writeJSON(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+				"reviewThreads": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false}},
+			}}}})
 		case strings.Contains(q, "minimizeComment"):
 			vars, _ := b["variables"].(map[string]any)
 			f.minimized = append(f.minimized, fmt.Sprint(vars["id"]))
@@ -176,11 +188,14 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			var nodes []map[string]any
 			for _, id := range f.commentIDs() {
 				tid := fmt.Sprintf("T%d", id)
-				nodes = append(nodes, map[string]any{"id": tid, "isResolved": f.resolved[tid],
-					"comments": map[string]any{"nodes": []map[string]any{{"databaseId": id}}}})
+				nodes = append(nodes, map[string]any{
+					"id": tid, "isResolved": f.resolved[tid],
+					"comments": map[string]any{"nodes": []map[string]any{{"databaseId": id}}},
+				})
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
-				"reviewThreads": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false}}}}}})
+			f.writeJSON(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+				"reviewThreads": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false}},
+			}}}})
 		default:
 			// Merge safety: no force-push, and an author with merged PRs.
 			_, _ = w.Write([]byte(`{"data": {"repository": {"pullRequest": {"timelineItems": {"totalCount": 0}}}, "search": {"issueCount": 3}}}`))
@@ -196,7 +211,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 				out = append(out, map[string]any{"id": 1000*(i+1) + j, "path": m["path"], "side": m["side"], "line": m["line"], "body": m["body"]})
 			}
 		}
-		_ = json.NewEncoder(w).Encode(out)
+		f.writeJSON(w, out)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/compare/"):
 		old, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/compare/"), "...")
 		status := "ahead"
@@ -303,9 +318,11 @@ func (f *fakeGitHub) client() *github.Client {
 func (f *fakeGitHub) Reader(context.Context, int64, string) (*github.Client, error) {
 	return f.client(), nil
 }
+
 func (f *fakeGitHub) Gate(context.Context, int64, string) (*github.Client, error) {
 	return f.client(), nil
 }
+
 func (f *fakeGitHub) Poster(context.Context, int64, string) (*github.Client, error) {
 	return f.client(), nil
 }
@@ -361,7 +378,10 @@ func setupWith(t *testing.T, repoName string, wrap func(http.RoundTripper) http.
 			if strings.Contains(task, "deadlines reach them") && report.Load() {
 				extra := ""
 				if s := fix.Load(); s != nil {
-					b, _ := json.Marshal(*s)
+					b, err := json.Marshal(*s)
+					if err != nil {
+						t.Errorf("encode suggested fix: %v", err)
+					}
 					extra = `, "suggested_fix": ` + string(b)
 				}
 				return files, fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d, "explanation": "http.Get ignores ctx."%s}]}`, line.Load(), line.Load(), extra)

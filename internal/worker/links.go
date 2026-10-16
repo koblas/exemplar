@@ -21,6 +21,7 @@ import (
 // FeedbackLinkWorker runs feedback_link jobs.
 type FeedbackLinkWorker struct {
 	river.WorkerDefaults[store.FeedbackLinkArgs]
+
 	cfg Config
 }
 

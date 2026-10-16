@@ -36,65 +36,85 @@ func (f *fakeTargetGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	const repo = "/repos/acme/app"
 	switch p := r.URL.Path; {
-	case r.Method == "GET" && p == repo:
+	case r.Method == http.MethodGet && p == repo:
 		fmt.Fprint(w, `{"default_branch":"trunk"}`)
-	case r.Method == "GET" && strings.HasPrefix(p, repo+"/git/ref/"):
+	case r.Method == http.MethodGet && strings.HasPrefix(p, repo+"/git/ref/"):
 		ref := strings.TrimPrefix(p, repo+"/git/ref/")
 		fmt.Fprintf(w, `{"object":{"sha":%q}}`, f.refs[ref])
-	case r.Method == "POST" && p == repo+"/git/refs":
-		ref := strings.TrimPrefix(body["ref"].(string), "refs/")
+	case r.Method == http.MethodPost && p == repo+"/git/refs":
+		rawRef, ok := bodyString(w, body, "ref")
+		if !ok {
+			return
+		}
+		ref := strings.TrimPrefix(rawRef, "refs/")
 		if _, ok := f.refs[ref]; ok {
-			w.WriteHeader(422)
+			w.WriteHeader(http.StatusUnprocessableEntity)
 			fmt.Fprint(w, `{"message":"Reference already exists"}`)
 			return
 		}
-		f.refs[ref] = body["sha"].(string)
-		fmt.Fprint(w, `{}`)
-	case r.Method == "PATCH" && strings.HasPrefix(p, repo+"/git/refs/"):
-		if body["force"] != true {
-			w.WriteHeader(422)
+		sha, ok := bodyString(w, body, "sha")
+		if !ok {
 			return
 		}
-		f.refs[strings.TrimPrefix(p, repo+"/git/refs/")] = body["sha"].(string)
+		f.refs[ref] = sha
+		fmt.Fprint(w, `{}`)
+	case r.Method == http.MethodPatch && strings.HasPrefix(p, repo+"/git/refs/"):
+		if body["force"] != true {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			return
+		}
+		sha, ok := bodyString(w, body, "sha")
+		if !ok {
+			return
+		}
+		f.refs[strings.TrimPrefix(p, repo+"/git/refs/")] = sha
 		fmt.Fprint(w, `{}`)
 	case strings.HasPrefix(p, repo+"/contents/"):
 		path := strings.TrimPrefix(p, repo+"/contents/")
-		if r.Method == "PUT" {
-			key := body["branch"].(string) + ":" + path
-			if _, ok := f.files[key]; ok != (body["sha"] != nil) {
-				w.WriteHeader(409)
+		if r.Method == http.MethodPut {
+			branch, ok := bodyString(w, body, "branch")
+			if !ok {
 				return
 			}
-			raw, _ := base64.StdEncoding.DecodeString(body["content"].(string))
+			key := branch + ":" + path
+			if _, ok := f.files[key]; ok != (body["sha"] != nil) {
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+			content, ok := bodyString(w, body, "content")
+			if !ok {
+				return
+			}
+			raw, _ := base64.StdEncoding.DecodeString(content)
 			f.files[key] = string(raw)
 			fmt.Fprint(w, `{"content":{}}`)
 			return
 		}
 		c, ok := f.files[r.URL.Query().Get("ref")+":"+path]
 		if !ok {
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, `{"message":"Not Found"}`)
 			return
 		}
 		fmt.Fprintf(w, `{"type":"file","sha":"blob","encoding":"base64","content":%q}`, base64.StdEncoding.EncodeToString([]byte(c)))
-	case r.Method == "GET" && p == repo+"/pulls":
+	case r.Method == http.MethodGet && p == repo+"/pulls":
 		if r.URL.Query().Get("head") != "acme:exemplar/exports" || r.URL.Query().Get("state") != "open" || f.prs == 0 {
 			fmt.Fprint(w, `[]`)
 			return
 		}
 		fmt.Fprint(w, `[{"number":3,"html_url":"https://github.com/acme/app/pull/3","node_id":"PR_3","state":"open"}]`)
-	case r.Method == "POST" && p == repo+"/pulls":
+	case r.Method == http.MethodPost && p == repo+"/pulls":
 		if body["head"] != "exemplar/exports" || body["base"] != "trunk" {
-			w.WriteHeader(422)
+			w.WriteHeader(http.StatusUnprocessableEntity)
 			return
 		}
 		f.prs++
 		fmt.Fprint(w, `{"number":3,"html_url":"https://github.com/acme/app/pull/3","node_id":"PR_3","state":"open"}`)
-	case r.Method == "POST" && p == "/graphql":
+	case r.Method == http.MethodPost && p == "/graphql":
 		f.graphql = append(f.graphql, fmt.Sprint(body["query"], " ", body["variables"]))
 		fmt.Fprint(w, `{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"autoMergeRequest":{"enabledAt":"2026-10-14T00:00:00Z"}}}}}`)
 	default:
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}
 }
 

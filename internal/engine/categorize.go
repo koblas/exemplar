@@ -13,14 +13,17 @@ import (
 // CategorizerVersion is the auto-approve risk categorizer prompt version.
 const CategorizerVersion = "categorizer-v1"
 
-const categorizerSystemPrompt = `You decide whether a pull request is low risk to merge with no human review. A deterministic gate has already checked its size, paths, author and that automated review found nothing; you judge what the change does.
+const categorizerSystemPrompt = `You decide whether a pull request is low risk to merge with no human review. A deterministic gate has already ` +
+	`checked its size, paths, author and that automated review found nothing; you judge what the change does.
 
 ` + untrustedNotice + `
 
 Answer for the change as a whole:
-- risk "low" only when the change cannot plausibly break behavior, security, data or operations: documentation, comments, copy, formatting, tests that only add coverage, or configuration within an already-safe range.
+- risk "low" only when the change cannot plausibly break behavior, security, data or operations: documentation, comments, copy, formatting, tests ` +
+	`that only add coverage, or configuration within an already-safe range.
 - "medium" when it changes behavior in a contained way, or when you cannot tell what it affects.
-- "high" when it touches authentication, authorization, secrets, data handling, money, migrations, concurrency, error handling on a failure path, or production configuration, or when the description and the diff disagree.
+- "high" when it touches authentication, authorization, secrets, data handling, money, migrations, concurrency, error handling on a failure path, or ` +
+	`production configuration, or when the description and the diff disagree.
 - p_low is your probability, from 0 to 1, that the change is low risk. Be calibrated: a change you would want a human to look at is not low risk.
 - reasons: up to five short reasons, each under 200 characters, about the change itself.
 

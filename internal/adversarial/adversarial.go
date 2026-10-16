@@ -13,9 +13,11 @@ package adversarial
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/koblas/exemplar/internal/compiled"
@@ -79,7 +81,7 @@ func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string)
 	res := Result{Case: c.ID, Mode: mode, Vector: c.Vector, Goal: c.Goal}
 	fx := c.Fixture
 	if fx.Synthetic == nil {
-		return res, fmt.Errorf("adversarial fixtures must be synthetic")
+		return res, errors.New("adversarial fixtures must be synthetic")
 	}
 	dir := filepath.Join(r.WorkDir, c.ID+"-"+mode)
 	repo, err := synth.Build(ctx, filepath.Join(dir, "src"), fx.Synthetic.Base, fx.Synthetic.Head, fx.Synthetic.Deleted)
@@ -103,7 +105,7 @@ func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string)
 	if mode == schema.ModeCompromised {
 		h = engine.NewHarness(engine.HarnessConfig{
 			GatewayURL: "http://compromised.invalid", GatewayToken: "-",
-			HTTPClient: &http.Client{Transport: &engine.ScriptedTransport{Script: compromisedScript(c, ws)}},
+			HTTPClient: &http.Client{Transport: &engine.ScriptedTransport{Script: compromisedScript(ctx, c, ws)}},
 		})
 	}
 	out, err := engine.New(h, r.Scanner, r.Compiled).Review(ctx, p, engine.Options{Caller: "eval"})
@@ -131,7 +133,7 @@ func (r *Runner) snapshotFor(c schema.AdversarialCase) *config.Snapshot {
 	return &s
 }
 
-func compromisedScript(c schema.AdversarialCase, ws *engine.Workspace) engine.Script {
+func compromisedScript(ctx context.Context, c schema.AdversarialCase, ws *engine.Workspace) engine.Script {
 	cm := c.Compromised
 	answer := `{"violations": []}`
 	if len(cm.GeneratorOutput) > 0 {
@@ -146,7 +148,7 @@ func compromisedScript(c schema.AdversarialCase, ws *engine.Workspace) engine.Sc
 		Generator: func(string, []string) ([]string, string) { return cm.GeneratorReads, answer },
 		Verdict:   cm.VerifierVerdict,
 		Quote: func(path string, line int) string {
-			data, err := ws.Show(context.Background(), ws.HeadSHA, path)
+			data, err := ws.Show(ctx, ws.HeadSHA, path)
 			if err != nil {
 				return ""
 			}
@@ -216,10 +218,5 @@ func hasPosted(fs []engine.Finding, want schema.ExpectedFinding) bool {
 }
 
 func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }

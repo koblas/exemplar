@@ -29,8 +29,10 @@ import (
 
 var (
 	releaseFns = []string{"free", "fclose", "close", "closedir", "pclose", "munmap", "freeaddrinfo"}
-	lockFns    = map[string]string{"pthread_mutex_lock": "pthread_mutex_unlock", "pthread_rwlock_wrlock": "pthread_rwlock_unlock",
-		"pthread_rwlock_rdlock": "pthread_rwlock_unlock", "pthread_spin_lock": "pthread_spin_unlock"}
+	lockFns    = map[string]string{
+		"pthread_mutex_lock": "pthread_mutex_unlock", "pthread_rwlock_wrlock": "pthread_rwlock_unlock",
+		"pthread_rwlock_rdlock": "pthread_rwlock_unlock", "pthread_spin_lock": "pthread_spin_unlock",
+	}
 	guardTypes = regexp.MustCompile(`^(std::)?(lock_guard|unique_lock|scoped_lock)\b`)
 )
 
@@ -357,7 +359,7 @@ func mentions(n *sitter.Node, name string, src []byte) bool {
 
 // callee names a call's function: `f` gives ("f", ""), `m.lock` and
 // `m->lock` give ("lock", "m").
-func callee(fn *sitter.Node, src []byte) (name, recv string) {
+func callee(fn *sitter.Node, src []byte) (string, string) {
 	if fn == nil {
 		return "", ""
 	}

@@ -28,9 +28,11 @@ func newMirror(t *testing.T) (*mirror.Manager, string) {
 	git := func(date string, args ...string) string {
 		t.Helper()
 		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
-		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+		cmd.Env = []string{
+			"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
 			"GIT_AUTHOR_NAME=Dev", "GIT_AUTHOR_EMAIL=dev@example.invalid", "GIT_COMMITTER_NAME=Dev", "GIT_COMMITTER_EMAIL=dev@example.invalid",
-			"GIT_AUTHOR_DATE=" + date, "GIT_COMMITTER_DATE=" + date}
+			"GIT_AUTHOR_DATE=" + date, "GIT_COMMITTER_DATE=" + date,
+		}
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -70,7 +72,7 @@ func newMirror(t *testing.T) (*mirror.Manager, string) {
 
 func events(t *testing.T, st *store.Store, n int) {
 	t.Helper()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		kind := "incident"
 		if i%2 == 1 {
 			kind = "revert"
@@ -97,7 +99,7 @@ func TestHistory(t *testing.T) {
 	if res.Degraded {
 		t.Fatal("degraded with a mirror")
 	}
-	var got []string
+	got := make([]string, 0, len(res.Entries))
 	for _, e := range res.Entries {
 		got = append(got, e.At.UTC().Format("01-02")+" "+e.Kind)
 	}

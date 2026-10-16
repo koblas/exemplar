@@ -24,6 +24,7 @@ import (
 // on the PR; the result is for the requester.
 type PlaygroundWorker struct {
 	river.WorkerDefaults[store.PlaygroundArgs]
+
 	cfg Config
 	// draft loads the deployed config with the draft rule file added.
 	draft func(ruleYAML []byte) (*config.Snapshot, string, error)
@@ -75,15 +76,19 @@ func (w *PlaygroundWorker) Run(ctx context.Context, id int64) (string, error) {
 		}
 		return "refused", w.finish(ctx, id, "refused", reason, nil, 0)
 	}
-	r := &playground.Runner{Engine: w.cfg.Engine, Scanner: w.cfg.Scanner, GitHub: playgroundGitHub{w}, WorkDir: w.cfg.WorkDir,
-		CloneURL: w.cfg.CloneURL, Caller: "playground"}
-	out, err := r.Try(ctx, playground.Request{Actor: run.Actor, Snapshot: snap, RuleIDs: []string{ruleID},
-		Target: playground.Target{Repo: run.Repo, PR: int(run.PrNumber)}})
+	r := &playground.Runner{
+		Engine: w.cfg.Engine, Scanner: w.cfg.Scanner, GitHub: playgroundGitHub{w}, WorkDir: w.cfg.WorkDir,
+		CloneURL: w.cfg.CloneURL, Caller: "playground",
+	}
+	out, err := r.Try(ctx, playground.Request{
+		Actor: run.Actor, Snapshot: snap, RuleIDs: []string{ruleID},
+		Target: playground.Target{Repo: run.Repo, PR: int(run.PrNumber)},
+	})
 	if err != nil {
 		return "", err
 	}
 	if out.Denied {
-		return "refused", w.finish(ctx, id, "refused", fmt.Sprintf("no access to %s", run.Repo), nil, 0)
+		return "refused", w.finish(ctx, id, "refused", "no access to "+run.Repo, nil, 0)
 	}
 	res := evaluate.TryResult{Ran: out.Ran, Findings: []evaluate.TryFinding{}}
 	if !out.Ran {

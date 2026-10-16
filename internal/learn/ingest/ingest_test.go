@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -73,7 +74,10 @@ func (f *fakeGraphQL) query(_ context.Context, q string, vars map[string]any, ou
 	default:
 		f.t.Fatalf("unexpected query %q", q[:40])
 	}
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
 	return json.Unmarshal(b, out)
 }
 
@@ -86,10 +90,12 @@ func thread(id int, login, typename, path, body string, resolved bool) map[strin
 	}}}}
 }
 
-func itoa(i int) string { b, _ := json.Marshal(i); return string(b) }
+func itoa(i int) string { return strconv.Itoa(i) }
 
 func pr(number int, author string, merged bool, files []string, approvers []string, threads ...map[string]any) map[string]any {
-	var fs, rs, ts []any
+	fs := make([]any, 0, len(files))
+	rs := make([]any, 0, len(approvers))
+	ts := make([]any, 0, len(threads))
 	for _, f := range files {
 		fs = append(fs, map[string]any{"path": f})
 	}

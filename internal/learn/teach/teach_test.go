@@ -46,14 +46,17 @@ func (f *fakeRepo) GetFile(_ context.Context, _, path string) ([]byte, error) {
 	}
 	return []byte("id: noisy\nfile_patterns: [\"**/*.go\"]\n"), nil
 }
+
 func (f *fakeRepo) PutFile(_ context.Context, branch, path string, c []byte, _ string) error {
 	f.written[branch+":"+path] = string(c)
 	return nil
 }
+
 func (f *fakeRepo) OpenDraftPR(_ context.Context, _, _, title, body string) (string, error) {
 	f.drafts = append(f.drafts, title+"\n"+body)
 	return "https://github.com/acme/exemplar-config/pull/3", nil
 }
+
 func (f *fakeRepo) CreateIssue(_ context.Context, title, body string, _ []string) (gh.ConfigItem, error) {
 	f.issues = append(f.issues, title+"\n"+body)
 	return gh.ConfigItem{URL: "https://github.com/acme/exemplar-config/issues/4"}, nil
@@ -110,8 +113,10 @@ func TestTeach(t *testing.T) {
 	ev("strict", "q/r.go", "fb_wrong", "zed", "observer", "exception", "x")
 
 	rule := func(id string) config.Rule {
-		return config.Rule{Rule: schema.Rule{ID: id, Status: schema.StatusActive, Owner: "@platform/backend", FilePatterns: []string{"**/*.go"}},
-			Path: "rules/" + id + ".yaml", Scope: "global", VersionSHA: "0123456789abcdef"}
+		return config.Rule{
+			ID: id, Status: schema.StatusActive, Owner: "@platform/backend", FilePatterns: []string{"**/*.go"},
+			Path: "rules/" + id + ".yaml", Scope: "global", VersionSHA: "0123456789abcdef",
+		}
 	}
 	snap := &config.Snapshot{Rules: []config.Rule{rule("noisy"), rule("strict")}}
 	repo := &fakeRepo{written: map[string]string{}}

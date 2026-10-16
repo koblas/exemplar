@@ -139,8 +139,10 @@ func (r *Runner) categorize(ctx context.Context, l PRLabel, dir string) (gates.S
 		return gates.Stage2Categorization{}, 0, err
 	}
 	fx := l.Fixture
-	p, err := engine.Prepare(ctx, ws, r.Snapshot, engine.PRInfo{Repo: fx.Repo, Number: fx.PR, Title: fx.Title, Body: fx.Body,
-		Author: fx.Author, BaseSHA: base, HeadSHA: head}, r.Scanner)
+	p, err := engine.Prepare(ctx, ws, r.Snapshot, engine.PRInfo{
+		Repo: fx.Repo, Number: fx.PR, Title: fx.Title, Body: fx.Body,
+		Author: fx.Author, BaseSHA: base, HeadSHA: head,
+	}, r.Scanner)
 	if err != nil {
 		return gates.Stage2Categorization{}, 0, err
 	}

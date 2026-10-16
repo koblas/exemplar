@@ -73,9 +73,11 @@ func invalid(format string, args ...any) error {
 // narrows scope (paths: file_patterns own scope) or runs code.
 var (
 	astGrepKeys = []string{"id", "language", "rule", "constraints", "utils", "transform", "message", "severity", "note"}
-	semgrepKeys = []string{"id", "languages", "message", "severity", "mode", "options", "metadata",
+	semgrepKeys = []string{
+		"id", "languages", "message", "severity", "mode", "options", "metadata",
 		"pattern", "patterns", "pattern-either", "pattern-regex",
-		"pattern-sources", "pattern-sinks", "pattern-sanitizers", "pattern-propagators"}
+		"pattern-sources", "pattern-sinks", "pattern-sanitizers", "pattern-propagators",
+	}
 	// forbidden anywhere in the tree.
 	forbiddenKeys = []string{"fix", "fix-regex", "rewriters", "paths", "pattern-where-python"}
 )

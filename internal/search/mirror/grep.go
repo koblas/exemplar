@@ -47,7 +47,7 @@ const MaxPattern = 200
 // search_text). pathGlob, when set, limits the paths (git
 // glob pathspec). At most limit matches are returned; truncated reports
 // whether more existed.
-func (m *Manager) Grep(ctx context.Context, repo, commit, pattern, pathGlob string, limit int) (matches []GrepMatch, truncated bool, err error) {
+func (m *Manager) Grep(ctx context.Context, repo, commit, pattern, pathGlob string, limit int) ([]GrepMatch, bool, error) {
 	if strings.ContainsAny(pathGlob, "\x00\n") || strings.HasPrefix(pathGlob, ":") {
 		return nil, false, fmt.Errorf("%w: bad path filter", ErrBadRequest)
 	}
@@ -84,7 +84,7 @@ func (m *Manager) GrepIn(ctx context.Context, repo, commit, pattern string, word
 	return m.grep(ctx, repo, commit, mode, pattern, paths, "GIT_LITERAL_PATHSPECS=1", limit)
 }
 
-func (m *Manager) grep(ctx context.Context, repo, commit, mode, pattern string, pathspecs []string, specEnv string, limit int) (matches []GrepMatch, truncated bool, err error) {
+func (m *Manager) grep(ctx context.Context, repo, commit, mode, pattern string, pathspecs []string, specEnv string, limit int) ([]GrepMatch, bool, error) {
 	dir, err := m.mirrored(repo)
 	if err != nil {
 		return nil, false, err
@@ -119,9 +119,9 @@ func (m *Manager) grep(ctx context.Context, repo, commit, mode, pattern string, 
 		}
 		return nil, false, fmt.Errorf("mirror: git grep: %w", err)
 	}
-	matches = []GrepMatch{}
+	matches := []GrepMatch{}
 	prefix := sha + ":"
-	for _, line := range strings.Split(strings.TrimSuffix(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(out), "\n"), "\n") {
 		rest, ok := strings.CutPrefix(line, prefix)
 		if !ok {
 			continue

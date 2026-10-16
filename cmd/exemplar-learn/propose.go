@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -64,8 +63,7 @@ func runPropose(args []string) error {
 	w := propose.New(propose.Config{MaxOpenPerOwner: *maxOpen, MaxPerRun: *maxRun, Logger: log}, st, repo, sc)
 	outs, err := w.Run(ctx)
 	for _, o := range outs {
-		line, _ := json.Marshal(o)
-		fmt.Println(string(line))
+		printJSON(o)
 		if *dryRun && *showRules && o.Draft != nil {
 			fmt.Printf("--- %s\n%s\n", o.Draft.Path, o.Draft.Rule)
 		}
@@ -95,7 +93,7 @@ func appFromEnv() (*gh.App, int64, string, error) {
 	if appID == 0 || installation == 0 || keyFile == "" || cfgRepo == "" {
 		return nil, 0, "", errors.New("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are required")
 	}
-	key, err := os.ReadFile(keyFile)
+	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("read private key: %w", err)
 	}

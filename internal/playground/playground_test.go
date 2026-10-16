@@ -119,8 +119,10 @@ func TestDraftSnapshot(t *testing.T) {
 	// A PR that tries to widen its reach: these changes must not apply.
 	head["platform/eligibility.yaml"] = &fstest.MapFile{Data: []byte("denylist: [{repo: other/x, reason: r}]\n")}
 	head["repos/acme/new.yaml"] = &fstest.MapFile{Data: []byte("enabled: true\n")}
-	changed := []string{"rules/reliability/no-bare-http-get-c9.yaml", "rules/security/no-raw-sql-concat.yaml",
-		"platform/eligibility.yaml", "repos/acme/new.yaml", "README.md"}
+	changed := []string{
+		"rules/reliability/no-bare-http-get-c9.yaml", "rules/security/no-raw-sql-concat.yaml",
+		"platform/eligibility.yaml", "repos/acme/new.yaml", "README.md",
+	}
 
 	snap, ids, err := DraftSnapshot(base, head, changed, "head1")
 	if err != nil {
@@ -129,7 +131,7 @@ func TestDraftSnapshot(t *testing.T) {
 	if strings.Join(ids, ",") != "no-bare-http-get-c9" {
 		t.Errorf("ids = %v", ids)
 	}
-	var have []string
+	have := make([]string, 0, len(snap.Rules))
 	for _, r := range snap.Rules {
 		have = append(have, r.ID)
 	}
@@ -226,11 +228,15 @@ func setup(t *testing.T) fixture {
 		Quote: func(string, int) string { return `_, err := http.Get(url)` },
 	}}
 	h := engine.NewHarness(engine.HarnessConfig{GatewayURL: "http://scripted.invalid", GatewayToken: "t", HTTPClient: &http.Client{Transport: tr}})
-	fg := &fakeGitHub{readers: map[string]bool{"alice": true},
-		pr: gh.PullRequest{Repo: sandboxRepo, Number: 41, Title: "Load things", Author: "bob", BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA}}
+	fg := &fakeGitHub{
+		readers: map[string]bool{"alice": true},
+		pr:      gh.PullRequest{Repo: sandboxRepo, Number: 41, Title: "Load things", Author: "bob", BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA},
+	}
 	return fixture{
-		runner: &Runner{Engine: engine.New(h, sc, compiled.Runner{ASTGrep: "ast-grep-not-installed"}), Scanner: sc, GitHub: fg,
-			WorkDir: t.TempDir(), CloneURL: func(string) string { return repo.Dir }, Caller: "playground"},
+		runner: &Runner{
+			Engine: engine.New(h, sc, compiled.Runner{ASTGrep: "ast-grep-not-installed"}), Scanner: sc, GitHub: fg,
+			WorkDir: t.TempDir(), CloneURL: func(string) string { return repo.Dir }, Caller: "playground",
+		},
 		tr: tr, gh: fg, snap: snap,
 	}
 }

@@ -17,7 +17,7 @@ type Candidate struct {
 // ApplyFanOutCap keeps at most limit candidates and defers the rest,
 // lowest precision first. Ties are broken by rule id so the split is
 // deterministic. Both results are in run order; the input is not modified.
-func ApplyFanOutCap(candidates []Candidate, limit int) (run, deferred []Candidate) {
+func ApplyFanOutCap(candidates []Candidate, limit int) ([]Candidate, []Candidate) {
 	sorted := slices.Clone(candidates)
 	slices.SortStableFunc(sorted, func(a, b Candidate) int {
 		if c := cmp.Compare(b.Precision, a.Precision); c != 0 {

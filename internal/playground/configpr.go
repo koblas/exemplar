@@ -25,7 +25,7 @@ type GitConfigPR struct {
 
 // Load checks the PR out and returns its base and head trees and every
 // changed path, both sides of renames included.
-func (g *GitConfigPR) Load(ctx context.Context, number int) (base, head fs.FS, changed []string, headSHA string, err error) {
+func (g *GitConfigPR) Load(ctx context.Context, number int) (fs.FS, fs.FS, []string, string, error) {
 	pr, err := g.PR(ctx, number)
 	if err != nil {
 		return nil, nil, nil, "", err
@@ -62,6 +62,7 @@ func (g *GitConfigPR) Load(ctx context.Context, number int) (base, head fs.FS, c
 	if err != nil {
 		return nil, nil, nil, "", err
 	}
+	var changed []string
 	for _, f := range diff.Files() {
 		changed = append(changed, f.Path)
 		if f.OldPath != "" && f.OldPath != f.Path {

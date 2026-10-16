@@ -4,6 +4,7 @@
 package codeowners
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -28,7 +29,7 @@ type rule struct {
 // Parse parses CODEOWNERS text; lines it cannot read are skipped.
 func Parse(text string) File {
 	var f File
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if i := strings.Index(line, "#"); i >= 0 {
 			line = line[:i]
 		}
@@ -51,8 +52,7 @@ func (f File) Empty() bool { return len(f.rules) == 0 }
 // Owners returns the owners of p (nil when no rule matches, or the last
 // matching rule names no owner).
 func (f File) Owners(p string) []string {
-	for i := len(f.rules) - 1; i >= 0; i-- {
-		r := f.rules[i]
+	for _, r := range slices.Backward(f.rules) {
 		if doublestar.MatchUnvalidated(r.pattern, p) || (!r.dirOnly && doublestar.MatchUnvalidated(r.pattern+"/**", p)) {
 			return r.owners
 		}

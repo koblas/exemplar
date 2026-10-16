@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ func credentialsPath() (string, error) {
 	return filepath.Join(dir, "exemplar", "credentials.json"), nil
 }
 
-func loadCredentials() (credentials, error) {
+func loadCredentials(ctx context.Context) (credentials, error) {
 	var c credentials
 	if p, err := credentialsPath(); err == nil {
 		if data, err := os.ReadFile(p); err == nil {
@@ -74,7 +75,7 @@ func loadCredentials() (credentials, error) {
 		if c.Refresh == "" || c.TokenEndpoint == "" {
 			return c, errors.New("your sign-in expired: run `exemplar login --oidc` again")
 		}
-		tok, err := refreshOIDC(context.Background(), http.DefaultClient, c)
+		tok, err := refreshOIDC(ctx, http.DefaultClient, c)
 		if err != nil {
 			return c, fmt.Errorf("your sign-in expired and could not be refreshed (%w): run `exemplar login --oidc` again", err)
 		}
@@ -127,7 +128,7 @@ func saveCredentials(c credentials) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return "", err
 	}
-	data, err := json.MarshalIndent(c, "", "  ")
+	data, err := json.MarshalIndent(c, "", "  ") //nolint:gosec // G117: this is the CLI's own credential cache; the refresh token must be stored, and the file is 0o600
 	if err != nil {
 		return "", err
 	}
@@ -324,7 +325,7 @@ func newReviewCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			creds, err := loadCredentials()
+			creds, err := loadCredentials(ctx)
 			if err != nil {
 				return err
 			}
@@ -457,7 +458,7 @@ func workingDiff(ctx context.Context, base string) (string, error) {
 	}
 	var b strings.Builder
 	b.WriteString(d)
-	for _, p := range strings.Split(untracked, "\x00") {
+	for p := range strings.SplitSeq(untracked, "\x00") {
 		if p == "" {
 			continue
 		}
@@ -517,13 +518,13 @@ func apiCall(ctx context.Context, c *http.Client, creds credentials, method, pat
 
 func printFindings(w io.Writer, res *evaluate.Result, cost float64) {
 	for _, f := range res.Findings {
-		lines := fmt.Sprint(f.StartLine)
+		lines := strconv.Itoa(f.StartLine)
 		if f.EndLine > f.StartLine {
 			lines += fmt.Sprintf("-%d", f.EndLine)
 		}
 		fmt.Fprintf(w, "%s:%s: %s [%s] %s\n", f.Path, lines, f.Severity, f.RuleID, f.Message)
 		if f.Suggestion != "" {
-			for _, l := range strings.Split(strings.TrimRight(f.Suggestion, "\n"), "\n") {
+			for l := range strings.SplitSeq(strings.TrimRight(f.Suggestion, "\n"), "\n") {
 				fmt.Fprintln(w, "    | "+l)
 			}
 		}
@@ -561,7 +562,7 @@ func reviewSARIF(fs []evaluate.Finding) ([]byte, error) {
 	level := map[string]string{"blocking": "error", "important": "warning", "suggestion": "note"}
 	rules := []map[string]any{}
 	seen := map[string]bool{}
-	results := []result{}
+	results := make([]result, 0, len(fs))
 	for _, f := range fs {
 		if !seen[f.RuleID] {
 			seen[f.RuleID] = true

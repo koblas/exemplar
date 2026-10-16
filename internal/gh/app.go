@@ -81,7 +81,7 @@ func (f Flavor) String() string {
 
 // Permissions returns exactly the permissions a flavor's token carries.
 func (f Flavor) Permissions() *github.InstallationPermissions {
-	read, write := github.Ptr("read"), github.Ptr("write")
+	read, write := new("read"), new("write")
 	switch f {
 	case FlavorWorker:
 		return &github.InstallationPermissions{Contents: read, PullRequests: read}
@@ -238,7 +238,7 @@ func (a *App) clientWithToken(installationID int64, token string) (*github.Clien
 		resp, err := a.base.RoundTrip(req)
 		status, resource, remaining := 0, "", ""
 		if resp != nil {
-			status, resource, remaining = resp.StatusCode, resp.Header.Get("X-RateLimit-Resource"), resp.Header.Get("X-RateLimit-Remaining")
+			status, resource, remaining = resp.StatusCode, resp.Header.Get("X-Ratelimit-Resource"), resp.Header.Get("X-Ratelimit-Remaining")
 		}
 		telemetry.GitHubResponse(req.Context(), installationID, status, resource, remaining)
 		return resp, err

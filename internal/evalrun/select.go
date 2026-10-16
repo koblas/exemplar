@@ -29,7 +29,7 @@ func EvaluateRule(ctx context.Context, ev *Evaluator, snap *config.Snapshot, cfg
 				if !f.Enabled {
 					status = schema.StatusKilled
 				}
-				r = &config.Rule{Rule: schema.Rule{ID: id, Kind: schema.KindBugClass, Status: status, FilePatterns: []string{"**"}}}
+				r = &config.Rule{ID: id, Kind: schema.KindBugClass, Status: status, FilePatterns: []string{"**"}}
 			}
 		}
 	}

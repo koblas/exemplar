@@ -46,8 +46,10 @@ func TestDecide(t *testing.T) {
 		// 30 of 30 positive by count, but heavy negative weight: the Wilson
 		// bound (0.887) clears the floor.
 		{name: "precision bound meets the floor", mod: func(s *queries.DemotionStatsRow) { s.Negatives = 0 }, why: "meets the floor"},
-		{name: "a stricter configured floor", mod: func(s *queries.DemotionStatsRow) { s.Negatives = 0 },
-			cfg: &schema.FeedbackConfig{EFPBar: 0.1, DemotionWilsonFlr: 0.9}, want: true},
+		{
+			name: "a stricter configured floor", mod: func(s *queries.DemotionStatsRow) { s.Negatives = 0 },
+			cfg: &schema.FeedbackConfig{EFPBar: 0.1, DemotionWilsonFlr: 0.9}, want: true,
+		},
 		{name: "a looser configured bar", cfg: &schema.FeedbackConfig{EFPBar: 0.5}, why: "within the bar"},
 	}
 	for _, tt := range tests {
@@ -94,6 +96,7 @@ type fakeRepo struct {
 }
 
 func (f *fakeRepo) DefaultBranch(context.Context) (string, string, error) { return "main", "abc", nil }
+
 func (f *fakeRepo) FindPR(_ context.Context, branch string) (string, bool, error) {
 	u, ok := f.prs[branch]
 	return u, ok, nil
@@ -106,15 +109,18 @@ func (f *fakeRepo) GetFile(_ context.Context, _, path string) ([]byte, error) {
 	}
 	return []byte(s), nil
 }
+
 func (f *fakeRepo) PutFile(_ context.Context, branch, path string, content []byte, _ string) error {
 	f.written[branch+":"+path] = string(content)
 	return nil
 }
+
 func (f *fakeRepo) OpenPR(_ context.Context, branch, _, _, body string) (string, int, error) {
 	f.bodies = append(f.bodies, body)
 	f.prs[branch] = "https://github.com/acme/exemplar-config/pull/9"
 	return f.prs[branch], 9, nil
 }
+
 func (f *fakeRepo) MergePR(_ context.Context, n int, _ string) error {
 	if f.mergeErr != nil {
 		return f.mergeErr
@@ -131,15 +137,18 @@ func (f *fakeRepo) FindIssue(_ context.Context, _, title string) (gh.ConfigItem,
 	}
 	return gh.ConfigItem{}, false, nil
 }
+
 func (f *fakeRepo) CreateIssue(_ context.Context, title, body string, _ []string) (gh.ConfigItem, error) {
 	it := gh.ConfigItem{Number: 100 + len(f.issues), URL: "https://github.com/acme/exemplar-config/issues/x", State: "open", CreatedAt: time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC)}
 	f.issues, f.titles, f.bodies = append(f.issues, it), append(f.titles, title), append(f.bodies, body)
 	return it, nil
 }
+
 func (f *fakeRepo) CloseIssue(_ context.Context, n int, _ string) error {
 	f.closed = append(f.closed, n)
 	return nil
 }
+
 func (f *fakeRepo) HumanActivity(context.Context, int, time.Time) (bool, error) {
 	return f.activity, nil
 }
@@ -155,7 +164,7 @@ func TestRunner(t *testing.T) {
 		return queries.DemotionStatsRow{RuleID: id, Judged: 30, Negatives: 6, NegW: 12, PosW: 24, NonAuthorActors: 2}
 	}
 	rule := func(id, status, scope string) config.Rule {
-		return config.Rule{Rule: schema.Rule{ID: id, Status: status, Owner: "@platform/backend"}, Path: "rules/" + id + ".yaml", Scope: scope, VersionSHA: "0123456789abcdef"}
+		return config.Rule{ID: id, Status: status, Owner: "@platform/backend", Path: "rules/" + id + ".yaml", Scope: scope, VersionSHA: "0123456789abcdef"}
 	}
 	snap := &config.Snapshot{Rules: []config.Rule{
 		rule("noisy", schema.StatusActive, "global"), rule("quiet", schema.StatusActive, "global"),
@@ -277,8 +286,10 @@ func TestDemotionStatsQuery(t *testing.T) {
 func TestFlag(t *testing.T) {
 	// Both bars crossed, but only the author objected: a flag.
 	authorOnly := queries.DemotionStatsRow{RuleID: "noisy", Judged: 30, Negatives: 6, NegW: 12, PosW: 24, NonAuthorActors: 1}
-	snap := &config.Snapshot{Rules: []config.Rule{{Rule: schema.Rule{ID: "noisy", Status: schema.StatusActive, Owner: "@platform/backend"},
-		Path: "rules/noisy.yaml", Scope: "global", VersionSHA: "0123456789abcdef"}}}
+	snap := &config.Snapshot{Rules: []config.Rule{{
+		ID: "noisy", Status: schema.StatusActive, Owner: "@platform/backend",
+		Path: "rules/noisy.yaml", Scope: "global", VersionSHA: "0123456789abcdef",
+	}}}
 	repo := &fakeRepo{files: map[string]string{"rules/noisy.yaml": "id: noisy\nstatus: active\n"}, prs: map[string]string{}, written: map[string]string{}}
 	day := 0
 	run := func() Outcome {
@@ -309,8 +320,10 @@ func TestFlag(t *testing.T) {
 		t.Errorf("no response = %+v (merged %v, closed %v)", o, repo.merged, repo.closed)
 	}
 	// A closed flag is a response.
-	repo2 := &fakeRepo{files: repo.files, prs: map[string]string{}, written: map[string]string{},
-		issues: []gh.ConfigItem{{Number: 7, State: "closed"}}, titles: []string{"Exemplar flag: noisy (0123456789ab)"}}
+	repo2 := &fakeRepo{
+		files: repo.files, prs: map[string]string{}, written: map[string]string{},
+		issues: []gh.ConfigItem{{Number: 7, State: "closed"}}, titles: []string{"Exemplar flag: noisy (0123456789ab)"},
+	}
 	if _, outs, err := (Runner{Stats: fakeStats{authorOnly}, Repo: repo2, Now: time.Now}).Run(t.Context(), snap); err != nil || outs[0].Action != "responded" {
 		t.Errorf("closed flag = %+v, %v", outs, err)
 	}

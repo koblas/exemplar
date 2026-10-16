@@ -92,14 +92,17 @@ func newEvalCmd() *cobra.Command {
 				reports = append(reports, rep)
 			}
 			if jsonOut != "" {
-				data, _ := json.MarshalIndent(reports, "", "  ")
-				if err := os.WriteFile(jsonOut, append(data, '\n'), 0o644); err != nil {
+				data, err := json.MarshalIndent(reports, "", "  ")
+				if err != nil {
+					return fmt.Errorf("encode eval reports: %w", err)
+				}
+				if err := os.WriteFile(jsonOut, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 					return err
 				}
 			}
 			md := evalMarkdown(reports, snap.Global.EvalThresholds)
 			if markdownOut != "" {
-				if err := os.WriteFile(markdownOut, []byte(md), 0o644); err != nil {
+				if err := os.WriteFile(markdownOut, []byte(md), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 					return err
 				}
 			}
@@ -203,7 +206,7 @@ func remoteEval(ctx context.Context, out io.Writer, configDir, since, repo strin
 	if since == "" {
 		return errors.New("--remote needs --changed-since: the config PR's base")
 	}
-	creds, err := loadCredentials()
+	creds, err := loadCredentials(ctx)
 	if err != nil {
 		return err
 	}
@@ -262,12 +265,12 @@ func remoteEval(ctx context.Context, out io.Writer, configDir, since, repo strin
 		if err := json.Indent(&b, ev.Reports, "", "  "); err != nil {
 			return fmt.Errorf("eval reports: %w", err)
 		}
-		if err := os.WriteFile(jsonOut, append(b.Bytes(), '\n'), 0o644); err != nil {
+		if err := os.WriteFile(jsonOut, append(b.Bytes(), '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 			return err
 		}
 	}
 	if markdownOut != "" {
-		if err := os.WriteFile(markdownOut, []byte(ev.Markdown), 0o644); err != nil {
+		if err := os.WriteFile(markdownOut, []byte(ev.Markdown), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 			return err
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +35,7 @@ type recorded struct {
 }
 
 func newFake(t *testing.T) (*fakeGitHub, *httptest.Server) {
+	t.Helper()
 	f := &fakeGitHub{t: t, decision: "REVIEW_REQUIRED"}
 	srv := httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(srv.Close)
@@ -50,38 +52,50 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	switch {
-	case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/access_tokens"):
-		_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_test", "expires_at": time.Now().Add(time.Hour)})
-	case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/reviews"):
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/access_tokens"):
+		f.writeJSON(w, map[string]any{"token": "ghs_test", "expires_at": time.Now().Add(time.Hour)})
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/reviews"):
 		f.mu.Lock()
-		_ = json.NewEncoder(w).Encode(f.reviews)
+		f.writeJSON(w, f.reviews)
 		f.mu.Unlock()
-	case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/reviews"):
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reviews"):
 		f.mu.Lock()
-		rv := &github.PullRequestReview{ID: github.Ptr(int64(100 + len(f.reviews))), Body: github.Ptr(body["body"].(string)), CommitID: github.Ptr(body["commit_id"].(string))}
+		text, okBody := body["body"].(string)
+		commitID, okCommit := body["commit_id"].(string)
+		if !okBody || !okCommit {
+			f.t.Errorf("review request body/commit_id not strings: %v", body)
+		}
+		rv := &github.PullRequestReview{ID: new(int64(100 + len(f.reviews))), Body: new(text), CommitID: new(commitID)}
 		f.reviews = append(f.reviews, rv)
 		if body["event"] == "APPROVE" && f.approved {
 			f.decision = "APPROVED"
 		}
 		f.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(rv)
-	case r.Method == "PUT" && strings.HasSuffix(r.URL.Path, "/dismissals"):
+		f.writeJSON(w, rv)
+	case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/dismissals"):
 		f.mu.Lock()
 		f.decision = "REVIEW_REQUIRED"
 		f.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
-	case r.Method == "POST" && r.URL.Path == "/graphql":
+		f.writeJSON(w, map[string]any{"id": 1})
+	case r.Method == http.MethodPost && r.URL.Path == "/graphql":
 		f.mu.Lock()
 		d := f.decision
 		f.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{
+		f.writeJSON(w, map[string]any{"data": map[string]any{"repository": map[string]any{
 			"pullRequest": map[string]any{"reviewDecision": d, "mergeStateStatus": "BLOCKED"},
 		}}})
 	case strings.Contains(r.URL.Path, "/check-runs"):
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": 55})
+		f.writeJSON(w, map[string]any{"id": 55})
 	default:
 		f.t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// writeJSON encodes v as the response, failing the test if it cannot.
+func (f *fakeGitHub) writeJSON(w http.ResponseWriter, v any) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		f.t.Errorf("encode response: %v", err)
 	}
 }
 
@@ -228,18 +242,27 @@ func TestPostReviewIsIdempotent(t *testing.T) {
 	if body["event"] != "COMMENT" {
 		t.Errorf("event = %v, want COMMENT", body["event"])
 	}
-	if !strings.Contains(body["body"].(string), Marker(42, "abc123")) {
+	if !strings.Contains(fmt.Sprint(body["body"]), Marker(42, "abc123")) {
 		t.Error("review body lacks the idempotency marker")
 	}
 	if auth := creates[0].Auth; auth != "Bearer ghs_test" {
 		t.Errorf("review posted with %q, want the poster installation token", auth)
 	}
-	comments := body["comments"].([]any)
-	single := comments[0].(map[string]any)
+	comments, ok := body["comments"].([]any)
+	if !ok || len(comments) < 2 {
+		t.Fatalf("comments = %v, want two", body["comments"])
+	}
+	single, ok := comments[0].(map[string]any)
+	if !ok {
+		t.Fatalf("single-line comment = %v", comments[0])
+	}
 	if _, has := single["start_line"]; has || single["line"] != float64(3) {
 		t.Errorf("single-line comment = %v", single)
 	}
-	multi := comments[1].(map[string]any)
+	multi, ok := comments[1].(map[string]any)
+	if !ok {
+		t.Fatalf("multi-line comment = %v", comments[1])
+	}
 	if multi["start_line"] != float64(10) || multi["line"] != float64(12) || multi["start_side"] != "LEFT" {
 		t.Errorf("multi-line comment = %v", multi)
 	}
@@ -276,7 +299,11 @@ func TestCheckRunIncompleteHasRerun(t *testing.T) {
 		t.Fatalf("got %d check updates", len(upd))
 	}
 	actions, _ := upd[0].Body["actions"].([]any)
-	if len(actions) != 1 || actions[0].(map[string]any)["identifier"] != RerunAction {
+	var first map[string]any
+	if len(actions) == 1 {
+		first, _ = actions[0].(map[string]any)
+	}
+	if first["identifier"] != RerunAction {
 		t.Fatalf("actions = %v, want the Re-run action", actions)
 	}
 }

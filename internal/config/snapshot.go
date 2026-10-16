@@ -29,6 +29,7 @@ import (
 // Rule is a validated rule plus where it came from.
 type Rule struct {
 	schema.Rule
+
 	// Path is the file the rule was read from, relative to its tree.
 	Path string
 	// Scope is "global" for exemplar-config rules or "<org>/<repo>" for
@@ -61,23 +62,26 @@ type Snapshot struct {
 // CategorizerLabel is a labeled PR and the file it came from.
 type CategorizerLabel struct {
 	schema.CategorizerLabel
+
 	Path string
 }
 
 // VerifierLabel is a labeled finding and the file it came from.
 type VerifierLabel struct {
 	schema.VerifierLabel
+
 	Path string
 }
 
 // AdversarialCase is a decoded case from evals/_adversarial.
 type AdversarialCase struct {
 	schema.AdversarialCase
+
 	Path string
 }
 
 // Problem is one validation failure in a config tree.
-type Problem struct {
+type Problem struct { //nolint:errname // pairs with Problems, whose exported name callers outside config match by type
 	Path string
 	Err  error
 }
@@ -85,7 +89,9 @@ type Problem struct {
 func (p Problem) Error() string { return p.Path + ": " + p.Err.Error() }
 
 // Problems collects every validation failure so one run reports them all.
-type Problems []Problem
+// Error has a value receiver so Problems (not *Problems) is the error that
+// callers match; add needs a pointer to append.
+type Problems []Problem //nolint:errname,recvcheck // name matched with errors.AsType by cmd/exemplar and playground; receivers as above
 
 func (ps Problems) Error() string {
 	msgs := make([]string, len(ps))

@@ -38,7 +38,7 @@ func TestSchemaDrift(t *testing.T) {
 	}
 }
 
-var rawMessageType = reflect.TypeOf(json.RawMessage{})
+var rawMessageType = reflect.TypeFor[json.RawMessage]()
 
 func compareNode(t *testing.T, path string, doc, node map[string]any, typ reflect.Type) {
 	t.Helper()
@@ -49,7 +49,7 @@ func compareNode(t *testing.T, path string, doc, node map[string]any, typ reflec
 	if typ == rawMessageType {
 		return
 	}
-	switch typ.Kind() {
+	switch typ.Kind() { //nolint:exhaustive // only composite kinds have schema structure to compare
 	case reflect.Struct:
 		props, _ := node["properties"].(map[string]any)
 		if props == nil {
@@ -101,7 +101,7 @@ func resolve(t *testing.T, doc, node map[string]any) (map[string]any, map[string
 			doc = loadSchemaDoc(t, file)
 		}
 		node = doc
-		for _, part := range strings.Split(strings.TrimPrefix(frag, "/"), "/") {
+		for part := range strings.SplitSeq(strings.TrimPrefix(frag, "/"), "/") {
 			if part == "" {
 				continue
 			}

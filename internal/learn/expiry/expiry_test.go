@@ -26,6 +26,7 @@ type fakeRepo struct {
 }
 
 func (f *fakeRepo) DefaultBranch(context.Context) (string, string, error) { return "main", "abc", nil }
+
 func (f *fakeRepo) PRByBranch(_ context.Context, b string) (gh.ConfigItem, bool, error) {
 	p, ok := f.prs[b]
 	return p, ok, nil
@@ -38,20 +39,26 @@ func (f *fakeRepo) GetFile(_ context.Context, _, path string) ([]byte, error) {
 	}
 	return []byte(s), nil
 }
+
 func (f *fakeRepo) PutFile(_ context.Context, branch, path string, c []byte, _ string) error {
 	f.written[branch+":"+path] = string(c)
 	return nil
 }
+
 func (f *fakeRepo) OpenPR(_ context.Context, branch, _, _, body string) (string, int, error) {
 	f.bodies = append(f.bodies, body)
-	f.prs[branch] = gh.ConfigItem{Number: 10 + len(f.prs), URL: "https://github.com/acme/exemplar-config/pull/1", State: "open",
-		CreatedAt: time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC)}
+	f.prs[branch] = gh.ConfigItem{
+		Number: 10 + len(f.prs), URL: "https://github.com/acme/exemplar-config/pull/1", State: "open",
+		CreatedAt: time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC),
+	}
 	return f.prs[branch].URL, f.prs[branch].Number, nil
 }
+
 func (f *fakeRepo) MergePR(_ context.Context, n int, _ string) error {
 	f.merged = append(f.merged, n)
 	return nil
 }
+
 func (f *fakeRepo) HumanActivity(context.Context, int, time.Time) (bool, error) {
 	return f.activity, nil
 }
@@ -64,8 +71,10 @@ func (f fakeStats) RuleRecentOutcomes(_ context.Context, a queries.RuleRecentOut
 
 func TestExpiry(t *testing.T) {
 	rule := func(id, reviewBy, status string) config.Rule {
-		return config.Rule{Rule: schema.Rule{ID: id, Status: status, Owner: "@platform/backend", ReviewBy: reviewBy},
-			Path: "rules/" + id + ".yaml", Scope: "global", VersionSHA: "0123456789abcdef"}
+		return config.Rule{
+			ID: id, Status: status, Owner: "@platform/backend", ReviewBy: reviewBy,
+			Path: "rules/" + id + ".yaml", Scope: "global", VersionSHA: "0123456789abcdef",
+		}
 	}
 	snap := &config.Snapshot{Rules: []config.Rule{
 		rule("healthy", "2026-10-01", schema.StatusActive), rule("noisy", "2026-10-01", schema.StatusActive),
@@ -75,8 +84,10 @@ func TestExpiry(t *testing.T) {
 	file := func(id string) string {
 		return "id: " + id + "\nstatus: active  # promoted\nreview_by: \"2026-10-01\"\n"
 	}
-	repo := &fakeRepo{files: map[string]string{"rules/healthy.yaml": file("healthy"), "rules/noisy.yaml": file("noisy"), "rules/quiet.yaml": file("quiet")},
-		prs: map[string]gh.ConfigItem{}, written: map[string]string{}}
+	repo := &fakeRepo{
+		files: map[string]string{"rules/healthy.yaml": file("healthy"), "rules/noisy.yaml": file("noisy"), "rules/quiet.yaml": file("quiet")},
+		prs:   map[string]gh.ConfigItem{}, written: map[string]string{},
+	}
 	stats := fakeStats{
 		"healthy": {Judged: 12, NegW: 1, PosW: 20},
 		"noisy":   {Judged: 12, NegW: 8, PosW: 10},

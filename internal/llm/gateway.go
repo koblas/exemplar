@@ -151,7 +151,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found_error", "only POST /v1/messages is served")
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(r.Header.Get("x-api-key")), []byte(g.cfg.Token)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Api-Key")), []byte(g.cfg.Token)) != 1 {
 		writeError(w, http.StatusUnauthorized, "authentication_error", "invalid gateway token")
 		return
 	}
@@ -211,11 +211,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		start := time.Now()
-		resp, err := client.Send(r.Context(), Request{Body: routed, Beta: r.Header.Get("anthropic-beta")})
+		resp, err := client.Send(r.Context(), Request{Body: routed, Beta: r.Header.Get("Anthropic-Beta")})
 		if err != nil {
 			status := 0
-			var pe *ProviderError
-			if errors.As(err, &pe) {
+			if pe, ok := errors.AsType[*ProviderError](err); ok {
 				status = pe.Status
 			}
 			telemetry.ModelCall(r.Context(), route.Provider, route.Model, meta.stage, meta.caller, telemetry.StatusOutcome(status), time.Since(start))
@@ -316,7 +315,7 @@ func parseMeta(h http.Header) (callMeta, error) {
 	if raw == "" {
 		return m, fmt.Errorf("%s is required (FR-H4)", HeaderDataClasses)
 	}
-	for _, c := range strings.Split(raw, ",") {
+	for c := range strings.SplitSeq(raw, ",") {
 		c = strings.TrimSpace(c)
 		if !slices.Contains(DataClasses, c) {
 			return m, fmt.Errorf("unknown data class %q", c)
@@ -361,7 +360,10 @@ func withModel(body []byte, model string) ([]byte, error) {
 	if err := json.Unmarshal(body, &m); err != nil {
 		return nil, fmt.Errorf("request body is not a JSON object: %w", err)
 	}
-	enc, _ := json.Marshal(model)
+	enc, err := json.Marshal(model)
+	if err != nil {
+		return nil, fmt.Errorf("encode model: %w", err)
+	}
 	m["model"] = enc
 	return json.Marshal(m)
 }
@@ -417,6 +419,7 @@ func budgetSignal(spend, ceiling float64) string {
 func writeError(w http.ResponseWriter, status int, typ, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+	//nolint:errchkjson // a fixed map of strings always encodes; a failed write to the client has no recovery
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"type":  "error",
 		"error": map[string]string{"type": typ, "message": msg},

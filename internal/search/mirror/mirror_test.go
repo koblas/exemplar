@@ -35,9 +35,11 @@ func newUpstream(t *testing.T) *upstream {
 func (u *upstream) git(args ...string) string {
 	u.t.Helper()
 	cmd := exec.CommandContext(u.t.Context(), "git", append([]string{"-C", u.dir}, args...)...)
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + u.t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"), "HOME=" + u.t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_AUTHOR_NAME=Dev", "GIT_AUTHOR_EMAIL=dev@example.invalid", "GIT_COMMITTER_NAME=Dev", "GIT_COMMITTER_EMAIL=dev@example.invalid",
-		"GIT_AUTHOR_DATE=2026-09-01T00:00:00Z", "GIT_COMMITTER_DATE=2026-09-01T00:00:00Z"}
+		"GIT_AUTHOR_DATE=2026-09-01T00:00:00Z", "GIT_COMMITTER_DATE=2026-09-01T00:00:00Z",
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		u.t.Fatalf("git %v: %v\n%s", args, err, out)

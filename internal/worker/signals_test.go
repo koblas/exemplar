@@ -124,8 +124,10 @@ func TestIgnoredAtMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	merge := store.FeedbackSignalArgs{InstallationID: inst, Repo: repo, PR: prNum, Signal: store.SignalMerged, Actor: "alice",
-		HeadSHA: e.head, At: time.Now().Add(-time.Hour)}
+	merge := store.FeedbackSignalArgs{
+		InstallationID: inst, Repo: repo, PR: prNum, Signal: store.SignalMerged, Actor: "alice",
+		HeadSHA: e.head, At: time.Now().Add(-time.Hour),
+	}
 	if out, err := sw.Handle(t.Context(), merge); err != nil || !slices.Equal(out.Kinds, []string{"ignored"}) {
 		t.Fatalf("merged = %+v, %v", out, err)
 	}

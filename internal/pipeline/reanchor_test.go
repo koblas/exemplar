@@ -34,7 +34,7 @@ func TestReanchor(t *testing.T) {
 	if len(plan.Moves) != 1 || plan.Moves[0].Finding.ID != 1 || plan.Moves[0].Start != 5 || plan.Moves[0].End != 5 {
 		t.Errorf("moves = %+v", plan.Moves)
 	}
-	var outdated []int64
+	outdated := make([]int64, 0, len(plan.Outdated))
 	for _, c := range plan.Outdated {
 		outdated = append(outdated, c.Finding.ID)
 		if c.Reply != RebaseReply || c.State != "outdated" {
@@ -53,7 +53,7 @@ func TestReanchorIdenticalCode(t *testing.T) {
 	// each side; the old file had the block at lines 1-5 and 11-15.
 	block := []string{"for {", "x++", "y++", "z++", "}"}
 	anchor := code(block...)
-	var file []string
+	file := make([]string, 0, 2*(3+len(block)+2))
 	for range 2 {
 		file = append(file, "// pad", "// pad", "// pad")
 		file = append(file, block...)

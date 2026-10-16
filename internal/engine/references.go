@@ -68,12 +68,17 @@ func (e *Engine) toolbox(p *Prepared) *toolbox {
 	return tb
 }
 
-var findReferencesDef = toolDef{"find_references",
-	"Find where a function, method, type or variable is referenced: the package that defines it and the files that import that package, ranked by closeness to the definition, at most 50 sites with two lines of context. Pass defined_in, the file that defines the name; it is required for common names.",
+var findReferencesDef = toolDef{
+	"find_references",
+	"Find where a function, method, type or variable is referenced: the package that defines it and the files that import that package, " +
+		"ranked by closeness to the definition, at most 50 sites with two lines of context. " +
+		"Pass defined_in, the file that defines the name; it is required for common names.",
 	map[string]any{
 		"name":       map[string]any{"type": "string", "description": "the identifier, optionally qualified (pkg.Func, Type.Method)"},
 		"defined_in": map[string]any{"type": "string", "description": "path of the file that defines it"},
-	}, []string{"name"}}
+	},
+	[]string{"name"},
+}
 
 // findReferences answers the tool: exemplar-search at the pinned
 // snapshot, with the PR overlay: index hits in files the PR

@@ -71,19 +71,6 @@ func Family(provider, model string) (string, bool) {
 	return spec.Family(model), true
 }
 
-// NewProvider constructs an approved provider.
-func NewProvider(ctx context.Context, name string, s Settings) (Provider, error) {
-	spec, ok := registry[name]
-	if !ok {
-		return nil, fmt.Errorf("llm: provider %q is not approved (approved: %v)", name, Registered())
-	}
-	p, err := spec.New(ctx, s)
-	if err != nil {
-		return nil, fmt.Errorf("llm: configure provider %s: %w", name, err)
-	}
-	return p, nil
-}
-
 // ConfiguredProviders returns every provider a stage configuration names.
 func ConfiguredProviders(p schema.Providers) []string {
 	entries := slices.Concat(p.Generator, p.Verifier, p.Light)
@@ -140,6 +127,19 @@ func (e *ProviderError) Unwrap() error { return e.Err }
 type Provider interface {
 	Name() string
 	Send(ctx context.Context, req Request) (*Response, error)
+}
+
+// NewProvider constructs an approved provider.
+func NewProvider(ctx context.Context, name string, s Settings) (Provider, error) {
+	spec, ok := registry[name]
+	if !ok {
+		return nil, fmt.Errorf("llm: provider %q is not approved (approved: %v)", name, Registered())
+	}
+	p, err := spec.New(ctx, s)
+	if err != nil {
+		return nil, fmt.Errorf("llm: configure provider %s: %w", name, err)
+	}
+	return p, nil
 }
 
 func retryableStatus(code int) bool {

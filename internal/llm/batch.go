@@ -129,7 +129,7 @@ func (g *Gateway) Handler() http.Handler {
 }
 
 func (g *Gateway) authorized(w http.ResponseWriter, r *http.Request) bool {
-	if subtle.ConstantTimeCompare([]byte(r.Header.Get("x-api-key")), []byte(g.cfg.Token)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Api-Key")), []byte(g.cfg.Token)) != 1 {
 		writeError(w, http.StatusUnauthorized, "authentication_error", "invalid gateway token")
 		return false
 	}
@@ -380,7 +380,7 @@ func (g *Gateway) writeBatchJSON(w http.ResponseWriter, route Route, raw []byte)
 	h.Set(HeaderModel, route.Model)
 	h.Set(HeaderFamily, family)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(raw)
+	_, _ = w.Write(raw) //nolint:gosec // G705: upstream batch JSON served as application/json to API clients, never rendered as HTML
 }
 
 func (g *Gateway) batches() BatchStore {

@@ -38,7 +38,7 @@ func TestPlanRedeliveries(t *testing.T) {
 		{ID: 10, StatusCode: 500}, // no GUID
 	}
 	got := PlanRedeliveries(ds, map[string]bool{"c": true})
-	var ids []int64
+	ids := make([]int64, 0, len(got))
 	for _, d := range got {
 		ids = append(ids, d.ID)
 	}
@@ -48,7 +48,7 @@ func TestPlanRedeliveries(t *testing.T) {
 }
 
 func TestSearchBatches(t *testing.T) {
-	var repos []string
+	repos := make([]string, 0, 41)
 	for i := range 40 {
 		repos = append(repos, "acme/service-number-"+strings.Repeat("x", i%5))
 	}
@@ -98,7 +98,7 @@ func TestPlanSweep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var nums []int
+	nums := make([]int, 0, len(got))
 	for _, pr := range got {
 		nums = append(nums, pr.Number)
 	}
@@ -111,7 +111,7 @@ func TestPlanSweep(t *testing.T) {
 	rc.Forks = &schema.Forks{Review: true}
 	snap.Repos[repo] = rc
 	got, _ = PlanSweep(snap, prs, func(gh.OpenPR) (bool, error) { return false, nil })
-	nums = nil
+	nums = make([]int, 0, len(got))
 	for _, pr := range got {
 		nums = append(nums, pr.Number)
 	}
@@ -133,6 +133,7 @@ type fakeDeliveries struct {
 func (f *fakeDeliveries) HookDeliveries(context.Context, time.Time) ([]gh.Delivery, error) {
 	return f.ds, nil
 }
+
 func (f *fakeDeliveries) Redeliver(_ context.Context, id int64) error {
 	f.redelivered = append(f.redelivered, id)
 	return nil

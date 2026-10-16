@@ -84,6 +84,7 @@ type Config struct {
 // Worker runs pr_review jobs.
 type Worker struct {
 	river.WorkerDefaults[store.PRReviewArgs]
+
 	cfg Config
 }
 
@@ -353,8 +354,10 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		cs, err := gh.PRComments(ctx, reader, a.Repo, a.PR)
 		out := make([]engine.HumanComment, 0, len(cs))
 		for _, c := range cs {
-			out = append(out, engine.HumanComment{ID: c.ID, Author: c.Author, AuthorType: c.AuthorType, Association: c.Association,
-				Path: c.Path, Side: c.Side, Start: c.Start, End: c.End, Body: c.Body})
+			out = append(out, engine.HumanComment{
+				ID: c.ID, Author: c.Author, AuthorType: c.AuthorType, Association: c.Association,
+				Path: c.Path, Side: c.Side, Start: c.Start, End: c.End, Body: c.Body,
+			})
 		}
 		return out, err
 	}
@@ -449,7 +452,8 @@ func (w *Worker) mergePolicy(ctx context.Context, reader *github.Client, member 
 		return false
 	}
 	pass, err := reportMergePolicy(ctx, reader, member, poster, target, mergePolicyInput{
-		repo: p.PR.Repo, author: p.PR.Author, number: p.PR.Number, touched: p.Touched(), owners: p.CodeOwners, gatesPassed: gatesPassed})
+		repo: p.PR.Repo, author: p.PR.Author, number: p.PR.Number, touched: p.Touched(), owners: p.CodeOwners, gatesPassed: gatesPassed,
+	})
 	if err != nil {
 		w.cfg.Log.Warn("merge policy not reported", "repo", p.PR.Repo, "pr", p.PR.Number, "err", err)
 		return false
@@ -531,8 +535,10 @@ func (w *Worker) recordFixed(ctx context.Context, p *engine.Prepared, closures [
 		}
 		judged++
 		if w.cfg.Engine.ChangeAddresses(ctx, engine.CallMeta{Caller: Caller, Repo: p.PR.Repo}, findingOf(d), *o.AnchorCode, window(string(after), int(o.StartLine), int(o.EndLine), 3)) {
-			evs = append(evs, pipeline.Event{FindingID: o.ID, Kind: "fixed", Actor: p.PR.Author, Role: pipeline.RoleAuthor, Via: pipeline.ViaInferred,
-				Evidence: map[string]any{"head_sha": p.PR.HeadSHA}})
+			evs = append(evs, pipeline.Event{
+				FindingID: o.ID, Kind: "fixed", Actor: p.PR.Author, Role: pipeline.RoleAuthor, Via: pipeline.ViaInferred,
+				Evidence: map[string]any{"head_sha": p.PR.HeadSHA},
+			})
 		}
 	}
 	return pipeline.RecordEvents(ctx, w.cfg.Store, p.Effective.Global.Feedback, evs)

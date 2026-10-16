@@ -43,8 +43,10 @@ func (a *App) HookDeliveries(ctx context.Context, since time.Time) ([]Delivery, 
 			if at.Before(since) {
 				return out, nil // newest first: the rest are older
 			}
-			out = append(out, Delivery{ID: d.GetID(), GUID: d.GetGUID(), StatusCode: d.GetStatusCode(),
-				Redelivery: d.GetRedelivery(), DeliveredAt: at, Event: d.GetEvent()})
+			out = append(out, Delivery{
+				ID: d.GetID(), GUID: d.GetGUID(), StatusCode: d.GetStatusCode(),
+				Redelivery: d.GetRedelivery(), DeliveredAt: at, Event: d.GetEvent(),
+			})
 		}
 		if resp == nil || resp.Cursor == "" {
 			return out, nil
@@ -111,9 +113,11 @@ func (a *App) SearchOpenPRs(ctx context.Context, installationID int64, repos []s
 // SearchOpenPRs runs the sweep search with c.
 func SearchOpenPRs(ctx context.Context, c *github.Client, repos []string, since time.Time) ([]OpenPR, error) {
 	q := "is:pr is:open updated:>=" + since.UTC().Format("2006-01-02T15:04:05Z")
+	var qSb116 strings.Builder
 	for _, r := range repos {
-		q += " repo:" + r
+		qSb116.WriteString(" repo:" + r)
 	}
+	q += qSb116.String()
 	var out []OpenPR
 	vars := map[string]any{"q": q, "after": nil}
 	for range maxSearchPages {

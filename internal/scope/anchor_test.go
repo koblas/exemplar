@@ -60,11 +60,11 @@ func TestValidateAnchor(t *testing.T) {
 // commentable is an independent oracle for anchor validity: it walks every
 // line of every fragment and records, per side, which hunk each line number
 // belongs to. It deliberately uses the per-line ops instead of hunk headers.
-func commentable(t testing.TB, diff string) map[string]map[Side]map[int]int {
-	t.Helper()
+func commentable(tb testing.TB, diff string) map[string]map[Side]map[int]int {
+	tb.Helper()
 	files, _, err := gitdiff.Parse(strings.NewReader(diff))
 	if err != nil {
-		t.Fatalf("oracle parse: %v", err)
+		tb.Fatalf("oracle parse: %v", err)
 	}
 	out := map[string]map[Side]map[int]int{}
 	for _, f := range files {

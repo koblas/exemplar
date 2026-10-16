@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,8 +25,10 @@ func (f *fakeUsers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.calls[r.URL.Path]++
 	f.mu.Unlock()
-	users := map[string]string{"Bearer tok-alice": `{"login": "alice", "type": "User"}`, "Bearer tok-bob": `{"login": "bob", "type": "User"}`,
-		"Bearer tok-bot": `{"login": "ci[bot]", "type": "Bot"}`}
+	users := map[string]string{
+		"Bearer tok-alice": `{"login": "alice", "type": "User"}`, "Bearer tok-bob": `{"login": "bob", "type": "User"}`,
+		"Bearer tok-bot": `{"login": "ci[bot]", "type": "Bot"}`,
+	}
 	auth := r.Header.Get("Authorization")
 	switch r.URL.Path {
 	case "/user":
@@ -98,7 +101,10 @@ func TestEvaluateAPI(t *testing.T) {
 		if s, ok := body.(string); ok {
 			b = []byte(s)
 		} else if body != nil {
-			b, _ = json.Marshal(body)
+			var err error
+			if b, err = json.Marshal(body); err != nil {
+				t.Fatal(err)
+			}
 		}
 		req, err := http.NewRequestWithContext(t.Context(), method, srv.URL+path, bytes.NewReader(b))
 		if err != nil {
@@ -143,7 +149,10 @@ func TestEvaluateAPI(t *testing.T) {
 	if code != http.StatusAccepted || out["status"] != "queued" {
 		t.Fatalf("create = %d %v", code, out)
 	}
-	id := out["id"].(string)
+	id, ok := out["id"].(string)
+	if !ok {
+		t.Fatalf("create id = %v", out["id"])
+	}
 	if code, out := do(http.MethodGet, "/v1/evaluate/"+id, "tok-alice", nil); code != http.StatusOK || out["id"] != id {
 		t.Errorf("get = %d %v", code, out)
 	}
@@ -168,14 +177,14 @@ func TestEvaluateAPI(t *testing.T) {
 	if code != http.StatusAccepted {
 		t.Fatalf("bob second = %d %v", code, out)
 	}
-	if code, out := do(http.MethodPost, "/v1/evaluate", "tok-bob", good); code != http.StatusTooManyRequests || !strings.Contains(out["error"].(string), "daily budget") {
+	if code, out := do(http.MethodPost, "/v1/evaluate", "tok-bob", good); code != http.StatusTooManyRequests || !strings.Contains(fmt.Sprint(out["error"]), "daily budget") {
 		t.Errorf("over budget = %d %v", code, out)
 	}
 	// The per-minute limit counts every signed-in POST, valid or not:
 	// alice has made 6 of her 10.
 	for i := range 5 {
 		code, out := do(http.MethodPost, "/v1/evaluate", "tok-alice", "{")
-		limited := code == http.StatusTooManyRequests && strings.Contains(out["error"].(string), "slow down")
+		limited := code == http.StatusTooManyRequests && strings.Contains(fmt.Sprint(out["error"]), "slow down")
 		if limited != (i == 4) {
 			t.Errorf("post %d = %d %v", 7+i, code, out)
 		}
@@ -220,7 +229,10 @@ func TestEvaluateServices(t *testing.T) {
 	defer srv.Close()
 	do := func(method, path, token string, body any) int {
 		t.Helper()
-		b, _ := json.Marshal(body)
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
 		req, _ := http.NewRequestWithContext(t.Context(), method, srv.URL+path, bytes.NewReader(b))
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp, err := srv.Client().Do(req)

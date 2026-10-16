@@ -87,7 +87,7 @@ func TestRank(t *testing.T) {
 		}
 	}
 	order := func(ds []Definition) string {
-		var out []string
+		out := make([]string, 0, len(ds))
 		for _, d := range ds {
 			out = append(out, d.Path)
 		}
@@ -128,7 +128,7 @@ func defFixture(t *testing.T) *fixture {
 }
 
 func paths2(r DefResult) string {
-	var out []string
+	out := make([]string, 0, len(r.Definitions))
 	for _, d := range r.Definitions {
 		out = append(out, fmt.Sprintf("%s:%d", d.Path, d.Line))
 	}

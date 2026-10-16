@@ -36,7 +36,10 @@ func (f *fakeProvider) Send(_ context.Context, req Request) (*Response, error) {
 	if f.fail != nil {
 		return nil, f.fail
 	}
-	body, _ := json.Marshal(map[string]any{"type": "message", "content": []any{}, "usage": f.usage})
+	body, err := json.Marshal(map[string]any{"type": "message", "content": []any{}, "usage": f.usage})
+	if err != nil {
+		return nil, err
+	}
 	return &Response{Status: 200, Body: body, Usage: f.usage}, nil
 }
 
@@ -59,7 +62,7 @@ func withSecondProvider(t *testing.T) {
 	registry["fake-b"] = Spec{
 		Family:        func(string) string { return "fake-b" },
 		ValidateModel: func(string) error { return nil },
-		New:           func(context.Context, Settings) (Provider, error) { return nil, nil },
+		New:           func(context.Context, Settings) (Provider, error) { return &fakeProvider{name: "fake-b"}, nil },
 	}
 	t.Cleanup(func() { delete(registry, "fake-b") })
 }
@@ -93,7 +96,7 @@ func newTestGateway(t *testing.T, a, b *fakeProvider, rec Recorder, ceiling floa
 func call(t *testing.T, g *Gateway, headers map[string]string, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/messages", bytes.NewBufferString(body))
-	req.Header.Set("x-api-key", "gw-token")
+	req.Header.Set("X-Api-Key", "gw-token")
 	req.Header.Set(HeaderStage, StageGenerator)
 	req.Header.Set(HeaderCaller, "eval")
 	req.Header.Set(HeaderDataClasses, "diff")

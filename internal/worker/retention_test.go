@@ -79,8 +79,9 @@ func TestRetention(t *testing.T) {
 			t.Errorf("%s: %d, want %d (all: %v)", k, res[k], v, res)
 		}
 	}
-	count := func(sql string) (n int) {
+	count := func(sql string) int {
 		t.Helper()
+		var n int
 		if err := st.Pool.QueryRow(ctx, sql).Scan(&n); err != nil {
 			t.Fatal(err)
 		}

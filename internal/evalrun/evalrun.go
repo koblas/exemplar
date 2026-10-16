@@ -368,7 +368,7 @@ func (e *Evaluator) materialize(ctx context.Context, c Case, dir string) (map[st
 		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(full, data, 0o640); err != nil {
+		if err := os.WriteFile(full, data, 0o600); err != nil {
 			return nil, err
 		}
 		files[p] = string(data)
@@ -378,7 +378,7 @@ func (e *Evaluator) materialize(ctx context.Context, c Case, dir string) (map[st
 	}
 	if c.Patch != "" {
 		pf := filepath.Join(filepath.Dir(dir), "case.patch")
-		if err := os.WriteFile(pf, []byte(c.Patch), 0o640); err != nil {
+		if err := os.WriteFile(pf, []byte(c.Patch), 0o600); err != nil {
 			return nil, err
 		}
 		env := append(gitexec.Env(""), "GIT_CEILING_DIRECTORIES="+filepath.Dir(dir))

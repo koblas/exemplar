@@ -130,7 +130,7 @@ func loadConfig(ctx context.Context) (llm.Config, *store.Store, error) {
 	if dir == "" {
 		return cfg, nil, errors.New("EXEMPLAR_CONFIG_DIR is required")
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "global.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, "global.yaml")) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return cfg, nil, fmt.Errorf("read global.yaml: %w", err)
 	}

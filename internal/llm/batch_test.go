@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -33,20 +34,20 @@ func (f *fakeBatchesAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	switch {
-	case r.Method == "POST" && r.URL.Path == "/v1/messages/batches":
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/messages/batches":
 		data, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(data, &f.created)
 		fmt.Fprint(w, batchJSON("in_progress", ""))
-	case r.Method == "GET" && r.URL.Path == "/v1/messages/batches/msgbatch_1":
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/messages/batches/msgbatch_1":
 		fmt.Fprint(w, batchJSON("ended", "http://"+r.Host+"/v1/messages/batches/msgbatch_1/results"))
-	case r.Method == "POST" && r.URL.Path == "/v1/messages/batches/msgbatch_1/cancel":
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/messages/batches/msgbatch_1/cancel":
 		f.canceled = true
 		fmt.Fprint(w, batchJSON("canceling", ""))
-	case r.Method == "GET" && r.URL.Path == "/v1/messages/batches/msgbatch_1/results":
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/messages/batches/msgbatch_1/results":
 		w.Header().Set("Content-Type", "application/binary")
 		fmt.Fprint(w, strings.Join(f.results, "\n")+"\n")
 	default:
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprint(w, `{"type":"error","error":{"type":"not_found_error","message":"no"}}`)
 	}
 }
@@ -56,11 +57,14 @@ func batchJSON(status, resultsURL string) string {
 	if resultsURL != "" {
 		results = `"` + resultsURL + `"`
 	}
-	return `{"id":"msgbatch_1","type":"message_batch","processing_status":"` + status + `","request_counts":{"processing":0,"succeeded":2,"errored":1,"canceled":0,"expired":0},"created_at":"2026-10-12T00:00:00Z","expires_at":"2026-10-13T00:00:00Z","ended_at":null,"cancel_initiated_at":null,"archived_at":null,"results_url":` + results + `}`
+	return `{"id":"msgbatch_1","type":"message_batch","processing_status":"` + status + `","request_counts":{"processing":0,"succeeded":2,"errored":1,"canceled":0,"expired":0},` +
+		`"created_at":"2026-10-12T00:00:00Z","expires_at":"2026-10-13T00:00:00Z","ended_at":null,"cancel_initiated_at":null,"archived_at":null,"results_url":` + results + `}`
 }
 
 func succeededLine(id string, in, out int) string {
-	return `{"custom_id":"` + id + `","result":{"type":"succeeded","message":{"id":"msg_` + id + `","type":"message","role":"assistant","model":"claude-haiku-5-5","content":[{"type":"text","text":"{}"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":` + fmt.Sprint(in) + `,"output_tokens":` + fmt.Sprint(out) + `,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}`
+	return `{"custom_id":"` + id + `","result":{"type":"succeeded","message":{"id":"msg_` + id + `","type":"message","role":"assistant","model":"claude-haiku-5-5",` +
+		`"content":[{"type":"text","text":"{}"}],"stop_reason":"end_turn","stop_sequence":null,` +
+		`"usage":{"input_tokens":` + strconv.Itoa(in) + `,"output_tokens":` + strconv.Itoa(out) + `,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}`
 }
 
 // newBatchGateway runs a gateway whose light stage routes to a fake
@@ -115,7 +119,7 @@ func sdkClient(srv *httptest.Server) anthropic.Client {
 }
 
 func batchParams(texts ...string) anthropic.MessageBatchNewParams {
-	var reqs []anthropic.MessageBatchNewParamsRequest
+	reqs := make([]anthropic.MessageBatchNewParamsRequest, 0, len(texts))
 	for i, txt := range texts {
 		reqs = append(reqs, anthropic.MessageBatchNewParamsRequest{
 			CustomID: fmt.Sprintf("c%d", i+1),
@@ -145,9 +149,20 @@ func TestBatchRoundTripWithSDK(t *testing.T) {
 	}
 	// The gateway skipped Bedrock (no batch support) and routed every
 	// request to the Claude light model.
-	reqs := api.created["requests"].([]any)
+	reqs, ok := api.created["requests"].([]any)
+	if !ok {
+		t.Fatalf("created requests = %v", api.created["requests"])
+	}
 	for _, r := range reqs {
-		if m := r.(map[string]any)["params"].(map[string]any)["model"]; m != "claude-haiku-5-5" {
+		req, ok := r.(map[string]any)
+		if !ok {
+			t.Fatalf("request = %v", r)
+		}
+		params, ok := req["params"].(map[string]any)
+		if !ok {
+			t.Fatalf("request params = %v", req["params"])
+		}
+		if m := params["model"]; m != "claude-haiku-5-5" {
 			t.Fatalf("routed model = %v", m)
 		}
 	}
@@ -189,8 +204,8 @@ func TestBatchRoundTripWithSDK(t *testing.T) {
 func TestBatchRefusals(t *testing.T) {
 	srv, _ := newBatchGateway(t, nil)
 	post := func(headers map[string]string, body string) int {
-		req, _ := http.NewRequestWithContext(t.Context(), "POST", srv.URL+"/v1/messages/batches", strings.NewReader(body))
-		req.Header.Set("x-api-key", "gw-token")
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/v1/messages/batches", strings.NewReader(body))
+		req.Header.Set("X-Api-Key", "gw-token")
 		req.Header.Set(HeaderStage, StageLight)
 		req.Header.Set(HeaderCaller, "learning")
 		req.Header.Set(HeaderDataClasses, "review_comments")
@@ -248,7 +263,7 @@ func TestBatchNoBatchCapableProvider(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/messages/batches", strings.NewReader(`{"requests":[{"custom_id":"a","params":{"model":"x","max_tokens":1,"messages":[]}}]}`))
-	req.Header.Set("x-api-key", "gw-token")
+	req.Header.Set("X-Api-Key", "gw-token")
 	req.Header.Set(HeaderStage, StageLight)
 	req.Header.Set(HeaderCaller, "learning")
 	req.Header.Set(HeaderDataClasses, "review_comments")
@@ -261,14 +276,14 @@ func TestBatchNoBatchCapableProvider(t *testing.T) {
 
 func TestBatchUnknownID(t *testing.T) {
 	srv, _ := newBatchGateway(t, nil)
-	req, _ := http.NewRequestWithContext(t.Context(), "GET", srv.URL+"/v1/messages/batches/msgbatch_unknown/results", nil)
-	req.Header.Set("x-api-key", "gw-token")
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/messages/batches/msgbatch_unknown/results", nil)
+	req.Header.Set("X-Api-Key", "gw-token")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != 404 {
+	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
 }
@@ -285,6 +300,6 @@ func TestMemoryBatchStoreClaimsOnce(t *testing.T) {
 }
 
 func strconvQuote(s string) string {
-	b, _ := json.Marshal(s)
+	b, _ := json.Marshal(s) //nolint:errchkjson // a Go string always encodes
 	return string(b)
 }

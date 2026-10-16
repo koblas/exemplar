@@ -82,8 +82,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// ValidatePayload checks the HMAC before anything is parsed.
 	body, err := github.ValidatePayload(r, h.secret)
 	if err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
 			return
 		}
@@ -116,8 +115,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		params.RepoFullName = optional(strings.ToLower(env.Repository.FullName))
 	}
 	dup := false
-	err = h.st.InTx(r.Context(), func(tx pgx.Tx, q *queries.Queries) error {
-		n, err := q.InsertGHEvent(r.Context(), params)
+	ctx := r.Context()
+	err = h.st.InTx(ctx, func(tx pgx.Tx, q *queries.Queries) error {
+		n, err := q.InsertGHEvent(ctx, params)
 		if err != nil {
 			return fmt.Errorf("store event: %w", err)
 		}
@@ -125,7 +125,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			dup = true // a redelivery: its job was enqueued with the first copy
 			return nil
 		}
-		return h.enq.InsertGHEvent(r.Context(), tx, store.GHEventArgs{DeliveryID: delivery.String()})
+		return h.enq.InsertGHEvent(ctx, tx, store.GHEventArgs{DeliveryID: delivery.String()})
 	})
 	if err != nil {
 		// 5xx makes the delivery fail; the reconciler requests redelivery.

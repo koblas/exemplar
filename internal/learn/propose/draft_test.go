@@ -21,10 +21,14 @@ func sampleCandidate() Candidate {
 		ClusterSize: 5, DistinctReviewers: 3, Score: 3.1, Owner: "@acme/payments",
 		ScoreDetail: map[string]any{"factors": map[string]any{"recency": 0.9, "doc_boost": 1.5}},
 		Sources: []Source{
-			{CommentURL: "https://github.com/acme/pay/pull/1#discussion_r1", Repo: "acme/pay", Path: "svc/client.go",
-				DocURLs: []string{"https://docs.internal/http"}, Kind: "human", Category: "reliability", PreferredApproach: "Use http.Client{Timeout: ...}."},
-			{CommentURL: "https://github.com/acme/pay/pull/2#discussion_r2", Repo: "acme/pay", Path: "svc/fetch.go",
-				Kind: "accepted_bot_finding", Category: "Reliability practice"},
+			{
+				CommentURL: "https://github.com/acme/pay/pull/1#discussion_r1", Repo: "acme/pay", Path: "svc/client.go",
+				DocURLs: []string{"https://docs.internal/http"}, Kind: "human", Category: "reliability", PreferredApproach: "Use http.Client{Timeout: ...}.",
+			},
+			{
+				CommentURL: "https://github.com/acme/pay/pull/2#discussion_r2", Repo: "acme/pay", Path: "svc/fetch.go",
+				Kind: "accepted_bot_finding", Category: "Reliability practice",
+			},
 			{CommentURL: "https://github.com/acme/pay/pull/3#discussion_r3", Repo: "acme/pay", Path: "svc/x.go", Kind: "human", Category: "Performance"},
 		},
 		Incidents: []Incident{{Repo: "acme/pay", Path: "svc/client.go", Kind: "incident", Ref: "INC-7"}},
@@ -146,8 +150,10 @@ func TestDraftWithEvalCases(t *testing.T) {
 	c.EvalCases = []EvalCase{
 		{ID: "p-1", Kind: "positive", Name: "review comment", Ref: "acme/pay@" + sha, Expect: []schema.Expectation{{Path: "svc/client.go", Lines: []int{6, 9}}}},
 		{ID: "n-acme-pay-20", Kind: "negative", Name: "approved PR", Ref: "acme/pay@" + sha, Expect: []schema.Expectation{}},
-		{ID: "i-acme-pay-20", Kind: "injected", Name: "injected", Ref: "acme/pay@" + sha, Patch: "diff --git a/x b/x\n", SpotCheck: true,
-			Expect: []schema.Expectation{{Path: "svc/client.go", Lines: []int{6, 6}}}},
+		{
+			ID: "i-acme-pay-20", Kind: "injected", Name: "injected", Ref: "acme/pay@" + sha, Patch: "diff --git a/x b/x\n", SpotCheck: true,
+			Expect: []schema.Expectation{{Path: "svc/client.go", Lines: []int{6, 6}}},
+		},
 	}
 	d, err := BuildDraft(c, now)
 	if err != nil {
@@ -201,7 +207,7 @@ func exampleTree(t *testing.T) fstest.MapFS {
 }
 
 func keys(m map[string][]byte) []string {
-	var out []string
+	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
 	}

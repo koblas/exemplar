@@ -43,6 +43,7 @@ const maxCommentJudgements = 5
 // FeedbackSignalWorker runs feedback_signal jobs.
 type FeedbackSignalWorker struct {
 	river.WorkerDefaults[store.FeedbackSignalArgs]
+
 	cfg Config
 }
 
@@ -98,8 +99,10 @@ func (w *FeedbackSignalWorker) Handle(ctx context.Context, a store.FeedbackSigna
 func (w *FeedbackSignalWorker) merged(ctx context.Context, a store.FeedbackSignalArgs, snap *config.Snapshot) (SignalOutcome, error) {
 	// The merge itself, for counter-metrics.
 	if a.HeadSHA != "" && !a.At.IsZero() {
-		if err := w.cfg.Store.UpsertPRMerge(ctx, queries.UpsertPRMergeParams{Repo: a.Repo, PrNumber: int32(a.PR), HeadSha: a.HeadSHA,
-			MergedAt: pgtype.Timestamptz{Time: a.At, Valid: true}}); err != nil {
+		if err := w.cfg.Store.UpsertPRMerge(ctx, queries.UpsertPRMergeParams{
+			Repo: a.Repo, PrNumber: int32(a.PR), HeadSha: a.HeadSHA,
+			MergedAt: pgtype.Timestamptz{Time: a.At, Valid: true},
+		}); err != nil {
 			return SignalOutcome{}, err
 		}
 	}
@@ -198,8 +201,10 @@ func (w *FeedbackSignalWorker) comment(ctx context.Context, a store.FeedbackSign
 	if strings.EqualFold(a.Actor, pr.Author) {
 		return SignalOutcome{Ignored: "the PR's author"}, nil // the author raising it is not a reviewer's agreement
 	}
-	c := engine.HumanComment{ID: a.CommentID, Author: a.Actor, AuthorType: "User", Association: a.Association,
-		Path: a.Path, Side: a.Side, Start: a.Start, End: a.End, Body: a.Body}
+	c := engine.HumanComment{
+		ID: a.CommentID, Author: a.Actor, AuthorType: "User", Association: a.Association,
+		Path: a.Path, Side: a.Side, Start: a.Start, End: a.End, Body: a.Body,
+	}
 	meta := engine.CallMeta{Caller: Caller, Repo: a.Repo}
 	var evs []pipeline.Event
 	out := SignalOutcome{Role: pipeline.RoleReviewer}
@@ -217,8 +222,10 @@ func (w *FeedbackSignalWorker) comment(ctx context.Context, a store.FeedbackSign
 			role = pipeline.RoleOwner
 		}
 		out.Role = role
-		evs = append(evs, pipeline.Event{FindingID: r.ID, Kind: pipeline.EventHumanAgreed, Actor: a.Actor, Role: role,
-			Via: pipeline.ViaInferred, Evidence: map[string]any{"comment_id": a.CommentID}})
+		evs = append(evs, pipeline.Event{
+			FindingID: r.ID, Kind: pipeline.EventHumanAgreed, Actor: a.Actor, Role: role,
+			Via: pipeline.ViaInferred, Evidence: map[string]any{"comment_id": a.CommentID},
+		})
 		out.Kinds = append(out.Kinds, pipeline.EventHumanAgreed)
 	}
 	if len(evs) == 0 {
@@ -262,6 +269,8 @@ func (w *FeedbackSignalWorker) role(ctx context.Context, a store.FeedbackSignalA
 }
 
 func findingOf(d queries.FindingDetailRow) engine.Finding {
-	return engine.Finding{ID: d.ID, RuleID: d.RuleID, Lane: d.Lane, Message: d.Message, Fingerprint: d.Fingerprint,
-		Anchor: scope.Anchor{Path: d.Path, Side: scope.Side(d.Side), StartLine: int(d.StartLine), EndLine: int(d.EndLine)}}
+	return engine.Finding{
+		ID: d.ID, RuleID: d.RuleID, Lane: d.Lane, Message: d.Message, Fingerprint: d.Fingerprint,
+		Anchor: scope.Anchor{Path: d.Path, Side: scope.Side(d.Side), StartLine: int(d.StartLine), EndLine: int(d.EndLine)},
+	}
 }

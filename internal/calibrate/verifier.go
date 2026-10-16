@@ -146,7 +146,7 @@ func (r *Runner) Verifier(ctx context.Context, labels []Label, t *schema.Verifie
 	return rep, nil
 }
 
-func (r *Runner) one(ctx context.Context, l Label, dir string) (verdict string, cost float64, model string, err error) {
+func (r *Runner) one(ctx context.Context, l Label, dir string) (string, float64, string, error) {
 	defer func() { _ = os.RemoveAll(dir) }()
 	cloneURL, base, head, err := replay.Materialize(ctx, l.Fixture, filepath.Join(dir, "source"))
 	if err != nil {
@@ -163,8 +163,10 @@ func (r *Runner) one(ctx context.Context, l Label, dir string) (verdict string, 
 		return "", 0, "", err
 	}
 	fx := l.Fixture
-	p, err := engine.Prepare(ctx, ws, r.Snapshot, engine.PRInfo{Repo: fx.Repo, Number: fx.PR, Title: fx.Title, Body: fx.Body,
-		Author: fx.Author, BaseSHA: base, HeadSHA: head}, r.Scanner)
+	p, err := engine.Prepare(ctx, ws, r.Snapshot, engine.PRInfo{
+		Repo: fx.Repo, Number: fx.PR, Title: fx.Title, Body: fx.Body,
+		Author: fx.Author, BaseSHA: base, HeadSHA: head,
+	}, r.Scanner)
 	if err != nil {
 		return "", 0, "", err
 	}
@@ -175,6 +177,7 @@ func (r *Runner) one(ctx context.Context, l Label, dir string) (verdict string, 
 	if err != nil {
 		return "", 0, "", err
 	}
+	var cost float64
 	for _, run := range runs {
 		cost += run.CostUSD
 		if run.Status != engine.RunOK {
@@ -207,10 +210,14 @@ func StoredLabels(ctx context.Context, st Store, limit int) ([]Label, error) {
 	for _, r := range rows {
 		out = append(out, Label{
 			ID: fmt.Sprintf("finding-%d", r.ID), Label: r.Label, Source: "verifier_labels",
-			Fixture: schema.Fixture{ID: fmt.Sprintf("finding-%d", r.ID), Repo: r.Repo, PR: int(r.PrNumber),
-				Title: fmt.Sprintf("%s#%d", r.Repo, r.PrNumber), BaseSHA: r.BaseSha, HeadSHA: r.HeadSha},
-			Candidate: engine.Candidate{RuleID: r.RuleID, Path: r.Path, Side: r.Side,
-				StartLine: int(r.StartLine), EndLine: int(r.EndLine), Claim: r.Message},
+			Fixture: schema.Fixture{
+				ID: fmt.Sprintf("finding-%d", r.ID), Repo: r.Repo, PR: int(r.PrNumber),
+				Title: fmt.Sprintf("%s#%d", r.Repo, r.PrNumber), BaseSHA: r.BaseSha, HeadSHA: r.HeadSha,
+			},
+			Candidate: engine.Candidate{
+				RuleID: r.RuleID, Path: r.Path, Side: r.Side,
+				StartLine: int(r.StartLine), EndLine: int(r.EndLine), Claim: r.Message,
+			},
 		})
 	}
 	return out, nil

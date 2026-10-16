@@ -13,38 +13,38 @@ package gates
 // from model output (messages, verdicts, importance, dedupe decisions).
 type Stage1Input struct {
 	// Complete is false for incomplete runs.
-	Complete bool
+	Complete bool `json:"Complete"`
 	// Coverage is completed in-scope rules ÷ in-scope rules, from the
 	// harness tool-call log.
-	Coverage float64
+	Coverage float64 `json:"Coverage"`
 	// Candidates counts findings produced by every lane before
 	// verification. A refuted finding still counts (system rule 6).
-	Candidates int
+	Candidates int `json:"Candidates"`
 	// Degraded is true when anything was shed, deferred or ran degraded.
-	Degraded bool
+	Degraded bool `json:"Degraded"`
 	// SameFamilyVerification is true when any finding was verified by the
 	// generator's model family.
-	SameFamilyVerification bool
+	SameFamilyVerification bool `json:"SameFamilyVerification"`
 	// BugLaneCovered is true when the bug lane (forced on auto-approve
 	// candidates) ran to 100% coverage. A run without it is never
 	// eligible.
-	BugLaneCovered    bool
-	GlobalAutoApprove bool
-	RepoAutoApprove   bool
+	BugLaneCovered    bool `json:"BugLaneCovered"`
+	GlobalAutoApprove bool `json:"GlobalAutoApprove"`
+	RepoAutoApprove   bool `json:"RepoAutoApprove"`
 	// RepoShadow is set for a repo reviewed in shadow: it may
 	// never be approved.
-	RepoShadow bool
+	RepoShadow bool `json:"RepoShadow"`
 	// The policy checks, from CheckPolicy: every path is in
 	// auto_approve.paths and off the denylist; the author (and any agent
 	// co-author) is allowed; the head is in the base repo; the PR is
 	// within the size limits.
-	PathPolicy   bool
-	AuthorPolicy bool
-	NotFork      bool
-	WithinSize   bool
+	PathPolicy   bool `json:"PathPolicy"`
+	AuthorPolicy bool `json:"AuthorPolicy"`
+	NotFork      bool `json:"NotFork"`
+	WithinSize   bool `json:"WithinSize"`
 	// Files and ChangedLines are the PR's size, for the trace.
-	Files        int
-	ChangedLines int
+	Files        int `json:"Files"`
+	ChangedLines int `json:"ChangedLines"`
 }
 
 // Reasons a run is ineligible.

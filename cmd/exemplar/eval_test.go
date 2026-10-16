@@ -48,8 +48,10 @@ func copyConfig(t *testing.T) string {
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
-		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid"}
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -131,7 +133,8 @@ func TestEvalRemote(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(evaluate.Status{ID: "e1", Status: evaluate.StatusDone, Result: &evaluate.Result{Eval: &evaluate.EvalResult{
 			Reports: json.RawMessage(`[{"rule": "propagate-context", "pass": false}]`), Markdown: "### Exemplar eval\n\n| `propagate-context` |\n", Pass: pass,
-			Rules: []string{"propagate-context"}}}})
+			Rules: []string{"propagate-context"},
+		}}})
 	}))
 	defer api.Close()
 	t.Setenv("EXEMPLAR_TOKEN", "svc.token.sig")

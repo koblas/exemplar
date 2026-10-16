@@ -86,8 +86,10 @@ func (ix *Index) goSpec(ctx context.Context, repo, commit, file string) (pkgSpec
 				id += "/" + rel
 			}
 			line := regexp.MustCompile(`^\s*(?:import\s+)?(?:[\w.]+\s+)?"` + regexp.QuoteMeta(id) + `"`)
-			return pkgSpec{lang: "Go", dir: dir, coarse: `"` + ereQuote(id) + `"`, files: goExts,
-				imports: func(_, l string) bool { return line.MatchString(l) }}, true
+			return pkgSpec{
+				lang: "Go", dir: dir, coarse: `"` + ereQuote(id) + `"`, files: goExts,
+				imports: func(_, l string) bool { return line.MatchString(l) },
+			}, true
 		}
 		if d == "." || d == "/" {
 			return pkgSpec{}, false
@@ -116,8 +118,10 @@ func pySpec(file string) pkgSpec {
 	}
 	line := regexp.MustCompile(`^\s*(?:` + strings.Join(alts, "|") + `)`)
 	leaf := parts[len(parts)-1]
-	return pkgSpec{lang: "Python", dir: path.Dir(file), coarse: `import.*` + ereQuote(leaf) + `|` + ereQuote(leaf) + `.*import`, files: pyExts,
-		imports: func(_, l string) bool { return line.MatchString(l) }}
+	return pkgSpec{
+		lang: "Python", dir: path.Dir(file), coarse: `import.*` + ereQuote(leaf) + `|` + ereQuote(leaf) + `.*import`, files: pyExts,
+		imports: func(_, l string) bool { return line.MatchString(l) },
+	}
 }
 
 // jsSpec: a module is its path without extension (an index file is also
@@ -132,7 +136,8 @@ func jsSpec(file string) pkgSpec {
 		name = path.Base(path.Dir(target))
 	}
 	tail, tailDir := "/"+lastTwo(target), "/"+lastTwo(path.Dir(target))
-	return pkgSpec{lang: "TypeScript", dir: path.Dir(file),
+	return pkgSpec{
+		lang: "TypeScript", dir: path.Dir(file),
 		coarse: `['"][^'"]*` + ereQuote(name) + `(/index)?(\.[a-z]+)?['"]`, files: jsExts,
 		imports: func(importer, l string) bool {
 			for _, m := range jsSpecRE.FindAllStringSubmatch(l, -1) {
@@ -151,7 +156,8 @@ func jsSpec(file string) pkgSpec {
 				}
 			}
 			return false
-		}}
+		},
+	}
 }
 
 // lastTwo is p's last two path segments (one at the top level).
@@ -170,7 +176,7 @@ func (ix *Index) jvmSpec(ctx context.Context, repo, commit, file string) (pkgSpe
 		return pkgSpec{}, false
 	}
 	var pkg string
-	for _, l := range strings.Split(f.Text, "\n") {
+	for l := range strings.SplitSeq(f.Text, "\n") {
 		if m := javaPkgRE.FindStringSubmatch(l); m != nil {
 			pkg = strings.TrimSuffix(m[1], ";")
 			break
@@ -181,8 +187,10 @@ func (ix *Index) jvmSpec(ctx context.Context, repo, commit, file string) (pkgSpe
 	}
 	class := strings.TrimSuffix(path.Base(file), path.Ext(file))
 	line := regexp.MustCompile(`^\s*import\s+(?:static\s+)?` + regexp.QuoteMeta(pkg) + `\.(?:` + regexp.QuoteMeta(class) + `\b|\*)`)
-	return pkgSpec{lang: "Java", dir: path.Dir(file), coarse: `import[[:space:]]+(static[[:space:]]+)?` + ereQuote(pkg) + `\.`, files: jvmExts,
-		imports: func(_, l string) bool { return line.MatchString(l) }}, true
+	return pkgSpec{
+		lang: "Java", dir: path.Dir(file), coarse: `import[[:space:]]+(static[[:space:]]+)?` + ereQuote(pkg) + `\.`, files: jvmExts,
+		imports: func(_, l string) bool { return line.MatchString(l) },
+	}, true
 }
 
 // cSpec: the header (for a source file, same-stem headers beside it; a
@@ -192,13 +200,13 @@ func (ix *Index) jvmSpec(ctx context.Context, repo, commit, file string) (pkgSpe
 func cSpec(file string, includeRoots []string) pkgSpec {
 	headers := []string{file}
 	if ext := strings.ToLower(path.Ext(file)); !strings.HasPrefix(ext, ".h") {
-		headers = nil
+		headers = make([]string, 0, len(cHeaders))
 		for _, h := range cHeaders {
 			headers = append(headers, strings.TrimSuffix(file, path.Ext(file))+h)
 		}
 	}
 	accepted := map[string]bool{}
-	var bases []string
+	bases := make([]string, 0, len(headers))
 	for _, h := range headers {
 		accepted[h] = true
 		for _, root := range includeRoots {
@@ -209,7 +217,8 @@ func cSpec(file string, includeRoots []string) pkgSpec {
 		}
 		bases = append(bases, ereQuote(path.Base(h)))
 	}
-	return pkgSpec{lang: "C++", dir: path.Dir(file),
+	return pkgSpec{
+		lang: "C++", dir: path.Dir(file),
 		coarse: `#[[:space:]]*(include|import)[[:space:]]*[<"][^>"]*(` + strings.Join(bases, "|") + `)[>"]`, files: cExts,
 		imports: func(importer, l string) bool {
 			m := includeRE.FindStringSubmatch(l)
@@ -217,5 +226,6 @@ func cSpec(file string, includeRoots []string) pkgSpec {
 				return false
 			}
 			return accepted[m[1]] || accepted[path.Join(path.Dir(importer), m[1])]
-		}}
+		},
+	}
 }

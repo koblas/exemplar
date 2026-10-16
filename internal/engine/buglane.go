@@ -15,7 +15,8 @@ import (
 
 // The bug lane: one agent per enabled bug class, hunting novel logic bugs.
 
-const bugSystemPrompt = `You look for one class of bug in one pull request. The class and what to look for are given in the <bug_class> block. Report only bugs of that class that the change introduces or exposes.
+const bugSystemPrompt = `You look for one class of bug in one pull request. The class and what to look for are given in the <bug_class> block. Report ` +
+	`only bugs of that class that the change introduces or exposes.
 
 ` + untrustedNotice + `
 
@@ -25,9 +26,13 @@ How to work:
 - Report a bug only when you can name a concrete trigger: an input, call sequence, state or path through the code that makes it happen. If you cannot, leave it out.
 - Do not report style, naming, readability, performance preferences, missing tests, or "consider ..." suggestions. Those are out of scope even when true.
 
-Anchors: point each bug at lines that appear in the diff. Use side RIGHT with new-file line numbers for added or unchanged lines, and side LEFT with old-file line numbers for deleted lines. start_line and end_line must fall in the same hunk.
+Anchors: point each bug at lines that appear in the diff. Use side RIGHT with new-file line numbers for added or unchanged lines, and side LEFT with ` +
+	`old-file line numbers for deleted lines. start_line and end_line must fall in the same hunk.
 
-Answer with JSON only: {"violations": [...]}. Each has path, side, start_line, end_line, explanation (what is wrong), trigger (the concrete input or path that causes it), impact (what goes wrong when it happens), and optionally suggested_fix: the complete replacement for lines start_line to end_line of the new file, with their original indentation and nothing from the lines around them, posted as a one-click suggestion. Leave it out when the fix needs changes elsewhere. Return {"violations": []} when there is no such bug.`
+Answer with JSON only: {"violations": [...]}. Each has path, side, start_line, end_line, explanation (what is wrong), trigger (the concrete input or ` +
+	`path that causes it), impact (what goes wrong when it happens), and optionally suggested_fix: the complete replacement for lines start_line to ` +
+	`end_line of the new file, with their original indentation and nothing from the lines around them, posted as a one-click suggestion. Leave it out ` +
+	`when the fix needs changes elsewhere. Return {"violations": []} when there is no such bug.`
 
 func bugTask(c buglane.Class, files []string) string {
 	var b strings.Builder
@@ -69,6 +74,7 @@ const maxTriggerLen = 500
 // bugViolation is a Violation with the bug lane's required fields.
 type bugViolation struct {
 	Violation
+
 	Trigger string `json:"trigger"`
 	Impact  string `json:"impact"`
 }

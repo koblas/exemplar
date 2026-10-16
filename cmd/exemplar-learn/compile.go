@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -114,7 +113,6 @@ func runCompile(args []string) error {
 		return err
 	}
 	rep, err := job.Run(ctx, *limit)
-	line, _ := json.Marshal(rep)
-	fmt.Println(string(line))
+	printJSON(rep)
 	return err
 }

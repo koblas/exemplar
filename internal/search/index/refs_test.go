@@ -97,7 +97,7 @@ func TestDependents(t *testing.T) {
 }
 
 func refSites(r RefResult) []string {
-	var out []string
+	out := make([]string, 0, len(r.References))
 	for _, x := range r.References {
 		out = append(out, fmt.Sprintf("%s:%d", x.Path, x.Line))
 	}

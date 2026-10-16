@@ -43,7 +43,7 @@ type Handler struct {
 
 // Handle runs a /exemplar try in c, if there is one, and replies. handled
 // is false when the comment is not a command for this handler.
-func (h *Handler) Handle(ctx context.Context, c Comment) (handled bool, err error) {
+func (h *Handler) Handle(ctx context.Context, c Comment) (bool, error) {
 	if !strings.EqualFold(c.Repo, h.ConfigRepo) || c.AuthorType == "Bot" {
 		return false, nil
 	}

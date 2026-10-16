@@ -82,7 +82,7 @@ func writeFiles(dir string, files map[string]string) error {
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(full, []byte(files[n]), 0o644); err != nil {
+		if err := os.WriteFile(full, []byte(files[n]), 0o600); err != nil {
 			return err
 		}
 	}
@@ -124,8 +124,7 @@ func (r *Repo) out(ctx context.Context, args ...string) (string, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if _, ok := errors.AsType[*exec.ExitError](err); ok {
 			return "", fmt.Errorf("synth: git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
 		}
 		return "", fmt.Errorf("synth: git %s: %w", args[0], err)

@@ -128,7 +128,7 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
 	out := map[string]any{"repos": s.sched.Status()}
 	if s.index != nil {
-		var idx []index.Status
+		var idx []index.Status //nolint:prealloc // nil encodes as null for an empty scope; keep the status wire format
 		for _, r := range mirror.InScope(s.snap()) {
 			idx = append(idx, s.index.Status(r))
 		}
@@ -147,7 +147,7 @@ func (s *Server) fetch(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if !s.sched.Request(req.Repo) {
+	if !s.sched.Request(req.Repo) { //nolint:contextcheck // the fetch outlives this request; it runs under the scheduler's context
 		writeErr(w, http.StatusNotFound, CodeNotInScope, "repo is not in scope")
 		return
 	}
@@ -184,6 +184,7 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
 // ReadFileRequest is read_file(commit, path, start, end).
 type ReadFileRequest struct {
 	Target
+
 	Commit string `json:"commit"`
 	Path   string `json:"path"`
 	Start  int    `json:"start"`
@@ -193,6 +194,7 @@ type ReadFileRequest struct {
 // ReadFileResponse is a file slice and the snapshot the server is at.
 type ReadFileResponse struct {
 	mirror.File
+
 	SnapshotSHA string `json:"snapshot_sha"`
 }
 
@@ -213,6 +215,7 @@ func (s *Server) readFile(w http.ResponseWriter, r *http.Request) {
 // LogRequest asks for a path's recent commits as of a commit.
 type LogRequest struct {
 	Target
+
 	Commit string `json:"commit"`
 	Path   string `json:"path"`
 	N      int    `json:"n"`
@@ -241,6 +244,7 @@ func (s *Server) gitLog(w http.ResponseWriter, r *http.Request) {
 // SearchTextRequest is search_text(pattern, path_filter?, lang?).
 type SearchTextRequest struct {
 	Target
+
 	Pattern    string `json:"pattern"`
 	PathFilter string `json:"path_filter,omitempty"`
 	Lang       string `json:"lang,omitempty"`
@@ -252,6 +256,7 @@ type SearchTextRequest struct {
 // answer came from a different commit than the pinned snapshot.
 type SearchTextResponse struct {
 	index.Result
+
 	SnapshotSHA      string `json:"snapshot_sha"`
 	SnapshotMismatch bool   `json:"snapshot_mismatch"`
 }
@@ -279,6 +284,7 @@ func (s *Server) searchText(w http.ResponseWriter, r *http.Request) {
 // FindDefinitionRequest is find_definition(name, near_path?).
 type FindDefinitionRequest struct {
 	Target
+
 	Name     string `json:"name"`
 	NearPath string `json:"near_path,omitempty"`
 	Snapshot string `json:"snapshot,omitempty"`
@@ -287,6 +293,7 @@ type FindDefinitionRequest struct {
 // FindDefinitionResponse lists up to 10 ranked definitions.
 type FindDefinitionResponse struct {
 	index.DefResult
+
 	SnapshotSHA      string `json:"snapshot_sha"`
 	SnapshotMismatch bool   `json:"snapshot_mismatch"`
 }
@@ -314,6 +321,7 @@ func (s *Server) findDefinition(w http.ResponseWriter, r *http.Request) {
 // FindReferencesRequest is find_references(name, defined_in).
 type FindReferencesRequest struct {
 	Target
+
 	Name      string `json:"name"`
 	DefinedIn string `json:"defined_in,omitempty"`
 	Snapshot  string `json:"snapshot,omitempty"`
@@ -322,6 +330,7 @@ type FindReferencesRequest struct {
 // FindReferencesResponse lists up to 50 reference sites.
 type FindReferencesResponse struct {
 	index.RefResult
+
 	SnapshotSHA      string `json:"snapshot_sha"`
 	SnapshotMismatch bool   `json:"snapshot_mismatch"`
 }
@@ -350,6 +359,7 @@ func (s *Server) findReferences(w http.ResponseWriter, r *http.Request) {
 // DependentsRequest is dependents(path, depth?).
 type DependentsRequest struct {
 	Target
+
 	Path     string `json:"path"`
 	Depth    int    `json:"depth,omitempty"`
 	Snapshot string `json:"snapshot,omitempty"`
@@ -358,6 +368,7 @@ type DependentsRequest struct {
 // DependentsResponse lists importing files and packages.
 type DependentsResponse struct {
 	index.DependentsResult
+
 	SnapshotSHA      string `json:"snapshot_sha"`
 	SnapshotMismatch bool   `json:"snapshot_mismatch"`
 }
@@ -455,5 +466,5 @@ func writeErr(w http.ResponseWriter, status int, code, msg string) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v) //nolint:errchkjson // the status is already sent; a failed body write has no one to report to
 }

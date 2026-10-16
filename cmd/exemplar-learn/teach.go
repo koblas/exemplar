@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -61,8 +59,7 @@ func runTeach(args []string) error {
 	}
 	outs, err := r.Run(ctx, snap)
 	for _, o := range outs {
-		line, _ := json.Marshal(o)
-		fmt.Println(string(line))
+		printJSON(o)
 	}
 	return err
 }

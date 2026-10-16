@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -62,8 +61,7 @@ func runDigest(args []string) error {
 	}
 	outs, err := r.Run(ctx, snap)
 	for _, o := range outs {
-		line, _ := json.Marshal(o)
-		fmt.Println(string(line))
+		printJSON(o)
 		if *dryRun {
 			fmt.Printf("--- %s\n%s\n", o.Title, o.Body)
 		}

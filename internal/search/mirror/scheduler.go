@@ -30,7 +30,7 @@ type Scheduler struct {
 
 	mu      sync.Mutex
 	state   map[string]*fetchState
-	ctx     context.Context
+	ctx     context.Context //nolint:containedctx // Run's lifetime context, which the fetches Request starts run under
 	wg      sync.WaitGroup
 	stopped bool
 }
@@ -70,7 +70,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 	defer t.Stop()
 	for {
 		for _, r := range s.scope() {
-			s.Request(r)
+			s.Request(r) //nolint:contextcheck // fetches run under Run's lifetime context, not the caller's
 		}
 		select {
 		case <-ctx.Done():
@@ -157,7 +157,7 @@ func (s *Scheduler) startLocked(repo string, st *fetchState) {
 		st.again = false
 		s.mu.Unlock()
 		if again {
-			s.Request(repo)
+			s.Request(repo) //nolint:contextcheck // fetches run under Run's lifetime context, not the caller's
 		}
 	}()
 }
@@ -175,7 +175,7 @@ type RepoStatus struct {
 func (s *Scheduler) Status() []RepoStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var out []RepoStatus
+	var out []RepoStatus //nolint:prealloc // nil encodes as null for an empty scope; keep the status wire format
 	for _, r := range s.scope() {
 		rs := RepoStatus{Repo: r}
 		if st := s.state[r]; st != nil {

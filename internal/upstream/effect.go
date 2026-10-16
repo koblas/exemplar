@@ -22,7 +22,7 @@ type Comparison struct {
 }
 
 // Rates returns violations per in-scope PR with and without the export.
-func (c Comparison) Rates() (with, without float64) {
+func (c Comparison) Rates() (float64, float64) {
 	return float64(c.WithViolations) / float64(max(c.WithPRs, 1)), float64(c.WithoutViols) / float64(max(c.WithoutPRs, 1))
 }
 

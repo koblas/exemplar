@@ -49,6 +49,7 @@ const (
 // FeedbackCommandWorker runs feedback_command jobs.
 type FeedbackCommandWorker struct {
 	river.WorkerDefaults[store.FeedbackCommandArgs]
+
 	cfg Config
 }
 
@@ -130,7 +131,7 @@ func (w *FeedbackCommandWorker) Handle(ctx context.Context, a store.FeedbackComm
 	if err != nil {
 		return CommandOutcome{}, err
 	}
-	role := ""
+	var role string
 	switch {
 	case adjudication(kind):
 		if !isOwner || isAuthor {

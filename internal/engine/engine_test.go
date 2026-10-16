@@ -130,7 +130,8 @@ func contextViolation(extra string) func(string, []string) ([]string, string) {
 		if !strings.Contains(task, "deadlines reach them") {
 			return files, `{"violations": []}`
 		}
-		return files, fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d, "explanation": "http.Get ignores ctx; use http.NewRequestWithContext."%s}]}`, httpGetLine, httpGetLine, extra)
+		return files, fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d, `+
+			`"explanation": "http.Get ignores ctx; use http.NewRequestWithContext."%s}]}`, httpGetLine, httpGetLine, extra)
 	}
 }
 
@@ -163,7 +164,7 @@ func TestPrepareExclusionsAndSecrets(t *testing.T) {
 	if len(p.Secrets) != 1 || p.Secrets[0].Anchor.Path != "config.go" || p.Secrets[0].Anchor.StartLine != 3 {
 		t.Fatalf("secrets = %+v", p.Secrets)
 	}
-	var ids []string
+	ids := make([]string, 0, len(p.Scoped))
 	for _, s := range p.Scoped {
 		ids = append(ids, s.Rule.ID)
 	}
@@ -587,16 +588,32 @@ func TestReviewStage2(t *testing.T) {
 		categorize bool
 	}{
 		{"all pass", approvable, Options{MergeSafety: &safe, BranchRules: oneApproval}, low, gates.DecisionApproved, nil, true},
-		{"nothing configured", func(*Prepared) {}, Options{}, low, gates.DecisionIneligible,
+		{
+			"nothing configured", func(*Prepared) {},
+			Options{},
+			low, gates.DecisionIneligible,
 			// No lookup: the branch-rules trace says branch_rules_unknown.
-			[]string{gates.ReasonOwners, gates.ReasonBranchRules, gates.ReasonMergeSafetyNotScored, gates.ReasonCategorizationNotRun}, false},
+			[]string{gates.ReasonOwners, gates.ReasonBranchRules, gates.ReasonMergeSafetyNotScored, gates.ReasonCategorizationNotRun},
+			false,
+		},
 		{"branch rules lookup fails", approvable, Options{MergeSafety: &safe, BranchRules: func(context.Context) (gates.BranchRules, error) {
 			return gates.BranchRules{}, errors.New("gh: 403")
 		}}, low, gates.DecisionIneligible, []string{gates.ReasonBranchRules, gates.ReasonCategorizationNotRun}, false},
-		{"merge safety low", approvable, Options{MergeSafety: &risky, BranchRules: oneApproval}, low, gates.DecisionIneligible,
-			[]string{gates.ReasonMergeSafetyBelowBar, gates.ReasonCategorizationNotRun}, false},
-		{"categorizer says medium", approvable, Options{MergeSafety: &safe, BranchRules: oneApproval}, `{"risk": "medium", "p_low": 0.5, "reasons": ["logic"]}`,
-			gates.DecisionIneligible, []string{gates.ReasonConfidenceBelowBar}, true},
+		{
+			"merge safety low", approvable,
+			Options{MergeSafety: &risky, BranchRules: oneApproval},
+			low, gates.DecisionIneligible,
+			[]string{gates.ReasonMergeSafetyBelowBar, gates.ReasonCategorizationNotRun},
+			false,
+		},
+		{
+			"categorizer says medium", approvable,
+			Options{MergeSafety: &safe, BranchRules: oneApproval},
+			`{"risk": "medium", "p_low": 0.5, "reasons": ["logic"]}`,
+			gates.DecisionIneligible,
+			[]string{gates.ReasonConfidenceBelowBar},
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -848,7 +865,7 @@ func (f *fakeRefs) SnapshotStatus(context.Context, string, string) (api.Snapshot
 
 func (f *fakeRefs) FindReferences(_ context.Context, prRepo, repo, snapshot, name, definedIn string) (api.FindReferencesResponse, error) {
 	f.calls = append(f.calls, strings.Join([]string{prRepo, repo, snapshot, name, definedIn}, "|"))
-	return api.FindReferencesResponse{RefResult: index.RefResult{References: f.refs, Degraded: f.degraded, Commit: "snap1"}}, nil
+	return api.FindReferencesResponse{References: f.refs, Degraded: f.degraded, Commit: "snap1"}, nil
 }
 
 func TestFindReferencesTool(t *testing.T) {
@@ -985,8 +1002,10 @@ func TestReviewCarry(t *testing.T) {
 	}
 	review := func(autoApprove bool, carry map[string]CarriedRun) (*Result, *ScriptedTransport) {
 		t.Helper()
-		p, err := Prepare(t.Context(), ws, snap, PRInfo{Repo: sandboxRepo, Number: 1, BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA,
-			Author: "alice", AuthorType: "User", HeadRepo: sandboxRepo, CommitMessages: []string{"Add A"}}, sc)
+		p, err := Prepare(t.Context(), ws, snap, PRInfo{
+			Repo: sandboxRepo, Number: 1, BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA,
+			Author: "alice", AuthorType: "User", HeadRepo: sandboxRepo, CommitMessages: []string{"Add A"},
+		}, sc)
 		if err != nil {
 			t.Fatal(err)
 		}

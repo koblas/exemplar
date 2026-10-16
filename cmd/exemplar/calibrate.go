@@ -131,8 +131,11 @@ func newCalibrateCmd() *cobra.Command {
 				}
 			}
 			if jsonOut != "" {
-				data, _ := json.MarshalIndent(out, "", "  ")
-				if err := os.WriteFile(jsonOut, append(data, '\n'), 0o644); err != nil {
+				data, err := json.MarshalIndent(out, "", "  ")
+				if err != nil {
+					return fmt.Errorf("encode calibration reports: %w", err)
+				}
+				if err := os.WriteFile(jsonOut, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 					return err
 				}
 			}
@@ -188,7 +191,7 @@ func writeOut(path, s string) error {
 	if path == "" {
 		return nil
 	}
-	return os.WriteFile(path, []byte(s), 0o644)
+	return os.WriteFile(path, []byte(s), 0o644) //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 }
 
 // categorizerInputsChanged reports whether anything the auto-approve
@@ -218,7 +221,7 @@ func categorizerInputsChanged(base, head *config.Snapshot) bool {
 func prLabelSet(s *config.Snapshot) map[string]string {
 	m := map[string]string{}
 	for _, l := range s.CategorizerLabels {
-		data, _ := json.Marshal(l.CategorizerLabel)
+		data, _ := json.Marshal(l.CategorizerLabel) //nolint:errchkjson // a label decoded from JSON re-encodes without error; this is only a comparison key
 		m[l.ID] = string(data)
 	}
 	return m
@@ -247,7 +250,7 @@ func categorizerMarkdown(rep calibrate.CategorizerReport, snap *config.Snapshot)
 func labelSet(s *config.Snapshot) map[string]string {
 	m := map[string]string{}
 	for _, l := range s.VerifierLabels {
-		data, _ := json.Marshal(l.VerifierLabel)
+		data, _ := json.Marshal(l.VerifierLabel) //nolint:errchkjson // a label decoded from JSON re-encodes without error; this is only a comparison key
 		m[l.ID] = string(data)
 	}
 	return m

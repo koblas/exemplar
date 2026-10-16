@@ -95,7 +95,7 @@ func cases() []Case {
 func eligible(r string) bool { return r != "acme/denied" }
 
 func results(rep Report) string {
-	var out []string
+	out := make([]string, 0, len(rep.Outcomes))
 	for _, o := range rep.Outcomes {
 		out = append(out, o.Case+"="+o.Result)
 	}
@@ -162,8 +162,10 @@ func TestExemplarRule(t *testing.T) {
 		},
 	}}
 	h := engine.NewHarness(engine.HarnessConfig{GatewayURL: "http://scripted.invalid", GatewayToken: "t", HTTPClient: &http.Client{Transport: tr}})
-	e := &Evaluator{Snapshot: snap, Eligible: eligible, Engine: engine.New(h, sc, compiled.Runner{ASTGrep: "ast-grep-not-installed"}),
-		Files: files, Scanner: sc, WorkDir: t.TempDir()}
+	e := &Evaluator{
+		Snapshot: snap, Eligible: eligible, Engine: engine.New(h, sc, compiled.Runner{ASTGrep: "ast-grep-not-installed"}),
+		Files: files, Scanner: sc, WorkDir: t.TempDir(),
+	}
 	rep, err := e.Rule(t.Context(), r, cases()[:3])
 	if err != nil {
 		t.Fatal(err)
@@ -217,9 +219,11 @@ func TestBugClass(t *testing.T) {
 		Quote: func(string, int) string { return "\t_, err := http.Get(url)" },
 	}}
 	h := engine.NewHarness(engine.HarnessConfig{GatewayURL: "http://scripted.invalid", GatewayToken: "t", HTTPClient: &http.Client{Transport: tr}})
-	e := &Evaluator{Snapshot: snap, Eligible: eligible, Engine: engine.New(h, sc, compiled.Runner{ASTGrep: "ast-grep-not-installed"}),
-		Files: files, Scanner: sc, WorkDir: t.TempDir()}
-	class := config.Rule{Rule: schema.Rule{ID: "bug.error-handling", Kind: schema.KindBugClass, Status: schema.StatusActive, FilePatterns: []string{"**"}}}
+	e := &Evaluator{
+		Snapshot: snap, Eligible: eligible, Engine: engine.New(h, sc, compiled.Runner{ASTGrep: "ast-grep-not-installed"}),
+		Files: files, Scanner: sc, WorkDir: t.TempDir(),
+	}
+	class := config.Rule{ID: "bug.error-handling", Kind: schema.KindBugClass, Status: schema.StatusActive, FilePatterns: []string{"**"}}
 	rep, err := e.Rule(t.Context(), class, cases()[:2])
 	if err != nil {
 		t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -119,7 +120,7 @@ func (u *userGitHub) CanRead(ctx context.Context, _, repo string) (bool, error) 
 		return true, nil
 	}
 	var er *github.ErrorResponse
-	if errors.As(err, &er) && er.Response != nil && (er.Response.StatusCode == 404 || er.Response.StatusCode == 403) {
+	if errors.As(err, &er) && er.Response != nil && (er.Response.StatusCode == http.StatusNotFound || er.Response.StatusCode == http.StatusForbidden) {
 		return false, nil
 	}
 	return false, err

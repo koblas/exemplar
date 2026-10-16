@@ -8,9 +8,10 @@ import (
 
 // ContextFetch mints a context-flavor token for repo (contents and issues
 // read; never the config repo) and reads the repo's visibility with it.
+// It returns the token and the visibility.
 // exemplar-search uses the token to fetch its mirror and the visibility
 // to keep context within one visibility tier.
-func (a *App) ContextFetch(ctx context.Context, installationID int64, repo string) (token, visibility string, err error) {
+func (a *App) ContextFetch(ctx context.Context, installationID int64, repo string) (string, string, error) {
 	tok, err := a.Token(ctx, installationID, FlavorContext, []string{repo})
 	if err != nil {
 		return "", "", err
@@ -24,7 +25,7 @@ func (a *App) ContextFetch(ctx context.Context, installationID int64, repo strin
 	if err != nil {
 		return "", "", fmt.Errorf("gh: read %s: %w", repo, err)
 	}
-	visibility = r.GetVisibility()
+	visibility := r.GetVisibility()
 	if visibility == "" { // older GHES omits it
 		visibility = "public"
 		if r.GetPrivate() {

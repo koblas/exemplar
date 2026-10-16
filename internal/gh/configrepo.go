@@ -30,12 +30,12 @@ func NewConfigRepo(c *github.Client, fullName string) (*ConfigRepo, error) {
 }
 
 // DefaultBranch returns the default branch and its head commit.
-func (r *ConfigRepo) DefaultBranch(ctx context.Context) (name, sha string, err error) {
+func (r *ConfigRepo) DefaultBranch(ctx context.Context) (string, string, error) {
 	repo, _, err := r.gh.Repositories.Get(ctx, r.owner, r.repo)
 	if err != nil {
 		return "", "", fmt.Errorf("gh: get config repo: %w", err)
 	}
-	name = repo.GetDefaultBranch()
+	name := repo.GetDefaultBranch()
 	ref, _, err := r.gh.Git.GetRef(ctx, r.owner, r.repo, "heads/"+name)
 	if err != nil {
 		return "", "", fmt.Errorf("gh: get %s: %w", name, err)
@@ -73,7 +73,7 @@ func (r *ConfigRepo) EnsureBranch(ctx context.Context, branch, sha string) error
 // PutFile writes path on branch, creating or replacing it.
 func (r *ConfigRepo) PutFile(ctx context.Context, branch, path string, content []byte, message string) error {
 	opts := &github.RepositoryContentFileOptions{
-		Message: github.Ptr(message), Content: content, Branch: github.Ptr(branch),
+		Message: new(message), Content: content, Branch: new(branch),
 	}
 	existing, _, resp, err := r.gh.Repositories.GetContents(ctx, r.owner, r.repo, path, &github.RepositoryContentGetOptions{Ref: branch})
 	switch {
@@ -92,8 +92,8 @@ func (r *ConfigRepo) PutFile(ctx context.Context, branch, path string, content [
 // OpenDraftPR opens a draft PR from branch into base.
 func (r *ConfigRepo) OpenDraftPR(ctx context.Context, branch, base, title, body string) (string, error) {
 	pr, _, err := r.gh.PullRequests.Create(ctx, r.owner, r.repo, &github.NewPullRequest{
-		Title: github.Ptr(title), Head: github.Ptr(branch), Base: github.Ptr(base),
-		Body: github.Ptr(body), Draft: github.Ptr(true),
+		Title: new(title), Head: new(branch), Base: new(base),
+		Body: new(body), Draft: new(true),
 	})
 	if err != nil {
 		return "", fmt.Errorf("gh: open PR from %s: %w", branch, err)
@@ -108,7 +108,7 @@ func (r *ConfigRepo) PullRequest(ctx context.Context, number int) (PullRequest, 
 
 // Comment posts a comment on a config PR (the /exemplar try reply).
 func (r *ConfigRepo) Comment(ctx context.Context, number int, body string) error {
-	if _, _, err := r.gh.Issues.CreateComment(ctx, r.owner, r.repo, number, &github.IssueComment{Body: github.Ptr(body)}); err != nil {
+	if _, _, err := r.gh.Issues.CreateComment(ctx, r.owner, r.repo, number, &github.IssueComment{Body: new(body)}); err != nil {
 		return fmt.Errorf("gh: comment on %s/%s#%d: %w", r.owner, r.repo, number, err)
 	}
 	return nil
@@ -134,7 +134,7 @@ func (r *ConfigRepo) GetFile(ctx context.Context, ref, path string) ([]byte, err
 // URL and number.
 func (r *ConfigRepo) OpenPR(ctx context.Context, branch, base, title, body string) (string, int, error) {
 	pr, _, err := r.gh.PullRequests.Create(ctx, r.owner, r.repo, &github.NewPullRequest{
-		Title: github.Ptr(title), Head: github.Ptr(branch), Base: github.Ptr(base), Body: github.Ptr(body),
+		Title: new(title), Head: new(branch), Base: new(base), Body: new(body),
 	})
 	if err != nil {
 		return "", 0, fmt.Errorf("gh: open PR from %s: %w", branch, err)
@@ -172,15 +172,17 @@ func (r *ConfigRepo) PRByBranch(ctx context.Context, branch string) (ConfigItem,
 		return ConfigItem{}, false, nil
 	}
 	p := prs[0]
-	return ConfigItem{Number: p.GetNumber(), URL: p.GetHTMLURL(), State: p.GetState(), Merged: !p.GetMergedAt().IsZero(),
-		CreatedAt: p.GetCreatedAt().Time}, true, nil
+	return ConfigItem{
+		Number: p.GetNumber(), URL: p.GetHTMLURL(), State: p.GetState(), Merged: !p.GetMergedAt().IsZero(),
+		CreatedAt: p.GetCreatedAt().Time,
+	}, true, nil
 }
 
 // HumanActivity reports whether a person (not a bot) commented on, or
 // reviewed, PR or issue number since since: the owner responded.
 func (r *ConfigRepo) HumanActivity(ctx context.Context, number int, since time.Time) (bool, error) {
 	human := func(u *github.User) bool { return u != nil && !strings.EqualFold(u.GetType(), "Bot") }
-	cs, _, err := r.gh.Issues.ListComments(ctx, r.owner, r.repo, number, &github.IssueListCommentsOptions{Since: &since, ListOptions: github.ListOptions{PerPage: 100}})
+	cs, _, err := r.gh.Issues.ListComments(ctx, r.owner, r.repo, number, &github.IssueListCommentsOptions{Since: &since, PerPage: 100})
 	if err != nil {
 		return false, fmt.Errorf("gh: comments on %s/%s#%d: %w", r.owner, r.repo, number, err)
 	}
@@ -228,7 +230,7 @@ func (r *ConfigRepo) FindIssue(ctx context.Context, label, title string) (Config
 
 // CreateIssue opens an issue in exemplar-config.
 func (r *ConfigRepo) CreateIssue(ctx context.Context, title, body string, labels []string) (ConfigItem, error) {
-	i, _, err := r.gh.Issues.Create(ctx, r.owner, r.repo, &github.IssueRequest{Title: github.Ptr(title), Body: github.Ptr(body), Labels: &labels})
+	i, _, err := r.gh.Issues.Create(ctx, r.owner, r.repo, &github.IssueRequest{Title: new(title), Body: new(body), Labels: &labels})
 	if err != nil {
 		return ConfigItem{}, fmt.Errorf("gh: open issue %q: %w", title, err)
 	}
@@ -242,7 +244,7 @@ func (r *ConfigRepo) CloseIssue(ctx context.Context, number int, comment string)
 			return err
 		}
 	}
-	if _, _, err := r.gh.Issues.Edit(ctx, r.owner, r.repo, number, &github.IssueRequest{State: github.Ptr("closed")}); err != nil {
+	if _, _, err := r.gh.Issues.Edit(ctx, r.owner, r.repo, number, &github.IssueRequest{State: new("closed")}); err != nil {
 		return fmt.Errorf("gh: close %s/%s#%d: %w", r.owner, r.repo, number, err)
 	}
 	return nil

@@ -17,7 +17,7 @@ const (
 	DropNit            = "nit"
 	DropSuggestionOnly = "suggestion-only"
 	DropExcluded       = "excluded-path"
-	DropSecret         = "unredactable-secret"
+	DropSecret         = "unredactable-secret" //nolint:gosec // G101: a drop-reason label, not a credential
 )
 
 // Author is a GitHub actor as GraphQL reports it.

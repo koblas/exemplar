@@ -36,32 +36,48 @@ func (f *fakeConfigGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	const repo = "/repos/acme/exemplar-config"
 	switch p := r.URL.Path; {
-	case r.Method == "GET" && p == repo:
+	case r.Method == http.MethodGet && p == repo:
 		fmt.Fprint(w, `{"default_branch":"main"}`)
-	case r.Method == "GET" && strings.HasPrefix(p, repo+"/git/ref/"):
+	case r.Method == http.MethodGet && strings.HasPrefix(p, repo+"/git/ref/"):
 		ref := strings.TrimPrefix(p, repo+"/git/ref/")
 		fmt.Fprintf(w, `{"ref":"refs/%s","object":{"sha":%q}}`, ref, f.refs[ref])
-	case r.Method == "POST" && p == repo+"/git/refs":
-		ref := strings.TrimPrefix(body["ref"].(string), "refs/")
+	case r.Method == http.MethodPost && p == repo+"/git/refs":
+		rawRef, ok := bodyString(w, body, "ref")
+		if !ok {
+			return
+		}
+		ref := strings.TrimPrefix(rawRef, "refs/")
 		if _, exists := f.refs[ref]; exists {
-			w.WriteHeader(422)
+			w.WriteHeader(http.StatusUnprocessableEntity)
 			fmt.Fprint(w, `{"message":"Reference already exists"}`)
 			return
 		}
-		f.refs[ref] = body["sha"].(string)
+		sha, ok := bodyString(w, body, "sha")
+		if !ok {
+			return
+		}
+		f.refs[ref] = sha
 		fmt.Fprint(w, `{}`)
 	case strings.HasPrefix(p, repo+"/contents/"):
 		path := strings.TrimPrefix(p, repo+"/contents/")
 		branch := r.URL.Query().Get("ref")
-		if r.Method == "PUT" {
-			branch = body["branch"].(string)
+		if r.Method == http.MethodPut {
+			b, ok := bodyString(w, body, "branch")
+			if !ok {
+				return
+			}
+			branch = b
 			key := branch + ":" + path
 			if prev, ok := f.sha[key]; ok && body["sha"] != prev {
-				w.WriteHeader(409)
+				w.WriteHeader(http.StatusConflict)
 				fmt.Fprint(w, `{"message":"sha mismatch"}`)
 				return
 			}
-			raw, _ := base64.StdEncoding.DecodeString(body["content"].(string))
+			content, ok := bodyString(w, body, "content")
+			if !ok {
+				return
+			}
+			raw, _ := base64.StdEncoding.DecodeString(content)
 			f.files[key] = string(raw)
 			f.sha[key] = fmt.Sprintf("blob%d", len(f.sha)+1)
 			fmt.Fprint(w, `{"content":{}}`)
@@ -71,28 +87,28 @@ func (f *fakeConfigGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, `{"type":"file","sha":%q}`, s)
 			return
 		}
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprint(w, `{"message":"Not Found"}`)
-	case r.Method == "GET" && p == repo+"/pulls":
+	case r.Method == http.MethodGet && p == repo+"/pulls":
 		head := r.URL.Query().Get("head")
 		var out []map[string]any
 		for _, pr := range f.prs {
-			if "acme:"+pr["head"].(string) == head {
+			if h, ok := pr["head"].(string); ok && "acme:"+h == head {
 				out = append(out, map[string]any{"html_url": pr["html_url"], "head": map[string]any{"ref": pr["head"]}})
 			}
 		}
-		_ = json.NewEncoder(w).Encode(out)
-	case r.Method == "POST" && p == repo+"/issues/5/comments":
+		writeJSON(w, out)
+	case r.Method == http.MethodPost && p == repo+"/issues/5/comments":
 		f.comments = append(f.comments, fmt.Sprint(body["body"]))
 		fmt.Fprint(w, `{"id": 1}`)
-	case r.Method == "GET" && p == repo+"/pulls/5":
+	case r.Method == http.MethodGet && p == repo+"/pulls/5":
 		fmt.Fprint(w, `{"number":5,"title":"Candidate rule: x","base":{"sha":"base1"},"head":{"sha":"head1"},"user":{"login":"exemplar[bot]"}}`)
-	case r.Method == "POST" && p == repo+"/pulls":
+	case r.Method == http.MethodPost && p == repo+"/pulls":
 		body["html_url"] = fmt.Sprintf("https://github.com/acme/exemplar-config/pull/%d", len(f.prs)+1)
 		f.prs = append(f.prs, body) // the request as sent
-		_ = json.NewEncoder(w).Encode(map[string]any{"html_url": body["html_url"], "draft": body["draft"], "base": map[string]any{"ref": body["base"]}})
+		writeJSON(w, map[string]any{"html_url": body["html_url"], "draft": body["draft"], "base": map[string]any{"ref": body["base"]}})
 	default:
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
@@ -159,5 +175,22 @@ func TestConfigRepoCommentAndPR(t *testing.T) {
 	}
 	if err := r.Comment(t.Context(), 5, "reply"); err != nil || len(fake.comments) != 1 || fake.comments[0] != "reply" {
 		t.Fatalf("Comment = %v, %v", fake.comments, err)
+	}
+}
+
+// bodyString returns the string field key of a fake's request body. When it
+// is missing or not a string it answers 400, so the client call fails.
+func bodyString(w http.ResponseWriter, body map[string]any, key string) (string, bool) {
+	s, ok := body[key].(string)
+	if !ok {
+		http.Error(w, fmt.Sprintf("request field %q is not a string", key), http.StatusBadRequest)
+	}
+	return s, ok
+}
+
+// writeJSON encodes v as a fake's response, answering 500 if it cannot.
+func writeJSON(w http.ResponseWriter, v any) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

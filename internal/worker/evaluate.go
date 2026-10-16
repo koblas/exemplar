@@ -30,6 +30,7 @@ import (
 // exemplar-api, and the diff is cleared when the job ends.
 type EvaluateWorker struct {
 	river.WorkerDefaults[store.EvaluateArgs]
+
 	cfg Config
 }
 
@@ -120,8 +121,10 @@ func (w *EvaluateWorker) Evaluate(ctx context.Context, id uuid.UUID) (string, er
 	if err := ws.ApplyPatch(ctx, []byte(row.Diff)); err != nil {
 		return refuse(err.Error())
 	}
-	info := engine.PRInfo{Repo: row.Repo, Title: "exemplar review", Author: row.RequestedBy, AuthorType: "User",
-		BaseSHA: row.BaseSha, HeadSHA: ws.HeadSHA, HeadRepo: row.Repo}
+	info := engine.PRInfo{
+		Repo: row.Repo, Title: "exemplar review", Author: row.RequestedBy, AuthorType: "User",
+		BaseSHA: row.BaseSha, HeadSHA: ws.HeadSHA, HeadRepo: row.Repo,
+	}
 	p, err := engine.Prepare(ctx, ws, snap, info, w.cfg.Scanner)
 	if errors.Is(err, engine.ErrIneligible) {
 		return refuse(err.Error())
@@ -154,8 +157,10 @@ func Result(res *engine.Result) (evaluate.Result, float64) {
 		if f.State != engine.StatePosted {
 			continue
 		}
-		ef := evaluate.Finding{RuleID: f.RuleID, Lane: f.Lane, Severity: f.Severity, Category: f.Category, Path: f.Anchor.Path, Side: string(f.Anchor.Side),
-			StartLine: f.Anchor.StartLine, EndLine: f.Anchor.EndLine, Message: f.Message}
+		ef := evaluate.Finding{
+			RuleID: f.RuleID, Lane: f.Lane, Severity: f.Severity, Category: f.Category, Path: f.Anchor.Path, Side: string(f.Anchor.Side),
+			StartLine: f.Anchor.StartLine, EndLine: f.Anchor.EndLine, Message: f.Message,
+		}
 		if f.FixValid != nil && *f.FixValid {
 			ef.Suggestion = f.Fix
 		}
@@ -226,16 +231,20 @@ func (w *EvaluateWorker) eval(ctx context.Context, id uuid.UUID, row queries.Sta
 	ids := append(evalrun.ChangedRules(head, changed), row.Rules...)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
-	ev := &evalrun.Evaluator{Snapshot: head, Eligible: func(repo string) bool { return snap.CheckEligible(repo) == nil },
+	ev := &evalrun.Evaluator{
+		Snapshot: head, Eligible: func(repo string) bool { return snap.CheckEligible(repo) == nil },
 		Engine: w.cfg.Engine, Matcher: w.cfg.Matcher, Scanner: w.cfg.Scanner, WorkDir: filepath.Join(dir, "cases"),
-		Files: &evalgen.CheckoutFiles{Root: filepath.Join(dir, "checkouts"), CloneURL: w.cfg.CloneURL,
+		Files: &evalgen.CheckoutFiles{
+			Root: filepath.Join(dir, "checkouts"), CloneURL: w.cfg.CloneURL,
 			Token: func(ctx context.Context, repo string) (string, error) {
 				inst, err := w.installation(ctx, repo)
 				if err != nil {
 					return "", err
 				}
 				return w.cfg.GitHub.CloneToken(ctx, inst, repo)
-			}}}
+			},
+		},
+	}
 	reports := []evalrun.Report{}
 	cost := 0.0
 	pass := true

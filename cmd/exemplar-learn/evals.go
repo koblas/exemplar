@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -80,8 +78,7 @@ func runEvals(args []string) error {
 	}
 	reports, err := evalgen.New(evalgen.Config{MaxNegatives: *maxNeg, MaxInjected: *maxInj, Logger: log}, st, inj).Run(ctx)
 	for _, r := range reports {
-		line, _ := json.Marshal(r)
-		fmt.Println(string(line))
+		printJSON(r)
 	}
 	return err
 }

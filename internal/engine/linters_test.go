@@ -36,8 +36,10 @@ func TestReviewLinterDedupe(t *testing.T) {
 		wantTrace bool
 	}{
 		{name: "mapped title", linters: []string{"golangci-lint"}, mapIDs: map[string][]string{"GolangCI-Lint": {"noctx"}}, anns: []LinterAnnotation{noctx}, wantDup: true, wantTrace: true},
-		{name: "mapped message suffix", linters: []string{"golangci-lint"}, mapIDs: map[string][]string{"golangci-lint": {"noctx"}},
-			anns: []LinterAnnotation{{Check: "golangci-lint", Path: "main.go", Start: 8, End: 10, Message: "net/http.Get must not be called (noctx)"}}, wantDup: true, wantTrace: true},
+		{
+			name: "mapped message suffix", linters: []string{"golangci-lint"}, mapIDs: map[string][]string{"golangci-lint": {"noctx"}},
+			anns: []LinterAnnotation{{Check: "golangci-lint", Path: "main.go", Start: 8, End: 10, Message: "net/http.Get must not be called (noctx)"}}, wantDup: true, wantTrace: true,
+		},
 		{name: "map for another linter", linters: []string{"golangci-lint"}, mapIDs: map[string][]string{"staticcheck": {"noctx"}}, anns: []LinterAnnotation{noctx}, wantLight: 1, wantTrace: true},
 		{name: "judged same", linters: []string{"golangci-lint"}, anns: []LinterAnnotation{noctx}, judge: true, wantDup: true, wantLight: 1, wantTrace: true},
 		{name: "judged different", linters: []string{"golangci-lint"}, anns: []LinterAnnotation{noctx}, wantLight: 1, wantTrace: true},

@@ -59,11 +59,11 @@ index 7777777..8888888 100644
 Binary files a/assets/logo.png and b/assets/logo.png differ
 `
 
-func mustParse(t testing.TB, s string) *Diff {
-	t.Helper()
+func mustParse(tb testing.TB, s string) *Diff {
+	tb.Helper()
 	d, err := Parse(strings.NewReader(s))
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		tb.Fatalf("Parse: %v", err)
 	}
 	return d
 }

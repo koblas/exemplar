@@ -59,9 +59,9 @@ func TestDecodeRuleRejects(t *testing.T) {
 		{"bad kind", func(s string) string { return strings.Replace(s, "kind: compiled", "kind: magic", 1) }},
 		{"bad severity", func(s string) string { return strings.Replace(s, "severity: blocking", "severity: critical", 1) }},
 		{"compiled without matcher", func(s string) string {
-			i := strings.Index(s, "matcher:")
+			before, _, _ := strings.Cut(s, "matcher:")
 			j := strings.Index(s, "description:")
-			return s[:i] + s[j:]
+			return before + s[j:]
 		}},
 		{"exemplar with matcher", func(s string) string { return strings.Replace(s, "kind: compiled", "kind: exemplar", 1) }},
 		{"bad owner", func(s string) string { return strings.Replace(s, `"@security/appsec"`, "security", 1) }},
@@ -76,8 +76,7 @@ func TestDecodeRuleRejects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var r Rule
 			err := Decode(DocRule, []byte(tt.edit(compiledRuleYAML)), &r)
-			var ve *ValidationError
-			if !errors.As(err, &ve) {
+			if _, ok := errors.AsType[*ValidationError](err); !ok {
 				t.Fatalf("Decode = %v, want ValidationError", err)
 			}
 		})

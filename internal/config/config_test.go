@@ -289,12 +289,14 @@ func TestStage2BarsCannotBeLowered(t *testing.T) {
 
 func TestAutoApproveConfigChecks(t *testing.T) {
 	ok := baseTree(t)
-	ok["repos/exemplar-sandbox/playground.yaml"] = &fstest.MapFile{Data: []byte("enabled: true\nauto_approve:\n  enabled: true\n  paths: [\"docs/**\"]\n  bot_authors: [{identity: \"renovate[bot]\", paths: [\"docs/deps/**\"]}]\n  title_pattern: \"^docs: \"\n  max_files: 5\n  max_changed_lines: 200\n")}
+	ok["repos/exemplar-sandbox/playground.yaml"] = &fstest.MapFile{Data: []byte("enabled: true\nauto_approve:\n  enabled: true\n  paths: [\"docs/**\"]\n" +
+		"  bot_authors: [{identity: \"renovate[bot]\", paths: [\"docs/deps/**\"]}]\n  title_pattern: \"^docs: \"\n  max_files: 5\n  max_changed_lines: 200\n")}
 	if _, err := LoadSnapshot(ok, "v"); err != nil {
 		t.Fatalf("valid auto_approve rejected: %v", err)
 	}
 	bad := baseTree(t)
-	bad["repos/exemplar-sandbox/playground.yaml"] = &fstest.MapFile{Data: []byte("enabled: true\nauto_approve:\n  enabled: true\n  paths: [\"docs/[x\"]\n  extra_denylist: [\"a/[\"]\n  bot_authors: [{identity: \"renovate[bot]\", paths: [\"[\"]}]\n  title_pattern: \"(\"\n  max_files: 11\n  max_changed_lines: 5000\n")}
+	bad["repos/exemplar-sandbox/playground.yaml"] = &fstest.MapFile{Data: []byte("enabled: true\nauto_approve:\n  enabled: true\n  paths: [\"docs/[x\"]\n" +
+		"  extra_denylist: [\"a/[\"]\n  bot_authors: [{identity: \"renovate[bot]\", paths: [\"[\"]}]\n  title_pattern: \"(\"\n  max_files: 11\n  max_changed_lines: 5000\n")}
 	_, err := LoadSnapshot(bad, "v")
 	var probs Problems
 	if !errors.As(err, &probs) || len(probs) != 6 {

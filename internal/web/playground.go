@@ -86,9 +86,10 @@ func (h *Handler) tryRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b := playgroundBody{Token: r.PostForm.Get("t"), PR: r.PostForm.Get("pr"), YAML: r.PostForm.Get("rule")}
+	ctx := r.Context()
 	fail := func(code int, msg string) {
 		b.Error = msg
-		b.Runs, _ = h.cfg.Store.PlaygroundRunsBy(r.Context(), login)
+		b.Runs, _ = h.cfg.Store.PlaygroundRunsBy(ctx, login)
 		h.render(w, code, "playground", pageData{Title: "Playground", Nav: "playground", Login: login, Body: b})
 	}
 	repo, pr, ok := parsePR(b.PR)

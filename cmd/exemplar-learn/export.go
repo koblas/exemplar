@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -76,8 +75,7 @@ func runExport(args []string) error {
 	}
 	outs, err := r.Run(ctx, snap)
 	for _, o := range outs {
-		line, _ := json.Marshal(o)
-		fmt.Println(string(line))
+		printJSON(o)
 	}
 	return err
 }
@@ -91,7 +89,7 @@ func exportsAppFromEnv() (*gh.App, error) {
 	if appID == 0 || keyFile == "" || cfgRepo == "" {
 		return nil, errors.New("EXEMPLAR_EXPORTS_APP_ID, EXEMPLAR_EXPORTS_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are required")
 	}
-	key, err := os.ReadFile(keyFile)
+	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return nil, fmt.Errorf("read exports private key: %w", err)
 	}

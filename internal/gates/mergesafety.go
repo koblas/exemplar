@@ -2,6 +2,7 @@ package gates
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"path"
 	"slices"
@@ -45,9 +46,7 @@ var DefaultWeights = map[string]float64{
 // typo cannot drop a penalty.
 func Weights(configured map[string]float64) (map[string]float64, error) {
 	w := make(map[string]float64, len(DefaultWeights))
-	for k, v := range DefaultWeights {
-		w[k] = v
-	}
+	maps.Copy(w, DefaultWeights)
 	for k, v := range configured {
 		if _, ok := DefaultWeights[k]; !ok {
 			return nil, fmt.Errorf("gates: unknown merge_safety weight %q", k)

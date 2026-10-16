@@ -298,13 +298,17 @@ func TestGitHubAllowedOrgs(t *testing.T) {
 	if resp := e.signIn(t, e.link(8812, "fixed"), "good"); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-member = %d", resp.StatusCode)
 	}
-	if _, err := New(Config{Links: e.links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: "https://x",
+	if _, err := New(Config{
+		Links: e.links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: "https://x",
 		GitHub: &GitHubAuth{ClientID: "c", ClientSecret: "s"}, Lookup: func(context.Context, int64) (Finding, error) { return Finding{}, nil },
-		Enqueue: func(context.Context, store.FeedbackLinkArgs) error { return nil }}); err == nil {
+		Enqueue: func(context.Context, store.FeedbackLinkArgs) error { return nil },
+	}); err == nil {
 		t.Error("GitHub sign-in with neither allowed orgs nor allow-everyone was accepted")
 	}
-	if _, err := New(Config{Links: e.links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: "https://x",
-		Lookup: func(context.Context, int64) (Finding, error) { return Finding{}, nil }, Enqueue: func(context.Context, store.FeedbackLinkArgs) error { return nil }}); err == nil {
+	if _, err := New(Config{
+		Links: e.links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: "https://x",
+		Lookup: func(context.Context, int64) (Finding, error) { return Finding{}, nil }, Enqueue: func(context.Context, store.FeedbackLinkArgs) error { return nil },
+	}); err == nil {
 		t.Error("no sign-in source was accepted")
 	}
 }

@@ -21,6 +21,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -71,13 +72,13 @@ func runBench(args []string) error {
 		return err
 	}
 	if cfg.RepoURL == "" || cfg.WorkDir == "" {
-		return fmt.Errorf("--repo and --work-dir are required")
+		return errors.New("--repo and --work-dir are required")
 	}
 	cfg.Token = os.Getenv("EXEMPLAR_GH_TOKEN")
 	if sparse != "" {
 		cfg.SparseDirs = strings.Split(sparse, ",")
 	}
-	for _, d := range strings.Split(depths, ",") {
+	for d := range strings.SplitSeq(depths, ",") {
 		n, err := strconv.Atoi(strings.TrimSpace(d))
 		if err != nil || n < 1 {
 			return fmt.Errorf("bad --incremental-depths entry %q", d)
@@ -89,7 +90,7 @@ func runBench(args []string) error {
 		if err != nil {
 			return err
 		}
-		for _, q := range strings.Split(string(data), "\n") {
+		for q := range strings.SplitSeq(string(data), "\n") {
 			if q = strings.TrimSpace(q); q != "" && !strings.HasPrefix(q, "#") {
 				cfg.Queries = append(cfg.Queries, q)
 			}
@@ -107,14 +108,14 @@ func runBench(args []string) error {
 		return err
 	}
 	if out != "" {
-		if err := os.WriteFile(out, append(data, '\n'), 0o644); err != nil {
+		if err := os.WriteFile(out, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 			return err
 		}
 	} else {
 		fmt.Println(string(data))
 	}
 	if md != "" {
-		return os.WriteFile(md, []byte(report.Markdown()), 0o644)
+		return os.WriteFile(md, []byte(report.Markdown()), 0o644) //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 	}
 	return nil
 }

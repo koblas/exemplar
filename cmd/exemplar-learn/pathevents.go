@@ -147,7 +147,13 @@ func runPathEvents(args []string) error {
 	return nil
 }
 
+// printJSON prints v as one line of JSON on stdout, reporting an encoding
+// failure on stderr instead.
 func printJSON(v any) {
-	out, _ := json.Marshal(v)
+	out, err := json.Marshal(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "encode output: %v\n", err)
+		return
+	}
 	fmt.Println(string(out))
 }

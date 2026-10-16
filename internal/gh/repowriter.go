@@ -64,7 +64,7 @@ func (w *RepoWriter) ResetBranch(ctx context.Context, branch, sha string) error 
 	_, _, err := w.gh.Git.CreateRef(ctx, w.owner, w.repo, github.CreateRef{Ref: "refs/heads/" + branch, SHA: sha})
 	var ge *github.ErrorResponse
 	if errors.As(err, &ge) && ge.Response != nil && ge.Response.StatusCode == http.StatusUnprocessableEntity {
-		_, _, err = w.gh.Git.UpdateRef(ctx, w.owner, w.repo, "heads/"+branch, github.UpdateRef{SHA: sha, Force: github.Ptr(true)})
+		_, _, err = w.gh.Git.UpdateRef(ctx, w.owner, w.repo, "heads/"+branch, github.UpdateRef{SHA: sha, Force: new(true)})
 	}
 	if err != nil {
 		return fmt.Errorf("gh: reset %s: %w", branch, err)
@@ -74,7 +74,7 @@ func (w *RepoWriter) ResetBranch(ctx context.Context, branch, sha string) error 
 
 // PutFile writes path on branch, creating or replacing it.
 func (w *RepoWriter) PutFile(ctx context.Context, branch, path string, content []byte, message string) error {
-	opts := &github.RepositoryContentFileOptions{Message: github.Ptr(message), Content: content, Branch: github.Ptr(branch)}
+	opts := &github.RepositoryContentFileOptions{Message: new(message), Content: content, Branch: new(branch)}
 	existing, _, resp, err := w.gh.Repositories.GetContents(ctx, w.owner, w.repo, path, &github.RepositoryContentGetOptions{Ref: branch})
 	switch {
 	case err == nil && existing != nil:
@@ -107,7 +107,7 @@ func (w *RepoWriter) OpenPRFor(ctx context.Context, branch string) (ConfigItem, 
 // OpenPR opens a PR from branch into base; it returns the PR and its node id.
 func (w *RepoWriter) OpenPR(ctx context.Context, branch, base, title, body string) (ConfigItem, string, error) {
 	p, _, err := w.gh.PullRequests.Create(ctx, w.owner, w.repo, &github.NewPullRequest{
-		Title: github.Ptr(title), Head: github.Ptr(branch), Base: github.Ptr(base), Body: github.Ptr(body),
+		Title: new(title), Head: new(branch), Base: new(base), Body: new(body),
 	})
 	if err != nil {
 		return ConfigItem{}, "", fmt.Errorf("gh: open PR from %s: %w", branch, err)

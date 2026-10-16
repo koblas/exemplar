@@ -100,7 +100,7 @@ func newReplayCmd() *cobra.Command {
 				return err
 			}
 			if outFile != "" {
-				if err := os.WriteFile(outFile, append(data, '\n'), 0o644); err != nil {
+				if err := os.WriteFile(outFile, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 					return err
 				}
 			} else {

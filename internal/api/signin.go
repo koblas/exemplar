@@ -103,9 +103,9 @@ const (
 
 // pendingLink is an OIDC sign-in waiting for GitHub to be connected.
 type pendingLink struct {
-	ID     uiSession
-	Return string
-	Exp    int64
+	ID     uiSession `json:"ID"`
+	Return string    `json:"Return"`
+	Exp    int64     `json:"Exp"`
 }
 
 // linking reports whether OIDC sign-ins connect GitHub.
@@ -121,7 +121,9 @@ func validReturn(ret string) bool {
 var loginPage = template.Must(template.New("login").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in · Exemplar</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:24rem;margin:4rem auto;padding:0 1rem}a.b{display:flex;gap:.5rem;align-items:center;justify-content:center;border:1px solid #8886;border-radius:6px;padding:.6rem;margin:.75rem 0;text-decoration:none;color:inherit}img{width:20px;height:20px}</style>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:24rem;margin:4rem auto;padding:0 1rem}` +
+	`a.b{display:flex;gap:.5rem;align-items:center;justify-content:center;border:1px solid #8886;border-radius:6px;padding:.6rem;margin:.75rem ` +
+	`0;text-decoration:none;color:inherit}img{width:20px;height:20px}</style>
 </head><body><h1>Sign in to Exemplar</h1>
 {{if .GitHub}}<a class="b" href="/oauth/start?return={{.Return}}">Sign in with GitHub</a>{{end}}
 {{if .OIDC}}<a class="b" href="/oidc/start?return={{.Return}}">{{if .Icon}}<img src="{{.Icon}}" alt="">{{end}}Sign in with {{.OIDCText}}</a>{{end}}
@@ -147,8 +149,12 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// html/template escapes the return path inside the hrefs.
-	_ = loginPage.Execute(w, map[string]any{"GitHub": github, "OIDC": true, "Return": ret,
-		"OIDCText": s.cfg.OIDC.SignInText(), "Icon": template.URL(safeIcon(s.cfg.OIDC.IconURL()))})
+	_ = loginPage.Execute(w, map[string]any{
+		"GitHub": github, "OIDC": true, "Return": ret,
+		// safeIcon admits only an operator-configured https URL with no quote,
+		// angle bracket or space, so it cannot break out of the src attribute.
+		"OIDCText": s.cfg.OIDC.SignInText(), "Icon": template.URL(safeIcon(s.cfg.OIDC.IconURL())), //nolint:gosec // G203: safeIcon validates the URL (see above)
+	})
 }
 
 // safeIcon accepts only an https icon URL.
@@ -212,7 +218,11 @@ func (s *Server) oidcStart(w http.ResponseWriter, r *http.Request) {
 		}
 		*p = base64.RawURLEncoding.EncodeToString(b)
 	}
-	data, _ := json.Marshal(st)
+	data, err := json.Marshal(st)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	sealed, err := s.seal("oidc-state", data)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -223,8 +233,11 @@ func (s *Server) oidcStart(w http.ResponseWriter, r *http.Request) {
 }
 
 type oidcState struct {
-	State, Nonce, Verifier, Return string
-	Exp                            int64
+	State    string `json:"State"`
+	Nonce    string `json:"Nonce"`
+	Verifier string `json:"Verifier"`
+	Return   string `json:"Return"`
+	Exp      int64  `json:"Exp"`
 }
 
 func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +267,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, err := s.cfg.OIDC.Exchange(r.Context(), r.URL.Query().Get("code"), s.cfg.PublicURL+"/oidc/callback", st.Nonce, st.Verifier)
-	var denied oidc.ErrDenied
+	var denied oidc.DeniedError
 	switch {
 	case errors.As(err, &denied):
 		fail(denied.Why)
@@ -292,9 +305,11 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 var connectPage = template.Must(template.New("connect").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Connect GitHub · Exemplar</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem}a.b{display:block;text-align:center;border:1px solid #8886;border-radius:6px;padding:.6rem;margin:.75rem 0;text-decoration:none;color:inherit}</style>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem}a.b{display:block;text-align:center;border:1px solid ` +
+	`#8886;border-radius:6px;padding:.6rem;margin:.75rem 0;text-decoration:none;color:inherit}</style>
 </head><body><h1>Connect your GitHub account</h1>
-<p>Signed in as {{.Username}}. Exemplar compares people with GitHub logins and teams: who wrote or reviewed a pull request, and who owns a rule. Connect the GitHub account you use for code review. You do this once.</p>
+<p>Signed in as {{.Username}}. Exemplar compares people with GitHub logins and teams: who wrote or reviewed a pull request, and who owns a rule. Connect the GitHub account ` +
+	`you use for code review. You do this once.</p>
 <a class="b" href="/connect/github">Connect GitHub</a>
 {{if .Optional}}<a class="b" href="/connect/skip">Continue without</a>{{end}}
 </body></html>
@@ -303,7 +318,11 @@ var connectPage = template.Must(template.New("connect").Parse(`<!doctype html>
 // pendLink keeps the OIDC sign-in and asks for GitHub: straight to GitHub
 // when connecting is required, or a page that offers to skip.
 func (s *Server) pendLink(w http.ResponseWriter, r *http.Request, ui uiSession, ret string) {
-	data, _ := json.Marshal(pendingLink{ID: ui, Return: ret, Exp: s.cfg.Now().Add(stateTTL).Unix()})
+	data, err := json.Marshal(pendingLink{ID: ui, Return: ret, Exp: s.cfg.Now().Add(stateTTL).Unix()})
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	sealed, err := s.seal("oidc-link", data)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)

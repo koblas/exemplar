@@ -48,6 +48,16 @@ func list(o any, path ...string) []any {
 	return l
 }
 
+// as asserts that v is a T, failing the test with what if it is not.
+func as[T any](t *testing.T, v any, what string) T {
+	t.Helper()
+	x, ok := v.(T)
+	if !ok {
+		t.Fatalf("%s: got %T, want %T", what, v, x)
+	}
+	return x
+}
+
 // variants are the builds the repository ships, plus the one an
 // installation composes for both ways in (base with components/ingress).
 var variants = []struct {
@@ -65,8 +75,10 @@ var variants = []struct {
 // load reads every document of every manifest the kustomizations under
 // roots list, following resource directories and components. It returns
 // the documents and every kustomization's images.
-func load(t *testing.T, roots ...string) (docs []obj, images []any) {
+func load(t *testing.T, roots ...string) ([]obj, []any) {
 	t.Helper()
+	var docs []obj
+	var images []any
 	seen := map[string]bool{}
 	var walk func(dir string)
 	walk = func(dir string) {
@@ -89,14 +101,15 @@ func load(t *testing.T, roots ...string) (docs []obj, images []any) {
 		}
 		listed := map[string]bool{}
 		for _, r := range list(kustom, "resources") {
-			if fi, err := os.Stat(filepath.Join(dir, r.(string))); err == nil && fi.IsDir() {
-				walk(filepath.Join(dir, r.(string)))
+			rs := as[string](t, r, dir+": resource")
+			if fi, err := os.Stat(filepath.Join(dir, rs)); err == nil && fi.IsDir() {
+				walk(filepath.Join(dir, rs))
 				continue
 			}
-			listed[r.(string)] = true
+			listed[rs] = true
 		}
 		for _, c := range list(kustom, "components") {
-			walk(filepath.Join(dir, c.(string)))
+			walk(filepath.Join(dir, as[string](t, c, dir+": component")))
 		}
 		files, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
 		for _, f := range files {
@@ -144,7 +157,7 @@ func load(t *testing.T, roots ...string) (docs []obj, images []any) {
 		if f, dup := ids[id]; dup {
 			t.Errorf("%s is in both %s and %s", id, f, d["_file"])
 		}
-		ids[id] = d["_file"].(string)
+		ids[id] = as[string](t, d["_file"], id+": _file")
 	}
 	return docs, images
 }
@@ -174,11 +187,12 @@ func workloads(docs []obj) []workload {
 	return out
 }
 
-func containers(spec obj) []obj {
+func containers(t *testing.T, spec obj) []obj {
+	t.Helper()
 	var out []obj
 	for _, k := range []string{"initContainers", "containers"} {
 		for _, c := range list(spec, k) {
-			out = append(out, c.(obj))
+			out = append(out, as[obj](t, c, k))
 		}
 	}
 	return out
@@ -207,6 +221,7 @@ func TestManifests(t *testing.T) {
 }
 
 func checkManifests(t *testing.T, docs []obj, images []any, want int) {
+	t.Helper()
 	ws := workloads(docs)
 	if len(ws) != want {
 		t.Errorf("workloads = %d, want %d", len(ws), want)
@@ -259,15 +274,15 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 		}
 		volumes := map[string]obj{}
 		for _, v := range list(w.doc, "spec", "volumeClaimTemplates") {
-			volumes[str(v, "metadata", "name")] = v.(obj)
+			volumes[str(v, "metadata", "name")] = as[obj](t, v, w.name+": volumeClaimTemplate")
 		}
 		for _, v := range list(spec, "volumes") {
-			volumes[str(v, "name")] = v.(obj)
+			volumes[str(v, "name")] = as[obj](t, v, w.name+": volume")
 			if s := str(v, "secret", "secretName"); s != "" && !secrets[s] {
 				t.Errorf("%s: secret %s is not documented in settings.yaml", w.name, s)
 			}
 		}
-		for _, c := range containers(spec) {
+		for _, c := range containers(t, spec) {
 			cname := w.name + "/" + str(c, "name")
 			sc := get(c, "securityContext")
 			if get(sc, "allowPrivilegeEscalation") != false || get(sc, "readOnlyRootFilesystem") != true ||
@@ -355,6 +370,7 @@ func shutdown(t *testing.T, binary string, args []string) time.Duration {
 }
 
 func checkServices(t *testing.T, docs []obj, ws []workload) {
+	t.Helper()
 	long := map[string]workload{}
 	for _, w := range ws {
 		if w.kind == "CronJob" {
@@ -365,14 +381,14 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 		if !matches(sel, w.labels) {
 			t.Errorf("%s: selector does not match its pod labels", w.name)
 		}
-		main := list(w.spec, "containers")[0].(obj)
+		main := as[obj](t, list(w.spec, "containers")[0], w.name+": container")
 		var cmd []string
 		for _, c := range list(main, "command") {
-			cmd = append(cmd, c.(string))
+			cmd = append(cmd, as[string](t, c, w.name+": command"))
 		}
 		var args []string
 		for _, a := range list(main, "args") {
-			args = append(args, a.(string))
+			args = append(args, as[string](t, a, w.name+": arg"))
 		}
 		binary := filepath.Base(cmd[0])
 		// Exemplar's binaries serve /healthz and /readyz on --addr (default
@@ -384,7 +400,7 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 		port := 0
 		for _, p := range list(main, "ports") {
 			if str(p, "name") == portName {
-				port = int(get(p, "containerPort").(uint64))
+				port = int(as[uint64](t, get(p, "containerPort"), w.name+": containerPort"))
 			}
 		}
 		for _, a := range args {
@@ -404,7 +420,8 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 			str(main, "livenessProbe", "httpGet", "port") != portName || str(main, "readinessProbe", "httpGet", "port") != portName {
 			t.Errorf("%s: probes must be %s and %s on the %s port", w.name, live, ready, portName)
 		}
-		grace := time.Duration(get(w.spec, "terminationGracePeriodSeconds").(uint64)) * time.Second
+		graceSeconds := as[uint64](t, get(w.spec, "terminationGracePeriodSeconds"), w.name+": terminationGracePeriodSeconds")
+		grace := time.Duration(graceSeconds) * time.Second
 		if need := shutdown(t, binary, args); grace <= need {
 			t.Errorf("%s: terminationGracePeriodSeconds %s does not outlast shutdown %s", w.name, grace, need)
 		}
@@ -457,11 +474,12 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 // NetworkPolicies admit to the webhook and the API, the webhook's
 // Postgres-only egress, and the tunnel's routes.
 func checkInbound(t *testing.T, docs []obj, ingresses int, inbound []string) {
+	t.Helper()
 	services := map[string]bool{}
 	for _, d := range docs {
 		if str(d, "kind") == "Service" {
 			for _, p := range list(d, "spec", "ports") {
-				services[str(d, "metadata", "name")+":"+strconv.Itoa(int(get(p, "port").(uint64)))] = true
+				services[str(d, "metadata", "name")+":"+strconv.Itoa(int(as[uint64](t, get(p, "port"), "service port")))] = true
 				services[str(d, "metadata", "name")+":"+str(p, "name")] = true
 			}
 		}

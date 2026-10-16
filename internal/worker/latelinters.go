@@ -31,6 +31,7 @@ const LinterRecheckWait = 30 * time.Second
 // LinterCheckWorker runs linter_check jobs.
 type LinterCheckWorker struct {
 	river.WorkerDefaults[store.LinterCheckArgs]
+
 	cfg Config
 }
 

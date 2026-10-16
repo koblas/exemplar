@@ -55,8 +55,10 @@ func TestInstruments(t *testing.T) {
 			seen[m.Name] = m.Data
 		}
 	}
-	for _, name := range []string{"exemplar.model.calls", "exemplar.model.duration", "exemplar.review.duration", "exemplar.review.queue_to_post",
-		"exemplar.github.rate_limit.remaining", "exemplar.github.requests"} {
+	for _, name := range []string{
+		"exemplar.model.calls", "exemplar.model.duration", "exemplar.review.duration", "exemplar.review.queue_to_post",
+		"exemplar.github.rate_limit.remaining", "exemplar.github.requests",
+	} {
 		if _, ok := seen[name]; !ok {
 			t.Errorf("no %s (have %v)", name, seen)
 		}

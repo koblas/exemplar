@@ -136,7 +136,7 @@ func isRevertTitle(s string) bool {
 // commit SHA. A trailer inside a PR's own commits (reverting a work-in-
 // progress commit before merge) is not a revert of anything on the branch,
 // so trailers count only on the PR's merge commit or on direct pushes.
-func classify(c historyCommit) (ref string, pr *associatedPR, ok bool) {
+func classify(c historyCommit) (string, *associatedPR, bool) {
 	headline, _, _ := strings.Cut(c.Message, "\n")
 	if len(c.AssociatedPullRequests.Nodes) > 0 {
 		p := &c.AssociatedPullRequests.Nodes[0]
@@ -226,8 +226,10 @@ func (j *Job) Reverts(ctx context.Context, repo string) (RevertStats, error) {
 			case err != nil:
 				return stats, fmt.Errorf("pathevents: reverted PR of %s %s: %w", repo, evRef, err)
 			case n > 0:
-				links = append(links, queries.InsertPRLinkParams{Repo: repo, PrNumber: int32(n), Kind: KindRevert, Ref: evRef,
-					At: pgtype.Timestamptz{Time: c.CommittedDate, Valid: true}})
+				links = append(links, queries.InsertPRLinkParams{
+					Repo: repo, PrNumber: int32(n), Kind: KindRevert, Ref: evRef,
+					At: pgtype.Timestamptz{Time: c.CommittedDate, Valid: true},
+				})
 			}
 			if pr != nil {
 				for _, f := range pr.Files.Nodes {

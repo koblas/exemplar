@@ -37,7 +37,7 @@ func (f *modelFlags) harness(allowNone bool) (*engine.Harness, error) {
 	case f.gatewayURL != "" && f.gatewayToken != "":
 		return engine.NewHarness(engine.HarnessConfig{GatewayURL: f.gatewayURL, GatewayToken: f.gatewayToken}), nil
 	case allowNone:
-		return nil, nil
+		return nil, nil //nolint:nilnil // no harness is a valid answer when allowNone is set, as documented
 	}
 	return nil, errors.New("set --gateway-url and --gateway-token, or --scripted")
 }

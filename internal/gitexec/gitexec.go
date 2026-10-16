@@ -53,8 +53,7 @@ func Run(ctx context.Context, dir string, env []string, args ...string) ([]byte,
 		if dir != "" && len(args) > 2 {
 			name = args[2]
 		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if _, ok := errors.AsType[*exec.ExitError](err); ok {
 			return nil, fmt.Errorf("git %s: %w: %s", name, err, strings.TrimSpace(stderr.String()))
 		}
 		return nil, fmt.Errorf("git %s: %w", name, err)

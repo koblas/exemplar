@@ -52,7 +52,7 @@ func slotKey(repo string, slot int) int64 {
 // Acquire takes a free slot of repo's limit. It returns ok=false, with no
 // error, when every slot is taken. release frees the slot and returns the
 // connection; it must be called exactly once, and works after ctx ends.
-func (s *Slots) Acquire(ctx context.Context, repo string, limit int) (release func(), ok bool, err error) {
+func (s *Slots) Acquire(ctx context.Context, repo string, limit int) (func(), bool, error) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("worker: slot connection: %w", err)
@@ -66,7 +66,7 @@ func (s *Slots) Acquire(ctx context.Context, repo string, limit int) (release fu
 		}
 		if got {
 			return func() {
-				uctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 				defer cancel()
 				if _, err := conn.Exec(uctx, `SELECT pg_advisory_unlock($1)`, key); err != nil {
 					// The lock may still be held: close the connection so

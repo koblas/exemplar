@@ -194,7 +194,8 @@ func checkPromQL(t *testing.T, name string, targets []struct {
 	RawSQL string `json:"rawSql"`
 	Format string `json:"format"`
 	Expr   string `json:"expr"`
-}) {
+},
+) {
 	t.Helper()
 	if len(targets) == 0 {
 		t.Errorf("%s: no targets", name)

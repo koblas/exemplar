@@ -126,8 +126,10 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Digest, error
 		case err != nil:
 			errs = append(errs, err)
 		case len(drift) > 0:
-			pending = append(pending, Digest{Owner: r.Platform, Title: fmt.Sprintf("Export drift, week of %s", monday.Format("January 2, 2006")),
-				Body: driftBody(r.Platform, drift)})
+			pending = append(pending, Digest{
+				Owner: r.Platform, Title: "Export drift, week of " + monday.Format("January 2, 2006"),
+				Body: driftBody(r.Platform, drift),
+			})
 		}
 	}
 	for _, d := range pending {
@@ -165,8 +167,10 @@ type inputs struct {
 }
 
 func (r Runner) load(ctx context.Context, snap *config.Snapshot) (inputs, error) {
-	in := inputs{stats: map[string]queries.DigestRuleStatsRow{}, dismissals: map[string][]queries.DigestDismissalsRow{},
-		queue: map[string][]queries.DigestAdjudicationQueueRow{}, decisions: map[string]demote.Decision{}, upstream: map[string]upstream.Verdict{}}
+	in := inputs{
+		stats: map[string]queries.DigestRuleStatsRow{}, dismissals: map[string][]queries.DigestDismissalsRow{},
+		queue: map[string][]queries.DigestAdjudicationQueueRow{}, decisions: map[string]demote.Decision{}, upstream: map[string]upstream.Verdict{},
+	}
 	stats, err := r.Store.DigestRuleStats(ctx, Window)
 	if err != nil {
 		return in, err
@@ -201,10 +205,14 @@ func (r Runner) load(ctx context.Context, snap *config.Snapshot) (inputs, error)
 	}
 	for _, u := range ups {
 		in.upstream[u.RuleID] = upstream.Judge(
-			upstream.Comparison{Name: "PRs whose agent read the export, against the rest", WithPRs: int(u.ReceivedPrs), WithViolations: int(u.ReceivedViolations),
-				WithoutPRs: int(u.OtherPrs), WithoutViols: int(u.OtherViolations)},
-			upstream.Comparison{Name: "exporting repos after the export landed, against before", WithPRs: int(u.AfterPrs), WithViolations: int(u.AfterViolations),
-				WithoutPRs: int(u.BeforePrs), WithoutViols: int(u.BeforeViolations)})
+			upstream.Comparison{
+				Name: "PRs whose agent read the export, against the rest", WithPRs: int(u.ReceivedPrs), WithViolations: int(u.ReceivedViolations),
+				WithoutPRs: int(u.OtherPrs), WithoutViols: int(u.OtherViolations),
+			},
+			upstream.Comparison{
+				Name: "exporting repos after the export landed, against before", WithPRs: int(u.AfterPrs), WithViolations: int(u.AfterViolations),
+				WithoutPRs: int(u.BeforePrs), WithoutViols: int(u.BeforeViolations),
+			})
 	}
 	return in, nil
 }
@@ -320,7 +328,8 @@ func (r Runner) body(owner string, rules []config.Rule, in inputs, approved []qu
 		}
 	}
 	if len(rewrite) > 0 {
-		fmt.Fprintf(&b, "\n**Exported summaries to rewrite** (spec §10.4, last %d days). Coding agents get these rules' `export.summary`, but the violation rate did not drop by at least %.0f%%:\n\n", upstream.Window, 100*(1-upstream.Drop))
+		fmt.Fprintf(&b, "\n**Exported summaries to rewrite** (spec §10.4, last %d days). "+
+			"Coding agents get these rules' `export.summary`, but the violation rate did not drop by at least %.0f%%:\n\n", upstream.Window, 100*(1-upstream.Drop))
 		for _, l := range rewrite {
 			b.WriteString("- " + l + "\n")
 		}

@@ -135,7 +135,7 @@ func TestEventWorkerRoutes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var out []store.PRReviewArgs
+		out := make([]store.PRReviewArgs, 0, len(res.Jobs))
 		for _, j := range res.Jobs {
 			var a store.PRReviewArgs
 			if err := json.Unmarshal(j.EncodedArgs, &a); err != nil {

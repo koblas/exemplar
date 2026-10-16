@@ -72,9 +72,12 @@ type PathHistory interface {
 	History(ctx context.Context, repo, path, rev string) (pathhistory.Result, error)
 }
 
-var pathHistoryDef = toolDef{"path_history",
+var pathHistoryDef = toolDef{
+	"path_history",
 	"List a file's recent history before this pull request: incidents and reverts linked to it, and its recent commits. At most 20 entries, newest first.",
-	map[string]any{"path": map[string]any{"type": "string"}}, []string{"path"}}
+	map[string]any{"path": map[string]any{"type": "string"}},
+	[]string{"path"},
+}
 
 // defs are the tools this agent is offered.
 func (t *toolbox) defs() []toolDef {
@@ -109,21 +112,33 @@ type toolDef struct {
 
 // toolDefs are the tool schemas every agent gets.
 var toolDefs = []toolDef{
-	{"get_hunk", "Return the diff hunks of a changed file in this pull request.",
-		map[string]any{"path": map[string]any{"type": "string"}}, []string{"path"}},
-	{"read_file", "Read lines of a file at the pull request head. At most 400 lines per call.",
+	{
+		"get_hunk", "Return the diff hunks of a changed file in this pull request.",
+		map[string]any{"path": map[string]any{"type": "string"}},
+		[]string{"path"},
+	},
+	{
+		"read_file", "Read lines of a file at the pull request head. At most 400 lines per call.",
 		map[string]any{
 			"path":  map[string]any{"type": "string"},
 			"start": map[string]any{"type": "integer", "minimum": 1},
 			"end":   map[string]any{"type": "integer", "minimum": 1},
-		}, []string{"path", "start", "end"}},
-	{"grep", "Search the checked-out files with a regular expression. Returns at most 200 matching lines.",
+		},
+		[]string{"path", "start", "end"},
+	},
+	{
+		"grep", "Search the checked-out files with a regular expression. Returns at most 200 matching lines.",
 		map[string]any{
 			"pattern": map[string]any{"type": "string"},
 			"glob":    map[string]any{"type": "string"},
-		}, []string{"pattern", "glob"}},
-	{"list_dir", "List one directory level at the pull request head.",
-		map[string]any{"path": map[string]any{"type": "string"}}, []string{"path"}},
+		},
+		[]string{"pattern", "glob"},
+	},
+	{
+		"list_dir", "List one directory level at the pull request head.",
+		map[string]any{"path": map[string]any{"type": "string"}},
+		[]string{"path"},
+	},
 }
 
 // run executes a tool call and returns text for the tool_result. Errors are
@@ -337,10 +352,5 @@ func examined(calls []ToolCall, scoped []string) map[string]bool {
 }
 
 func containsString(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }

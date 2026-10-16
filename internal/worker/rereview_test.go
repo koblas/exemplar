@@ -86,7 +86,7 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-func (e *env) state(t *testing.T) (states []string) {
+func (e *env) state(t *testing.T) []string {
 	t.Helper()
 	rows, err := e.w.cfg.Store.Pool.Query(t.Context(), `SELECT state || ':' || coalesce(gh_comment_id::text, '-') || ':' || coalesce(suppressed_reason, '')
 		FROM findings WHERE rule_id = 'propagate-context' ORDER BY id`)
@@ -94,6 +94,7 @@ func (e *env) state(t *testing.T) (states []string) {
 		t.Fatal(err)
 	}
 	defer rows.Close()
+	var states []string
 	for rows.Next() {
 		var s string
 		_ = rows.Scan(&s)
@@ -133,7 +134,7 @@ func TestReReviewAcrossPushes(t *testing.T) {
 	if got := e.state(t); len(got) != 2 || got[0] != "posted:1000:" || got[1] != "dropped:-:already_posted" {
 		t.Fatalf("push 2 findings = %v", got)
 	}
-	if n := len(e.fake.reviews); n != 2 || e.fake.reviews[1]["comments"] != nil && len(e.fake.reviews[1]["comments"].([]any)) != 0 {
+	if n := len(e.fake.reviews); n != 2 || !noComments(e.fake.reviews[1]["comments"]) {
 		t.Fatalf("push 2 reposted: %+v", e.fake.reviews[n-1])
 	}
 	if s := fmt.Sprint(e.fake.reviews[1]["body"]); !strings.Contains(s, "1 finding(s) from earlier pushes still apply") {
@@ -185,7 +186,7 @@ func TestInterdiffCarries(t *testing.T) {
 	e := setupWith(t, repo, func(next http.RoundTripper) http.RoundTripper { model.next = next; return model })
 	e.w.cfg.Store = storetest.New(t)
 	e.report.Store(false) // no findings, so no open finding pins main.go
-	review := func() (calls int32) {
+	review := func() int32 {
 		t.Helper()
 		before := model.n.Load()
 		if out, err := e.w.Review(t.Context(), args(e)); err != nil || out.Status != StatusReviewed {
@@ -271,9 +272,13 @@ func TestRebaseReanchors(t *testing.T) {
 		}
 		return out
 	}
-	finding := func() (state string, start int, code string) {
+	finding := func() (string, int, string) {
 		t.Helper()
-		var c *string
+		var (
+			state, code string
+			start       int
+			c           *string
+		)
 		if err := st.Pool.QueryRow(t.Context(), `SELECT state, start_line, anchor_code FROM findings
 			WHERE rule_id = 'propagate-context' ORDER BY id LIMIT 1`).Scan(&state, &start, &c); err != nil {
 			t.Fatal(err)
@@ -321,4 +326,14 @@ func TestRebaseReanchors(t *testing.T) {
 	if len(e.fake.replies) != 1 || e.fake.replies[0]["body"] != "No longer present after rebase." || !e.fake.resolved["T1000"] {
 		t.Errorf("replies = %+v, resolved = %v", e.fake.replies, e.fake.resolved)
 	}
+}
+
+// noComments reports whether a recorded review's comments field is absent
+// or an empty list.
+func noComments(v any) bool {
+	if v == nil {
+		return true
+	}
+	c, ok := v.([]any)
+	return ok && len(c) == 0
 }

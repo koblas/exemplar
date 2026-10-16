@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +34,10 @@ func (f *fakeGitHub) query(_ context.Context, q string, vars map[string]any, out
 	case forcePushQuery:
 		data = map[string]any{"repository": map[string]any{"pullRequest": map[string]any{"timelineItems": map[string]any{"totalCount": f.forcePushes}}}}
 	case authorQuery:
-		s := vars["q"].(string)
+		s, ok := vars["q"].(string)
+		if !ok {
+			return fmt.Errorf("q = %v, want a string", vars["q"])
+		}
 		f.searches = append(f.searches, s)
 		n := 0
 		for login := range f.veterans {
@@ -43,7 +47,10 @@ func (f *fakeGitHub) query(_ context.Context, q string, vars map[string]any, out
 		}
 		data = map[string]any{"search": map[string]any{"issueCount": n}}
 	}
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
 	return json.Unmarshal(b, out)
 }
 

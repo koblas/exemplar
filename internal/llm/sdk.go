@@ -42,8 +42,7 @@ func sendMessages(ctx context.Context, svc anthropic.MessageService, req Request
 // status and body; transport failures fail over unless the caller
 // cancelled.
 func providerErr(ctx context.Context, err error) error {
-	var apiErr *anthropic.Error
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*anthropic.Error](err); ok {
 		return &ProviderError{Status: apiErr.StatusCode, Retryable: retryableStatus(apiErr.StatusCode), Body: []byte(apiErr.RawJSON()), Err: err}
 	}
 	return &ProviderError{Retryable: ctx.Err() == nil, Err: err}

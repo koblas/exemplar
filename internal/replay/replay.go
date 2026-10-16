@@ -32,7 +32,7 @@ func LoadFixtures(dir string) ([]schema.Fixture, error) {
 		if err != nil || d.IsDir() || filepath.Ext(p) != ".yaml" {
 			return err
 		}
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // G122: fixtures are a checked-in directory the operator chooses, not untrusted input
 		if err != nil {
 			return err
 		}
@@ -226,7 +226,7 @@ func (r *Runner) Run(ctx context.Context, fx schema.Fixture) (*Outcome, error) {
 
 // Materialize prepares fx's repository: synthetic fixtures are built in
 // dir; recorded ones return their clone URL and commits.
-func Materialize(ctx context.Context, fx schema.Fixture, dir string) (cloneURL, base, head string, err error) {
+func Materialize(ctx context.Context, fx schema.Fixture, dir string) (string, string, string, error) {
 	if fx.Synthetic != nil {
 		repo, err := synth.Build(ctx, dir, fx.Synthetic.Base, fx.Synthetic.Head, fx.Synthetic.Deleted)
 		if err != nil {

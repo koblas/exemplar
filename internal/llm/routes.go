@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/koblas/exemplar/internal/schema"
@@ -42,7 +43,7 @@ func Routes(p schema.Providers, stage, tier string) ([]Route, error) {
 		entries = p.Light
 	case StageCategorizerA, StageCategorizerB:
 		if p.Categorizer == nil {
-			return nil, fmt.Errorf("llm: no categorizer configured")
+			return nil, errors.New("llm: no categorizer configured")
 		}
 		if stage == StageCategorizerA {
 			entries = []schema.ProviderModel{p.Categorizer.A}
