@@ -2265,3 +2265,14 @@ The user asked for an optional Kubernetes deployment that hosts Postgres, for in
   - `gofmt`, `go vet ./deploy` and `go test ./deploy` pass.
   - OrbStack's `kubectl kustomize` renders `base` with the component (57 resources); kubeconform v0.7.0 `-strict` for 1.33 found all valid.
   - Not checked: running it in a cluster, or the binaries migrating against it.
+
+### CI: publish images to Docker Hub (2026-10-16)
+
+- **What:** `.github/workflows/images.yml` builds both deploy images and pushes them to Docker Hub as `koblas/exemplar`, on every push to main, each `v*` tag, and `workflow_dispatch`. Pull requests never push; ci.yml's `images` job still checks both build.
+- **Decisions:**
+  - One repository, as asked: the services image takes the plain tags, and the learning image the same tags with a `learning-` prefix. Tags are `sha-<short>`, `main`, and for `v*` tags `<version>` and `<major>.<minor>`. No `latest`: deploys pin digests.
+  - No paths filter. GitHub applies it to tag pushes too, which would skip releases, and the services image takes in nearly the whole tree.
+  - linux/amd64 only (the ast-grep release binary). The GitHub Actions layer cache is scoped per image.
+  - Each job's run summary prints the pushed digest and the kustomize `images` entry that pins it. `deploy/README.md` now names `docker.io/koblas/exemplar` for both pins.
+  - Signs in as the `koblas` Docker Hub user with the `DOCKERHUB_PAT` repository secret (a personal access token with read/write on `koblas/exemplar`). The user name is not a secret, so it is written into the workflow.
+- **Checked:** actionlint v1.7.7 passes. Not run: the workflow itself (it needs the secrets and a push to main), and no local image build (no Docker check here).
