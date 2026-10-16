@@ -70,6 +70,7 @@ var variants = []struct {
 	{"tunnel", []string{"k8s/base"}, 19, 0, []string{"pod exemplar-cloudflared"}},
 	{"direct", []string{"k8s/direct"}, 18, 2, []string{"namespace ingress-nginx"}},
 	{"both", []string{"k8s/base", "k8s/components/ingress"}, 19, 2, []string{"namespace ingress-nginx", "pod exemplar-cloudflared"}},
+	{"postgres", []string{"k8s/base", "k8s/components/postgres"}, 20, 0, []string{"pod exemplar-cloudflared"}},
 }
 
 // load reads every document of every manifest the kustomizations under
@@ -364,6 +365,17 @@ func shutdown(t *testing.T, binary string, args []string) time.Duration {
 		return flag("drain", 5*time.Second) + flag("stop-timeout", 60*time.Second) + 10*time.Second + 5*time.Second
 	case "cloudflared":
 		return flag("grace-period", 30*time.Second)
+	case "docker-entrypoint.sh": // Postgres; args include its preStop pg_ctl stop
+		for _, a := range args {
+			if v, ok := strings.CutPrefix(a, "--timeout="); ok {
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					t.Fatalf("%s %s: %v", binary, a, err)
+				}
+				return time.Duration(n) * time.Second
+			}
+		}
+		t.Fatalf("%s: no preStop pg_ctl stop --timeout", binary)
 	}
 	t.Fatalf("no shutdown budget for %s", binary)
 	return 0
@@ -390,7 +402,15 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 		for _, a := range list(main, "args") {
 			args = append(args, as[string](t, a, w.name+": arg"))
 		}
+		if len(cmd) == 0 {
+			t.Errorf("%s: main container has no command", w.name)
+			continue
+		}
 		binary := filepath.Base(cmd[0])
+		if binary == "docker-entrypoint.sh" {
+			checkPostgres(t, w, main, args)
+			continue
+		}
 		// Exemplar's binaries serve /healthz and /readyz on --addr (default
 		// :8080) as the http port; cloudflared serves its own on --metrics.
 		portName, addrFlag, addr, live, ready := "http", "--addr=", ":8080", "/healthz", "/readyz"
@@ -420,11 +440,7 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 			str(main, "livenessProbe", "httpGet", "port") != portName || str(main, "readinessProbe", "httpGet", "port") != portName {
 			t.Errorf("%s: probes must be %s and %s on the %s port", w.name, live, ready, portName)
 		}
-		graceSeconds := as[uint64](t, get(w.spec, "terminationGracePeriodSeconds"), w.name+": terminationGracePeriodSeconds")
-		grace := time.Duration(graceSeconds) * time.Second
-		if need := shutdown(t, binary, args); grace <= need {
-			t.Errorf("%s: terminationGracePeriodSeconds %s does not outlast shutdown %s", w.name, grace, need)
-		}
+		checkGrace(t, w, binary, args)
 	}
 	covered := map[string]bool{}
 	for _, d := range docs {
@@ -456,9 +472,13 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 			t.Errorf("%s %s selects no workload", kind, name)
 		}
 		if kind == "Service" {
+			want := "http"
+			if name == "exemplar-postgres" {
+				want = "postgres"
+			}
 			for _, p := range list(d, "spec", "ports") {
-				if str(p, "targetPort") != "http" {
-					t.Errorf("service %s targets %v, not the named http port", name, get(p, "targetPort"))
+				if str(p, "targetPort") != want {
+					t.Errorf("service %s targets %v, not the named %s port", name, get(p, "targetPort"), want)
 				}
 			}
 		}
@@ -468,6 +488,48 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 			t.Errorf("%s has no NetworkPolicy of its own", w.name)
 		}
 	}
+}
+
+// checkGrace checks that w's terminationGracePeriodSeconds outlasts its
+// binary's shutdown.
+func checkGrace(t *testing.T, w workload, binary string, args []string) {
+	t.Helper()
+	graceSeconds := as[uint64](t, get(w.spec, "terminationGracePeriodSeconds"), w.name+": terminationGracePeriodSeconds")
+	grace := time.Duration(graceSeconds) * time.Second
+	if need := shutdown(t, binary, args); grace <= need {
+		t.Errorf("%s: terminationGracePeriodSeconds %s does not outlast shutdown %s", w.name, grace, need)
+	}
+}
+
+// checkPostgres checks the optional in-cluster Postgres: it listens on the
+// named postgres port, its probes run pg_isready against it, and a preStop
+// fast shutdown finishes inside the grace period. SIGTERM alone is a smart
+// shutdown, which waits for pooled clients forever.
+func checkPostgres(t *testing.T, w workload, main obj, args []string) {
+	t.Helper()
+	port := uint64(0)
+	for _, p := range list(main, "ports") {
+		if str(p, "name") == "postgres" {
+			port = as[uint64](t, get(p, "containerPort"), w.name+": containerPort")
+		}
+	}
+	if port != 5432 {
+		t.Errorf("%s: postgres port is %d, want 5432", w.name, port)
+	}
+	for _, probe := range []string{"startupProbe", "livenessProbe", "readinessProbe"} {
+		cmd := list(main, probe, "exec", "command")
+		if len(cmd) == 0 || cmd[0] != "pg_isready" || !slices.Contains(cmd, any("--port=5432")) {
+			t.Errorf("%s: %s must run pg_isready on port 5432, got %v", w.name, probe, cmd)
+		}
+	}
+	stop := list(main, "lifecycle", "preStop", "exec", "command")
+	if len(stop) < 2 || stop[0] != "pg_ctl" || stop[1] != "stop" || !slices.Contains(stop, any("--mode=fast")) {
+		t.Errorf("%s: preStop must be pg_ctl stop --mode=fast, got %v", w.name, stop)
+	}
+	for _, a := range stop {
+		args = append(args, as[string](t, a, w.name+": preStop"))
+	}
+	checkGrace(t, w, "docker-entrypoint.sh", args)
 }
 
 // checkInbound checks how traffic gets in: the Ingresses there are, who the

@@ -1,0 +1,10 @@
+# Optional in-cluster Postgres 16 with pgvector, for installations without a
+# managed database. Not in any shipped build: add it to an overlay of
+# deploy/k8s/base or deploy/k8s/direct (components: [.../components/postgres])
+# and point the exemplar-database Secret's url at
+# postgres://exemplar:<password>@exemplar-postgres.exemplar.svc:5432/exemplar.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - postgres.yaml
+  - networkpolicies.yaml
