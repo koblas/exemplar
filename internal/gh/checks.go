@@ -41,7 +41,7 @@ func LinterAnnotations(ctx context.Context, c *github.Client, repo, sha string, 
 func annotations(ctx context.Context, c *github.Client, repo, sha string, checks []string, completedOnly bool) ([]Annotation, []string, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, nil, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	want := func(n string) bool {
 		return slices.ContainsFunc(checks, func(c string) bool { return strings.EqualFold(c, n) })
@@ -96,7 +96,7 @@ func annotations(ctx context.Context, c *github.Client, repo, sha string, checks
 func MergedPRs(ctx context.Context, c *github.Client, repo string, since time.Time, limit int) ([]PullRequest, [][]string, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, nil, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	var prs []PullRequest
 	var files [][]string

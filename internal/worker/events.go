@@ -282,7 +282,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		case "opened", "reopened", "synchronize", "ready_for_review":
 		case "closed":
 			if e.Repository.FullName == "" || e.Number < 1 {
-				return Route{}, errors.New("pull_request payload lacks repository or number")
+				return Route{}, fmt.Errorf("pull_request payload %w repository or number", errPayloadLacks)
 			}
 			r := Route{Supersede: &Supersede{Repo: e.Repository.FullName, PR: e.Number}}
 			if e.PullRequest.Merged {
@@ -305,7 +305,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		}
 		a := store.PRReviewArgs{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.Number, HeadSHA: e.PullRequest.Head.SHA}
 		if a.InstallationID == 0 || a.Repo == "" || a.PR < 1 || a.HeadSHA == "" {
-			return Route{}, errors.New("pull_request payload lacks installation, repository, number or head")
+			return Route{}, fmt.Errorf("pull_request payload %w installation, repository, number or head", errPayloadLacks)
 		}
 		return Route{Reviews: []store.PRReviewArgs{a}, Supersede: &Supersede{Repo: a.Repo, PR: a.PR, KeepHead: a.HeadSHA}}, nil
 	case "pull_request_review_comment":
@@ -347,7 +347,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 			CommentID: c.ID, ThreadRoot: c.InReplyTo, Actor: c.User.Login, ActorType: c.User.Type, At: c.CreatedAt, Command: cmd, Reason: reason,
 		}
 		if a.InstallationID == 0 || a.Repo == "" || a.PR < 1 || a.CommentID == 0 || a.Actor == "" {
-			return Route{}, errors.New("pull_request_review_comment payload lacks installation, repository, number, comment or user")
+			return Route{}, fmt.Errorf("pull_request_review_comment payload %w installation, repository, number, comment or user", errPayloadLacks)
 		}
 		return Route{FeedbackCommands: []store.FeedbackCommandArgs{a}}, nil
 	case "pull_request_review":
@@ -365,7 +365,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		}
 		a := store.MergePolicyArgs{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.PullRequest.Number, Review: e.Review.ID, Action: e.Action}
 		if a.InstallationID == 0 || a.Repo == "" || a.PR < 1 {
-			return Route{}, errors.New("pull_request_review payload lacks installation, repository or number")
+			return Route{}, fmt.Errorf("pull_request_review payload %w installation, repository or number", errPayloadLacks)
 		}
 		return Route{MergePolicy: []store.MergePolicyArgs{a}}, nil
 	case "pull_request_review_thread":
@@ -414,7 +414,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 			Reason: al.DismissedReason, Comment: truncate(al.DismissedComment, maxReasonChars), Actor: al.DismissedBy.Login,
 		}
 		if a.InstallationID == 0 || a.Repo == "" || a.Actor == "" || a.RuleID == "" || a.Path == "" {
-			return Route{}, errors.New("code_scanning_alert payload lacks installation, repository, dismisser, rule or location")
+			return Route{}, fmt.Errorf("code_scanning_alert payload %w installation, repository, dismisser, rule or location", errPayloadLacks)
 		}
 		return Route{AlertDismissals: []store.AlertDismissalArgs{a}}, nil
 	case "check_run":
@@ -434,7 +434,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 				return Route{Ignored: "check run has no pull request"}, nil
 			}
 			if e.Installation.ID == 0 || e.Repository.FullName == "" || e.CheckRun.HeadSHA == "" || e.CheckRun.Name == "" {
-				return Route{}, errors.New("check_run payload lacks installation, repository, head or name")
+				return Route{}, fmt.Errorf("check_run payload %w installation, repository, head or name", errPayloadLacks)
 			}
 			return r, nil
 		}
@@ -468,7 +468,7 @@ type EventWorker struct {
 // NewEventWorker returns an EventWorker.
 func NewEventWorker(st *store.Store, log *slog.Logger) (*EventWorker, error) {
 	if st == nil {
-		return nil, errors.New("worker: events need a store")
+		return nil, fmt.Errorf("%w: events need a store", errMissingDependency)
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -484,10 +484,10 @@ func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs
 	}
 	ev, err := w.st.GetGHEvent(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return river.JobCancel(fmt.Errorf("delivery %s is not stored", id))
+		return river.JobCancel(fmt.Errorf("delivery %s is %w", id, errNotStored))
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("get event %s: %w", id, err)
 	}
 	if ev.ProcessedAt.Valid {
 		return nil
@@ -506,7 +506,7 @@ func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs
 		if s := route.Supersede; s != nil {
 			ids, err := store.ReviewJobsToSupersede(ctx, tx, s.Repo, s.PR, s.KeepHead)
 			if err != nil {
-				return err
+				return fmt.Errorf("find superseded review jobs: %w", err)
 			}
 			for _, id := range ids {
 				if _, err := client.JobCancelTx(ctx, tx, id); err != nil {
@@ -519,7 +519,7 @@ func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs
 			if route.ReRun {
 				rows, err := q.LatestReviewAttempt(ctx, queries.LatestReviewAttemptParams{Repo: a.Repo, PrNumber: int32(a.PR), HeadSha: a.HeadSHA})
 				if err != nil {
-					return err
+					return fmt.Errorf("latest review attempt: %w", err)
 				}
 				// Re-run only an incomplete review; re-running a complete
 				// one would post its comments again. No review yet: the
@@ -563,10 +563,13 @@ func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs
 				return fmt.Errorf("enqueue merge policy: %w", err)
 			}
 		}
-		return q.MarkGHEventProcessed(ctx, id)
+		if err := q.MarkGHEventProcessed(ctx, id); err != nil {
+			return fmt.Errorf("mark event processed: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("route event %s: %w", id, err)
 	}
 	w.log.Info("event routed", "delivery", id, "event", ev.Event,
 		"reviews", len(route.Reviews), "linter_checks", len(route.LinterChecks),

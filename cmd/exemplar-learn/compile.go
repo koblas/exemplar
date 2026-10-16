@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -34,27 +33,27 @@ func runCompile(args []string) error {
 	astGrep := fs.String("ast-grep", "ast-grep", "ast-grep binary")
 	semgrep := fs.String("semgrep", "semgrep", "semgrep binary")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-learn")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	if *configDir == "" {
-		return errors.New("--config is required")
+		return fmt.Errorf("--config is %w", errRequired)
 	}
 	snap, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config snapshot: %w", err)
 	}
 	th := snap.Global.EvalThresholds
 	for _, bin := range []string{*astGrep, *semgrep} {
 		if _, err := exec.LookPath(bin); err != nil {
-			return fmt.Errorf("%s is not installed: compile needs both engines", bin)
+			return fmt.Errorf("%s is %w", bin, errEngineNotInstalled)
 		}
 	}
 	runner := compiled.Runner{ASTGrep: *astGrep, Semgrep: *semgrep, Timeout: 2 * time.Minute}
@@ -62,35 +61,35 @@ func runCompile(args []string) error {
 	if cmd, ok := compiled.SandboxCommand(*memLimit, *cpuLimit); ok {
 		runner.Sandbox, sandbox = cmd, strings.Join(cmd, " ")
 	} else if *requireSandbox {
-		return errors.New("the sandbox (Linux unshare and prlimit) is unavailable; model-written rules are not run without it (--require-sandbox=false only for local runs)")
+		return errSandboxUnavailable
 	} else {
 		log.Warn("running engines without a sandbox")
 	}
 
 	gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), os.Getenv("EXEMPLAR_GATEWAY_TOKEN")
 	if gwURL == "" || gwToken == "" {
-		return errors.New("EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are required")
+		return fmt.Errorf("EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are %w", errRequired)
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL is required")
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	if err := st.Migrate(ctx); err != nil {
-		return err
+		return fmt.Errorf("migrate store: %w", err)
 	}
 	sc, err := redact.New()
 	if err != nil {
-		return err
+		return fmt.Errorf("create redaction scanner: %w", err)
 	}
 	dir := *workDir
 	if dir == "" {
 		if dir, err = os.MkdirTemp("", "exemplar-compile-*"); err != nil {
-			return err
+			return fmt.Errorf("create temp dir: %w", err)
 		}
 		defer func() { _ = os.RemoveAll(dir) }()
 	}
@@ -99,7 +98,7 @@ func runCompile(args []string) error {
 		files.Token = func(ctx context.Context, repo string) (string, error) {
 			tok, err := app.Token(ctx, installation, gh.FlavorWorker, []string{repo})
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("mint installation token: %w", err)
 			}
 			return tok.GetToken(), nil
 		}
@@ -110,9 +109,12 @@ func runCompile(args []string) error {
 		Eligible: func(repo string) bool { return snap.CheckEligible(repo) == nil },
 	}, st, compile.NewGatewayModel(gwURL, gwToken, nil), runner, files, sc)
 	if err != nil {
-		return err
+		return fmt.Errorf("create compile job: %w", err)
 	}
 	rep, err := job.Run(ctx, *limit)
 	printJSON(rep)
-	return err
+	if err != nil {
+		return fmt.Errorf("run compile: %w", err)
+	}
+	return nil
 }

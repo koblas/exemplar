@@ -48,10 +48,15 @@ type Driver struct {
 	log     *slog.Logger
 }
 
+var (
+	errConfig      = errors.New("extract: invalid config")
+	errBadCustomID = errors.New("bad custom_id")
+)
+
 // New returns a Driver.
 func New(cfg Config, st *store.Store, sc *redact.Scanner) (*Driver, error) {
 	if cfg.GatewayURL == "" || cfg.GatewayToken == "" {
-		return nil, errors.New("extract: gateway URL and token are required")
+		return nil, fmt.Errorf("%w: gateway URL and token are required", errConfig)
 	}
 	if cfg.Model == "" {
 		cfg.Model = "claude-sonnet-5-5"
@@ -102,7 +107,7 @@ func (d *Driver) Submit(ctx context.Context) (*SubmitReport, error) {
 	rep := &SubmitReport{}
 	rows, err := d.store.PendingComments(ctx, int32(d.cfg.RequestsPerBatch*CommentsPerRequest))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list pending comments: %w", err)
 	}
 	work := map[string][]Comment{}
 	hashes := map[int64]string{}
@@ -115,7 +120,7 @@ func (d *Driver) Submit(ctx context.Context) (*SubmitReport, error) {
 		if err1 != nil || err2 != nil {
 			rep.Unredacted++
 			if err := d.store.FailComment(ctx, queries.FailCommentParams{ID: row.ID, ExtractError: strPtr("secret could not be redacted")}); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("mark comment failed: %w", err)
 			}
 			continue
 		}
@@ -135,7 +140,7 @@ func (d *Driver) Submit(ctx context.Context) (*SubmitReport, error) {
 				continue
 			}
 		case !errors.Is(err, pgx.ErrNoRows):
-			return nil, err
+			return nil, fmt.Errorf("get cached extraction: %w", err)
 		}
 		work[k.name] = append(work[k.name], Comment{ID: row.ID, Path: row.Path, Body: rb, Hunk: rh})
 	}
@@ -198,11 +203,11 @@ func (d *Driver) submitBatch(ctx context.Context, k kind, work []Comment, hashes
 		if err := q.InsertExtractionBatch(ctx, queries.InsertExtractionBatchParams{
 			BatchID: batch.ID, ExtractorVersion: k.version, Model: model, CommentCount: int32(len(ids)),
 		}); err != nil {
-			return err
+			return fmt.Errorf("insert extraction batch: %w", err)
 		}
 		for _, id := range ids {
 			if err := q.SetCommentHash(ctx, queries.SetCommentHashParams{ID: id, InputHash: strPtr(hashes[id])}); err != nil {
-				return err
+				return fmt.Errorf("set comment hash: %w", err)
 			}
 		}
 		return q.MarkCommentsInBatch(ctx, queries.MarkCommentsInBatchParams{BatchID: batch.ID, Ids: ids})
@@ -244,7 +249,7 @@ const (
 func (d *Driver) Collect(ctx context.Context) (*CollectReport, error) {
 	open, err := d.store.OpenExtractionBatches(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list open extraction batches: %w", err)
 	}
 	rep := &CollectReport{}
 	for _, b := range open {
@@ -275,7 +280,7 @@ func (d *Driver) collectBatch(ctx context.Context, batchID, model string, k kind
 	out := &BatchOutcome{BatchID: batchID}
 	inBatch, err := d.store.CommentsInBatch(ctx, &batchID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load batch comments: %w", err)
 	}
 	hashOf := map[int64]string{}
 	for _, c := range inBatch {
@@ -350,7 +355,7 @@ func (d *Driver) collectBatch(ctx context.Context, batchID, model string, k kind
 		BatchID: batchID, Status: "processed",
 		Accepted: i32(out.Accepted), Rejected: i32(out.Rejected), Returned: i32(out.Returned),
 	}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("finish extraction batch: %w", err)
 	}
 	d.log.Info("extraction batch processed", "batch_id", batchID, "accepted", out.Accepted, "rejected", out.Rejected, "returned", out.Returned, "rate", out.Rate)
 	return out, nil
@@ -410,19 +415,26 @@ func decodeResult(cur anthropic.MessageBatchIndividualResponse, ids []int64) (ma
 
 func (d *Driver) apply(ctx context.Context, r Result, model, version string) error {
 	if !r.IsReusable {
-		return d.store.FinishComment(ctx, queries.FinishCommentParams{ID: r.CommentID, ExtractStatus: "rejected"})
+		if err := d.store.FinishComment(ctx, queries.FinishCommentParams{ID: r.CommentID, ExtractStatus: "rejected"}); err != nil {
+			return fmt.Errorf("finish comment: %w", err)
+		}
+		return nil
 	}
-	return d.store.InTx(ctx, func(_ pgx.Tx, q *queries.Queries) error {
+	err := d.store.InTx(ctx, func(_ pgx.Tx, q *queries.Queries) error {
 		if err := q.UpsertExtraction(ctx, queries.UpsertExtractionParams{
 			CommentID: r.CommentID, Title: strings.TrimSpace(r.Title), Description: strings.TrimSpace(r.Description),
 			PreferredApproach: strPtr(strings.TrimSpace(r.PreferredApproach)), AppliesToHint: strPtr(strings.TrimSpace(r.AppliesToHint)),
 			Category: strings.TrimSpace(r.Category), LanguageAgnostic: r.LanguageAgnostic, Confidence: float32(r.Confidence),
 			ExtractorModel: model, ExtractorVersion: version,
 		}); err != nil {
-			return err
+			return fmt.Errorf("upsert extraction: %w", err)
 		}
 		return q.FinishComment(ctx, queries.FinishCommentParams{ID: r.CommentID, ExtractStatus: "accepted"})
 	})
+	if err != nil {
+		return fmt.Errorf("store extraction: %w", err)
+	}
+	return nil
 }
 
 func (d *Driver) cache(ctx context.Context, hash, model, version string, r Result) error {
@@ -434,17 +446,23 @@ func (d *Driver) cache(ctx context.Context, hash, model, version string, r Resul
 	r.CommentID = 0 // the cache is keyed by content, not by comment
 	data, err := json.Marshal(r)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode json: %w", err)
 	}
-	return d.store.PutCachedExtraction(ctx, queries.PutCachedExtractionParams{
+	if err := d.store.PutCachedExtraction(ctx, queries.PutCachedExtractionParams{
 		InputHash: hash, ExtractorVersion: version, Model: model, Result: data,
-	})
+	}); err != nil {
+		return fmt.Errorf("cache extraction: %w", err)
+	}
+	return nil
 }
 
 func (d *Driver) returnToPending(ctx context.Context, ids []int64, reason string) error {
-	return d.store.ReturnCommentsToPending(ctx, queries.ReturnCommentsToPendingParams{
+	if err := d.store.ReturnCommentsToPending(ctx, queries.ReturnCommentsToPendingParams{
 		MaxAttempts: int32(d.cfg.MaxAttempts), Reason: reason, Ids: ids,
-	})
+	}); err != nil {
+		return fmt.Errorf("return comments to pending: %w", err)
+	}
+	return nil
 }
 
 // customID encodes a request's comment ids: "c-<id>-<id>-<id>", with
@@ -466,14 +484,14 @@ func customID(cs []Comment) string {
 func parseCustomID(s string) ([]int64, error) {
 	parts := strings.Split(s, "-")
 	if len(parts) < 2 || len(parts) > CommentsPerRequest+1 || parts[0] != "c" {
-		return nil, fmt.Errorf("bad custom_id %q", s)
+		return nil, fmt.Errorf("%w %q", errBadCustomID, s)
 	}
 	ids := make([]int64, 0, len(parts)-1)
 	for _, p := range parts[1:] {
 		neg := strings.HasPrefix(p, "n")
 		id, err := strconv.ParseInt(strings.TrimPrefix(p, "n"), 10, 64)
 		if err != nil || id <= 0 {
-			return nil, fmt.Errorf("bad custom_id %q", s)
+			return nil, fmt.Errorf("%w %q", errBadCustomID, s)
 		}
 		if neg {
 			id = -id

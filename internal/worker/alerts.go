@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -38,7 +37,7 @@ type AlertDismissalWorker struct {
 // Snapshot.
 func NewAlertDismissalWorker(cfg Config) (*AlertDismissalWorker, error) {
 	if cfg.Store == nil {
-		return nil, errors.New("worker: alert dismissals need a store")
+		return nil, fmt.Errorf("%w: alert dismissals need a store", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -66,7 +65,7 @@ func (w *AlertDismissalWorker) Handle(ctx context.Context, a store.AlertDismissa
 	}
 	rows, err := w.cfg.Store.FindingsForAlert(ctx, queries.FindingsForAlertParams{Repo: a.Repo, PrNumber: int32(a.PR), RuleID: a.RuleID, Path: a.Path})
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: alert findings: %w", err)
 	}
 	var id int64
 	for _, r := range rows {
@@ -82,15 +81,15 @@ func (w *AlertDismissalWorker) Handle(ctx context.Context, a store.AlertDismissa
 		return CommandOutcome{Ignored: fmt.Sprintf("no single finding for the alert (%d candidates)", len(rows))}, nil
 	}
 	if err := w.cfg.Store.SetSarifAlert(ctx, queries.SetSarifAlertParams{ID: id, SarifAlertNumber: int32Ptr(a.Alert)}); err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: set sarif alert: %w", err)
 	}
 	reader, err := w.cfg.GitHub.Reader(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: github reader: %w", err)
 	}
 	pr, err := gh.GetPullRequest(ctx, reader, a.Repo, a.PR)
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: get pull request: %w", err)
 	}
 	snap, err := w.cfg.Snapshot(ctx)
 	if err != nil {
@@ -109,7 +108,7 @@ func (w *AlertDismissalWorker) Handle(ctx context.Context, a store.AlertDismissa
 		Evidence: map[string]any{"alert": a.Alert, "dismissed_reason": a.Reason},
 	}})
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: record events: %w", err)
 	}
 	if n > 0 {
 		teach(ctx, w.cfg, a.Repo, id, kind, a.Actor, a.Comment)

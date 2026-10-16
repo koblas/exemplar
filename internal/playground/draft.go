@@ -31,6 +31,9 @@ const MaxDraftRules = 3
 // ErrNoDraftRules means the PR changes no rule files.
 var ErrNoDraftRules = errors.New("playground: the PR changes no rule files")
 
+// ErrTooManyDraftRules means the PR changes more rules than try runs.
+var ErrTooManyDraftRules = errors.New("playground: the PR changes too many rules")
+
 // DraftSnapshot loads exemplar-config as of base with the PR's changes to
 // rules/ and evals/ applied from head, and returns the ids of the changed
 // rules. changed lists the PR's changed paths; a path missing from head
@@ -43,7 +46,7 @@ func DraftSnapshot(base, head fs.FS, changed []string, version string) (*config.
 		}
 		data, err := fs.ReadFile(base, p)
 		if err != nil {
-			return err
+			return fmt.Errorf("read %s: %w", p, err)
 		}
 		overlay[p] = &fstest.MapFile{Data: data}
 		return nil
@@ -71,7 +74,7 @@ func DraftSnapshot(base, head fs.FS, changed []string, version string) (*config.
 	}
 	snap, err := config.LoadSnapshot(overlay, version)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("playground: load draft config: %w", err)
 	}
 	ids, err := ruleIDs(snap, rulePaths)
 	return snap, ids, err
@@ -92,17 +95,17 @@ func RuleFileSnapshot(dir fs.FS, ruleYAML []byte, version string) (*config.Snaps
 		}
 		data, err := fs.ReadFile(dir, p)
 		if err != nil {
-			return err
+			return fmt.Errorf("read %s: %w", p, err)
 		}
 		overlay[p] = &fstest.MapFile{Data: data}
 		return nil
 	})
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("playground: read config: %w", err)
 	}
 	snap, err := config.LoadSnapshot(overlay, version)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("playground: load config: %w", err)
 	}
 	for _, existing := range snap.Rules {
 		if existing.ID == r.ID {
@@ -112,7 +115,7 @@ func RuleFileSnapshot(dir fs.FS, ruleYAML []byte, version string) (*config.Snaps
 	p := fmt.Sprintf("rules/%s/%s.yaml", strings.ToLower(r.Category), r.ID)
 	overlay[p] = &fstest.MapFile{Data: ruleYAML}
 	if snap, err = config.LoadSnapshot(overlay, version); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("playground: load config with rule file: %w", err)
 	}
 	return snap, r.ID, nil
 }
@@ -139,7 +142,7 @@ func ruleIDs(snap *config.Snapshot, paths []string) ([]string, error) {
 		return nil, ErrNoDraftRules
 	}
 	if len(ids) > MaxDraftRules {
-		return nil, fmt.Errorf("playground: the PR changes %d rules; try runs at most %d", len(ids), MaxDraftRules)
+		return nil, fmt.Errorf("%w: %d rules; try runs at most %d", ErrTooManyDraftRules, len(ids), MaxDraftRules)
 	}
 	return ids, nil
 }

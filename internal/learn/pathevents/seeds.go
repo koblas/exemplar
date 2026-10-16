@@ -78,7 +78,11 @@ func (r revert) reason() string {
 // repo, else the PR that landed the first "This reverts commit" SHA.
 func (j *Job) target(ctx context.Context, api API, repo, owner, name string, r revert) (int, error) {
 	if m := revertsPRRE.FindStringSubmatch(r.Body); m != nil && strings.EqualFold(m[1], repo) {
-		return strconv.Atoi(m[2])
+		n, err := strconv.Atoi(m[2])
+		if err != nil {
+			return 0, fmt.Errorf("parse reverted PR number: %w", err)
+		}
+		return n, nil
 	}
 	m := revertsSHARE.FindStringSubmatch(r.Body)
 	if m == nil {
@@ -223,16 +227,18 @@ func login(l string) string {
 	return l
 }
 
+var errFileNotInPatch = errors.New("no file in patch")
+
 // parsePatch parses one REST file patch into hunks.
 func parsePatch(p, patch string) ([]scope.Hunk, error) {
 	text := fmt.Sprintf("diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n%s\n", p, p, p, p, strings.TrimSuffix(patch, "\n"))
 	d, err := scope.Parse(strings.NewReader(text))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse scope: %w", err)
 	}
 	f, ok := d.File(p)
 	if !ok {
-		return nil, fmt.Errorf("no file %s in patch", p)
+		return nil, fmt.Errorf("%w: %s", errFileNotInPatch, p)
 	}
 	return f.Hunks, nil
 }

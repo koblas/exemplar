@@ -2,7 +2,7 @@ package llm
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -35,7 +35,7 @@ var bedrockSpec = Spec{
 		// Bedrock ids are anthropic.claude-*, optionally behind a
 		// cross-region inference profile prefix (us., eu., global., ...).
 		if !strings.HasPrefix(model, "anthropic.claude-") && !strings.Contains(model, ".anthropic.claude-") {
-			return errors.New("bedrock model ids look like anthropic.claude-* or <region>.anthropic.claude-*")
+			return fmt.Errorf("%w: bedrock model ids look like anthropic.claude-* or <region>.anthropic.claude-*", errModelName)
 		}
 		return nil
 	},
@@ -45,7 +45,7 @@ var bedrockSpec = Spec{
 			region = s.env("AWS_REGION")
 		}
 		if region == "" {
-			return nil, errors.New(EnvBedrockRegion + " or AWS_REGION is required")
+			return nil, fmt.Errorf("%s or AWS_REGION %w", EnvBedrockRegion, errRequired)
 		}
 		cfg := bedrock.MantleClientConfig{
 			AWSRegion:  region,
@@ -66,7 +66,7 @@ var bedrockSpec = Spec{
 		}
 		c, err := bedrock.NewMantleClient(ctx, cfg, opts...)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create bedrock client: %w", err)
 		}
 		return &bedrockProvider{client: c}, nil
 	},

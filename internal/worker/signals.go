@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -51,7 +50,7 @@ type FeedbackSignalWorker struct {
 // and Engine.
 func NewFeedbackSignalWorker(cfg Config) (*FeedbackSignalWorker, error) {
 	if cfg.Store == nil {
-		return nil, errors.New("worker: feedback signals need a store")
+		return nil, fmt.Errorf("%w: feedback signals need a store", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -92,7 +91,7 @@ func (w *FeedbackSignalWorker) Handle(ctx context.Context, a store.FeedbackSigna
 	case store.SignalComment:
 		return w.comment(ctx, a, snap)
 	}
-	return SignalOutcome{}, river.JobCancel(fmt.Errorf("worker: unknown signal %q", a.Signal))
+	return SignalOutcome{}, river.JobCancel(fmt.Errorf("%w: unknown signal %q", errBadJob, a.Signal))
 }
 
 // merged records ignored for each finding still posted with no signal.
@@ -103,7 +102,7 @@ func (w *FeedbackSignalWorker) merged(ctx context.Context, a store.FeedbackSigna
 			Repo: a.Repo, PrNumber: int32(a.PR), HeadSha: a.HeadSHA,
 			MergedAt: pgtype.Timestamptz{Time: a.At, Valid: true},
 		}); err != nil {
-			return SignalOutcome{}, err
+			return SignalOutcome{}, fmt.Errorf("worker: upsert pr merge: %w", err)
 		}
 	}
 	// Reactions are polled once more at close, so a finding
@@ -113,13 +112,13 @@ func (w *FeedbackSignalWorker) merged(ctx context.Context, a store.FeedbackSigna
 	}
 	open, err := w.cfg.Store.OpenFindings(ctx, queries.OpenFindingsParams{Repo: a.Repo, PrNumber: int32(a.PR)})
 	if err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: open findings: %w", err)
 	}
 	var evs []pipeline.Event
 	for _, f := range open {
 		has, err := w.cfg.Store.FindingHasFeedback(ctx, f.ID)
 		if err != nil {
-			return SignalOutcome{}, err
+			return SignalOutcome{}, fmt.Errorf("worker: finding feedback: %w", err)
 		}
 		if !has {
 			evs = append(evs, pipeline.Event{FindingID: f.ID, Kind: "ignored", Actor: a.Actor, Role: pipeline.RoleAuthor, Via: pipeline.ViaInferred})
@@ -129,7 +128,7 @@ func (w *FeedbackSignalWorker) merged(ctx context.Context, a store.FeedbackSigna
 		return SignalOutcome{Ignored: "no untouched findings"}, nil
 	}
 	if _, err := pipeline.RecordEvents(ctx, w.cfg.Store, snap.Global.Feedback, evs); err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: record events: %w", err)
 	}
 	out := SignalOutcome{Role: pipeline.RoleAuthor}
 	for range evs {
@@ -142,7 +141,7 @@ func (w *FeedbackSignalWorker) merged(ctx context.Context, a store.FeedbackSigna
 func (w *FeedbackSignalWorker) inThread(ctx context.Context, a store.FeedbackSignalArgs, snap *config.Snapshot) (SignalOutcome, error) {
 	rows, err := w.cfg.Store.FindingByComment(ctx, queries.FindingByCommentParams{Repo: a.Repo, PrNumber: int32(a.PR), GhCommentID: &a.ThreadRoot})
 	if err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: finding by comment: %w", err)
 	}
 	if len(rows) == 0 {
 		return SignalOutcome{Ignored: "not an Exemplar thread"}, nil
@@ -152,7 +151,7 @@ func (w *FeedbackSignalWorker) inThread(ctx context.Context, a store.FeedbackSig
 	if a.Signal == store.SignalReply {
 		d, err := w.cfg.Store.FindingDetail(ctx, id)
 		if err != nil {
-			return SignalOutcome{}, err
+			return SignalOutcome{}, fmt.Errorf("worker: finding detail: %w", err)
 		}
 		class := w.cfg.Engine.ClassifyReply(ctx, engine.CallMeta{Caller: Caller, Repo: a.Repo}, findingOf(d), a.Body)
 		if kind = replyKinds[class]; kind == "" {
@@ -169,7 +168,7 @@ func (w *FeedbackSignalWorker) inThread(ctx context.Context, a store.FeedbackSig
 		FindingID: id, Kind: kind, Actor: a.Actor, Role: role, Via: pipeline.ViaWebhook, ReasonText: a.Body,
 		Evidence: map[string]any{"comment_id": a.CommentID},
 	}}); err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: record events: %w", err)
 	}
 	return SignalOutcome{Kinds: []string{kind}, Role: role}, nil
 }
@@ -185,18 +184,18 @@ func (w *FeedbackSignalWorker) comment(ctx context.Context, a store.FeedbackSign
 		Before: pgtype.Timestamptz{Time: a.At, Valid: true},
 	})
 	if err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: findings on lines: %w", err)
 	}
 	if len(rows) == 0 {
 		return SignalOutcome{Ignored: "no finding on these lines"}, nil
 	}
 	reader, err := w.cfg.GitHub.Reader(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: github reader: %w", err)
 	}
 	pr, err := gh.GetPullRequest(ctx, reader, a.Repo, a.PR)
 	if err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: get pull request: %w", err)
 	}
 	if strings.EqualFold(a.Actor, pr.Author) {
 		return SignalOutcome{Ignored: "the PR's author"}, nil // the author raising it is not a reviewer's agreement
@@ -231,8 +230,10 @@ func (w *FeedbackSignalWorker) comment(ctx context.Context, a store.FeedbackSign
 	if len(evs) == 0 {
 		return SignalOutcome{Ignored: "no finding judged the same concern"}, nil
 	}
-	_, err = pipeline.RecordEvents(ctx, w.cfg.Store, snap.Global.Feedback, evs)
-	return out, err
+	if _, err := pipeline.RecordEvents(ctx, w.cfg.Store, snap.Global.Feedback, evs); err != nil {
+		return SignalOutcome{}, fmt.Errorf("worker: record events: %w", err)
+	}
+	return out, nil
 }
 
 // role is the actor's role on the PR: the author, the rule's
@@ -241,11 +242,11 @@ func (w *FeedbackSignalWorker) comment(ctx context.Context, a store.FeedbackSign
 func (w *FeedbackSignalWorker) role(ctx context.Context, a store.FeedbackSignalArgs, snap *config.Snapshot, ruleID string, participate bool) (string, error) {
 	reader, err := w.cfg.GitHub.Reader(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: github reader: %w", err)
 	}
 	pr, err := gh.GetPullRequest(ctx, reader, a.Repo, a.PR)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: get pull request: %w", err)
 	}
 	if strings.EqualFold(a.Actor, pr.Author) {
 		return pipeline.RoleAuthor, nil
@@ -260,7 +261,7 @@ func (w *FeedbackSignalWorker) role(ctx context.Context, a store.FeedbackSignalA
 	}
 	took, err := gh.Participated(ctx, reader, a.Repo, a.PR, a.Actor, a.At, a.CommentID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: participation: %w", err)
 	}
 	if took {
 		return pipeline.RoleReviewer, nil

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -32,14 +32,14 @@ var claudeSpec = Spec{
 	Family: func(string) string { return FamilyAnthropic },
 	ValidateModel: func(model string) error {
 		if !strings.HasPrefix(model, "claude-") {
-			return errors.New("claude models are named claude-*")
+			return fmt.Errorf("%w: claude models are named claude-*", errModelName)
 		}
 		return nil
 	},
 	New: func(_ context.Context, s Settings) (Provider, error) {
 		key := s.env(EnvClaudeAPIKey)
 		if key == "" {
-			return nil, errors.New(EnvClaudeAPIKey + " is required")
+			return nil, fmt.Errorf("%s %w", EnvClaudeAPIKey, errRequired)
 		}
 		opts := []option.RequestOption{option.WithAPIKey(key), option.WithRequestTimeout(10 * time.Minute)}
 		if base := s.env(EnvClaudeBaseURL); base != "" {

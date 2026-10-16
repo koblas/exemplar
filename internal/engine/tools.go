@@ -27,6 +27,23 @@ const (
 	grepTimeout    = 5 * time.Second
 )
 
+// Tool errors. Their text is the tool result the model sees.
+var (
+	errNotReviewable   = errors.New("is not a reviewable changed file")
+	errUnknownTool     = errors.New("unknown tool")
+	errContentWithheld = errors.New("content withheld: it contains a secret that could not be redacted")
+	errInvalidPath     = errors.New("invalid path")
+	errOutsideRepo     = errors.New("is outside the repository")
+	errBadRange        = errors.New("start and end must satisfy 1 <= start <= end")
+	errPastEnd         = errors.New("lines")
+	errCannotRead      = errors.New("cannot read")
+	errBinaryFile      = errors.New("is a binary file")
+	errPatternLength   = errors.New("pattern must be")
+	errSearchTimedOut  = errors.New("search timed out")
+	errSearchFailed    = errors.New("search failed")
+	errCannotList      = errors.New("cannot list")
+)
+
 // ToolCall is one logged tool invocation. Coverage is computed from this
 // log, never from anything the model says.
 type ToolCall struct {
@@ -165,7 +182,7 @@ func (t *toolbox) run(ctx context.Context, name string, input json.RawMessage) (
 	case "get_hunk":
 		h, ok := t.hunks[in.Path]
 		if !ok {
-			err = fmt.Errorf("%s is not a reviewable changed file", in.Path)
+			err = fmt.Errorf("%s %w", in.Path, errNotReviewable)
 		}
 		out = h
 	case "read_file":
@@ -177,7 +194,7 @@ func (t *toolbox) run(ctx context.Context, name string, input json.RawMessage) (
 		out, err = t.listDir(in.Path)
 	case "path_history":
 		if t.history == nil {
-			err = fmt.Errorf("unknown tool %q", name)
+			err = fmt.Errorf("%w %q", errUnknownTool, name)
 			break
 		}
 		var res pathhistory.Result
@@ -186,13 +203,13 @@ func (t *toolbox) run(ctx context.Context, name string, input json.RawMessage) (
 		}
 	case "find_references":
 		if t.refs == nil {
-			err = fmt.Errorf("unknown tool %q", name)
+			err = fmt.Errorf("%w %q", errUnknownTool, name)
 			break
 		}
 		out, err = t.findReferences(ctx, in.Name, in.DefinedIn)
 		in.Path = ""
 	default:
-		err = fmt.Errorf("unknown tool %q", name)
+		err = fmt.Errorf("%w %q", errUnknownTool, name)
 	}
 	t.record(ToolCall{Name: name, Path: in.Path, OK: err == nil})
 	if err != nil {
@@ -206,7 +223,7 @@ func (t *toolbox) run(ctx context.Context, name string, input json.RawMessage) (
 	// Every context snippet is scanned like the diff.
 	red, _, rerr := t.scanner.Redact(out)
 	if rerr != nil {
-		return "", errors.New("content withheld: it contains a secret that could not be redacted")
+		return "", errContentWithheld
 	}
 	return red, nil
 }
@@ -215,30 +232,30 @@ func (t *toolbox) run(ctx context.Context, name string, input json.RawMessage) (
 // anything that escapes it, including through symlinks.
 func (t *toolbox) resolve(rel string) (string, error) {
 	if rel == "" || filepath.IsAbs(rel) || strings.Contains(rel, "\x00") {
-		return "", fmt.Errorf("invalid path %q", rel)
+		return "", fmt.Errorf("%w %q", errInvalidPath, rel)
 	}
 	clean := filepath.Clean(filepath.FromSlash(rel))
 	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".git" || strings.HasPrefix(clean, ".git"+string(filepath.Separator)) {
-		return "", fmt.Errorf("path %q is outside the repository", rel)
+		return "", fmt.Errorf("path %q %w", rel, errOutsideRepo)
 	}
 	root, err := filepath.EvalSymlinks(t.ws.Dir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve workspace: %w", err)
 	}
 	full := filepath.Join(root, clean)
 	resolved, err := filepath.EvalSymlinks(full)
 	if err != nil {
-		return full, err // may be outside the sparse cone; caller falls back to git
+		return full, fmt.Errorf("resolve %s: %w", rel, err) // may be outside the sparse cone; caller falls back to git
 	}
 	if resolved != root && !strings.HasPrefix(resolved, root+string(filepath.Separator)) {
-		return "", fmt.Errorf("path %q is outside the repository", rel)
+		return "", fmt.Errorf("path %q %w", rel, errOutsideRepo)
 	}
 	return resolved, nil
 }
 
 func (t *toolbox) readFile(ctx context.Context, rel string, start, end int) (string, error) {
 	if start < 1 || end < start {
-		return "", errors.New("start and end must satisfy 1 <= start <= end")
+		return "", errBadRange
 	}
 	if end-start+1 > maxReadLines {
 		end = start + maxReadLines - 1
@@ -253,14 +270,14 @@ func (t *toolbox) readFile(ctx context.Context, rel string, start, end int) (str
 		data, err = t.ws.Show(ctx, t.ws.HeadSHA, filepath.ToSlash(filepath.Clean(rel)))
 	}
 	if err != nil {
-		return "", fmt.Errorf("cannot read %s", rel)
+		return "", fmt.Errorf("%w %s", errCannotRead, rel)
 	}
 	if bytes.IndexByte(data, 0) >= 0 {
-		return "", fmt.Errorf("%s is a binary file", rel)
+		return "", fmt.Errorf("%s %w", rel, errBinaryFile)
 	}
 	lines := strings.Split(string(data), "\n")
 	if start > len(lines) {
-		return "", fmt.Errorf("%s has %d lines", rel, len(lines))
+		return "", fmt.Errorf("%s has %d %w", rel, len(lines), errPastEnd)
 	}
 	end = min(end, len(lines))
 	var b strings.Builder
@@ -272,7 +289,7 @@ func (t *toolbox) readFile(ctx context.Context, rel string, start, end int) (str
 
 func (t *toolbox) grep(ctx context.Context, pattern, glob string) (string, error) {
 	if pattern == "" || len(pattern) > maxGrepPattern {
-		return "", fmt.Errorf("pattern must be 1-%d characters", maxGrepPattern)
+		return "", fmt.Errorf("%w 1-%d characters", errPatternLength, maxGrepPattern)
 	}
 	ctx, cancel := context.WithTimeout(ctx, grepTimeout)
 	defer cancel()
@@ -290,9 +307,9 @@ func (t *toolbox) grep(ctx context.Context, pattern, glob string) (string, error
 	}
 	if err != nil {
 		if ctx.Err() != nil {
-			return "", errors.New("search timed out")
+			return "", errSearchTimedOut
 		}
-		return "", errors.New("search failed")
+		return "", errSearchFailed
 	}
 	lines := strings.SplitN(string(out), "\n", maxGrepMatches+1)
 	if len(lines) > maxGrepMatches {
@@ -309,12 +326,12 @@ func (t *toolbox) listDir(rel string) (string, error) {
 	if rel != "." {
 		var err error
 		if full, err = t.resolve(rel); err != nil {
-			return "", fmt.Errorf("cannot list %s", rel)
+			return "", fmt.Errorf("%w %s", errCannotList, rel)
 		}
 	}
 	entries, err := os.ReadDir(full)
 	if err != nil {
-		return "", fmt.Errorf("cannot list %s", rel)
+		return "", fmt.Errorf("%w %s", errCannotList, rel)
 	}
 	var b strings.Builder
 	for i, e := range entries {

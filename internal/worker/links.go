@@ -29,7 +29,7 @@ type FeedbackLinkWorker struct {
 // and Engine.
 func NewFeedbackLinkWorker(cfg Config) (*FeedbackLinkWorker, error) {
 	if cfg.Store == nil {
-		return nil, errors.New("worker: feedback links need a store")
+		return nil, fmt.Errorf("%w: feedback links need a store", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -53,17 +53,17 @@ func (w *FeedbackLinkWorker) Work(ctx context.Context, job *river.Job[store.Feed
 func (w *FeedbackLinkWorker) Handle(ctx context.Context, a store.FeedbackLinkArgs) (SignalOutcome, error) {
 	kind := feedbacklink.Kind(a.Reason)
 	if kind == "" {
-		return SignalOutcome{}, river.JobCancel(fmt.Errorf("worker: unknown link reason %q", a.Reason))
+		return SignalOutcome{}, river.JobCancel(fmt.Errorf("%w: unknown link reason %q", errBadJob, a.Reason))
 	}
 	ref, err := w.cfg.Store.FindingRef(ctx, a.FindingID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SignalOutcome{Ignored: "finding no longer stored"}, nil // retention removed it
 	}
 	if err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: finding ref: %w", err)
 	}
 	if ref.InstallationID == 0 {
-		return SignalOutcome{}, fmt.Errorf("worker: no installation known for %s", ref.Repo)
+		return SignalOutcome{}, fmt.Errorf("worker: app %w: no installation known for %s", errNotInstalled, ref.Repo)
 	}
 	snap, err := w.cfg.Snapshot(ctx)
 	if err != nil {
@@ -78,7 +78,7 @@ func (w *FeedbackLinkWorker) Handle(ctx context.Context, a store.FeedbackLinkArg
 		FindingID: a.FindingID, Kind: kind, Actor: a.Actor, Role: role, Via: pipeline.ViaLink, ReasonText: a.Text,
 	}})
 	if err != nil {
-		return SignalOutcome{}, err
+		return SignalOutcome{}, fmt.Errorf("worker: record events: %w", err)
 	}
 	if n > 0 {
 		teach(ctx, w.cfg, ref.Repo, a.FindingID, kind, a.Actor, a.Text)

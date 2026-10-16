@@ -35,6 +35,13 @@ func Kind(reason string) string {
 // MinKeyBytes is the shortest accepted key.
 const MinKeyBytes = 32
 
+var (
+	// ErrShortKey is returned by New for a key under MinKeyBytes.
+	ErrShortKey = errors.New("feedbacklink: key too short")
+	// ErrInsecureBase is returned by New for a non-https base URL.
+	ErrInsecureBase = errors.New("feedbacklink: base must be https")
+)
+
 // Signer signs links for one public base URL.
 type Signer struct {
 	key  []byte
@@ -44,10 +51,10 @@ type Signer struct {
 // New returns a Signer for links under base (exemplar-api's public URL).
 func New(key []byte, base string) (*Signer, error) {
 	if len(key) < MinKeyBytes {
-		return nil, fmt.Errorf("feedbacklink: key must be at least %d bytes", MinKeyBytes)
+		return nil, fmt.Errorf("%w: key must be at least %d bytes", ErrShortKey, MinKeyBytes)
 	}
 	if !strings.HasPrefix(base, "https://") && !strings.HasPrefix(base, "http://localhost") && !strings.HasPrefix(base, "http://127.0.0.1") {
-		return nil, fmt.Errorf("feedbacklink: base %q must be https", base)
+		return nil, fmt.Errorf("%w: base %q must be https", ErrInsecureBase, base)
 	}
 	return &Signer{key: key, base: strings.TrimSuffix(base, "/")}, nil
 }

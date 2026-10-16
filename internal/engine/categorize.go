@@ -101,15 +101,15 @@ func (e *Engine) categorize(ctx context.Context, p *Prepared, meta CallMeta) (ga
 func validCategorization(risk string, pLow float64, reasons []string) error {
 	switch {
 	case risk != gates.RiskLow && risk != gates.RiskMedium && risk != gates.RiskHigh:
-		return fmt.Errorf("risk %q", risk)
+		return fmt.Errorf("%w: risk %q", errInvalidAnswer, risk)
 	case pLow < 0 || pLow > 1 || pLow != pLow: // pLow != pLow: NaN
-		return fmt.Errorf("p_low %v outside [0, 1]", pLow)
+		return fmt.Errorf("%w: p_low %v outside [0, 1]", errInvalidAnswer, pLow)
 	case len(reasons) > maxCategorizerReasons:
-		return fmt.Errorf("%d reasons; at most %d", len(reasons), maxCategorizerReasons)
+		return fmt.Errorf("%w: %d reasons; at most %d", errInvalidAnswer, len(reasons), maxCategorizerReasons)
 	}
 	for _, r := range reasons {
 		if strings.TrimSpace(r) == "" || utf8.RuneCountInString(r) > maxReasonChars {
-			return fmt.Errorf("a reason is empty or longer than %d characters", maxReasonChars)
+			return fmt.Errorf("%w: a reason is empty or longer than %d characters", errInvalidAnswer, maxReasonChars)
 		}
 	}
 	return nil

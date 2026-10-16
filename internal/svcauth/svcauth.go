@@ -33,6 +33,9 @@ const refreshEvery = time.Minute
 // ErrInvalid is a token that does not verify.
 var ErrInvalid = errors.New("svcauth: invalid token")
 
+// errJWKSStatus reports a JWKS response other than 200 OK.
+var errJWKSStatus = errors.New("unexpected status")
+
 // Claims are what a verified token says about its caller.
 type Claims struct {
 	// Subject names the caller: "svc:<sub>" for a service, the username
@@ -159,9 +162,12 @@ func Issuer(token string) string {
 func decodePart(s string, out any) error {
 	b, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode base64: %w", err)
 	}
-	return json.Unmarshal(b, out)
+	if err := json.Unmarshal(b, out); err != nil {
+		return fmt.Errorf("decode json: %w", err)
+	}
+	return nil
 }
 
 func audience(raw json.RawMessage, want string) bool {
@@ -199,7 +205,7 @@ func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) 
 func (v *Verifier) fetch(ctx context.Context) (map[string]*rsa.PublicKey, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.JWKSURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("svcauth: build JWKS request: %w", err)
 	}
 	resp, err := v.HTTP.Do(req)
 	if err != nil {
@@ -207,7 +213,7 @@ func (v *Verifier) fetch(ctx context.Context) (map[string]*rsa.PublicKey, error)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("svcauth: fetch JWKS: %s", resp.Status)
+		return nil, fmt.Errorf("svcauth: fetch JWKS: %w: %s", errJWKSStatus, resp.Status)
 	}
 	var set struct {
 		Keys []struct {

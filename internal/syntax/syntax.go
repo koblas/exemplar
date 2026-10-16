@@ -8,6 +8,7 @@ package syntax
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ var ErrUnsupported = errors.New("syntax: no grammar for the file's language")
 
 // ErrTimeout is returned when parsing takes longer than Timeout.
 var ErrTimeout = errors.New("syntax: parse timed out")
+
+// ErrParse reports that tree-sitter returned no tree.
+var ErrParse = errors.New("syntax: parse failed")
 
 // Timeout bounds one parse.
 const Timeout = 5 * time.Second
@@ -67,7 +71,7 @@ func Parse(ctx context.Context, path string, src []byte) (*sitter.Tree, error) {
 	p := sitter.NewParser()
 	defer p.Close()
 	if err := p.SetLanguage(sitter.NewLanguage(lang())); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("syntax: set language: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
@@ -85,7 +89,7 @@ func Parse(ctx context.Context, path string, src []byte) (*sitter.Tree, error) {
 		if ctx.Err() != nil {
 			return nil, ErrTimeout
 		}
-		return nil, errors.New("syntax: parse failed")
+		return nil, ErrParse
 	}
 	return tree, nil
 }

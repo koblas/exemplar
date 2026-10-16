@@ -33,7 +33,7 @@ const reactionsQuery = `query($owner: String!, $name: String!, $number: Int!, $a
 func CommentReactions(ctx context.Context, c *github.Client, repo string, number int) (map[int64][]Reaction, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	out := map[int64][]Reaction{}
 	vars := map[string]any{"owner": owner, "name": name, "number": number, "after": nil}

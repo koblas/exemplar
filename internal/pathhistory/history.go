@@ -67,7 +67,12 @@ func Local(m *mirror.Manager) Commits { return localCommits{m} }
 type localCommits struct{ m *mirror.Manager }
 
 func (l localCommits) Commits(ctx context.Context, repo, rev, p string, n int) ([]mirror.Commit, error) {
-	return l.m.Log(ctx, repo, rev, p, n)
+	commits, err := l.m.Log(ctx, repo, rev, p, n)
+	if err != nil {
+		return nil, fmt.Errorf("pathhistory: read mirror log: %w", err)
+	}
+
+	return commits, nil
 }
 
 // Remote asks exemplar-search, as a worker does. path_history reads only
@@ -77,7 +82,12 @@ func Remote(c *api.Client) Commits { return remoteCommits{c} }
 type remoteCommits struct{ c *api.Client }
 
 func (r remoteCommits) Commits(ctx context.Context, repo, rev, p string, n int) ([]mirror.Commit, error) {
-	return r.c.Log(ctx, repo, repo, rev, p, n)
+	commits, err := r.c.Log(ctx, repo, repo, rev, p, n)
+	if err != nil {
+		return nil, fmt.Errorf("pathhistory: fetch log: %w", err)
+	}
+
+	return commits, nil
 }
 
 // Service answers path_history.
@@ -86,10 +96,13 @@ type Service struct {
 	commits Commits
 }
 
+// errNoStore is New without a store.
+var errNoStore = errors.New("pathhistory: store is required")
+
 // New returns a Service. commits may be nil (events only, degraded).
 func New(st *store.Store, commits Commits) (*Service, error) {
 	if st == nil {
-		return nil, errors.New("pathhistory: store is required")
+		return nil, errNoStore
 	}
 	return &Service{st: st, commits: commits}, nil
 }

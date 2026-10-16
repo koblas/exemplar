@@ -116,17 +116,17 @@ type Gateway struct {
 // NewGateway validates cfg and returns a Gateway.
 func NewGateway(cfg Config) (*Gateway, error) {
 	if cfg.Token == "" {
-		return nil, errors.New("llm: gateway token is required")
+		return nil, fmt.Errorf("llm: gateway token %w", errRequired)
 	}
 	if cfg.Scanner == nil {
-		return nil, errors.New("llm: secret scanner is required")
+		return nil, fmt.Errorf("llm: secret scanner %w", errRequired)
 	}
 	if err := ValidateProviders(cfg.Providers); err != nil {
 		return nil, err
 	}
 	for name := range cfg.Clients {
 		if _, ok := registry[name]; !ok {
-			return nil, fmt.Errorf("llm: provider %q is not approved", name)
+			return nil, fmt.Errorf("llm: provider %q is %w", name, errNotApproved)
 		}
 	}
 	if cfg.RequestsPerMinute <= 0 {
@@ -198,7 +198,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for i, route := range routes {
 		client, ok := g.cfg.Clients[route.Provider]
 		if !ok {
-			lastErr = fmt.Errorf("provider %s has no client configured", route.Provider)
+			lastErr = fmt.Errorf("provider %s %w", route.Provider, errNoClient)
 			continue
 		}
 		routed, err := withModel(body, route.Model)
@@ -286,6 +286,11 @@ type callMeta struct {
 	dataClasses               []string
 }
 
+var (
+	errNoClient      = errors.New("has no client configured")
+	errInvalidHeader = errors.New("invalid header")
+)
+
 func parseMeta(h http.Header) (callMeta, error) {
 	m := callMeta{
 		stage:  h.Get(HeaderStage),
@@ -294,10 +299,10 @@ func parseMeta(h http.Header) (callMeta, error) {
 		repo:   h.Get(HeaderRepo),
 	}
 	if m.stage == "" {
-		return m, fmt.Errorf("%s is required", HeaderStage)
+		return m, fmt.Errorf("%s %w", HeaderStage, errRequired)
 	}
 	if !slices.Contains(callers, m.caller) {
-		return m, fmt.Errorf("%s must be one of %v", HeaderCaller, callers)
+		return m, fmt.Errorf("%w: %s must be one of %v", errInvalidHeader, HeaderCaller, callers)
 	}
 	for _, p := range []struct {
 		name string
@@ -306,19 +311,19 @@ func parseMeta(h http.Header) (callMeta, error) {
 		if v := h.Get(p.name); v != "" {
 			n, err := strconv.ParseInt(v, 10, 64)
 			if err != nil || n <= 0 {
-				return m, fmt.Errorf("%s must be a positive integer", p.name)
+				return m, fmt.Errorf("%w: %s must be a positive integer", errInvalidHeader, p.name)
 			}
 			*p.dst = &n
 		}
 	}
 	raw := h.Get(HeaderDataClasses)
 	if raw == "" {
-		return m, fmt.Errorf("%s is required (FR-H4)", HeaderDataClasses)
+		return m, fmt.Errorf("%s %w (FR-H4)", HeaderDataClasses, errRequired)
 	}
 	for c := range strings.SplitSeq(raw, ",") {
 		c = strings.TrimSpace(c)
 		if !slices.Contains(DataClasses, c) {
-			return m, fmt.Errorf("unknown data class %q", c)
+			return m, fmt.Errorf("%w: unknown data class %q", errInvalidHeader, c)
 		}
 		if !slices.Contains(m.dataClasses, c) {
 			m.dataClasses = append(m.dataClasses, c)
@@ -332,7 +337,7 @@ func parseMeta(h http.Header) (callMeta, error) {
 func (g *Gateway) scanRequest(body []byte) ([]redact.Match, error) {
 	var v any
 	if err := json.Unmarshal(body, &v); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode json: %w", err)
 	}
 	var matches []redact.Match
 	var walk func(any)
@@ -365,7 +370,11 @@ func withModel(body []byte, model string) ([]byte, error) {
 		return nil, fmt.Errorf("encode model: %w", err)
 	}
 	m["model"] = enc
-	return json.Marshal(m)
+	out, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("encode request body: %w", err)
+	}
+	return out, nil
 }
 
 func (g *Gateway) limiter(key string) *rate.Limiter {

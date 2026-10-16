@@ -33,7 +33,7 @@ type PlaygroundWorker struct {
 // NewPlaygroundWorker validates cfg; it needs a store and the draft loader.
 func NewPlaygroundWorker(cfg Config, draft func([]byte) (*config.Snapshot, string, error)) (*PlaygroundWorker, error) {
 	if cfg.Store == nil || draft == nil {
-		return nil, errors.New("worker: the playground needs a store and the config")
+		return nil, fmt.Errorf("%w: the playground needs a store and the config", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -60,10 +60,10 @@ func (w *PlaygroundWorker) Work(ctx context.Context, job *river.Job[store.Playgr
 func (w *PlaygroundWorker) Run(ctx context.Context, id int64) (string, error) {
 	run, err := w.cfg.Store.GetPlaygroundRun(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", river.JobCancel(errors.New("worker: playground run gone"))
+		return "", river.JobCancel(fmt.Errorf("worker: playground run %w", errGone))
 	}
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: get playground run: %w", err)
 	}
 	if run.Status != "queued" {
 		return run.Status, nil
@@ -85,7 +85,7 @@ func (w *PlaygroundWorker) Run(ctx context.Context, id int64) (string, error) {
 		Target: playground.Target{Repo: run.Repo, PR: int(run.PrNumber)},
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: try playground: %w", err)
 	}
 	if out.Denied {
 		return "refused", w.finish(ctx, id, "refused", "no access to "+run.Repo, nil, 0)
@@ -105,14 +105,17 @@ func (w *PlaygroundWorker) finish(ctx context.Context, id int64, status, reason 
 	if res != nil {
 		var err error
 		if data, err = json.Marshal(res); err != nil {
-			return err
+			return fmt.Errorf("worker: marshal playground result: %w", err)
 		}
 	}
 	var r *string
 	if reason != "" {
 		r = &reason
 	}
-	return w.cfg.Store.FinishPlaygroundRun(ctx, queries.FinishPlaygroundRunParams{ID: id, Status: status, Reason: r, Result: data, CostUsd: cost})
+	if err := w.cfg.Store.FinishPlaygroundRun(ctx, queries.FinishPlaygroundRunParams{ID: id, Status: status, Reason: r, Result: data, CostUsd: cost}); err != nil {
+		return fmt.Errorf("worker: finish playground run: %w", err)
+	}
+	return nil
 }
 
 // playgroundGitHub is the playground's view of GitHub through the app.
@@ -127,7 +130,10 @@ func (g playgroundGitHub) installation(ctx context.Context, repo string) (int64,
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && inst == 0) {
 		return 0, fmt.Errorf("%w: no installation on %s", gh.ErrNotFound, repo)
 	}
-	return inst, err
+	if err != nil {
+		return 0, fmt.Errorf("worker: repo installation: %w", err)
+	}
+	return inst, nil
 }
 
 func (g playgroundGitHub) PullRequest(ctx context.Context, repo string, number int) (gh.PullRequest, error) {
@@ -137,9 +143,13 @@ func (g playgroundGitHub) PullRequest(ctx context.Context, repo string, number i
 	}
 	var c *github.Client
 	if c, err = g.w.cfg.GitHub.Reader(ctx, inst, repo); err != nil {
-		return gh.PullRequest{}, err
+		return gh.PullRequest{}, fmt.Errorf("worker: reader client: %w", err)
 	}
-	return gh.GetPullRequest(ctx, c, repo, number)
+	pr, err := gh.GetPullRequest(ctx, c, repo, number)
+	if err != nil {
+		return gh.PullRequest{}, fmt.Errorf("worker: get pull request: %w", err)
+	}
+	return pr, nil
 }
 
 func (g playgroundGitHub) CloneToken(ctx context.Context, repo string) (string, error) {
@@ -147,5 +157,9 @@ func (g playgroundGitHub) CloneToken(ctx context.Context, repo string) (string, 
 	if err != nil {
 		return "", err
 	}
-	return g.w.cfg.GitHub.CloneToken(ctx, inst, repo)
+	tok, err := g.w.cfg.GitHub.CloneToken(ctx, inst, repo)
+	if err != nil {
+		return "", fmt.Errorf("worker: clone token: %w", err)
+	}
+	return tok, nil
 }

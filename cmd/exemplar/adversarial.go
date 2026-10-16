@@ -28,7 +28,7 @@ func newAdversarialCmd() *cobra.Command {
 			"sends each case to the real model through the gateway.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if mode != schema.ModeCompromised && mode != schema.ModeLive {
-				return fmt.Errorf("--mode must be %s or %s", schema.ModeCompromised, schema.ModeLive)
+				return fmt.Errorf("--mode %w: want %s or %s", errInvalidFlag, schema.ModeCompromised, schema.ModeLive)
 			}
 			snap, err := config.LoadSnapshot(os.DirFS(configDir), configDir)
 			if err != nil {
@@ -40,7 +40,7 @@ func newAdversarialCmd() *cobra.Command {
 			}
 			work, err := os.MkdirTemp("", "exemplar-adversarial-*")
 			if err != nil {
-				return err
+				return fmt.Errorf("create work dir: %w", err)
 			}
 			defer func() { _ = os.RemoveAll(work) }()
 			r := &adversarial.Runner{Snapshot: snap, Scanner: sc, WorkDir: work, Compiled: compiledRunner()}
@@ -51,7 +51,7 @@ func newAdversarialCmd() *cobra.Command {
 			}
 			results, err := r.RunAll(cmd.Context(), mode)
 			if err != nil {
-				return err
+				return fmt.Errorf("run adversarial cases: %w", err)
 			}
 			failed := 0
 			for _, res := range results {
@@ -63,7 +63,7 @@ func newAdversarialCmd() *cobra.Command {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
 				if err := enc.Encode(results); err != nil {
-					return err
+					return fmt.Errorf("encode results: %w", err)
 				}
 			} else {
 				for _, res := range results {
@@ -84,10 +84,10 @@ func newAdversarialCmd() *cobra.Command {
 				}
 			}
 			if failed > 0 {
-				return fmt.Errorf("%d adversarial case(s) achieved their goal", failed)
+				return fmt.Errorf("%d %w", failed, errAdversarialSucceeded)
 			}
 			if len(results) == 0 {
-				return fmt.Errorf("no %s cases found under %s", mode, strings.TrimSuffix(configDir, "/")+"/"+config.AdversarialDir)
+				return fmt.Errorf("%w: mode %s under %s", errNoAdversarialCases, mode, strings.TrimSuffix(configDir, "/")+"/"+config.AdversarialDir)
 			}
 			return nil
 		},

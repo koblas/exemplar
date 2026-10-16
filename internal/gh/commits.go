@@ -78,7 +78,7 @@ func restErr(err error, what string) error {
 func ReadFile(ctx context.Context, c *github.Client, repo, ref, path string) ([]byte, bool, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, false, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, false, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	fc, _, resp, err := c.Repositories.GetContents(ctx, owner, name, path, &github.RepositoryContentGetOptions{Ref: ref})
 	if resp != nil && resp.StatusCode == http.StatusNotFound {
@@ -88,7 +88,7 @@ func ReadFile(ctx context.Context, c *github.Client, repo, ref, path string) ([]
 		return nil, false, restErr(err, path+"@"+ref)
 	}
 	if fc == nil {
-		return nil, false, fmt.Errorf("gh: %s is not a file", path)
+		return nil, false, fmt.Errorf("%w: %s", ErrNotAFile, path)
 	}
 	s, err := fc.GetContent()
 	if err != nil {

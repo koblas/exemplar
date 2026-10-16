@@ -2216,3 +2216,17 @@ The user asked for the lint configuration to match their usual setup (`default: 
 - **What:** a top-level [`ARCHITECTURE.md`](../../ARCHITECTURE.md) with Mermaid diagrams (GitHub renders them): system context, components, the online PR review sequence, the engine stages, the learning plane, the feedback loop, shift left, trust boundaries, and a code map. Linked from the README.
 - **Decision:** it describes the code and manifests as built, not the spec's target. Where they differ (the orchestrator, poster and feedback roles run as jobs in `exemplar-worker`; there is no `embed` job yet) it says so and links the spec. Network edges follow `deploy/k8s/core/networkpolicies.yaml`. Build status stays in `docs/plans/README.md` rather than being copied.
 - **Checked:** every relative link resolves. Not checked: Mermaid rendering (no renderer in devenv); confirm on GitHub.
+
+### Lint: wrapcheck and err113 ratchet removed (2026-10-16)
+
+The user asked for the per-file wrapcheck/err113 exclusions to be removed and every finding fixed.
+- **Config (`.golangci.yml`):**
+  - The 149-line ratchet is gone; wrapcheck and err113 now apply to every non-test file. They stay off in `_test.go`.
+  - `river.JobCancel(` and `river.JobSnooze(` join `wrapcheck.extra-ignore-sigs`. They are River's job-control signals, which River matches with `errors.As`, and the error passed to `JobCancel` already carries the context. This replaces 14 per-line `//nolint:wrapcheck` suppressions.
+- **Fixed (1,067 findings: 674 wrapcheck, 393 err113):**
+  - Errors from other packages are wrapped with `fmt.Errorf("<what>: %w", err)`.
+  - Ad-hoc `errors.New`/`fmt.Errorf` errors became package-level sentinels (192 in all), with detail kept as `fmt.Errorf("%w: …", ErrX, …)`. Most are unexported; the message text is largely unchanged.
+- **Behavior changes:**
+  - Error strings now carry a context prefix. That includes the failure text stored on an owner action (`owneractions_test.go` now matches its suffix).
+  - The `deploy` test that reads the shutdown timeout from `cmd/exemplar-api/main.go` now also accepts `if err := hs.Shutdown`.
+- **Checked:** `golangci-lint run` reports 0 issues, and `go build` and `go vet` pass. `go test -race ./...` passes with `EXEMPLAR_REQUIRE_ENGINES=1` and `EXEMPLAR_REQUIRE_DB=1`, but only with `/usr/bin` on PATH; that is the same `TestRealSemgrep` caveat as above.

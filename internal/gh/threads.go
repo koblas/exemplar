@@ -145,7 +145,7 @@ func (p *Poster) MinimizeComment(ctx context.Context, pr PR, commentID int64) er
 		return fmt.Errorf("gh: comment %d: %w", commentID, err)
 	}
 	if c.GetNodeID() == "" {
-		return fmt.Errorf("gh: comment %d has no node id", commentID)
+		return fmt.Errorf("gh: comment %d %w", commentID, errNoNodeID)
 	}
 	var out struct {
 		MinimizeComment struct {
@@ -190,7 +190,7 @@ const maxReviewCommentPages = 10
 func PRComments(ctx context.Context, c *github.Client, repo string, number int) ([]ReviewComment, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	var out []ReviewComment
 	opts := &github.PullRequestListCommentsOptions{PerPage: 100}

@@ -33,6 +33,9 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
+// errUnsupported reports an OTel setting this build cannot honor.
+var errUnsupported = errors.New("is not supported")
+
 // Signals says which exporters the environment asks for.
 type Signals struct{ Traces, Metrics bool }
 
@@ -44,7 +47,7 @@ func FromEnv(getenv func(string) string) (Signals, error) {
 	}
 	for _, k := range []string{"OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL", "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"} {
 		if p := getenv(k); p != "" && p != "http/protobuf" {
-			return Signals{}, fmt.Errorf("telemetry: %s=%s is not supported; use http/protobuf", k, p)
+			return Signals{}, fmt.Errorf("telemetry: %s=%s %w; use http/protobuf", k, p, errUnsupported)
 		}
 	}
 	on := func(exporterVar, endpointVar string) (bool, error) {
@@ -53,7 +56,7 @@ func FromEnv(getenv func(string) string) (Signals, error) {
 			return false, nil
 		case "", "otlp":
 		default:
-			return false, fmt.Errorf("telemetry: %s=%s is not supported; use otlp or none", exporterVar, e)
+			return false, fmt.Errorf("telemetry: %s=%s %w; use otlp or none", exporterVar, e, errUnsupported)
 		}
 		return getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" || getenv(endpointVar) != "", nil
 	}
@@ -90,10 +93,10 @@ func Setup(ctx context.Context, service string) (*slog.Logger, func(context.Cont
 	// The environment's service name and attributes win over the default.
 	res, err := sdkresource.Merge(sdkresource.Default(), sdkresource.NewWithAttributes(semconv.SchemaURL, semconv.ServiceName(service)))
 	if err != nil && !errors.Is(err, sdkresource.ErrPartialResource) {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("telemetry: build resource: %w", err)
 	}
 	if res, err = sdkresource.Merge(res, sdkresource.Environment()); err != nil && !errors.Is(err, sdkresource.ErrPartialResource) {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("telemetry: merge environment resource: %w", err)
 	}
 	var stops []func(context.Context) error
 	if sig.Traces {

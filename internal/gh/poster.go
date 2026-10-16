@@ -2,7 +2,6 @@ package gh
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,7 +21,7 @@ type PR struct {
 func ParsePR(fullName string, number int, headSHA string) (PR, error) {
 	owner, repo, ok := strings.Cut(fullName, "/")
 	if !ok || owner == "" || repo == "" {
-		return PR{}, fmt.Errorf("gh: repo %q must be owner/name", fullName)
+		return PR{}, fmt.Errorf("%w: %q", ErrInvalidRepo, fullName)
 	}
 	return PR{Owner: owner, Repo: repo, Number: number, HeadSHA: headSHA}, nil
 }
@@ -82,7 +81,7 @@ func (p *Poster) PostReview(ctx context.Context, pr PR, rv ReviewPost) (int64, b
 	}
 	for _, c := range rv.Comments {
 		if c.StartLine < 1 || c.EndLine < c.StartLine {
-			return 0, false, fmt.Errorf("gh: invalid comment range %s:%d-%d", c.Path, c.StartLine, c.EndLine)
+			return 0, false, fmt.Errorf("%w %s:%d-%d", errCommentRange, c.Path, c.StartLine, c.EndLine)
 		}
 		dc := &github.DraftReviewComment{
 			Path: new(c.Path),
@@ -159,7 +158,7 @@ type CheckResult struct {
 // CompleteCheck finishes a check run.
 func (p *Poster) CompleteCheck(ctx context.Context, pr PR, checkRunID int64, res CheckResult) error {
 	if res.Conclusion == "" {
-		return errors.New("gh: check conclusion is required")
+		return errNoConclusion
 	}
 	opts := github.UpdateCheckRunOptions{
 		Name:        CheckName,

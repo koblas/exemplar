@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/koblas/exemplar/internal/llm"
 	"github.com/koblas/exemplar/internal/store/queries"
@@ -19,7 +20,7 @@ func (r CallRecorder) RecordCall(ctx context.Context, c llm.Call) error {
 	latency := int32(c.Latency.Milliseconds())
 	cost := c.CostUSD
 	repo, caller := c.Repo, c.Caller
-	return r.Store.InsertModelCall(ctx, queries.InsertModelCallParams{
+	if err := r.Store.InsertModelCall(ctx, queries.InsertModelCallParams{
 		ReviewID:     c.ReviewID,
 		RuleRunID:    c.RuleRunID,
 		BatchID:      c.BatchID,
@@ -35,5 +36,8 @@ func (r CallRecorder) RecordCall(ctx context.Context, c llm.Call) error {
 		OutputTokens: &out,
 		CostUsd:      &cost,
 		LatencyMs:    &latency,
-	})
+	}); err != nil {
+		return fmt.Errorf("store: insert model call: %w", err)
+	}
+	return nil
 }

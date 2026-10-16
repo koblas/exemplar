@@ -81,7 +81,7 @@ func (p *Poster) ProbeApproval(ctx context.Context, pr PR, wait time.Duration) (
 		}
 		select {
 		case <-ctx.Done():
-			return res, ctx.Err()
+			return res, fmt.Errorf("gh: approval probe: %w", ctx.Err())
 		case <-time.After(2 * time.Second):
 		}
 	}
@@ -106,7 +106,7 @@ func (p *Poster) mergeState(ctx context.Context, pr PR) (MergeState, error) {
 	}
 	req, err := p.gh.NewRequest(ctx, "POST", "graphql", body)
 	if err != nil {
-		return MergeState{}, err
+		return MergeState{}, fmt.Errorf("gh: build merge state query: %w", err)
 	}
 	var out struct {
 		Data struct {
@@ -125,11 +125,11 @@ func (p *Poster) mergeState(ctx context.Context, pr PR) (MergeState, error) {
 		return MergeState{}, fmt.Errorf("gh: query merge state: %w", err)
 	}
 	if len(out.Errors) > 0 {
-		return MergeState{}, fmt.Errorf("gh: query merge state: %s", out.Errors[0].Message)
+		return MergeState{}, fmt.Errorf("gh: query merge state: %w: %s", errGraphQL, out.Errors[0].Message)
 	}
 	prs := out.Data.Repository.PullRequest
 	if prs == nil {
-		return MergeState{}, fmt.Errorf("gh: %s/%s#%d not found", pr.Owner, pr.Repo, pr.Number)
+		return MergeState{}, fmt.Errorf("%w: %s/%s#%d", ErrNotFound, pr.Owner, pr.Repo, pr.Number)
 	}
 	ms := MergeState{MergeStateStatus: prs.MergeStateStatus}
 	if prs.ReviewDecision != nil {

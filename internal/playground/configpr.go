@@ -37,11 +37,11 @@ func (g *GitConfigPR) Load(ctx context.Context, number int) (fs.FS, fs.FS, []str
 		}
 	}
 	if err := os.MkdirAll(g.WorkDir, 0o750); err != nil {
-		return nil, nil, nil, "", err
+		return nil, nil, nil, "", fmt.Errorf("playground: create work dir: %w", err)
 	}
 	dir, err := os.MkdirTemp(g.WorkDir, fmt.Sprintf("config-pr-%d-", number))
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, nil, nil, "", fmt.Errorf("playground: create temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	ws, err := engine.Checkout(ctx, filepath.Join(dir, "wt"), engine.CheckoutOptions{
@@ -52,15 +52,15 @@ func (g *GitConfigPR) Load(ctx context.Context, number int) (fs.FS, fs.FS, []str
 	}
 	b, err := config.GitFS(ctx, ws.Dir, pr.BaseSHA)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, nil, nil, "", fmt.Errorf("playground: read config at base: %w", err)
 	}
 	h, err := config.GitFS(ctx, ws.Dir, pr.HeadSHA)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, nil, nil, "", fmt.Errorf("playground: read config at head: %w", err)
 	}
 	diff, err := ws.Diff(ctx)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, nil, nil, "", fmt.Errorf("playground: diff config PR %d: %w", number, err)
 	}
 	var changed []string
 	for _, f := range diff.Files() {

@@ -19,6 +19,9 @@ type Patterns struct {
 // ErrNoIncludePattern is returned for a pattern list that could never match.
 var ErrNoIncludePattern = errors.New("file_patterns has no include pattern")
 
+// ErrInvalidPattern is returned for a pattern that is empty or malformed.
+var ErrInvalidPattern = errors.New("invalid file pattern")
+
 // CompilePatterns validates a file_patterns list. Paths are slash-separated
 // and relative to the repository root, as in diffs and the GitHub API.
 func CompilePatterns(patterns []string) (Patterns, error) {
@@ -26,7 +29,7 @@ func CompilePatterns(patterns []string) (Patterns, error) {
 	for _, raw := range patterns {
 		pat, negated := strings.CutPrefix(raw, "!")
 		if pat == "" || !doublestar.ValidatePattern(pat) {
-			return Patterns{}, fmt.Errorf("invalid file pattern %q", raw)
+			return Patterns{}, fmt.Errorf("%w %q", ErrInvalidPattern, raw)
 		}
 		if negated {
 			p.exclude = append(p.exclude, pat)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -38,13 +37,17 @@ func (f *appFlags) register(cmd *cobra.Command) {
 
 func (f *appFlags) app() (*gh.App, error) {
 	if f.appID == 0 || f.keyFile == "" || f.installationID == 0 || f.configRepo == "" {
-		return nil, errors.New("app id, private key file, installation id and config repo are required")
+		return nil, fmt.Errorf("app id, private key file, installation id and config repo %w", errFlagsRequired)
 	}
 	key, err := os.ReadFile(f.keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("read private key: %w", err)
 	}
-	return gh.NewApp(gh.AppConfig{AppID: f.appID, PrivateKey: key, ConfigRepo: f.configRepo, BaseURL: f.baseURL}, nil)
+	app, err := gh.NewApp(gh.AppConfig{AppID: f.appID, PrivateKey: key, ConfigRepo: f.configRepo, BaseURL: f.baseURL}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("github app: %w", err)
+	}
+	return app, nil
 }
 
 func newSandboxCmd() *cobra.Command {
@@ -76,11 +79,11 @@ func newProbeApprovalCmd() *cobra.Command {
 			}
 			client, err := app.Client(cmd.Context(), flags.installationID, gh.FlavorPoster, []string{repo})
 			if err != nil {
-				return err
+				return fmt.Errorf("poster client: %w", err)
 			}
 			target, err := gh.ParsePR(repo, pr, "")
 			if err != nil {
-				return err
+				return fmt.Errorf("parse PR: %w", err)
 			}
 			pull, _, err := client.PullRequests.Get(cmd.Context(), target.Owner, target.Repo, pr)
 			if err != nil {
@@ -89,7 +92,7 @@ func newProbeApprovalCmd() *cobra.Command {
 			target.HeadSHA = pull.GetHead().GetSHA()
 			res, err := gh.NewPoster(client).ProbeApproval(cmd.Context(), target, wait)
 			if err != nil {
-				return err
+				return fmt.Errorf("probe approval: %w", err)
 			}
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")

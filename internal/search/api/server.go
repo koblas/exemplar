@@ -41,6 +41,12 @@ const (
 	CodeInternal    = "internal"
 )
 
+// Configuration errors from NewServer.
+var (
+	errServerDeps = errors.New("api: manager, scheduler and snapshot are required")
+	errShortToken = errors.New("api: the API token must be at least 32 bytes")
+)
+
 // Server serves the API.
 type Server struct {
 	m        *mirror.Manager
@@ -56,10 +62,10 @@ type Server struct {
 // snapshot. token is required.
 func NewServer(m *mirror.Manager, sched *mirror.Scheduler, snap func() *config.Snapshot, token string, log *slog.Logger) (*Server, error) {
 	if m == nil || sched == nil || snap == nil {
-		return nil, errors.New("api: manager, scheduler and snapshot are required")
+		return nil, errServerDeps
 	}
 	if len(token) < 32 {
-		return nil, errors.New("api: the API token must be at least 32 bytes")
+		return nil, errShortToken
 	}
 	if log == nil {
 		log = slog.Default()

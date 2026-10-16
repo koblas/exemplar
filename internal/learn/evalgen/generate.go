@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
@@ -64,7 +65,7 @@ type Report struct {
 func (g *Generator) Run(ctx context.Context) ([]Report, error) {
 	cands, err := g.store.CandidatesNeedingEvals(ctx, int32(g.cfg.Candidates))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list candidates needing evals: %w", err)
 	}
 	var out []Report
 	for _, c := range cands {
@@ -81,7 +82,7 @@ func (g *Generator) one(ctx context.Context, c queries.CandidatesNeedingEvalsRow
 	rep := Report{CandidateID: c.ID}
 	rows, err := g.store.CandidatePositiveSources(ctx, c.ID)
 	if err != nil {
-		return rep, err
+		return rep, fmt.Errorf("load positive sources: %w", err)
 	}
 	var sources []PositiveSource
 	repoSet := map[string]bool{}
@@ -102,7 +103,7 @@ func (g *Generator) one(ctx context.Context, c queries.CandidatesNeedingEvalsRow
 
 	pats, err := scope.CompilePatterns(filePatterns(c.Ext))
 	if err != nil {
-		return rep, err
+		return rep, fmt.Errorf("compile patterns: %w", err)
 	}
 	repos := make([]string, 0, len(repoSet))
 	for r := range repoSet {
@@ -110,7 +111,7 @@ func (g *Generator) one(ctx context.Context, c queries.CandidatesNeedingEvalsRow
 	}
 	prRows, err := g.store.NegativePRs(ctx, queries.NegativePRsParams{Repos: repos, CandidateID: c.ID, Lim: int32(g.cfg.MaxNegatives * 5)})
 	if err != nil {
-		return rep, err
+		return rep, fmt.Errorf("list negative PRs: %w", err)
 	}
 	prs := make([]NegativePR, len(prRows))
 	for i, p := range prRows {
@@ -144,7 +145,7 @@ func (g *Generator) one(ctx context.Context, c queries.CandidatesNeedingEvalsRow
 		for _, cs := range cases {
 			expect, err := json.Marshal(cs.Expect)
 			if err != nil {
-				return err
+				return fmt.Errorf("encode json: %w", err)
 			}
 			var patch *string
 			if cs.Patch != "" {
@@ -154,15 +155,16 @@ func (g *Generator) one(ctx context.Context, c queries.CandidatesNeedingEvalsRow
 				CandidateID: c.ID, CaseID: cs.ID, Kind: cs.Kind, Name: cs.Name, Ref: cs.Ref,
 				Patch: patch, Expect: expect, SpotCheck: cs.SpotCheck, Paths: append([]string{}, cs.Paths...),
 			}); err != nil {
-				return err
+				return fmt.Errorf("insert eval case: %w", err)
 			}
 		}
 		return nil
 	})
-	if err == nil {
-		g.log.Info("eval cases generated", "candidate_id", c.ID, "positives", rep.Positives, "negatives", rep.Negatives, "injected", rep.Injected, "rejected", len(rep.Rejected))
+	if err != nil {
+		return rep, fmt.Errorf("store eval cases: %w", err)
 	}
-	return rep, err
+	g.log.Info("eval cases generated", "candidate_id", c.ID, "positives", rep.Positives, "negatives", rep.Negatives, "injected", rep.Injected, "rejected", len(rep.Rejected))
+	return rep, nil
 }
 
 // filePatterns matches propose's drafted scope for the cluster partition.

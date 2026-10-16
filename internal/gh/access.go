@@ -61,7 +61,7 @@ type PullRequest struct {
 func GetPullRequest(ctx context.Context, c *github.Client, repo string, number int) (PullRequest, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return PullRequest{}, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return PullRequest{}, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	pr, _, err := c.PullRequests.Get(ctx, owner, name, number)
 	if err != nil {
@@ -83,7 +83,7 @@ const MaxPRCommits = 250
 func PRCommitMessages(ctx context.Context, c *github.Client, repo string, number int) ([]string, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	var out []string
 	opts := &github.ListOptions{PerPage: 100}
@@ -110,7 +110,7 @@ func PRCommitMessages(ctx context.Context, c *github.Client, repo string, number
 func IsAncestor(ctx context.Context, c *github.Client, repo, old, head string) (bool, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return false, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return false, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	cmp, _, err := c.Repositories.CompareCommits(ctx, owner, name, old, head, &github.ListOptions{PerPage: 1})
 	if err != nil {
@@ -126,7 +126,7 @@ func IsAncestor(ctx context.Context, c *github.Client, repo, old, head string) (
 	case "behind", "diverged":
 		return false, nil
 	}
-	return false, fmt.Errorf("gh: compare %s...%s on %s: status %q", old, head, repo, cmp.GetStatus())
+	return false, fmt.Errorf("gh: compare %s...%s on %s: %w %q", old, head, repo, errCompareStatus, cmp.GetStatus())
 }
 
 func labelNames(ls []*github.Label) []string {

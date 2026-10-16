@@ -52,38 +52,41 @@ var (
 	ruleRE  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,99}$`)
 )
 
+// ErrInvalidRequest is a Request that Validate rejects.
+var ErrInvalidRequest = errors.New("invalid request")
+
 // Validate checks a request before anything is stored.
 func (r Request) Validate() error {
 	switch {
 	case !repoRE.MatchString(r.Repo):
-		return errors.New("repo must be owner/name")
+		return fmt.Errorf("%w: repo must be owner/name", ErrInvalidRequest)
 	case !shaRE.MatchString(r.BaseSHA):
-		return errors.New("base_sha must be a full commit SHA")
+		return fmt.Errorf("%w: base_sha must be a full commit SHA", ErrInvalidRequest)
 	case r.Agent != "" && !agentRE.MatchString(r.Agent):
-		return errors.New("agent must be 1-64 of [a-z0-9_.-]")
+		return fmt.Errorf("%w: agent must be 1-64 of [a-z0-9_.-]", ErrInvalidRequest)
 	case r.Mode == ModeEval:
 		switch {
 		case !shaRE.MatchString(r.HeadSHA):
-			return errors.New("eval needs head_sha, a full commit SHA")
+			return fmt.Errorf("%w: eval needs head_sha, a full commit SHA", ErrInvalidRequest)
 		case r.Diff != "":
-			return errors.New("eval takes no diff: the head is a pushed commit")
+			return fmt.Errorf("%w: eval takes no diff: the head is a pushed commit", ErrInvalidRequest)
 		case len(r.Rules) > MaxRules:
-			return fmt.Errorf("at most %d rules", MaxRules)
+			return fmt.Errorf("%w: at most %d rules", ErrInvalidRequest, MaxRules)
 		}
 		for _, id := range r.Rules {
 			if !ruleRE.MatchString(id) {
-				return fmt.Errorf("rule id %q is not valid", id)
+				return fmt.Errorf("%w: rule id %q is not valid", ErrInvalidRequest, id)
 			}
 		}
 		return nil
 	case r.Mode != "" && r.Mode != ModeReview:
-		return errors.New("mode must be review or eval")
+		return fmt.Errorf("%w: mode must be review or eval", ErrInvalidRequest)
 	case r.HeadSHA != "" || len(r.Rules) > 0:
-		return errors.New("head_sha and rules are for mode eval")
+		return fmt.Errorf("%w: head_sha and rules are for mode eval", ErrInvalidRequest)
 	case r.Diff == "" || len(r.Diff) > MaxDiff:
-		return errors.New("diff must be 1 byte to 1 MiB")
+		return fmt.Errorf("%w: diff must be 1 byte to 1 MiB", ErrInvalidRequest)
 	case !strings.HasPrefix(r.Diff, "diff --git "):
-		return errors.New("diff must be a git diff")
+		return fmt.Errorf("%w: diff must be a git diff", ErrInvalidRequest)
 	}
 	return nil
 }

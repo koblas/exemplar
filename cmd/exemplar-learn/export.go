@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -26,34 +25,34 @@ func runExport(args []string) error {
 	configDir := fs.String("config", "", "exemplar-config checkout (required)")
 	dryRun := fs.Bool("dry-run", false, "render and print; write nothing")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	if *configDir == "" {
-		return errors.New("--config is required")
+		return fmt.Errorf("--config is %w", errRequired)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-learn")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	snap, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config snapshot: %w", err)
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL is required")
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	if err := st.Migrate(ctx); err != nil {
-		return err
+		return fmt.Errorf("migrate store: %w", err)
 	}
 	r := exports.Runner{Store: st, Log: log}
 	if !*dryRun {
@@ -64,11 +63,11 @@ func runExport(args []string) error {
 		r.Writer = func(ctx context.Context, repo string) (exports.Writer, error) {
 			inst, err := app.RepoInstallation(ctx, repo)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("look up repo installation: %w", err)
 			}
 			c, err := app.Client(ctx, inst, gh.FlavorExport, []string{repo})
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("create github client: %w", err)
 			}
 			return gh.NewRepoWriter(c, repo)
 		}
@@ -77,7 +76,10 @@ func runExport(args []string) error {
 	for _, o := range outs {
 		printJSON(o)
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("run export: %w", err)
+	}
+	return nil
 }
 
 // exportsAppFromEnv builds the exports app (exemplar-exports) from
@@ -87,11 +89,15 @@ func exportsAppFromEnv() (*gh.App, error) {
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_EXPORTS_APP_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_EXPORTS_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
 	if appID == 0 || keyFile == "" || cfgRepo == "" {
-		return nil, errors.New("EXEMPLAR_EXPORTS_APP_ID, EXEMPLAR_EXPORTS_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are required")
+		return nil, fmt.Errorf("EXEMPLAR_EXPORTS_APP_ID, EXEMPLAR_EXPORTS_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are %w", errRequired)
 	}
 	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return nil, fmt.Errorf("read exports private key: %w", err)
 	}
-	return gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: cfgRepo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
+	app, err := gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: cfgRepo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create exports github app: %w", err)
+	}
+	return app, nil
 }

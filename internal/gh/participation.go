@@ -19,7 +19,7 @@ const maxParticipationPages = 10
 func Participated(ctx context.Context, c *github.Client, repo string, number int, login string, at time.Time, except int64) (bool, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return false, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return false, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	is := func(u *github.User) bool { return strings.EqualFold(u.GetLogin(), login) }
 	before := func(t github.Timestamp) bool { return !t.IsZero() && t.Before(at) }

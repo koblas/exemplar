@@ -32,6 +32,13 @@ type Match struct {
 // run is recorded as failed, which keeps coverage below 100%.
 var ErrEngineUnavailable = errors.New("compiled: engine binary not installed")
 
+var (
+	// ErrUnknownEngine is a rule engine other than ast-grep or semgrep.
+	ErrUnknownEngine = errors.New("compiled: unknown engine")
+	errTimedOut      = errors.New("timed out")
+	errSemgrep       = errors.New("compiled: semgrep")
+)
+
 // Runner runs compiled rules.
 type Runner struct {
 	// ASTGrep and Semgrep are the engine binaries (default "ast-grep" and
@@ -88,7 +95,7 @@ func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []s
 		}
 		return ParseSemgrep(out, files)
 	}
-	return nil, fmt.Errorf("compiled: unknown engine %q", engine)
+	return nil, fmt.Errorf("%w %q", ErrUnknownEngine, engine)
 }
 
 // Validate checks a rule body with the engine itself
@@ -96,7 +103,7 @@ func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []s
 func (r Runner) Validate(ctx context.Context, engine, ruleBody string) error {
 	empty, err := os.MkdirTemp("", "exemplar-validate-*")
 	if err != nil {
-		return err
+		return fmt.Errorf("compiled: create temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(empty) }()
 	switch engine {
@@ -109,7 +116,7 @@ func (r Runner) Validate(ctx context.Context, engine, ruleBody string) error {
 			return []string{"scan", "--validate", "--config", rule, "--metrics=off", "--disable-version-check", "--quiet"}
 		})
 	default:
-		err = fmt.Errorf("compiled: unknown engine %q", engine)
+		err = fmt.Errorf("%w %q", ErrUnknownEngine, engine)
 	}
 	return err
 }
@@ -139,15 +146,15 @@ func (r Runner) runEngine(ctx context.Context, dir, bin, ruleBody string, args f
 
 	ruleFile, err := os.CreateTemp("", "exemplar-rule-*.yml")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compiled: create rule file: %w", err)
 	}
 	defer func() { _ = os.Remove(ruleFile.Name()) }()
 	if _, err := ruleFile.WriteString(ruleBody); err != nil {
 		_ = ruleFile.Close()
-		return nil, err
+		return nil, fmt.Errorf("compiled: write rule file: %w", err)
 	}
 	if err := ruleFile.Close(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compiled: close rule file: %w", err)
 	}
 
 	argv := append(append(slices.Clone(r.Sandbox), bin), args(ruleFile.Name())...)
@@ -164,7 +171,7 @@ func (r Runner) runEngine(ctx context.Context, dir, bin, ruleBody string, args f
 		var ee *exec.ExitError
 		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 			if ctx.Err() != nil {
-				return nil, fmt.Errorf("compiled: %s timed out after %s", filepath.Base(bin), timeout)
+				return nil, fmt.Errorf("compiled: %s %w after %s", filepath.Base(bin), errTimedOut, timeout)
 			}
 			return nil, fmt.Errorf("compiled: %s: %w: %s", filepath.Base(bin), err, strings.TrimSpace(stderr.String()))
 		}
@@ -202,7 +209,7 @@ func ParseSemgrep(out []byte, scoped []string) ([]Match, error) {
 	}
 	for _, e := range res.Errors {
 		if e.Level == "error" {
-			return nil, fmt.Errorf("compiled: semgrep: %s", e.Message)
+			return nil, fmt.Errorf("%w: %s", errSemgrep, e.Message)
 		}
 	}
 	var matches []Match
@@ -254,5 +261,8 @@ func ParseASTGrep(out []byte, scoped []string) ([]Match, error) {
 		// ast-grep lines are 0-based.
 		matches = append(matches, Match{Path: p, StartLine: m.Range.Start.Line + 1, EndLine: m.Range.End.Line + 1, Message: m.Message})
 	}
-	return matches, sc.Err()
+	if err := sc.Err(); err != nil {
+		return matches, fmt.Errorf("compiled: read ast-grep output: %w", err)
+	}
+	return matches, nil
 }

@@ -73,7 +73,7 @@ func (ix *Index) FindDefinition(ctx context.Context, repo string, q DefQuery) (D
 	}
 	if q.NearPath != "" {
 		if err := mirror.CleanPath(q.NearPath); err != nil {
-			return DefResult{}, err
+			return DefResult{}, fmt.Errorf("index: near_path: %w", err)
 		}
 	}
 	lang := ""
@@ -103,17 +103,17 @@ func (ix *Index) FindDefinition(ctx context.Context, repo string, q DefQuery) (D
 	default:
 		res.Degraded = true
 		if res.Commit, err = ix.cfg.Mirrors.Snapshot(ctx, repo); err != nil {
-			return res, err
+			return res, fmt.Errorf("index: snapshot: %w", err)
 		}
 		r, err := ix.cfg.Mirrors.Exclusions(ctx, repo, res.Commit)
 		if err != nil {
-			return res, err
+			return res, fmt.Errorf("index: exclusions: %w", err)
 		}
 		rules = r
 		raw, _, err := ix.cfg.Mirrors.GrepWord(ctx, repo, res.Commit, base, maxCandidates)
 		def := newDefiner(base)
 		if err != nil {
-			return res, err
+			return res, fmt.Errorf("index: grep: %w", err)
 		}
 		for _, m := range raw {
 			if l := fileLang(m.Path); (lang == "" || sameFamily(l, lang)) && def.match(l, m.Text) {

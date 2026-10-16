@@ -65,7 +65,7 @@ func (h *Handler) playground(_ http.ResponseWriter, r *http.Request, v *viewer) 
 	}
 	var err error
 	if b.Runs, err = h.cfg.Store.PlaygroundRunsBy(r.Context(), v.Login); err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list playground runs: %w", err)
 	}
 	return "playground", "Playground", b, nil
 }
@@ -143,13 +143,13 @@ func (h *Handler) playgroundRun(_ http.ResponseWriter, r *http.Request, v *viewe
 		return "", "", nil, errNotFound // someone else's run is as absent as none
 	}
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("get playground run: %w", err)
 	}
 	b := runBody{Run: run, PR: h.prURL(run.Repo, run.PrNumber), SaveToken: h.token(v.Login, "propose_rule", strconv.FormatInt(id, 10))}
 	if len(run.Result) > 0 {
 		b.Result = &evaluate.TryResult{}
 		if err := json.Unmarshal(run.Result, b.Result); err != nil {
-			return "", "", nil, err
+			return "", "", nil, fmt.Errorf("decode playground result: %w", err)
 		}
 		for _, f := range b.Result.Findings {
 			if f.Kept {

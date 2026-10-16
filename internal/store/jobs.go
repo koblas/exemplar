@@ -89,7 +89,11 @@ func ReviewJobsToSupersede(ctx context.Context, tx pgx.Tx, repo string, pr int, 
 	if err != nil {
 		return nil, fmt.Errorf("store: superseded review jobs: %w", err)
 	}
-	return pgx.CollectRows(rows, pgx.RowTo[int64])
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return nil, fmt.Errorf("store: superseded review jobs: %w", err)
+	}
+	return ids, nil
 }
 
 // LinterQueue is the River queue late-CI linter checks run on.

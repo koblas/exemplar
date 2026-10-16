@@ -118,11 +118,14 @@ type Index struct {
 	build sync.Mutex
 }
 
+// errConfig reports a Config missing required fields.
+var errConfig = errors.New("index: root and mirrors are required")
+
 // New returns an Index and opens the newest complete generation of each
 // repo found under Root, so a restart serves at once.
 func New(cfg Config) (*Index, error) {
 	if cfg.Root == "" || cfg.Mirrors == nil {
-		return nil, errors.New("index: root and mirrors are required")
+		return nil, errConfig
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
@@ -150,7 +153,7 @@ func New(cfg Config) (*Index, error) {
 func (ix *Index) repoDir(repo string) (string, error) {
 	d, err := ix.cfg.Mirrors.Dir(repo) // validates and normalizes the name
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("index: %w", err)
 	}
 	rel, _ := filepath.Rel(filepath.Dir(filepath.Dir(d)), d)
 	return filepath.Join(ix.cfg.Root, rel), nil
@@ -187,9 +190,12 @@ func readMeta(dir string) (Meta, error) {
 	var m Meta
 	data, err := os.ReadFile(filepath.Join(dir, completeFile))
 	if err != nil {
-		return m, err
+		return m, fmt.Errorf("index: read meta: %w", err)
 	}
-	return m, json.Unmarshal(data, &m)
+	if err := json.Unmarshal(data, &m); err != nil {
+		return m, fmt.Errorf("index: decode meta %s: %w", dir, err)
+	}
+	return m, nil
 }
 
 func (ix *Index) open(ctx context.Context, repo, dir string, m Meta) (*generation, error) {
@@ -213,7 +219,7 @@ func (ix *Index) Build(ctx context.Context, repo string) (Meta, error) {
 	defer ix.build.Unlock()
 	sha, err := ix.cfg.Mirrors.Snapshot(ctx, repo)
 	if err != nil {
-		return Meta{}, err
+		return Meta{}, fmt.Errorf("index: snapshot: %w", err)
 	}
 	ix.mu.Lock()
 	st := ix.repos[repo]
@@ -242,11 +248,11 @@ func (ix *Index) Build(ctx context.Context, repo string) (Meta, error) {
 		return Meta{}, err
 	}
 	if err := os.MkdirAll(rdir, 0o750); err != nil {
-		return Meta{}, err
+		return Meta{}, fmt.Errorf("index: repo dir: %w", err)
 	}
 	tmp, err := os.MkdirTemp(rdir, ".building-")
 	if err != nil {
-		return Meta{}, err
+		return Meta{}, fmt.Errorf("index: build dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmp) }() // no-op once renamed
 	if delta {
@@ -263,7 +269,7 @@ func (ix *Index) Build(ctx context.Context, repo string) (Meta, error) {
 		return Meta{}, fmt.Errorf("encode index meta: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(tmp, completeFile), data, 0o600); err != nil {
-		return Meta{}, err
+		return Meta{}, fmt.Errorf("index: write meta: %w", err)
 	}
 	final := filepath.Join(rdir, genName(m.Gen))
 	if err := os.Rename(tmp, final); err != nil {
@@ -297,7 +303,7 @@ func (ix *Index) Build(ctx context.Context, repo string) (Meta, error) {
 func (ix *Index) index(ctx context.Context, repo, dir string, delta bool) error {
 	mdir, err := ix.cfg.Mirrors.Dir(repo)
 	if err != nil {
-		return err
+		return fmt.Errorf("index: %w", err)
 	}
 	branch, err := defaultBranch(ctx, mdir)
 	if err != nil {
@@ -336,7 +342,7 @@ func defaultBranch(ctx context.Context, mirrorDir string) (string, error) {
 func linkAll(src, dst string) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("index: link: %w", err)
 	}
 	for _, e := range entries {
 		if e.IsDir() || e.Name() == completeFile {
@@ -512,7 +518,7 @@ func (ix *Index) acquire(repo string) *generation {
 func (ix *Index) grep(ctx context.Context, repo string, q TextQuery) (Result, error) {
 	sha, err := ix.cfg.Mirrors.Snapshot(ctx, repo)
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("index: snapshot: %w", err)
 	}
 	var file *regexp.Regexp
 	if q.PathFilter != "" {
@@ -522,12 +528,12 @@ func (ix *Index) grep(ctx context.Context, repo string, q TextQuery) (Result, er
 	}
 	rules, err := ix.cfg.Mirrors.Exclusions(ctx, repo, sha)
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("index: exclusions: %w", err)
 	}
 	// Ask for more than we return: some lines will be filtered out.
 	raw, truncated, err := ix.cfg.Mirrors.Grep(ctx, repo, sha, q.Pattern, "", 5*MaxResults)
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("index: grep: %w", err)
 	}
 	out := Result{Commit: sha, Matches: []Match{}, Degraded: true, Truncated: truncated}
 	for _, m := range raw {

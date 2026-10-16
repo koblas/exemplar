@@ -26,6 +26,20 @@ import (
 	"github.com/koblas/exemplar/internal/scope"
 )
 
+// Snapshot validation failures. Each Problem wraps one of these so callers
+// can tell the kinds apart with errors.Is.
+var (
+	// ErrMisplacedFile marks a config file that is not at the path its
+	// contents require.
+	ErrMisplacedFile = errors.New("misplaced file")
+	// ErrDuplicateID marks an id defined more than once.
+	ErrDuplicateID = errors.New("duplicate id")
+	// ErrUnknownRule marks a reference to a rule id that does not exist.
+	ErrUnknownRule = errors.New("unknown rule")
+	// ErrInvalidValue marks a config value outside its allowed set or range.
+	ErrInvalidValue = errors.New("invalid value")
+)
+
 // Rule is a validated rule plus where it came from.
 type Rule struct {
 	schema.Rule
@@ -130,7 +144,7 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 	walkYAML(fsys, "repos", &probs, func(p string, data []byte) {
 		rel := strings.TrimSuffix(strings.TrimPrefix(p, "repos/"), ".yaml")
 		if strings.Count(rel, "/") != 1 {
-			probs.add(p, errors.New("repo config must be at repos/<org>/<repo>.yaml"))
+			probs.add(p, fmt.Errorf("%w: repo config must be at repos/<org>/<repo>.yaml", ErrMisplacedFile))
 			return
 		}
 		var rc schema.RepoConfig
@@ -148,7 +162,7 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 			return
 		}
 		if want := path.Join("rules", strings.ToLower(r.Category), r.ID+".yaml"); p != want {
-			probs.add(p, fmt.Errorf("rule %s with category %s must be at %s", r.ID, r.Category, want))
+			probs.add(p, fmt.Errorf("%w: rule %s with category %s must be at %s", ErrMisplacedFile, r.ID, r.Category, want))
 		}
 		s.Rules = append(s.Rules, r)
 	})
@@ -190,7 +204,7 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 			return
 		}
 		if want := path.Join("evals", ec.Rule, "cases.yaml"); p != want {
-			probs.add(p, fmt.Errorf("eval cases for %s must be at %s", ec.Rule, want))
+			probs.add(p, fmt.Errorf("%w: eval cases for %s must be at %s", ErrMisplacedFile, ec.Rule, want))
 		}
 		s.Evals[ec.Rule] = ec
 	})
@@ -207,7 +221,7 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 	if bl := s.Global.BugLane; bl != nil {
 		for id := range bl.Classes {
 			if _, ok := buglane.ByID(id); !ok {
-				probs.add(GlobalPath, fmt.Errorf("bug_lane.classes: %s is not an allowlisted bug class", id))
+				probs.add(GlobalPath, fmt.Errorf("%w: bug_lane.classes: %s is not an allowlisted bug class", ErrInvalidValue, id))
 			}
 		}
 	}
@@ -219,7 +233,7 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 	for repo, rc := range s.Repos {
 		for _, g := range rc.SensitivePaths {
 			if !doublestar.ValidatePattern(g) {
-				probs.add("repos/"+repo+".yaml", fmt.Errorf("sensitive_paths pattern %q is invalid", g))
+				probs.add("repos/"+repo+".yaml", fmt.Errorf("%w: sensitive_paths pattern %q is invalid", ErrInvalidValue, g))
 			}
 		}
 		// Approval-check bars can be raised per repo, never lowered; the
@@ -233,7 +247,7 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 			for field, gs := range globs {
 				for _, g := range gs {
 					if !doublestar.ValidatePattern(g) {
-						probs.add(rp, fmt.Errorf("%s pattern %q is invalid", field, g))
+						probs.add(rp, fmt.Errorf("%w: %s pattern %q is invalid", ErrInvalidValue, field, g))
 					}
 				}
 			}
@@ -243,28 +257,28 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 				}
 			}
 			if aa.MaxFiles > gates.MaxFiles {
-				probs.add(rp, fmt.Errorf("auto_approve.max_files %d is above the %d limit", aa.MaxFiles, gates.MaxFiles))
+				probs.add(rp, fmt.Errorf("%w: auto_approve.max_files %d is above the %d limit", ErrInvalidValue, aa.MaxFiles, gates.MaxFiles))
 			}
 			if aa.MaxChangedLines > gates.MaxChangedLines {
-				probs.add(rp, fmt.Errorf("auto_approve.max_changed_lines %d is above the %d limit", aa.MaxChangedLines, gates.MaxChangedLines))
+				probs.add(rp, fmt.Errorf("%w: auto_approve.max_changed_lines %d is above the %d limit", ErrInvalidValue, aa.MaxChangedLines, gates.MaxChangedLines))
 			}
 			if v := aa.MinMergeSafetyScore; v != 0 && v < gates.DefaultMinMergeSafety {
-				probs.add("repos/"+repo+".yaml", fmt.Errorf("auto_approve.min_merge_safety_score %v is below the %v floor", v, gates.DefaultMinMergeSafety))
+				probs.add("repos/"+repo+".yaml", fmt.Errorf("%w: auto_approve.min_merge_safety_score %v is below the %v floor", ErrInvalidValue, v, gates.DefaultMinMergeSafety))
 			}
 			if v := aa.MinReviewConfidence; v != 0 && v < gates.DefaultMinReviewConfidence {
-				probs.add("repos/"+repo+".yaml", fmt.Errorf("auto_approve.min_review_confidence %v is below the %v floor", v, gates.DefaultMinReviewConfidence))
+				probs.add("repos/"+repo+".yaml", fmt.Errorf("%w: auto_approve.min_review_confidence %v is below the %v floor", ErrInvalidValue, v, gates.DefaultMinReviewConfidence))
 			}
 		}
 	}
 	if c := s.Global.EvalThresholds.Categorizer; c != nil && c.MinReviewConfidence != 0 && c.MinReviewConfidence < gates.DefaultMinReviewConfidence {
-		probs.add(GlobalPath, fmt.Errorf("eval_thresholds.categorizer.min_review_confidence %v is below the %v floor", c.MinReviewConfidence, gates.DefaultMinReviewConfidence))
+		probs.add(GlobalPath, fmt.Errorf("%w: eval_thresholds.categorizer.min_review_confidence %v is below the %v floor", ErrInvalidValue, c.MinReviewConfidence, gates.DefaultMinReviewConfidence))
 	}
 	for _, r := range s.Rules {
 		if r.Export == nil {
 			continue
 		}
 		if r.Export.Agents && strings.TrimSpace(r.Export.Summary) == "" {
-			probs.add(r.Path, errors.New("export.agents is true but export.summary is empty"))
+			probs.add(r.Path, fmt.Errorf("%w: export.agents is true but export.summary is empty", ErrInvalidExportSummary))
 		} else if r.Export.Summary != "" {
 			if err := LintExportSummary(r.Export.Summary); err != nil {
 				probs.add(r.Path, err)
@@ -274,7 +288,7 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 	ids := map[string]string{}
 	for _, r := range s.Rules {
 		if prev, dup := ids[r.ID]; dup {
-			probs.add(r.Path, fmt.Errorf("rule id %s already defined in %s", r.ID, prev))
+			probs.add(r.Path, fmt.Errorf("%w: rule id %s already defined in %s", ErrDuplicateID, r.ID, prev))
 		}
 		ids[r.ID] = r.Path
 	}
@@ -287,7 +301,7 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 			}
 		}
 		if _, ok := ids[rule]; !ok {
-			probs.add(path.Join("evals", rule, "cases.yaml"), fmt.Errorf("eval cases for unknown rule %s", rule))
+			probs.add(path.Join("evals", rule, "cases.yaml"), fmt.Errorf("%w: eval cases for unknown rule %s", ErrUnknownRule, rule))
 		}
 	}
 	for _, r := range s.Rules {
@@ -295,52 +309,52 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 			continue
 		}
 		if _, ok := s.Evals[r.ID]; !ok {
-			probs.add(r.Path, fmt.Errorf("eval_cases %s has no cases.yaml for this rule", r.EvalCases))
+			probs.add(r.Path, fmt.Errorf("%w: eval_cases %s has no cases.yaml for this rule", ErrInvalidValue, r.EvalCases))
 		}
 	}
 	for repo, rc := range s.Repos {
 		for _, id := range rc.DisabledGlobalRules {
 			if _, ok := ids[id]; !ok {
-				probs.add("repos/"+repo+".yaml", fmt.Errorf("disabled_global_rules names unknown rule %s", id))
+				probs.add("repos/"+repo+".yaml", fmt.Errorf("%w: disabled_global_rules names unknown rule %s", ErrUnknownRule, id))
 			}
 		}
 	}
 	denied := map[string]bool{}
 	for _, d := range s.Eligibility.Denylist {
 		if denied[d.Repo] {
-			probs.add(EligibilityPath, fmt.Errorf("repo %s listed twice", d.Repo))
+			probs.add(EligibilityPath, fmt.Errorf("%w: repo %s listed twice", ErrDuplicateID, d.Repo))
 		}
 		denied[d.Repo] = true
 	}
 	labelIDs := map[string]bool{}
 	for _, l := range s.VerifierLabels {
 		if labelIDs[l.ID] {
-			probs.add(l.Path, fmt.Errorf("verifier label id %s already used", l.ID))
+			probs.add(l.Path, fmt.Errorf("%w: verifier label id %s already used", ErrDuplicateID, l.ID))
 		}
 		labelIDs[l.ID] = true
 		if _, ok := ids[l.Candidate.Rule]; !ok {
-			probs.add(l.Path, fmt.Errorf("label names unknown rule %s", l.Candidate.Rule))
+			probs.add(l.Path, fmt.Errorf("%w: label names unknown rule %s", ErrUnknownRule, l.Candidate.Rule))
 		}
 		if l.Candidate.EndLine < l.Candidate.StartLine {
-			probs.add(l.Path, errors.New("candidate end_line is before start_line"))
+			probs.add(l.Path, fmt.Errorf("%w: candidate end_line is before start_line", ErrInvalidValue))
 		}
 	}
 	catIDs := map[string]bool{}
 	for _, l := range s.CategorizerLabels {
 		if catIDs[l.ID] {
-			probs.add(l.Path, fmt.Errorf("categorizer label id %s already used", l.ID))
+			probs.add(l.Path, fmt.Errorf("%w: categorizer label id %s already used", ErrDuplicateID, l.ID))
 		}
 		catIDs[l.ID] = true
 	}
 	caseIDs := map[string]bool{}
 	for _, c := range s.Adversarial {
 		if caseIDs[c.ID] {
-			probs.add(c.Path, fmt.Errorf("adversarial case id %s already used", c.ID))
+			probs.add(c.Path, fmt.Errorf("%w: adversarial case id %s already used", ErrDuplicateID, c.ID))
 		}
 		caseIDs[c.ID] = true
 		for _, id := range c.Rules {
 			if _, ok := ids[id]; !ok {
-				probs.add(c.Path, fmt.Errorf("case names unknown rule %s", id))
+				probs.add(c.Path, fmt.Errorf("%w: case names unknown rule %s", ErrUnknownRule, id))
 			}
 		}
 	}
@@ -349,10 +363,10 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 func parseRule(p string, data []byte, ruleScope string) (Rule, error) {
 	var r schema.Rule
 	if err := schema.Decode(schema.DocRule, data, &r); err != nil {
-		return Rule{}, err
+		return Rule{}, fmt.Errorf("decode rule: %w", err)
 	}
 	if path.Base(p) != r.ID+".yaml" {
-		return Rule{}, fmt.Errorf("rule id %s does not match file name %s", r.ID, path.Base(p))
+		return Rule{}, fmt.Errorf("%w: rule id %s does not match file name %s", ErrMisplacedFile, r.ID, path.Base(p))
 	}
 	pats, err := scope.CompilePatterns(r.FilePatterns)
 	if err != nil {

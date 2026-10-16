@@ -25,6 +25,9 @@ import (
 	"github.com/koblas/exemplar/internal/synth"
 )
 
+// ErrDuplicateFixture reports two fixtures with one id.
+var ErrDuplicateFixture = errors.New("duplicate fixture id")
+
 // LoadFixtures reads every *.yaml fixture under dir.
 func LoadFixtures(dir string) ([]schema.Fixture, error) {
 	var out []schema.Fixture
@@ -34,7 +37,7 @@ func LoadFixtures(dir string) ([]schema.Fixture, error) {
 		}
 		data, err := os.ReadFile(p) //nolint:gosec // G122: fixtures are a checked-in directory the operator chooses, not untrusted input
 		if err != nil {
-			return err
+			return fmt.Errorf("read %s: %w", p, err)
 		}
 		var f schema.Fixture
 		if err := schema.Decode(schema.DocFixture, data, &f); err != nil {
@@ -44,12 +47,12 @@ func LoadFixtures(dir string) ([]schema.Fixture, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load fixtures: %w", err)
 	}
 	ids := map[string]bool{}
 	for _, f := range out {
 		if ids[f.ID] {
-			return nil, fmt.Errorf("duplicate fixture id %s", f.ID)
+			return nil, fmt.Errorf("%w %s", ErrDuplicateFixture, f.ID)
 		}
 		ids[f.ID] = true
 	}
@@ -145,7 +148,7 @@ func (r *Runner) Run(ctx context.Context, fx schema.Fixture) (*Outcome, error) {
 	out := &Outcome{Fixture: fx.ID}
 	dir := filepath.Join(r.WorkDir, fx.ID)
 	if err := os.RemoveAll(dir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("clear work dir: %w", err)
 	}
 	cloneURL, base, head, err := Materialize(ctx, fx, filepath.Join(dir, "source"))
 	if err != nil {
@@ -161,7 +164,7 @@ func (r *Runner) Run(ctx context.Context, fx schema.Fixture) (*Outcome, error) {
 		CloneURL: cloneURL, BaseSHA: base, HeadSHA: head, Token: token,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("check out: %w", err)
 	}
 	pr := engine.PRInfo{Repo: fx.Repo, Number: fx.PR, Title: fx.Title, Body: fx.Body, Author: fx.Author, Draft: fx.Draft, BaseSHA: base, HeadSHA: head}
 	p, err := engine.Prepare(ctx, ws, r.Snapshot, pr, r.Scanner)
@@ -170,20 +173,20 @@ func (r *Runner) Run(ctx context.Context, fx schema.Fixture) (*Outcome, error) {
 		return out, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare: %w", err)
 	}
 	out.Excluded = p.Excluded
 
 	rec, err := pipeline.Begin(ctx, r.Store, p, "eval", 1, p.Scoped)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("begin review: %w", err)
 	}
 	res, err := r.Engine.Review(ctx, p, engine.Options{ReviewID: rec.ReviewID, Caller: "eval", RuleRunIDs: rec.RunIDs})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("review: %w", err)
 	}
 	if err := pipeline.Finish(ctx, r.Store, rec, res); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("finish review: %w", err)
 	}
 	fill(out, rec.ReviewID, res)
 	out.Comparison = compare(fx.HumanComments, res.Findings, false)
@@ -203,14 +206,14 @@ func (r *Runner) Run(ctx context.Context, fx schema.Fixture) (*Outcome, error) {
 	if r.Baseline {
 		brec, err := pipeline.Begin(ctx, r.Store, p, "baseline", 1, nil)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("begin baseline: %w", err)
 		}
 		bres, err := r.Engine.Baseline(ctx, p, engine.Options{ReviewID: brec.ReviewID, Caller: "baseline", RuleRunIDs: brec.RunIDs})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("baseline: %w", err)
 		}
 		if err := pipeline.Finish(ctx, r.Store, brec, bres); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("finish baseline: %w", err)
 		}
 		b := &BaselineOut{ReviewID: brec.ReviewID, Coverage: bres.Coverage, Comparison: compare(fx.HumanComments, bres.Findings, true)}
 		if len(bres.Runs) > 0 {
@@ -230,7 +233,7 @@ func Materialize(ctx context.Context, fx schema.Fixture, dir string) (string, st
 	if fx.Synthetic != nil {
 		repo, err := synth.Build(ctx, dir, fx.Synthetic.Base, fx.Synthetic.Head, fx.Synthetic.Deleted)
 		if err != nil {
-			return "", "", "", err
+			return "", "", "", fmt.Errorf("build synthetic repo: %w", err)
 		}
 		return repo.Dir, repo.BaseSHA, repo.HeadSHA, nil
 	}
@@ -301,5 +304,9 @@ func compare(humans []schema.HumanComment, findings []engine.Finding, shadow boo
 
 // MarshalOutcomes renders outcomes as indented JSON.
 func MarshalOutcomes(outs []*Outcome) ([]byte, error) {
-	return json.MarshalIndent(outs, "", "  ")
+	data, err := json.MarshalIndent(outs, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode outcomes: %w", err)
+	}
+	return data, nil
 }

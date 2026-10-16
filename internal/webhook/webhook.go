@@ -23,6 +23,11 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
+var (
+	errShortSecret       = errors.New("webhook: the secret must be at least 16 bytes")
+	errMissingDependency = errors.New("webhook: store and enqueuer are required")
+)
+
 // MaxPayload is GitHub's cap on a webhook payload.
 const MaxPayload = 25 << 20
 
@@ -43,10 +48,10 @@ type Handler struct {
 // New returns a Handler. The secret must be the App's webhook secret.
 func New(secret []byte, st *store.Store, enq Enqueuer, log *slog.Logger) (*Handler, error) {
 	if len(secret) < 16 {
-		return nil, errors.New("webhook: the secret must be at least 16 bytes")
+		return nil, errShortSecret
 	}
 	if st == nil || enq == nil {
-		return nil, errors.New("webhook: store and enqueuer are required")
+		return nil, errMissingDependency
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -149,6 +154,8 @@ type RiverEnqueuer struct{ Client *river.Client[pgx.Tx] }
 
 // InsertGHEvent implements Enqueuer.
 func (e RiverEnqueuer) InsertGHEvent(ctx context.Context, tx pgx.Tx, args store.GHEventArgs) error {
-	_, err := e.Client.InsertTx(ctx, tx, args, nil)
-	return err
+	if _, err := e.Client.InsertTx(ctx, tx, args, nil); err != nil {
+		return fmt.Errorf("insert gh_event job: %w", err)
+	}
+	return nil
 }

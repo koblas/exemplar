@@ -84,6 +84,14 @@ type Provider struct {
 	verifiers []*svcauth.Verifier // the web client's, then the CLI's
 }
 
+var (
+	errDiscovery = errors.New("oidc: discovery")
+	errConfig    = errors.New("oidc")
+	errSignIn    = errors.New("oidc")
+	errUserinfo  = errors.New("oidc: userinfo")
+	errToken     = errors.New("oidc: token")
+)
+
 var repoPatternRE = regexp.MustCompile(`^(\*|[A-Za-z0-9_.-]+/(\*|[A-Za-z0-9_.-]+))$`)
 
 // Discover fetches issuer's discovery document.
@@ -91,7 +99,7 @@ func Discover(ctx context.Context, c *http.Client, issuer string) (Discovery, er
 	var d Discovery
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(issuer, "/")+"/.well-known/openid-configuration", nil)
 	if err != nil {
-		return d, err
+		return d, fmt.Errorf("oidc: discovery: %w", err)
 	}
 	resp, err := c.Do(req)
 	if err != nil {
@@ -99,17 +107,17 @@ func Discover(ctx context.Context, c *http.Client, issuer string) (Discovery, er
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return d, fmt.Errorf("oidc: discovery: %s", resp.Status)
+		return d, fmt.Errorf("%w: %s", errDiscovery, resp.Status)
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&d); err != nil {
 		return d, fmt.Errorf("oidc: discovery: %w", err)
 	}
 	// The issuer must be the one configured (OpenID Connect Discovery §4.3).
 	if strings.TrimSuffix(d.Issuer, "/") != strings.TrimSuffix(issuer, "/") {
-		return d, fmt.Errorf("oidc: discovery names issuer %q, not %q", d.Issuer, issuer)
+		return d, fmt.Errorf("%w names issuer %q, not %q", errDiscovery, d.Issuer, issuer)
 	}
 	if d.AuthorizationEndpoint == "" || d.TokenEndpoint == "" || d.JWKSURI == "" {
-		return d, errors.New("oidc: discovery lacks the authorization, token or JWKS endpoint")
+		return d, fmt.Errorf("%w lacks the authorization, token or JWKS endpoint", errDiscovery)
 	}
 	return d, nil
 }
@@ -118,16 +126,19 @@ func Discover(ctx context.Context, c *http.Client, issuer string) (Discovery, er
 func New(ctx context.Context, cfg Config) (*Provider, error) {
 	switch {
 	case !strings.HasPrefix(cfg.IssuerURL, "https://") && !strings.HasPrefix(cfg.IssuerURL, "http://127.0.0.1"):
-		return nil, errors.New("oidc: the issuer URL must be https")
+		return nil, fmt.Errorf("%w: the issuer URL must be https", errConfig)
 	case cfg.ClientID == "" || cfg.ClientSecret == "":
-		return nil, errors.New("oidc: the client id and secret are required")
+		return nil, fmt.Errorf("%w: the client id and secret are required", errConfig)
 	case len(cfg.GroupRepos) == 0:
-		return nil, errors.New("oidc: EXEMPLAR_OIDC_GROUP_REPOS must map at least one group to repos: OIDC sign-ins get repo access only from it")
+		return nil, fmt.Errorf(
+			"%w: EXEMPLAR_OIDC_GROUP_REPOS must map at least one group to repos: OIDC sign-ins get repo access only from it",
+			errConfig,
+		)
 	}
 	for g, pats := range cfg.GroupRepos {
 		for _, p := range pats {
 			if !repoPatternRE.MatchString(p) {
-				return nil, fmt.Errorf("oidc: group %q: repo pattern %q must be owner/name, owner/* or *", g, p)
+				return nil, fmt.Errorf("%w: group %q: repo pattern %q must be owner/name, owner/* or *", errConfig, g, p)
 			}
 		}
 	}
@@ -248,14 +259,14 @@ func (p *Provider) Exchange(ctx context.Context, code, redirect, nonce, pkceVeri
 		return Identity{}, err
 	}
 	if tok.IDToken == "" {
-		return Identity{}, fmt.Errorf("oidc: no ID token (%s)", tok.Error)
+		return Identity{}, fmt.Errorf("%w: no ID token (%s)", errSignIn, tok.Error)
 	}
 	claims := map[string]any{}
 	if err := p.verifiers[0].Verify(ctx, tok.IDToken, &claims); err != nil {
-		return Identity{}, err
+		return Identity{}, fmt.Errorf("oidc: verify ID token: %w", err)
 	}
 	if n, _ := claims["nonce"].(string); nonce == "" || n != nonce {
-		return Identity{}, errors.New("oidc: the ID token's nonce does not match")
+		return Identity{}, fmt.Errorf("%w: the ID token's nonce does not match", errSignIn)
 	}
 	if !p.cfg.IgnoreUserInfo && p.disc.UserinfoEndpoint != "" && tok.AccessToken != "" {
 		info, err := p.userinfo(ctx, tok.AccessToken)
@@ -264,7 +275,7 @@ func (p *Provider) Exchange(ctx context.Context, code, redirect, nonce, pkceVeri
 		}
 		// The userinfo subject must be the ID token's (OIDC Core §5.3.2).
 		if info["sub"] != claims["sub"] {
-			return Identity{}, errors.New("oidc: userinfo is for another subject")
+			return Identity{}, fmt.Errorf("%w: userinfo is for another subject", errSignIn)
 		}
 		for k, v := range info {
 			if _, ok := claims[k]; !ok {
@@ -281,10 +292,12 @@ func (p *Provider) Issuer() string { return p.disc.Issuer }
 // Verify implements svcauth.Source: a person's ID token (from the CLI's
 // sign-in, or the web client's) for /v1/evaluate.
 func (p *Provider) Verify(ctx context.Context, token string) (svcauth.Claims, error) {
-	var err error
+	var lastErr error
 	for _, v := range p.verifiers {
 		claims := map[string]any{}
-		if err = v.Verify(ctx, token, &claims); err != nil {
+		if err := v.Verify(ctx, token, &claims); err != nil {
+			lastErr = fmt.Errorf("oidc: verify: %w", err)
+
 			continue
 		}
 		id, err := p.identity(claims)
@@ -293,7 +306,7 @@ func (p *Provider) Verify(ctx context.Context, token string) (svcauth.Claims, er
 		}
 		return id.Claims(), nil
 	}
-	return svcauth.Claims{}, err
+	return svcauth.Claims{}, lastErr
 }
 
 var usernameRE = regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
@@ -349,7 +362,7 @@ func (p *Provider) identity(claims map[string]any) (Identity, error) {
 func (p *Provider) userinfo(ctx context.Context, accessToken string) (map[string]any, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.disc.UserinfoEndpoint, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("oidc: userinfo: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	resp, err := p.cfg.HTTP.Do(req)
@@ -358,16 +371,20 @@ func (p *Provider) userinfo(ctx context.Context, accessToken string) (map[string
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("oidc: userinfo: %s", resp.Status)
+		return nil, fmt.Errorf("%w: %s", errUserinfo, resp.Status)
 	}
 	out := map[string]any{}
-	return out, json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out)
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return out, fmt.Errorf("oidc: userinfo: %w", err)
+	}
+
+	return out, nil
 }
 
 func (p *Provider) post(ctx context.Context, u string, form url.Values, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
 	if err != nil {
-		return err
+		return fmt.Errorf("oidc: token: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -378,10 +395,10 @@ func (p *Provider) post(ctx context.Context, u string, form url.Values, out any)
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return err
+		return fmt.Errorf("oidc: token: %w", err)
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("oidc: token: %s", resp.Status)
+		return fmt.Errorf("%w: %s", errToken, resp.Status)
 	}
 	return nil
 }

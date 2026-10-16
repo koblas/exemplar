@@ -42,6 +42,9 @@ type Services interface {
 // ErrNotFound is an evaluation that does not exist.
 var ErrNotFound = errors.New("api: not found")
 
+// ErrInvalidConfig is a Config or EvalConfig that New or NewEvaluations rejects.
+var ErrInvalidConfig = errors.New("api: invalid config")
+
 // EvalConfig wires the evaluate endpoints.
 type EvalConfig struct {
 	// GitHubAPI is https://api.github.com/ (GHES: https://<host>/api/v3/).
@@ -89,9 +92,9 @@ type Evaluations struct {
 func NewEvaluations(cfg EvalConfig) (*Evaluations, error) {
 	switch {
 	case cfg.Create == nil || cfg.Get == nil || cfg.Spent == nil:
-		return nil, errors.New("api: Create, Get and Spent are required")
+		return nil, fmt.Errorf("%w: Create, Get and Spent are required", ErrInvalidConfig)
 	case cfg.DailyUSD <= 0 || cfg.DailyRuns <= 0 || cfg.PerMinute <= 0:
-		return nil, errors.New("api: the daily budget, daily runs and per-minute limit must be positive")
+		return nil, fmt.Errorf("%w: the daily budget, daily runs and per-minute limit must be positive", ErrInvalidConfig)
 	}
 	if cfg.GitHubAPI == "" {
 		cfg.GitHubAPI = "https://api.github.com/"
@@ -206,7 +209,11 @@ func (e *Evaluations) canEvaluate(ctx context.Context, id identity, repo string)
 	if id.service != nil {
 		return id.service.CanEvaluate(repo), nil
 	}
-	return e.users.CanRead(ctx, id.token, repo)
+	ok, err := e.users.CanRead(ctx, id.token, repo)
+	if err != nil {
+		return false, fmt.Errorf("check repo access: %w", err)
+	}
+	return ok, nil
 }
 
 func (e *Evaluations) create(w http.ResponseWriter, r *http.Request) {
