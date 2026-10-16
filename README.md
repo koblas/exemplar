@@ -480,12 +480,18 @@ Use the repository's devenv environment: `devenv shell`, or its direnv setup. It
 - Postgres 16 with pgvector;
 - Python 3.13 with uv.
 
+The `Makefile` wraps the usual commands; `make help` lists every target. Each mirrors a step in `.github/workflows/ci.yml`.
+
 ```bash
-go build ./... && go vet ./... && golangci-lint run
+make check       # build, vet, lint, format check, tests
 ```
 
 ```bash
-go test -race ./...
+make test-race
+```
+
+```bash
+make ci          # everything ci.yml runs except the image and manifest jobs
 ```
 
 **Postgres tests** start a pgvector container with testcontainers-go, so they need Docker or Podman. They skip without one unless `EXEMPLAR_REQUIRE_DB=1`. With `EXEMPLAR_REQUIRE_ENGINES=1` (as in CI), engine-dependent tests fail instead of skipping.
@@ -493,14 +499,16 @@ go test -race ./...
 **Python** lives in `learning/`:
 
 ```bash
-cd learning && uv sync && uv run pytest && uv run ruff check .
+make py-check    # or: make -C learning check
 ```
 
-**Generated query code.** After changing `db/queries`, regenerate `internal/store/queries` with sqlc v1.31.1:
+**Generated query code.** After changing `db/queries`, regenerate `internal/store/queries` with sqlc v1.31.1 (run through `go run`, so nothing to install):
 
 ```bash
-cd db && sqlc generate
+make sqlc
 ```
+
+`make images` and `make manifests` mirror CI's images job; they need Docker and kubectl, which devenv does not provide. Outputs (binaries from `make bins`, the replay result, rendered manifests) go to `out/`.
 
 **Layout:**
 - `cmd/`: the binaries;
