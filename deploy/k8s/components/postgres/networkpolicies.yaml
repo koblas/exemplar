@@ -1,0 +1,27 @@
+# exemplar-postgres: in on 5432 from the binaries that use the database (all
+# but search; exemplar-learn also labels the Python jobs). Nothing out but
+# DNS. The clients' own policies already allow 5432 out to any address.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-postgres
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-postgres, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-postgres}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-webhook}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-api}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-gateway}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-worker}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-learn}
+      ports:
+        - {protocol: TCP, port: 5432}

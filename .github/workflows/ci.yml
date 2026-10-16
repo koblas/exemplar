@@ -130,7 +130,9 @@ jobs:
         run: |
           mkdir -p deploy/k8s/ci-both
           printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: [../base]\ncomponents: [../components/ingress]\n' > deploy/k8s/ci-both/kustomization.yaml
-          for v in base direct ci-both; do
+          mkdir -p deploy/k8s/ci-postgres
+          printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: [../base]\ncomponents: [../components/postgres]\n' > deploy/k8s/ci-postgres/kustomization.yaml
+          for v in base direct ci-both ci-postgres; do
             kubectl kustomize deploy/k8s/$v > rendered-$v.yaml
             go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-$v.yaml
           done

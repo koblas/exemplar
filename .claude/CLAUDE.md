@@ -15,7 +15,8 @@ webhook receiver), `cmd/exemplar-worker` (routes events, reviews live PRs and
 `exemplar review` evaluations), `cmd/exemplar-learn` (learning-plane jobs),
 `cmd/exemplar-api` (signed feedback links, `/v1/evaluate`, the `/ui/` web UI).
 Manifests are plain Kustomize: `deploy/k8s/core` (everything but inbound), inbound
-components in `deploy/k8s/components` (`cloudflare-tunnel`, `ingress`), and the builds
+components in `deploy/k8s/components` (`cloudflare-tunnel`, `ingress`), the optional
+in-cluster Postgres component (`components/postgres`), and the builds
 `deploy/k8s/base` (default: core + tunnel) and `deploy/k8s/direct` (core + Ingress); images
 are in `deploy/docker`. `go test ./deploy` checks every build against the code (see
 `deploy/README.md`); keep components resource-only, since it reads them without kustomize. Grafana boards and alerts

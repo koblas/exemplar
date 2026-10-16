@@ -2,7 +2,7 @@
 
 Kubernetes manifests for the services (spec §2.2, §13) and the images they run. Nothing here has been applied to a cluster. Locally:
 - `go test ./deploy` checks the manifests against the code;
-- `kubectl kustomize` renders each build (the default `base`, 53 resources; `direct`, 50; both ways in, 57), and kubeconform v0.7.0 `-strict` for Kubernetes 1.33 found all valid;
+- `kubectl kustomize` renders each build (the default `base`, 53 resources; `direct`, 50; both ways in, 57; `base` with in-cluster Postgres, 57), and kubeconform v0.7.0 `-strict` for Kubernetes 1.33 found all valid;
 - both images build, and run with a read-only root as UID 65532 with every engine present.
 
 CI repeats the build, render and schema check (the `images` job).
@@ -16,6 +16,7 @@ CI repeats the build, render and schema check (the `images` job).
 | `k8s/core/` | Plain manifests for everything but inbound, with a `kustomization.yaml` (and the image pins). Not built alone. |
 | `k8s/components/cloudflare-tunnel/` | Inbound through a Cloudflare Tunnel: the `exemplar-cloudflared` Deployment, its routes, and the NetworkPolicies that let it reach the webhook and the API. |
 | `k8s/components/ingress/` | Inbound through an Ingress controller: the two Ingresses and the NetworkPolicies that admit `ingress-nginx`. |
+| `k8s/components/postgres/` | **Optional** in-cluster Postgres 16 with pgvector, for installations without a managed database. In no shipped build; see [In-cluster Postgres](#in-cluster-postgres). |
 | `k8s/base/` | **The default build:** core plus the tunnel. Render with `kubectl kustomize deploy/k8s/base`. |
 | `k8s/direct/` | Core plus the Ingresses, with no tunnel. Render with `kubectl kustomize deploy/k8s/direct`. |
 | `manifests_test.go` | Checks the manifests against the code (below). |
@@ -43,6 +44,34 @@ With the tunnel, Cloudflare does the work the Ingress did, and an installation m
 
 Cloudflare ends TLS at its edge and sees requests in clear text. The webhook still checks each delivery's HMAC. Its rejection log's `remote` is a cloudflared pod's address, not GitHub's.
 
+## In-cluster Postgres
+
+By default Postgres is outside the cluster: the installation supplies its URL in the `exemplar-database` Secret. For evaluation or a small installation without a managed database, add `components/postgres` to an overlay of `base` or `direct`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - <path>/deploy/k8s/base
+components:
+  - <path>/deploy/k8s/components/postgres
+```
+
+It adds `exemplar-postgres`: a one-replica StatefulSet of `pgvector/pgvector:0.8.0-pg16` (the image the store tests use, pinned by digest), a Service on 5432, a 50Gi volume on the default storage class, and a NetworkPolicy that admits only the webhook, API, gateway, worker and learning pods. The installation then:
+- creates the `exemplar-postgres` Secret (`password`), the superuser's password;
+- sets `exemplar-database`'s `url` to `postgres://exemplar:<password>@exemplar-postgres.exemplar.svc:5432/exemplar` (URL-encode the password);
+- sets the volume's size and class in its overlay, as for search.
+
+The binaries run migrations at start, as with an outside database. The app connects as the superuser, which `CREATE EXTENSION vector` needs.
+
+Details:
+- It runs as the image's `postgres` user (UID 999) under the namespace's `restricted` level, with a read-only root and emptyDirs for the socket directory, `/tmp` and a 256 MiB `/dev/shm`. `PGDATA` is a subdirectory of the volume, since initdb refuses a mount root holding `lost+found`.
+- Probes run `pg_isready` over TCP, so the pod isn't ready while first-start init runs on the socket only. A startup probe allows 10 minutes of crash recovery before liveness counts.
+- SIGTERM alone is Postgres's smart shutdown, which waits for every pooled client to leave. A preStop `pg_ctl stop --mode=fast --timeout=30` stops it first, under a 45 s grace.
+- There is no PodDisruptionBudget: with one replica it would only block node drains. A drain or reschedule is downtime.
+
+It is not a production database: one replica, no replication, no backups, no point-in-time recovery, no TLS between the pods and Postgres, and the app holds superuser. Use a managed Postgres 16 with pgvector for production, or an operator such as CloudNativePG.
+
 ## Workloads
 
 | Binary | Kind | Replicas | Shutdown → grace | Notes |
@@ -54,6 +83,7 @@ Cloudflare ends TLS at its edge and sees requests in clear text. The webhook sti
 | `exemplar-search` | StatefulSet + 2 Services | 2, on different nodes | 25 s → 45 s | Local SSD per replica (`local-ssd`, 500Gi placeholder) |
 | `exemplar-learn` | 11 CronJobs | — | — | ingest, path-events, extract, evals, compile (suspended), propose, demote, expiry, teach, digest, export |
 | `exemplar-learning` | 2 CronJobs | — | — | cluster, rank |
+| `exemplar-postgres` | StatefulSet + Service | 1 | 30 s → 45 s | `components/postgres` only. pgvector 0.8.0 on Postgres 16, pinned by digest. In from the Postgres clients on 5432; nothing out. `pg_isready` probes |
 | `exemplar-cloudflared` | Deployment | 2 | 20 s → 30 s | Tunnel builds only. cloudflared 2026.9.3, pinned by digest. Egress to Cloudflare on 7844 and the webhook and API. `/healthcheck` (liveness) and `/ready` (an edge connection) on port 2000 |
 
 Every pod:
@@ -102,6 +132,7 @@ The base's all-zero digests make an unpinned deploy fail to pull.
 | `exemplar-pseudonym` | `key` (at least 32 bytes) | ingest, path-events |
 | `exemplar-api` | `link-key`, `session-key` (each at least 32 bytes), `oauth-client-secret` | api; worker (`link-key` only) |
 | `exemplar-cloudflared` | `credentials.json` (from `cloudflared tunnel create`) | cloudflared, tunnel builds only |
+| `exemplar-postgres` | `password` | exemplar-postgres, `components/postgres` only |
 
 **Merge policy repos.** A repo with `approval_mode: merge_policy_check` requires the `exemplar/merge-policy` check, restricted to the review app as its source, in its ruleset in place of a code-owner review requirement. It keeps a break-glass bypass actor for incidents. Exemplar never sets that actor.
 
@@ -123,7 +154,7 @@ go test ./deploy
 ```
 
 It checks:
-- **Builds:** every check runs on each of the three builds: `base`, `direct`, and `base` with the ingress component.
+- **Builds:** every check runs on each of four builds: `base`, `direct`, `base` with the ingress component, and `base` with the Postgres component.
 - **Rendering:**
   - every manifest in each directory a build uses is listed in its `kustomization.yaml`;
   - no YAML anchors (kustomize mishandles them);
@@ -137,7 +168,7 @@ It checks:
 - **Workloads:**
   - each long-running workload's selector matches its pods;
   - it listens on the port it exposes;
-  - its probes are `/healthz` and `/readyz` on that port (cloudflared: `/healthcheck` and `/ready` on its metrics port);
+  - its probes are `/healthz` and `/readyz` on that port (cloudflared: `/healthcheck` and `/ready` on its metrics port; Postgres: `pg_isready` on 5432, with a preStop fast shutdown);
   - `terminationGracePeriodSeconds` outlasts the shutdown deadlines read from the binary's source and args.
 - **Selectors:** every Service, PodDisruptionBudget and NetworkPolicy selects a workload, and each workload has its own NetworkPolicy.
 - **Inbound:**
@@ -154,7 +185,7 @@ Devenv has no kubectl, Kustomize or kubeconform. These ran with OrbStack's kubec
 kubectl kustomize deploy/k8s/base > rendered.yaml
 ```
 
-Use `deploy/k8s/direct` for the Ingress build. CI also renders `base` with the ingress component.
+Use `deploy/k8s/direct` for the Ingress build. CI also renders `base` with the ingress component, and `base` with the Postgres component.
 
 ```bash
 kubeconform -strict -summary -kubernetes-version 1.33.0 rendered.yaml
