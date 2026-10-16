@@ -1,7 +1,10 @@
 name: images
 
 # Builds both deploy images and pushes them to Docker Hub (koblas/exemplar):
-# on every push to main, on each v* tag, and by hand. There is no paths
+# on every push to main, for each release (release-please.yml calls this
+# with the new tag; a v* tag pushed by hand does the same), and by hand. A
+# called run sees the caller's ref (main), so it checks out and tags from
+# the tag input instead, and leaves the main and sha- tags to main's own run. There is no paths
 # filter: GitHub applies one to tag pushes too, which would skip releases,
 # and the services image takes in nearly the whole tree anyway; the layer
 # cache makes an unchanged image cheap to rebuild.
@@ -19,18 +22,27 @@ name: images
 #   sha-<short>          every push (learning-sha-<short> for learning)
 #   main                 the tip of main (learning-main)
 #   <version>, <x.y>     v* tags, without the "v" (learning-<version>, ...)
+#
+# The services binaries report the release tag (exemplar --version), or the
+# commit for other builds.
 
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to build and push, such as v0.2.0
+        type: string
+        required: true
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: images-${{ github.ref }}
+  group: images-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -47,6 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -60,10 +74,10 @@ jobs:
             latest=false
             prefix=${{ matrix.prefix }}
           tags: |
-            type=sha
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=sha,enable=${{ !inputs.tag }}
+            type=ref,event=branch,enable=${{ !inputs.tag }}
+            type=semver,pattern={{version}},value=${{ inputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag }}
       - id: build
         uses: docker/build-push-action@v6
         with:
@@ -74,6 +88,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || github.sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
       - name: Summarize the pushed digest

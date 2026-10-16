@@ -15,9 +15,11 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
-# cgo: internal/syntax embeds the tree-sitter grammars.
+# cgo: internal/syntax embeds the tree-sitter grammars. VERSION is the
+# release tag (images.yml); binaries without main.version ignore it.
+ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o /out/ ./cmd/...
+    CGO_ENABLED=1 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/ ./cmd/...
 
 FROM debian:trixie-20260918-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS astgrep
 ADD --checksum=sha256:76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63 \

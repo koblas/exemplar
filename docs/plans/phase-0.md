@@ -1722,7 +1722,7 @@ Spec §6.11, §10.1.
 - **CLI release:** `exemplar --version` (cobra; `main.version` set by `-ldflags`).
   - `.github/workflows/release.yml` runs on a `v*` tag pushed by a maintainer. It builds natively on four runners (linux amd64/arm64, darwin arm64/amd64), because cgo, for the tree-sitter grammars, rules out cross-compiling.
   - The build checks `--version` and archives the binary. A `contents: write` job (the only one) creates the GitHub release with the archives and `SHA256SUMS`.
-  - **Deviation from §10.1:** no GoReleaser, Homebrew tap or internal mirror yet.
+  - **Deviation from §10.1:** no GoReleaser, Homebrew tap or internal mirror yet. Since 2026-10-16 release-please cuts the tags (see "Release process" below).
 - **Tests:**
   - clang-format with a repo style of IndentWidth 4: a clean fix passes; a squashed one fails; one in the wrong indent fails; an unformatted original holds nothing; a language with no formatter is skipped.
   - `--version` prints `exemplar version dev`, and a build with `-X main.version=v0.1.0` prints it.
@@ -2302,3 +2302,35 @@ The user asked for the README to use the Docker Hub images by default, with the 
   - `make manifests` with OrbStack's kubectl: all five renders are valid (example: 53 resources).
   - With the Ingress lines uncommented on `deploy/k8s/direct`, a probe copy renders 50 resources with the acme hosts, and with a distinct learning digest on the 2 learning CronJobs.
   - Not checked: the remote `?ref=` form (no release tag yet), or pulling the images.
+
+### Release process: Conventional Commits, CHANGELOG and versions (2026-10-16)
+
+The user asked for a real release process: a CHANGELOG, `0.1`, `0.2`-style versions, semantic commit messages, and GitHub Actions to drive it. Spec §10.1.
+- **Conventional Commits:** `CONTRIBUTING.md` sets the format and types.
+  - `.github/scripts/commitlint.sh` checks the subjects. It has no dependencies, and caps a subject at 100 characters.
+  - CI's new `commits` job runs `make commitlint` over a pull request's non-merge commits.
+  - `make hooks` turns on `.githooks/commit-msg`, which runs the same check locally.
+  - Earlier history isn't rewritten. Three older subjects (`deploy:`, `lint:`) wouldn't pass.
+- **release-please** (`googleapis/release-please-action@v5`, a new third-party action):
+  - `release-please.yml` keeps one release PR open on `main`. That PR bumps `.release-please-manifest.json` and prepends the `CHANGELOG.md` entry.
+  - `release-please-config.json` holds the settings:
+    - `release-type: go`
+    - `initial-version: 0.1.0`
+    - `bump-minor-pre-major`: a breaking change bumps 0.x to 0.(x+1) before 1.0.
+    - `bootstrap-sha` at `4f9d03f`, so the first changelog covers only commits made under the new convention.
+    - `include-component-in-tag: false`, because the manifest default would tag `exemplar-v0.1.0`.
+  - Only `feat`, `fix`, `perf`, `deps` and `revert` commits are releasable.
+  - `CHANGELOG.md` ends with a `## 0.0.0` heading. release-please inserts each entry above the first version heading. Without one, it would demote the intro into the entry.
+  - A called `images.yml` run skips the `sha-` tag. Otherwise it would race main's run for the same commit with a different `VERSION` build-arg.
+- **One trigger chain.** release-please signs in with `GITHUB_TOKEN`, and a tag it pushes starts no workflow. So, once a release is created, `release-please.yml` calls the other workflows itself (`workflow_call` with the tag):
+  - `release.yml` attaches the four CLI archives and `SHA256SUMS` to the existing release, keeping its changelog notes. It creates the release only for a tag pushed by hand. It can also be run by hand to rebuild.
+  - `images.yml` pushes `<x.y.z>`/`<x.y>` (and the `learning-` variants). A called run checks out and tags from the tag input, because `github.ref` is main there. It leaves the `main` tag to main's own run. Its concurrency group is keyed on the tag.
+  - Hand-pushed `v*` tags still trigger both directly.
+  - No PAT is needed: `main` has no required checks, so the release PR, which runs no CI, can merge.
+- **Runner fix:** `release.yml` built darwin/amd64 on `macos-13`, which GitHub has retired (actionlint v1.7.12 flags it), so no release could finish. It now uses `macos-15-intel`.
+- **Versions in the image:** the Dockerfile takes `ARG VERSION`, which `images.yml` sets to the tag or the commit and `make images` to `git describe`. `exemplar --version` in the image now reports it.
+- **Setup:** the repository must allow Actions to create pull requests (Settings > Actions > General). The first release PR appears with the first `feat`/`fix` commit after this lands; a `Release-As: 0.1.0` footer forces one.
+- **Checked:**
+  - actionlint v1.7.12 passes on every workflow, and `go test ./deploy` passes.
+  - commitlint passes and fails the sample subjects as expected, rejects a bad range rather than passing it, and flags the three older subjects.
+  - Not run: release-please itself and the release chain, which need pushes to `main`, and the image build.

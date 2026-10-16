@@ -51,6 +51,10 @@ application unless requested. Update this guidance as the service takes shape.
 - Use existing manifest tooling. Render Helm or Kustomize locally before checking
   the rendered resources. Do not assume a cluster is available.
 - Report missing prerequisites and checks not run; never claim unrun tests passed.
+- Commit subjects are Conventional Commits (`feat(worker): …`, `fix: …`, `ci: …`;
+  types and bumps in `CONTRIBUTING.md`); CI's `commits` job and `make commitlint`
+  enforce them. release-please turns them into `CHANGELOG.md` and `v0.x.y` releases;
+  never hand-edit released changelog entries or the release manifest.
 
 ## Service Conventions
 

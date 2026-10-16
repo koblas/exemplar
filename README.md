@@ -66,7 +66,7 @@ Exemplar ships two images, both in `docker.io/koblas/exemplar`. Both run as UID 
 | Services | `<version>`, `<major>.<minor>`, `main`, `sha-<short>` | Every Go service, plus git, universal-ctags, ast-grep, Semgrep and clang-format |
 | Learning | `learning-<version>`, `learning-main`, … | The Python learning jobs (`cluster`, `rank`) |
 
-CI publishes them (`.github/workflows/images.yml`) on every push to `main` and every `v*` release tag. Use a release version. The manifests pin images by **digest**, never by tag, so record both digests for step 7:
+CI publishes them (`.github/workflows/images.yml`) on every push to `main` and for every release. Use a release version: releases are listed on GitHub, with what changed in [CHANGELOG.md](CHANGELOG.md) (see [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how they are cut). The manifests pin images by **digest**, never by tag, so record both digests for step 7:
 
 ```bash
 docker buildx imagetools inspect koblas/exemplar:<version> --format '{{json .Manifest.Digest}}'
