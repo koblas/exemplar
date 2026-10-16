@@ -2230,3 +2230,26 @@ The user asked for the per-file wrapcheck/err113 exclusions to be removed and ev
   - Error strings now carry a context prefix. That includes the failure text stored on an owner action (`owneractions_test.go` now matches its suffix).
   - The `deploy` test that reads the shutdown timeout from `cmd/exemplar-api/main.go` now also accepts `if err := hs.Shutdown`.
 - **Checked:** `golangci-lint run` reports 0 issues, and `go build` and `go vet` pass. `go test -race ./...` passes with `EXEMPLAR_REQUIRE_ENGINES=1` and `EXEMPLAR_REQUIRE_DB=1`, but only with `/usr/bin` on PATH; that is the same `TestRealSemgrep` caveat as above.
+
+### Deploy: optional in-cluster Postgres (2026-10-16)
+
+The user asked for an optional Kubernetes deployment that hosts Postgres, for installations without a managed database.
+- **Layout:** a new component, `deploy/k8s/components/postgres`, in no shipped build. An overlay adds it to `base` or `direct`, as with `components/ingress`.
+- **`exemplar-postgres`:**
+  - A one-replica StatefulSet of `pgvector/pgvector:0.8.0-pg16` (the `storetest` image), pinned by its multi-arch digest, with a Service on 5432 and a 50Gi `volumeClaimTemplate` on the default storage class.
+  - UID/GID 999 (the image's `postgres` user) with `fsGroup` and `OnRootMismatch`, so it passes the `restricted` level; a read-only root with emptyDirs for `/var/run/postgresql`, `/tmp` and a 256 MiB in-memory `/dev/shm`. `PGDATA` is a subdirectory of the volume.
+  - `POSTGRES_USER`/`POSTGRES_DB` `exemplar`, with the password from the new `exemplar-postgres` Secret (`password`) through `POSTGRES_PASSWORD_FILE`. The installation points `exemplar-database`'s `url` at the Service. The app is the superuser, which `CREATE EXTENSION vector` needs.
+  - `pg_isready` over TCP for startup (10 minutes), liveness and readiness, so first-start init on the socket isn't ready.
+  - A preStop `pg_ctl stop --mode=fast --timeout=30`, under a 45 s grace: SIGTERM alone is a smart shutdown that waits on pooled clients.
+  - No PodDisruptionBudget (it would only block drains on one replica).
+  - Its NetworkPolicy admits the webhook, API, gateway, worker and learning pods on 5432, and allows nothing out but DNS. The clients' policies already allowed 5432 anywhere, so core is unchanged but for a comment.
+- **Not production:** no replication, backups, PITR or TLS. The README points to a managed Postgres or an operator such as CloudNativePG.
+- **Tests:**
+  - `go test ./deploy` adds a fourth build, `base` with the Postgres component.
+  - The binary checks know Postgres: its named `postgres` port, `pg_isready` probes, the preStop fast shutdown, and a grace that outlasts its `--timeout`. The Service may target `postgres`. A main container without `command` is now an error rather than a panic.
+  - A mutation (a 30 s grace, an `http` targetPort) fails as expected.
+  - CI renders and kubeconform-checks the new build (`ci-postgres`).
+- **Checked:**
+  - `gofmt`, `go vet ./deploy` and `go test ./deploy` pass.
+  - OrbStack's `kubectl kustomize` renders `base` with the component (57 resources); kubeconform v0.7.0 `-strict` for 1.33 found all valid.
+  - Not checked: running it in a cluster, or the binaries migrating against it.

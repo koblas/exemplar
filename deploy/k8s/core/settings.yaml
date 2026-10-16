@@ -11,6 +11,7 @@
 #   exemplar-api             link-key, session-key (each at least 32 bytes), oauth-client-secret
 #   exemplar-oidc            client-secret (optional: the OIDC sign-in client's)
 #   exemplar-cloudflared     credentials.json (the tunnel's, Cloudflare Tunnel builds only)
+#   exemplar-postgres        password (the in-cluster Postgres superuser's, components/postgres only)
 apiVersion: v1
 kind: ConfigMap
 metadata:
