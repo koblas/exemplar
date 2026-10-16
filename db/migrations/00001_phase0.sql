@@ -1,5 +1,5 @@
--- Phase 0 subset of spec §4.3. Learning-plane, feedback and export tables
--- arrive with the phases that write them.
+-- Core review schema. Learning-plane, feedback and export tables arrive
+-- in the later migrations that write them.
 
 -- +goose Up
 CREATE EXTENSION IF NOT EXISTS vector;

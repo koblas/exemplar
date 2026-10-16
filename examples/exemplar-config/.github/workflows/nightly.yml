@@ -1,6 +1,6 @@
 name: nightly
 
-# Nightly (spec §8.9): verifier calibration over the seed labels and, where
+# Nightly: verifier calibration over the seed labels and, where
 # the database is reachable, verifier_labels from author feedback.
 on:
   schedule:

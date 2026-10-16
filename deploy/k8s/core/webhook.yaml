@@ -1,5 +1,5 @@
 # exemplar-webhook: verifies, stores and enqueues GitHub deliveries; no
-# business logic, so it is small and stateless (spec §5: 2+ replicas).
+# business logic, so it is small and stateless (2+ replicas).
 apiVersion: apps/v1
 kind: Deployment
 metadata:

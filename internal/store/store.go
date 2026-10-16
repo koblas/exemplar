@@ -77,7 +77,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 }
 
 // InTx runs fn in a transaction, committing only if fn succeeds. Business
-// writes and the next job's insert share the transaction (spec §7).
+// writes and the next job's insert share the transaction.
 func (s *Store) InTx(ctx context.Context, fn func(pgx.Tx, *queries.Queries) error) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return fn(tx, s.WithTx(tx))

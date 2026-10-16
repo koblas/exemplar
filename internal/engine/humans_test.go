@@ -113,7 +113,7 @@ func TestHumanDuplicateBeforeLinter(t *testing.T) {
 	}
 }
 
-// A reviewer comment is redacted before the judge sees it (FR-H3).
+// A reviewer comment is redacted before the judge sees it.
 func TestHumanJudgeRedacts(t *testing.T) {
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	e.prep.PR.Author = "alice"

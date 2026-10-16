@@ -45,7 +45,7 @@ type Config struct {
 	// ("none" when unsandboxed).
 	Sandbox string
 	// Eligible re-checks a case's repo against the current exemplar-config
-	// (spec §13.1): a repo denylisted since ingest is never read. Required.
+	// eligibility rules: a repo denylisted since ingest is never read. Required.
 	Eligible func(repo string) bool
 	Logger   *slog.Logger
 }

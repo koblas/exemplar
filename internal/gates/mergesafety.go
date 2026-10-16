@@ -11,7 +11,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// Merge-safety terms (spec §6.13), the keys of global.yaml
+// Merge-safety terms, the keys of global.yaml
 // merge_safety.weights.
 const (
 	TermIncident  = "incident_180d"  // incident linked to the path in the last 180 days
@@ -33,7 +33,7 @@ const (
 	RecentEventDays    = 90 // bug-lane trigger window
 )
 
-// DefaultWeights are the spec §6.13 penalties. Configured weights replace
+// DefaultWeights are the default penalties. Configured weights replace
 // them term by term; a term left out of global.yaml keeps its default, so
 // deleting a line never silently removes a penalty (set it to 0 instead).
 var DefaultWeights = map[string]float64{
@@ -67,7 +67,7 @@ type PathFacts struct {
 	MergedPRs int    `json:"merged_prs_30d"`
 	Sensitive bool   `json:"sensitive"`
 	// Recent is an incident or revert in the last RecentEventDays. It is
-	// not a merge-safety term; it triggers the bug lane (spec §6.7).
+	// not a merge-safety term; it triggers the bug lane.
 	Recent bool `json:"incident_or_revert_90d"`
 }
 
@@ -98,7 +98,7 @@ type MergeSafetyResult struct {
 	Input     MergeSafetyInput   `json:"input"`
 }
 
-// MergeSafety computes the deterministic score (spec §6.13): 1.0 minus
+// MergeSafety computes the deterministic score: 1.0 minus
 // the worst path's per-path penalties minus the PR-level penalties,
 // floored at 0. weights must come from Weights.
 func MergeSafety(in MergeSafetyInput, weights map[string]float64) MergeSafetyResult {

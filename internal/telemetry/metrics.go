@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// The instruments behind the operations panels (spec §12.5): model calls
+// The instruments behind the operations panels: model calls
 // by outcome and latency, review duration, enqueue-to-post time, and
 // GitHub rate-limit headroom. Attributes are low-cardinality names, never
 // repo content. They are created on the global MeterProvider, which

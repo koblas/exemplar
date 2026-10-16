@@ -251,7 +251,7 @@ type LastCompleteReviewRow struct {
 }
 
 // The PR's latest complete production review of another head: what an
-// incremental re-review diffs against (spec §6.2).
+// incremental re-review diffs against.
 func (q *Queries) LastCompleteReview(ctx context.Context, arg LastCompleteReviewParams) ([]LastCompleteReviewRow, error) {
 	rows, err := q.db.Query(ctx, lastCompleteReview, arg.Repo, arg.PrNumber, arg.HeadSha)
 	if err != nil {
@@ -389,7 +389,7 @@ const minimizeFinding = `-- name: MinimizeFinding :execrows
 UPDATE findings SET state = 'minimized', suppressed_reason = 'linter_duplicate' WHERE id = $1 AND state = 'posted'
 `
 
-// A posted finding a late linter also reports (spec §6.10): its comment is
+// A posted finding a late linter also reports: its comment is
 // minimized, and it counts against neither precision nor feedback.
 func (q *Queries) MinimizeFinding(ctx context.Context, id int64) (int64, error) {
 	result, err := q.db.Exec(ctx, minimizeFinding, id)
@@ -409,7 +409,7 @@ type MoveFindingParams struct {
 	EndLine   int32
 }
 
-// Re-anchored after a rebase (FR-C4): the same code now sits at these lines.
+// Re-anchored after a rebase: the same code now sits at these lines.
 func (q *Queries) MoveFinding(ctx context.Context, arg MoveFindingParams) error {
 	_, err := q.db.Exec(ctx, moveFinding, arg.ID, arg.StartLine, arg.EndLine)
 	return err
@@ -448,7 +448,7 @@ type OpenFindingsRow struct {
 }
 
 // A PR's posted findings that are still open, from production reviews
-// (spec §6.2: a fingerprint is posted at most once per PR).
+// (a fingerprint is posted at most once per PR).
 func (q *Queries) OpenFindings(ctx context.Context, arg OpenFindingsParams) ([]OpenFindingsRow, error) {
 	rows, err := q.db.Query(ctx, openFindings, arg.Repo, arg.PrNumber)
 	if err != nil {
@@ -498,7 +498,7 @@ type OpenProductionFindingsByFingerprintParams struct {
 	Fingerprint string
 }
 
-// Cross-push identity (spec §6.2): playground, baseline and eval runs never
+// Cross-push identity: playground, baseline and eval runs never
 // count as the same finding.
 func (q *Queries) OpenProductionFindingsByFingerprint(ctx context.Context, arg OpenProductionFindingsByFingerprintParams) ([]Finding, error) {
 	rows, err := q.db.Query(ctx, openProductionFindingsByFingerprint, arg.Repo, arg.PrNumber, arg.Fingerprint)
@@ -583,7 +583,7 @@ type PostedFindingsAtHeadRow struct {
 	GhThreadID  *string
 }
 
-// Late-CI linter dedupe (spec §6.10): the findings production reviews of
+// Late-CI linter dedupe: the findings production reviews of
 // this head posted that are still open, with what the judge needs.
 func (q *Queries) PostedFindingsAtHead(ctx context.Context, arg PostedFindingsAtHeadParams) ([]PostedFindingsAtHeadRow, error) {
 	rows, err := q.db.Query(ctx, postedFindingsAtHead, arg.Repo, arg.PrNumber, arg.HeadSha)

@@ -12,7 +12,7 @@ import (
 )
 
 // Eligibility outcomes. A repo is reviewed only when it is opted in, not
-// denylisted, and Exemplar is enabled globally (FR-H1).
+// denylisted, and Exemplar is enabled globally.
 var (
 	ErrDisabledGlobally = errors.New("exemplar is disabled in global.yaml")
 	ErrNotOptedIn       = errors.New("repo is not opted in")

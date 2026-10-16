@@ -1,4 +1,4 @@
-// Package compile turns candidates into deterministic rules (spec §8.6):
+// Package compile turns candidates into deterministic rules:
 // the high-tier model writes an ast-grep rule, or a Semgrep rule when the
 // pattern needs taint or metavariable comparison, from the candidate's
 // description and up to five positive hunks. Code then checks the rule

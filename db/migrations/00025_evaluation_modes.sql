@@ -1,4 +1,4 @@
--- Mode eval (spec §8.9): config CI asks exemplar-api to evaluate a config
+-- Mode eval: config CI asks exemplar-api to evaluate a config
 -- PR's changed rules at its pushed head; the request has a head and
 -- optional extra rule ids instead of a diff.
 

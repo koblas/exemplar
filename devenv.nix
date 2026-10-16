@@ -55,10 +55,10 @@ in
     pkgs.gopls
     pkgs.delve
     golangci-lint
-    pkgs.ripgrep # engine grep tool (spec §6.5)
-    pkgs.ast-grep # Lane 1 and compile attempts (spec §6.6, §8.6)
-    pkgs.semgrep # Lane 1 and compile attempts: taint and metavariable rules
-    pkgs.universal-ctags # exemplar-search symbols (spec §6.4.1)
+    pkgs.ripgrep # engine grep tool
+    pkgs.ast-grep # compiled rules and compile attempts
+    pkgs.semgrep # compiled rules and compile attempts: taint and metavariable rules
+    pkgs.universal-ctags # exemplar-search symbols
   ];
 
   # Go is set up here rather than with languages.go: that module rebuilds

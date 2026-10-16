@@ -1,5 +1,5 @@
-# Counter-metric and auto-approve alerts (spec §12.5, §16 Phase 5: "no
-# counter-metric alarms over 4 weeks" before auto-approve widens). Each
+# Counter-metric and auto-approve alerts. Auto-approve widens only after 4
+# weeks with no counter-metric alarms. Each
 # rule's query returns one number; the alert fires above its threshold.
 # Notification routing (contact points, policies) belongs to the Grafana
 # installation, not this file; rules carry team=platform for it.

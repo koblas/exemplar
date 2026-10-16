@@ -22,7 +22,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Seeds configures revert seeds (spec §8.1, PRD FR-L1.7): a reverted PR's
+// Seeds configures revert seeds: a reverted PR's
 // hunks that no reviewer commented on become mined_comments rows with
 // source 'revert_seed'. The extractor then reads the reverted diff and the
 // revert reason in place of a review comment. Seeds carry code and

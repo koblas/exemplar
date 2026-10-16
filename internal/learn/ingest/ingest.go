@@ -1,6 +1,6 @@
-// Package ingest mines review comments from GitHub into mined_comments
-// (spec §8.1). Per repo it pages pullRequests(states: [MERGED, CLOSED],
-// orderBy: UPDATED_AT) over GraphQL, keeps each review thread's root
+// Package ingest mines review comments from GitHub into mined_comments.
+// Per repo it pages pullRequests(states: [MERGED, CLOSED], orderBy:
+// UPDATED_AT) over GraphQL, keeps each review thread's root
 // comment, and stores it only after the code pre-filters, the repo's path
 // exclusions and secret redaction. Logins are pseudonymized on the way in.
 // Merged PRs are also recorded in mined_prs (with whether a CODEOWNER

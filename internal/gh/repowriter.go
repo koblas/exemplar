@@ -11,7 +11,7 @@ import (
 )
 
 // RepoWriter writes generated files to one target repo and opens their PR
-// (rule exports, spec §10.2). It must be built from a FlavorExport client.
+// (rule exports). It must be built from a FlavorExport client.
 type RepoWriter struct {
 	gh          *github.Client
 	owner, repo string
@@ -118,7 +118,7 @@ func (w *RepoWriter) OpenPR(ctx context.Context, branch, base, title, body strin
 const autoMergeMutation = `mutation($id: ID!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) { pullRequest { autoMergeRequest { enabledAt } } } }`
 
 // EnableAutoMerge turns on GitHub's native auto-merge: the PR merges once
-// the repo's branch protection is satisfied (spec §10.2), never sooner.
+// the repo's branch protection is satisfied, never sooner.
 func (w *RepoWriter) EnableAutoMerge(ctx context.Context, nodeID string) error {
 	var out map[string]any
 	if err := GraphQL(ctx, w.gh, autoMergeMutation, map[string]any{"id": nodeID}, &out); err != nil {

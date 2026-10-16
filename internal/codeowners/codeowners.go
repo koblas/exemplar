@@ -1,6 +1,6 @@
 // Package codeowners parses GitHub CODEOWNERS files. Ingest uses it for
-// path owners and codeowner approval; Stage 2 uses it to check that every
-// touched path's owners are auto-approvable (spec §6.13).
+// path owners and codeowner approval; auto-approve uses it to check that
+// every touched path's owners are auto-approvable.
 package codeowners
 
 import (

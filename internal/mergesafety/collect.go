@@ -1,6 +1,6 @@
-// Package mergesafety measures the facts behind merge_safety_score (spec
-// §6.13) for one PR and scores them with gates.MergeSafety. Every fact is
-// measured by code:
+// Package mergesafety measures the facts behind merge_safety_score for one
+// PR and scores them with gates.MergeSafety. Every fact is measured by
+// code:
 //
 //   - incidents and reverts per path come from path_events
 //     (exemplar-learn path-events);

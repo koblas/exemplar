@@ -14,7 +14,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Code-scanning dismissals (spec §6.12): dismissing one of Exemplar's
+// Code-scanning dismissals: dismissing one of Exemplar's
 // alerts on a PR is feedback on its finding. The dismisser is the PR's
 // author, a member of the rule's owning team (owner), or otherwise a
 // reviewer: dismissing needs security-events permission on the repo, so

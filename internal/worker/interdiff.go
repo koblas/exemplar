@@ -9,7 +9,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Interdiff scoping (spec §6.2): on a new head, rules whose scoped files
+// Interdiff scoping: on a new head, rules whose scoped files
 // did not change since the last complete review, and hold no open finding,
 // carry their result forward instead of re-running.
 

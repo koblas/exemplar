@@ -1,8 +1,9 @@
 // Package engine runs one review: prepare the PR (eligibility, exclusions,
 // secret redaction, scope), run the lanes, verify, validate in code, and
-// assemble findings, coverage and the Stage 1 trace.
+// assemble findings, coverage and the auto-approve
+// gate trace.
 //
-// Model output is untrusted (FR-T1–T6). The model-facing types here carry
+// Model output is untrusted. The model-facing types here carry
 // only what a model may say: a location, an explanation and an optional
 // fix. Rule ids, citations, lanes, severities and coverage are attached by
 // code.
@@ -19,7 +20,7 @@ const (
 	LaneBug      = "bug"
 	LaneBaseline = "baseline"
 	LaneSecrets  = "secrets"
-	// LaneCategorizer marks Stage 2's categorizer calls. They are not
+	// LaneCategorizer marks the auto-approve risk categorizer calls. They are not
 	// rules and are not persisted as rule runs.
 	LaneCategorizer = "categorizer"
 )
@@ -51,17 +52,17 @@ const (
 	SuppressDuplicate   = "duplicate"
 	SuppressBudget      = "budget"
 	// SuppressAlreadyPosted: an earlier review of this PR posted the same
-	// fingerprint, which stays open there (spec §6.2 finding identity).
+	// fingerprint, which stays open there.
 	SuppressAlreadyPosted = "already_posted"
 	// SuppressRepoShadow: the finding would have posted, but the repo is
-	// reviewed in shadow (spec §6.9). Shadow-rule findings carry no reason.
+	// reviewed in shadow. Shadow-rule findings carry no reason.
 	SuppressRepoShadow = "repo_shadow"
 	// SuppressLinterDuplicate: a configured linter already reports it on
-	// the head (spec §6.10). It counts against neither the rule's
+	// the head. It counts against neither the rule's
 	// precision nor the author's feedback.
 	SuppressLinterDuplicate = "linter_duplicate"
 	// SuppressHumanDuplicate: a reviewer already raised it on the same
-	// lines (spec §6.10). It counts as agreement with the reviewer.
+	// lines. It counts as agreement with the reviewer.
 	SuppressHumanDuplicate = "human_duplicate"
 )
 
@@ -75,7 +76,7 @@ const (
 // SecretRuleID is the deterministic finding for secrets in a diff.
 const SecretRuleID = "possible-secret-in-diff"
 
-// Violation is the model-facing output type for rule agents (spec §6.5).
+// Violation is the model-facing output type for rule agents.
 // It has no rule id, citation or coverage field by design.
 type Violation struct {
 	Path         string `json:"path"`
@@ -106,7 +107,7 @@ type Finding struct {
 	Anchor    scope.Anchor
 	Message   string
 	Fix       string
-	// FixValid is set when Fix was validated (spec §6.11): only a valid
+	// FixValid is set when Fix was validated: only a valid
 	// fix is posted, as a suggestion. FixProblem says why one was not.
 	FixValid   *bool
 	FixProblem string
@@ -115,7 +116,8 @@ type Finding struct {
 
 	Fingerprint string
 	// AnchorCode and Ordinal are what Fingerprint was computed from: the
-	// normalized anchor with context, and k (FR-C4 re-anchoring).
+	// normalized anchor with context, and k (for re-anchoring
+	// after a rebase).
 	AnchorCode string
 	Ordinal    int
 
@@ -145,11 +147,11 @@ type RunResult struct {
 	LatencyMS   int
 	Budget      string
 	// ContextDegraded is set when a repo-context tool answered in
-	// degraded mode or failed during the run (spec §6.4.4).
+	// degraded mode or failed during the run.
 	ContextDegraded bool
 	Detail          string // why a run failed, for the check run
 	// Carried is set for a rule carried forward from an earlier review of
-	// identical code instead of run (spec §6.2); CarriedFrom is the rule
+	// identical code instead of run; CarriedFrom is the rule
 	// run that did the work. A carried run re-checked nothing, so it never
 	// closes an earlier finding.
 	Carried     bool

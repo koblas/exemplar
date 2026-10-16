@@ -10,7 +10,7 @@ import (
 	"github.com/koblas/exemplar/internal/scope"
 )
 
-// Output limits from the Violation contract (spec §6.5).
+// Output limits from the Violation contract.
 const (
 	maxViolations     = 20
 	maxExplanationLen = 1500
@@ -66,7 +66,7 @@ func (e *Engine) runExemplar(ctx context.Context, p *Prepared, s ScopedRule, met
 	return ar
 }
 
-// runBaseline runs the rule-less baseline reviewer (FR-X8).
+// runBaseline runs the rule-less baseline reviewer.
 func (e *Engine) runBaseline(ctx context.Context, p *Prepared, meta CallMeta) agentRun {
 	meta.Stage, meta.Tier = llm.StageGenerator, llm.TierStandard
 	tb := e.toolbox(p)
@@ -138,7 +138,7 @@ func validateViolations(vs []Violation) error {
 	return nil
 }
 
-// coverage is the fraction of scoped files the agent opened (FR-T3).
+// coverage is the fraction of scoped files the agent opened.
 func coverage(calls []ToolCall, scoped []string) float64 {
 	if len(scoped) == 0 {
 		return 0

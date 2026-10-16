@@ -43,14 +43,14 @@ const (
 	HeaderCostUSD  = "X-Exemplar-Cost-Usd"
 )
 
-// Budget signals (spec §6.14): the orchestrator sheds work at warn.
+// Budget signals: the orchestrator sheds work at warn.
 const (
 	BudgetOK       = "ok"
 	BudgetWarn     = "warn"
 	BudgetExceeded = "exceeded"
 )
 
-// DataClasses are the kinds of repository data a call may carry (FR-H4).
+// DataClasses are the kinds of repository data a call may carry.
 var DataClasses = []string{"diff", "file_context", "search_context", "ticket", "review_comments", "pr_text"}
 
 var callers = []string{"production", "playground", "cli", "agent", "eval", "baseline", "learning"}
@@ -101,7 +101,7 @@ type Config struct {
 	Logger  *slog.Logger
 }
 
-// Gateway is the only component holding model provider keys (spec §2.2).
+// Gateway is the only component holding model provider keys.
 type Gateway struct {
 	cfg Config
 	log *slog.Logger
@@ -166,7 +166,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Second secret scan (FR-H3): the worker redacts; the gateway refuses.
+	// Second secret scan: the worker redacts; the gateway refuses.
 	if matches, err := g.scanRequest(body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request_error", "request body is not valid JSON")
 		return

@@ -16,7 +16,7 @@ import (
 )
 
 // runDigest opens the weekly rule-health digest for each rule owner in
-// exemplar-config (FR-B5, PRD §17.8). --dry-run prints the digests and
+// exemplar-config. --dry-run prints the digests and
 // writes nothing.
 func runDigest(args []string) error {
 	fs := flag.NewFlagSet("digest", flag.ContinueOnError)

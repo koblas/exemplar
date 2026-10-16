@@ -1,4 +1,4 @@
--- Upstream effectiveness (spec §10.4, PRD FR-S5): per exported rule,
+-- Upstream effectiveness: per exported rule,
 -- violations per in-scope PR when the PR's coding agent received the
 -- rule's export versus when it did not, and in exporting repos before
 -- versus after the export landed.

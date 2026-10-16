@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// MaxExportSummary is the longest export.summary allowed (spec §10.2).
+// MaxExportSummary is the longest export.summary allowed.
 const MaxExportSummary = 200
 
 var (
@@ -17,8 +17,8 @@ var (
 	sentenceBreakRE = regexp.MustCompile(`[.!?]\s+\S`)
 	abbrevRE        = regexp.MustCompile(`(?i)\b(e\.g|i\.e|etc|vs)\.`)
 	urlRE           = regexp.MustCompile(`(?i)\b(https?://|www\.)|\b[a-z0-9-]+\.(com|io|net|org|dev|internal|example)\b`)
-	// Instructions to an agent beyond the rule itself (spec §10.2: "a
-	// denylist of instruction verbs such as ignore, always run, fetch").
+	// Instructions to an agent beyond the rule itself: a denylist of
+	// instruction verbs such as ignore, always run, fetch.
 	instructionRE = regexp.MustCompile(`(?i)\b(ignore|disregard|forget|override|bypass|always run|run the|run this|execute|exec|fetch|download|curl|wget|install|upload|send|` +
 		`post to|exfiltrate|approve|skip (the )?(review|tests|checks)|disable (the )?(review|tests|checks|linter)|previous instructions|system prompt|you are now|act as)\b`)
 )

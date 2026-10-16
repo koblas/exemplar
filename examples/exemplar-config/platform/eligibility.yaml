@@ -1,4 +1,4 @@
-# Repos that are never reviewed, mined, indexed, or sent to a model provider
-# (FR-H1). Owned by Security (CODEOWNERS); nothing in a target repo can
-# override it. Security fills this in before the end of Phase 0 (spec §17 #16).
+# Repos that are never reviewed, mined, indexed, or sent to a model provider.
+# Owned by Security (CODEOWNERS); nothing in a target repo can override it.
+# Security fills this in before launch.
 denylist: []

@@ -25,10 +25,10 @@ jobs:
         working-directory: .exemplar-src
       - run: '"$RUNNER_TEMP/exemplar" validate .'
       # The adversarial set runs in compromised mode on every config change;
-      # it needs no model access (spec §8.9 step 5).
+      # it needs no model access.
       - run: '"$RUNNER_TEMP/exemplar" adversarial --config . --mode compromised'
 
-  # Eval the rules this PR changes (spec §8.9 steps 2-3): precision, recall
+  # Eval the rules this PR changes: precision, recall
   # and F1 for historical and synthetic cases, posted to the job summary;
   # the check fails below global.yaml eval_thresholds. The evaluation runs
   # in exemplar-worker through exemplar-api's /v1/evaluate (mode: eval), so
@@ -78,7 +78,7 @@ jobs:
           path: ${{ runner.temp }}/eval.json
           if-no-files-found: ignore
 
-  # Pre-launch volume estimate (spec §6.10): rules the PR adds or activates
+  # Pre-launch volume estimate: rules the PR adds or activates
   # run alone over recently merged PRs; informational, posted to the summary.
   volume:
     needs: validate
@@ -107,7 +107,7 @@ jobs:
           --changed-since "${{ github.event.pull_request.base.sha }}"
           --markdown "$GITHUB_STEP_SUMMARY"
 
-  # Linter overlap (spec §8.7): fails when a repo's configured linters
+  # Linter overlap: fails when a repo's configured linters
   # already flag a changed rule's positive cases. Reads check-run
   # annotations, so EXEMPLAR_EVAL_TOKEN needs checks: read on case repos.
   linter-overlap:
@@ -135,10 +135,10 @@ jobs:
           --changed-since "${{ github.event.pull_request.base.sha }}"
           --markdown "$GITHUB_STEP_SUMMARY"
 
-  # Verifier calibration (spec §6.8, FR-X9) when a config PR changes what
-  # the verifier depends on: providers.verifier, verifier settings,
+  # Verifier calibration when a config PR changes what the verifier
+  # depends on: providers.verifier, verifier settings,
   # eval_thresholds.verifier, or the evals/_verifier labels. Likewise the
-  # Stage 2 categorizer (spec §6.13): providers.categorizer,
+  # auto-approve categorizer: providers.categorizer,
   # eval_thresholds.categorizer, or the evals/_categorizer labels; skipped
   # while there is no providers.categorizer. Fails below the thresholds;
   # otherwise reports "not run".
@@ -159,7 +159,7 @@ jobs:
           go-version-file: .exemplar-src/go.mod
       - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
         working-directory: .exemplar-src
-      - name: Calibrate the verifier and Stage 2 categorizer
+      - name: Calibrate the verifier and auto-approve categorizer
         env:
           EXEMPLAR_GATEWAY_URL: ${{ secrets.EXEMPLAR_GATEWAY_URL }}
           EXEMPLAR_GATEWAY_TOKEN: ${{ secrets.EXEMPLAR_GATEWAY_TOKEN }}

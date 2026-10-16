@@ -24,7 +24,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// EvaluateWorker runs evaluate jobs (spec §10.1): the full review of a
+// EvaluateWorker runs evaluate jobs: the full review of a
 // working-tree diff on its base, for `exemplar review`. Nothing is
 // posted or stored as findings; the requester reads the result from
 // exemplar-api, and the diff is cleared when the job ends.
@@ -193,7 +193,7 @@ func (w *EvaluateWorker) installation(ctx context.Context, repo string) (int64, 
 	return inst, err
 }
 
-// eval is mode eval (spec §8.9): the rules a config PR changes, on their
+// eval is mode eval: the rules a config PR changes, on their
 // eval cases at its head, as `exemplar eval` runs them. Eligibility comes
 // from the deployed config, so a config PR cannot un-denylist a repo to
 // evaluate on it.

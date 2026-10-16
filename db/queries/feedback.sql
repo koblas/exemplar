@@ -25,7 +25,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY review_daily_stats;
 SELECT * FROM finding_outcomes WHERE id = $1;
 
 -- name: DemotionStats :many
--- Spec §9.4: per rule, its last @last_n findings with a judgment (a
+-- Per rule, its last @last_n findings with a judgment (a
 -- positive or negative weight in finding_outcomes). A finding is a
 -- negative when its negative weight outweighs its positive weight.
 -- non_author_actors counts distinct non-author people with an explicit
@@ -64,7 +64,7 @@ SELECT EXISTS (
 
 -- name: FindingsForAlert :many
 -- The posted production findings a code-scanning alert of Exemplar's may
--- stand for (spec §6.12): same PR, rule and file. The caller picks the one
+-- stand for: same PR, rule and file. The caller picks the one
 -- at the alert's line, or the only one.
 SELECT f.id, f.start_line FROM findings f
 JOIN rule_runs rr ON rr.id = f.rule_run_id
@@ -81,7 +81,7 @@ SELECT id, rule_id, lane, path, side, start_line, end_line, message, fingerprint
 
 -- name: FindingsOnLines :many
 -- Production findings of this PR on the same file and side that overlap
--- a later human comment's lines (spec §9.1 "Human independently raised"):
+-- a later human comment's lines (the human raised it independently):
 -- posted, shadow or suppressed, one per identity, made before the comment.
 -- Exact duplicates, bad anchors, repeats of a posted finding and findings
 -- already credited as human duplicates are left out.
@@ -103,7 +103,7 @@ SELECT EXISTS (SELECT 1 FROM feedback_events WHERE finding_id = $1 AND kind = $2
 
 -- name: PRsToPollReactions :many
 -- PRs with Exemplar comments whose production reviews finished in the
--- last @since_hours hours (spec §9.1: PRs updated in 24 h), with the
+-- last @since_hours hours (normally PRs updated in 24 h), with the
 -- installation that last delivered an event for the repo.
 SELECT DISTINCT r.repo, r.pr_number,
        (SELECT e.installation_id FROM gh_events e WHERE e.repo_full_name = r.repo ORDER BY e.received_at DESC LIMIT 1)::bigint AS installation_id
@@ -122,7 +122,7 @@ JOIN reviews r ON r.id = rr.review_id AND r.caller = 'production'
 WHERE f.repo = $1 AND f.pr_number = $2 AND f.gh_comment_id IS NOT NULL;
 
 -- name: RuleRecentOutcomes :one
--- Rule expiry (spec §8.10): a rule's judged production findings over the
+-- Rule expiry: a rule's judged production findings over the
 -- last @days days, with their weights.
 SELECT count(*) FILTER (WHERE pos_w > 0 OR neg_w > 0)::int AS judged,
        coalesce(sum(neg_w), 0)::float8 AS neg_w, coalesce(sum(pos_w), 0)::float8 AS pos_w
@@ -130,11 +130,11 @@ FROM finding_outcomes
 WHERE rule_id = @rule_id AND created_at > now() - make_interval(days => @days::int);
 
 -- name: SetTeachClass :exec
--- Teach-the-bot (spec §8.7): the class of an event's free text.
+-- Teach-the-bot: the class of an event's free text.
 UPDATE feedback_events SET teach_class = $4 WHERE finding_id = $1 AND kind = $2 AND actor = $3;
 
 -- name: UpsertVerifierLabel :exec
--- Routing by reason (spec §9.3): a person's judgment of a finding is a
+-- Routing by reason: a person's judgment of a finding is a
 -- verifier calibration label. A human review (an owner's adjudication)
 -- replaces an author's signal, never the reverse.
 INSERT INTO verifier_labels (finding_id, label, source) VALUES ($1, $2, $3)
@@ -142,7 +142,7 @@ ON CONFLICT (finding_id) DO UPDATE SET label = excluded.label, source = excluded
 WHERE verifier_labels.source = 'author_signal' OR excluded.source = 'human_review';
 
 -- name: TeachSignals :many
--- Teach-the-bot evidence (spec §8.7, §9.3) over the last @days days: each
+-- Teach-the-bot evidence over the last @days days: each
 -- person's latest rejection of a finding with its class. A reason's class
 -- wins; without one (or noise), "not important here" is a scope signal for
 -- path clustering and "disagree" stays a disagreement.

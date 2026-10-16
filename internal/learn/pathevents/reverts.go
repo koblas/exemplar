@@ -1,7 +1,7 @@
-// Package pathevents fills path_events (spec §8.1, PRD FR-L1.7): which
+// Package pathevents fills path_events: which
 // paths were touched by a revert on a default branch, or by a change an
 // incident links to. Rank boosts candidates on those paths, and the same
-// table later backs path_history (§6.4) and merge_safety_score (§6.13).
+// table later backs path_history and merge_safety_score.
 //
 // Only references are stored: a PR number, commit SHA or incident id, the
 // path and the time. No commit message, revert reason or incident text is
@@ -218,7 +218,7 @@ func (j *Job) Reverts(ctx context.Context, repo string) (RevertStats, error) {
 			seen[evRef] = true
 			stats.Reverts++
 			var paths []string
-			// The reverted PR, for counter-metrics (spec §12.5).
+			// The reverted PR, for counter-metrics.
 			switch n, err := j.target(ctx, api, repo, owner, name, toRevert(evRef, c, pr)); {
 			case errors.Is(err, gh.ErrRateLimited):
 				stats.RateLimit = true

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Re-anchoring after a rebase or force-push (spec §6.2, FR-C4): an open
+// Re-anchoring after a rebase or force-push: an open
 // finding from a head the new one does not descend from is looked up by
 // its normalized anchor code in the same file at the new head (the new
 // base for a LEFT anchor). A match moves the finding there; no match makes

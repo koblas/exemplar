@@ -1,6 +1,6 @@
 // Package ghuser checks GitHub user tokens for exemplar-api: who the
-// token's user is, and whether they can read a repo (spec §13 IN-2:
-// GitHub user OAuth for repo-level authorization, cached for 5 minutes).
+// token's user is, and whether they can read a repo (GitHub
+// user OAuth for repo-level authorization, cached for 5 minutes).
 // Tokens are hashed for the cache keys and never stored or logged.
 package ghuser
 

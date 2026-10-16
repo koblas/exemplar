@@ -2,7 +2,7 @@ name: export-approval
 
 # Changes to a rule's export: block reach every coding agent in the org
 # through exported instruction files, so they need an approval from
-# @platform/devex in addition to the rule owner (spec §8.9, §10.2).
+# @platform/devex in addition to the rule owner.
 # CODEOWNERS works per file, not per YAML key, hence this check. It reruns
 # on reviews, and counts only approvals of the PR's current head.
 on:

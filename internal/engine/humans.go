@@ -10,7 +10,7 @@ import (
 	"unicode/utf8"
 )
 
-// Human-comment dedupe (spec §6.10, FR-E15): a finding is withheld as a
+// Human-comment dedupe: a finding is withheld as a
 // human_duplicate when a reviewer's existing review comment on the same
 // file and side overlaps its anchor and the light model judges it the same
 // concern. A withheld duplicate counts as agreement with the reviewer (a

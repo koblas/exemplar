@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-github/v88/github"
 )
 
-// Webhook reliability (spec §5): GitHub does not retry failed deliveries,
+// Webhook reliability: GitHub does not retry failed deliveries,
 // so a reconciler requests redelivery and a sweeper finds PRs whose events
 // never arrived.
 

@@ -194,8 +194,8 @@ func writeOut(path, s string) error {
 	return os.WriteFile(path, []byte(s), 0o644) //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 }
 
-// categorizerInputsChanged reports whether anything Stage 2's
-// categorization or its calibration depends on differs between base and head.
+// categorizerInputsChanged reports whether anything the auto-approve
+// risk categorizer or its calibration depends on differs between base and head.
 func categorizerInputsChanged(base, head *config.Snapshot) bool {
 	if base == nil {
 		return true

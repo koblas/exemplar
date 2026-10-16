@@ -1,4 +1,4 @@
-// Package index keeps exemplar-search's zoekt index (spec §6.4.1): per
+// Package index keeps exemplar-search's zoekt index: per
 // repo, shards of the default branch at the mirror's latest commit, with
 // ctags symbols when universal-ctags is available.
 //
@@ -11,7 +11,7 @@
 // the serving generation are never modified). A full rebuild runs once a
 // day and whenever the delta chain exceeds 500 builds.
 //
-// Excluded paths (spec §6.3 step 3) are dropped from every result. zoekt's
+// Excluded paths are dropped from every result. zoekt's
 // git indexer has no external path filter, so they may be present in the
 // shards but are never returned.
 package index
@@ -44,7 +44,7 @@ import (
 	"github.com/koblas/exemplar/internal/search/mirror"
 )
 
-// Spec limits (§6.4.1, §6.4.4).
+// Limits and schedules for queries and index rebuilds.
 const (
 	MaxResults   = 100
 	QueryTimeout = 2 * time.Second

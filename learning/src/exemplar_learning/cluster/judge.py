@@ -1,4 +1,4 @@
-"""The cohesion judge, asked through exemplar-gateway (spec §8.4 step 3).
+"""The cohesion judge, asked through exemplar-gateway.
 
 The gateway routes the call by stage: generator, high tier
 (claude-opus-5-5 in global.yaml). Refusals and errors return None, so the

@@ -10,7 +10,7 @@ import (
 	"github.com/koblas/exemplar/internal/llm"
 )
 
-// CategorizerVersion is the Stage 2 categorizer prompt version.
+// CategorizerVersion is the auto-approve risk categorizer prompt version.
 const CategorizerVersion = "categorizer-v1"
 
 const categorizerSystemPrompt = `You decide whether a pull request is low risk to merge with no human review. A deterministic gate has already ` +
@@ -47,7 +47,7 @@ const (
 	maxReasonChars        = 200
 )
 
-// Categorize runs Stage 2's low-risk categorization (spec §6.13): the
+// Categorize runs the auto-approve low-risk categorization: the
 // categorizer-a and categorizer-b gateway stages each judge the PR on
 // their own, with no tools and a constrained schema, and code combines the
 // answers. It never sees findings or the other side's answer.

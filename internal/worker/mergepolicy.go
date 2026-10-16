@@ -25,7 +25,7 @@ type mergePolicyInput struct {
 	gatesPassed  bool
 }
 
-// reportMergePolicy sets exemplar/merge-policy on the head (spec §6.13):
+// reportMergePolicy sets exemplar/merge-policy on the head:
 // success when every auto-approve gate passed, or when people approved
 // it as a code-owner review requirement would ask; otherwise in progress,
 // naming what it waits for. It reports whether the check passed.

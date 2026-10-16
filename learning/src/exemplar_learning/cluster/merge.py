@@ -1,4 +1,4 @@
-"""Merging clusters that describe the same constraint (spec §8.4 steps 3-4).
+"""Merging clusters that describe the same constraint.
 
 Cluster pairs whose centroids are within a deliberately loose cosine bar
 (0.35) are put to a model as a cohesion question. Its answers are cached

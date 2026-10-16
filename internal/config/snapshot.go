@@ -1,9 +1,9 @@
 // Package config loads exemplar-config and target-repo rules into the
 // effective configuration for one review.
 //
-// System rule 1 (spec §1.2): rules and repo config are read from the default
-// branch of exemplar-config and from the base commit of the target repo,
-// never from a PR head. Callers pass an fs.FS of the right tree; GitFS builds
+// Rules and repo config are read from the default branch of
+// exemplar-config and from the base commit of the target repo, never from
+// a PR head. Callers pass an fs.FS of the right tree; GitFS builds
 // one from a commit so the head tree is never consulted.
 package config
 
@@ -54,7 +54,8 @@ type Snapshot struct {
 	Adversarial []AdversarialCase
 	// VerifierLabels is the verifier calibration seed set (evals/_verifier).
 	VerifierLabels []VerifierLabel
-	// CategorizerLabels is the Stage 2 calibration seed set (evals/_categorizer).
+	// CategorizerLabels is the auto-approve risk categorizer calibration seed
+	// set (evals/_categorizer).
 	CategorizerLabels []CategorizerLabel
 }
 
@@ -221,8 +222,8 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 				probs.add("repos/"+repo+".yaml", fmt.Errorf("sensitive_paths pattern %q is invalid", g))
 			}
 		}
-		// Stage 2 bars can be raised per repo, never lowered; Stage 1 size
-		// limits can be lowered, never raised.
+		// Approval-check bars can be raised per repo, never lowered; the
+		// deterministic gates' size limits can be lowered, never raised.
 		if aa := rc.AutoApprove; aa != nil {
 			rp := "repos/" + repo + ".yaml"
 			globs := map[string][]string{"auto_approve.paths": aa.Paths, "auto_approve.extra_denylist": aa.ExtraDenylist}
@@ -279,7 +280,7 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 	}
 	for rule := range s.Evals {
 		// Bug classes are built-in rules with eval sets of their own
-		// (spec §6.7, §8.8 mutation evals).
+		// (mutation evals).
 		if bl := s.Global.BugLane; bl != nil {
 			if _, ok := bl.Classes[rule]; ok {
 				continue

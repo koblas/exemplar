@@ -13,9 +13,9 @@ import (
 	"github.com/koblas/exemplar/internal/store"
 )
 
-// Feedback links (spec §6.12 item 1): exemplar-api verified the link's
+// Feedback links: exemplar-api verified the link's
 // signature and the clicker's GitHub identity, and enqueued this job. The
-// role comes from PR participation before the click (§9.1): a click never
+// role comes from PR participation before the click: a click never
 // makes someone a reviewer on its own, and anyone else is an observer.
 
 // FeedbackLinkWorker runs feedback_link jobs.

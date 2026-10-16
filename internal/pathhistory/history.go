@@ -1,5 +1,5 @@
-// Package pathhistory answers the path_history(path) context tool (spec
-// §6.4): a path's incidents and reverts from path_events, plus its recent
+// Package pathhistory answers the path_history(path) context tool:
+// a path's incidents and reverts from path_events, plus its recent
 // commits from git log on a mirror of the repo, newest first, at most 20
 // entries.
 //
@@ -24,7 +24,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Limits (spec §6.4: 20 entries).
+// Limits (20 entries).
 const (
 	MaxEntries = 20
 	// MaxEvents keeps commits from crowding out incidents and reverts and

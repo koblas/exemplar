@@ -1,6 +1,6 @@
 // Package compiled runs deterministic rules compiled to ast-grep
-// or Semgrep: Lane 1 in workers (spec §6.6) and compile attempts in the
-// learning plane (§8.6). Engines run as subprocesses on the worker
+// or Semgrep: the compiled-rule lane in workers and compile attempts in
+// the learning plane. Engines run as subprocesses on the worker
 // checkout, restricted to scoped files, with a timeout and no network.
 package compiled
 
@@ -41,7 +41,7 @@ type Runner struct {
 	Timeout time.Duration
 	// Sandbox, when set, prefixes every engine command, e.g. a wrapper
 	// that drops network access and sets CPU and memory limits (see
-	// SandboxCommand). Lane 1 in workers relies on the pod's limits and
+	// SandboxCommand). Compiled rules in workers relies on the pod's limits and
 	// NetworkPolicy; the learning plane runs model-written rules and sets it.
 	Sandbox []string
 }
@@ -91,8 +91,8 @@ func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []s
 	return nil, fmt.Errorf("compiled: unknown engine %q", engine)
 }
 
-// Validate checks a rule body with the engine itself (spec §8.6:
-// ast-grep scan over no files, semgrep --validate).
+// Validate checks a rule body with the engine itself
+// (ast-grep scan over no files, semgrep --validate).
 func (r Runner) Validate(ctx context.Context, engine, ruleBody string) error {
 	empty, err := os.MkdirTemp("", "exemplar-validate-*")
 	if err != nil {

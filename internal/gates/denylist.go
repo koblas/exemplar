@@ -7,7 +7,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// The auto-approve path denylist (spec §6.13, FR-A8). It is hardcoded and
+// The auto-approve path denylist. It is hardcoded and
 // CODEOWNERS-owned by Security: config may add patterns
 // (auto_approve.extra_denylist) but can never remove one. Matching is
 // case-insensitive, so Makefile and makefile are both denied.
@@ -17,8 +17,8 @@ var deniedPaths = []string{
 	".github/**", // workflows, rulesets, instructions, copilot-instructions.md
 	".gitlab-ci.yml", ".buildkite/**", ".circleci/**",
 	".cursor/rules/**",
-	// Exemplar's own review configuration in the target repo. Not in the
-	// spec's list; added because a merged change to these alters what
+	// Exemplar's own review configuration in the target repo. Added
+	// because a merged change to these alters what
 	// later reviews check.
 	".exemplar/**", ".exemplarignore", ".gitattributes", ".gitleaksignore",
 }

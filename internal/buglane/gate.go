@@ -4,7 +4,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// Defaults (spec §6.7).
+// Risk-gate defaults.
 const (
 	DefaultMinChangedLines = 80
 	// RiskyMergeSafety: a merge_safety_score below this triggers the lane.
@@ -35,7 +35,7 @@ type GateInput struct {
 	// RecentIncident is whether a touched path had an incident or revert in
 	// the last 90 days; nil when it was not measured.
 	RecentIncident *bool
-	// AutoApproveCandidate forces the lane (FR-A7): a PR that may be
+	// AutoApproveCandidate forces the lane: a PR that may be
 	// approved without a human must have been checked for bugs.
 	AutoApproveCandidate bool
 }

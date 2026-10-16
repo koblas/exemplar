@@ -25,7 +25,7 @@ import (
 )
 
 // Image is the Postgres image the tests run: Postgres 16 with pgvector,
-// matching the production requirement (spec §14).
+// matching the production requirement.
 const Image = "pgvector/pgvector:0.8.0-pg16"
 
 var (

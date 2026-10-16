@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Schedule defaults (spec §6.4.1).
+// Schedule defaults.
 const (
 	DefaultDebounce = 30 * time.Second
 	DefaultBackstop = 5 * time.Minute

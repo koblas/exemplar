@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-// Reasons a comment is dropped before it is stored (spec §8.1 pre-filters,
+// Reasons a comment is dropped before it is stored (the code pre-filters,
 // plus the data-handling refusals).
 const (
 	DropBot            = "bot"

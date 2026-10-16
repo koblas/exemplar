@@ -1,5 +1,5 @@
-// Package feedbacklink signs and verifies feedback links (spec §6.12 item
-// 1): /f/{finding}/{reason}?s=<HMAC(finding, reason)>. The HMAC prevents
+// Package feedbacklink signs and verifies feedback links:
+// /f/{finding}/{reason}?s=<HMAC(finding, reason)>. The HMAC prevents
 // forged links; who clicked comes from login, never from the link.
 package feedbacklink
 

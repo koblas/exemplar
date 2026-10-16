@@ -13,8 +13,8 @@ import (
 const maxParticipationPages = 10
 
 // Participated reports whether login reviewed or commented on repo#number
-// before at: a submitted review, an inline review comment, or a comment in
-// the PR conversation (spec §9.1 "reviewer"). except is a comment id not
+// before at: a submitted review, an inline review comment, or a comment in the
+// PR conversation (the "reviewer" feedback role). except is a comment id not
 // to count (the command being judged).
 func Participated(ctx context.Context, c *github.Client, repo string, number int, login string, at time.Time, except int64) (bool, error) {
 	owner, name, ok := strings.Cut(repo, "/")

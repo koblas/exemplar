@@ -1,5 +1,5 @@
-// Package api is exemplar-api's HTTP surface (spec §2.2): the signed
-// feedback links (spec §6.12 item 1), sign-in, and /v1/evaluate.
+// Package api is exemplar-api's HTTP surface: the signed feedback
+// links, sign-in, and /v1/evaluate.
 //
 //	GET  /f/{finding}/{reason}?s=SIG   confirmation page (signs in first)
 //	POST /f/{finding}/{reason}         records the feedback

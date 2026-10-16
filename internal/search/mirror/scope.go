@@ -59,7 +59,7 @@ func Allowed(snap *config.Snapshot, prRepo, repo string) error {
 }
 
 // SameTier reports whether two GitHub visibilities share a tier: public,
-// or private/internal (spec §6.4.4). Unknown values share no tier.
+// or private/internal. Unknown values share no tier.
 func SameTier(a, b string) bool {
 	tier := func(v string) string {
 		switch v {

@@ -1,4 +1,4 @@
-// Package web is the Phase 6 web UI (spec §12.8), served by exemplar-api
+// Package web is the web UI, served by exemplar-api
 // under /ui/: rules and their health, rule and finding detail, the
 // candidate queue, the auto-approve audit and the cost explorer.
 //
@@ -6,13 +6,13 @@
 // ingress). Anything tied to a repo (findings, PRs, decisions, the
 // comments a candidate was mined from, repo-scoped rules) is shown only
 // for repos the viewer can read: their GitHub permission (checked with
-// their user token, cached for 5 minutes, spec §13 IN-2) when they signed
+// their user token, cached for 5 minutes) when they signed
 // in with GitHub, or the repos their groups map to when they signed in
 // with OIDC. Aggregates without repos (rule
 // health, spend) are shown to every signed-in viewer.
 //
 // Pages are server-rendered with html/template and need no JavaScript.
-// The spec names templ and htmx; html/template needs neither a code
+// templ and htmx were considered; html/template needs neither a code
 // generator nor a new dependency.
 //
 // Owner actions (shadow or kill a rule, kill a candidate, turn a repo's

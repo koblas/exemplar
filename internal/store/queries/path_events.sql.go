@@ -147,7 +147,7 @@ type PathEventsForPathRow struct {
 	At   pgtype.Timestamptz
 }
 
-// A path's incidents and reverts, newest first (path_history, spec §6.4).
+// A path's incidents and reverts, newest first (path_history).
 func (q *Queries) PathEventsForPath(ctx context.Context, arg PathEventsForPathParams) ([]PathEventsForPathRow, error) {
 	rows, err := q.db.Query(ctx, pathEventsForPath, arg.Repo, arg.Path, arg.MaxRows)
 	if err != nil {
@@ -233,7 +233,7 @@ type UpsertRevertSeedParams struct {
 	EndLine     *int32
 }
 
-// A revert seed (spec §8.1): a reverted PR's unreviewed hunks in one file,
+// A revert seed: a reverted PR's unreviewed hunks in one file,
 // with the revert reason as the body. Re-seeding leaves the row alone.
 func (q *Queries) UpsertRevertSeed(ctx context.Context, arg UpsertRevertSeedParams) error {
 	_, err := q.db.Exec(ctx, upsertRevertSeed,

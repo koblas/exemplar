@@ -19,7 +19,7 @@ import (
 	"github.com/koblas/exemplar/internal/syntax"
 )
 
-// Fix validation (spec §6.11, FR-F1–F2). A suggested fix is replacement
+// Fix validation. A suggested fix is replacement
 // text for exactly the anchored lines, posted as a GitHub suggestion block
 // the author can commit in one click. It is checked in code before it is
 // posted: a fix that fails is dropped silently and the finding posts
@@ -158,7 +158,7 @@ func (e *Engine) checkSyntax(ctx context.Context, path string, before, after []b
 	return ""
 }
 
-// Formatter checks (spec §6.11: "where cheap and available"): when the
+// Formatter checks, where cheap and available: when the
 // original file is clean under the formatter and the fixed one is not,
 // the fix is rejected. clang-format reads the repo's .clang-format (plain
 // YAML) through --assume-filename; prettier runs with --no-config, because

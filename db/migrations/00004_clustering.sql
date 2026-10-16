@@ -1,6 +1,6 @@
--- Clustering output (spec §8.4), written by the Python cluster job. Each run
+-- Clustering output, written by the Python cluster job. Each run
 -- is a snapshot: clustering is recomputed over all embedded extractions,
--- while candidates built from clusters (rank, §8.5) persist across runs.
+-- while candidates built from clusters (by the rank job) persist across runs.
 -- A cluster's identity is the hash of its sorted member comment ids.
 
 -- +goose Up
@@ -36,7 +36,7 @@ CREATE TABLE cluster_members (
 );
 
 -- Merge decisions cached by the pair of cluster hashes, so reruns are
--- deterministic and cheap (§8.4 step 4).
+-- deterministic and cheap.
 CREATE TABLE merge_decisions (
   pair_key           text PRIMARY KEY,              -- sha256 of the two sorted cluster hashes
   same               boolean NOT NULL,

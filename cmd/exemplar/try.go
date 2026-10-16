@@ -107,7 +107,7 @@ func newTryCmd() *cobra.Command {
 }
 
 // userGitHub answers with the caller's own token: if it can read the
-// repo, the caller can (spec §8.7's user check).
+// repo, the caller can.
 type userGitHub struct {
 	c     *github.Client
 	token string

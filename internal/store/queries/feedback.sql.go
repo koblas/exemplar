@@ -83,7 +83,7 @@ type DemotionStatsRow struct {
 	NonAuthorActors int32
 }
 
-// Spec §9.4: per rule, its last @last_n findings with a judgment (a
+// Per rule, its last @last_n findings with a judgment (a
 // positive or negative weight in finding_outcomes). A finding is a
 // negative when its negative weight outweighs its positive weight.
 // non_author_actors counts distinct non-author people with an explicit
@@ -330,7 +330,7 @@ type FindingsForAlertRow struct {
 }
 
 // The posted production findings a code-scanning alert of Exemplar's may
-// stand for (spec §6.12): same PR, rule and file. The caller picks the one
+// stand for: same PR, rule and file. The caller picks the one
 // at the alert's line, or the only one.
 func (q *Queries) FindingsForAlert(ctx context.Context, arg FindingsForAlertParams) ([]FindingsForAlertRow, error) {
 	rows, err := q.db.Query(ctx, findingsForAlert,
@@ -392,7 +392,7 @@ type FindingsOnLinesRow struct {
 }
 
 // Production findings of this PR on the same file and side that overlap
-// a later human comment's lines (spec §9.1 "Human independently raised"):
+// a later human comment's lines (the human raised it independently):
 // posted, shadow or suppressed, one per identity, made before the comment.
 // Exact duplicates, bad anchors, repeats of a posted finding and findings
 // already credited as human duplicates are left out.
@@ -543,7 +543,7 @@ type PRsToPollReactionsRow struct {
 }
 
 // PRs with Exemplar comments whose production reviews finished in the
-// last @since_hours hours (spec §9.1: PRs updated in 24 h), with the
+// last @since_hours hours (normally PRs updated in 24 h), with the
 // installation that last delivered an event for the repo.
 func (q *Queries) PRsToPollReactions(ctx context.Context, sinceHours int32) ([]PRsToPollReactionsRow, error) {
 	rows, err := q.db.Query(ctx, pRsToPollReactions, sinceHours)
@@ -601,7 +601,7 @@ type RuleRecentOutcomesRow struct {
 	PosW   float64
 }
 
-// Rule expiry (spec §8.10): a rule's judged production findings over the
+// Rule expiry: a rule's judged production findings over the
 // last @days days, with their weights.
 func (q *Queries) RuleRecentOutcomes(ctx context.Context, arg RuleRecentOutcomesParams) (RuleRecentOutcomesRow, error) {
 	row := q.db.QueryRow(ctx, ruleRecentOutcomes, arg.RuleID, arg.Days)
@@ -635,7 +635,7 @@ type SetTeachClassParams struct {
 	TeachClass *string
 }
 
-// Teach-the-bot (spec §8.7): the class of an event's free text.
+// Teach-the-bot: the class of an event's free text.
 func (q *Queries) SetTeachClass(ctx context.Context, arg SetTeachClassParams) error {
 	_, err := q.db.Exec(ctx, setTeachClass,
 		arg.FindingID,
@@ -687,7 +687,7 @@ type TeachSignalsRow struct {
 	Class       string
 }
 
-// Teach-the-bot evidence (spec §8.7, §9.3) over the last @days days: each
+// Teach-the-bot evidence over the last @days days: each
 // person's latest rejection of a finding with its class. A reason's class
 // wins; without one (or noise), "not important here" is a scope signal for
 // path clustering and "disagree" stays a disagreement.
@@ -732,7 +732,7 @@ type UpsertVerifierLabelParams struct {
 	Source    string
 }
 
-// Routing by reason (spec §9.3): a person's judgment of a finding is a
+// Routing by reason: a person's judgment of a finding is a
 // verifier calibration label. A human review (an owner's adjudication)
 // replaces an author's signal, never the reverse.
 func (q *Queries) UpsertVerifierLabel(ctx context.Context, arg UpsertVerifierLabelParams) error {

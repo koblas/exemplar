@@ -19,8 +19,8 @@ import (
 )
 
 // Incident is one line of the incident feed: JSON Lines, one incident per
-// line, exported from whichever incident tool is chosen (spec open item
-// 14). Only the id, time and links are read; any other field (titles,
+// line, exported from whichever incident tool is chosen (not yet
+// decided). Only the id, time and links are read; any other field (titles,
 // summaries) is ignored and never stored.
 //
 //	{"id": "INC-1234", "at": "2026-09-01T12:00:00Z",

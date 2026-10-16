@@ -1,5 +1,5 @@
 # Provision every dashboard in this directory, read-only: they are reviewed
-# like code (spec §12.4), so edits in the UI are not kept.
+# like code, so edits in the UI are not kept.
 apiVersion: 1
 providers:
   - name: exemplar

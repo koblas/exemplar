@@ -1,4 +1,4 @@
-// Command exemplar-webhook receives the GitHub App's webhooks (spec §5).
+// Command exemplar-webhook receives the GitHub App's webhooks.
 //
 //	exemplar-webhook [--addr :8080] [--path /webhook]
 //

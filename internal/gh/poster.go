@@ -49,7 +49,7 @@ type ReviewPost struct {
 // Poster submits reviews and check runs. It must be built from a
 // FlavorPoster client. It posts COMMENT reviews and, only when every
 // auto-approve gate passed, an APPROVE (Approve). Exemplar never blocks a
-// merge (FR-E8), so there is no REQUEST_CHANGES path.
+// merge, so there is no REQUEST_CHANGES path.
 type Poster struct {
 	gh *github.Client
 }
@@ -126,7 +126,7 @@ func (p *Poster) findReview(ctx context.Context, pr PR, marker string) (int64, e
 const CheckName = "exemplar"
 
 // RerunAction is the check-run action identifier that re-enqueues an
-// incomplete review (spec §6.15).
+// incomplete review.
 const RerunAction = "rerun"
 
 // StartCheck creates the in-progress check run for a head.
@@ -186,7 +186,7 @@ func (p *Poster) CompleteCheck(ctx context.Context, pr PR, checkRunID int64, res
 }
 
 // MergePolicyCheckName is the check merge_policy_check repos require
-// instead of counting Exemplar's APPROVE (spec §6.13).
+// instead of counting Exemplar's APPROVE.
 const MergePolicyCheckName = "exemplar/merge-policy"
 
 // SetMergePolicy reports exemplar/merge-policy on the head: completed with
@@ -194,7 +194,7 @@ const MergePolicyCheckName = "exemplar/merge-policy"
 // repo's required check holds the merge until people approve. The repo
 // chose this check in place of an approval requirement, so it is the one
 // way Exemplar's result can hold a merge; Exemplar's own review check
-// stays neutral (FR-E8). Each call adds a run; GitHub uses the latest.
+// stays neutral. Each call adds a run; GitHub uses the latest.
 func (p *Poster) SetMergePolicy(ctx context.Context, pr PR, pass bool, title, summary string) error {
 	opts := github.CreateCheckRunOptions{
 		Name:    MergePolicyCheckName,
@@ -221,8 +221,8 @@ func ApproveMarker(reviewID int64, headSHA string) string {
 
 const approvePrefix = "<!-- exemplar:approve "
 
-// Approve submits Exemplar's native APPROVE on the head (spec §6.13): the
-// caller must only call it when every Stage 1 and Stage 2 gate passed. It
+// Approve submits Exemplar's native APPROVE on the head: the caller
+// must only call it when every auto-approve gate passed. It
 // is idempotent per review, like PostReview.
 func (p *Poster) Approve(ctx context.Context, pr PR, reviewID int64, summary string) (int64, bool, error) {
 	marker := ApproveMarker(reviewID, pr.HeadSHA)
@@ -242,7 +242,7 @@ func (p *Poster) Approve(ctx context.Context, pr PR, reviewID int64, summary str
 }
 
 // DismissApprovals dismisses every standing Exemplar approval on an
-// earlier head of the PR (FR-A9: an approval never carries forward to a
+// earlier head of the PR (an approval never carries forward to a
 // new push). Only reviews that carry Exemplar's approve marker and come
 // from a bot account are touched, so a human's approval is never
 // dismissed; one on pr.HeadSHA (a retried review) is kept. It returns how

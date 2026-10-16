@@ -20,7 +20,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Webhook safety nets (spec §5): GitHub does not retry failed deliveries.
+// Webhook safety nets: GitHub does not retry failed deliveries.
 
 // MaintenanceQueue runs the periodic reconciler and sweeper.
 const MaintenanceQueue = "maintenance"

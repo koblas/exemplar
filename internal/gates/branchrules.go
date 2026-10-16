@@ -11,7 +11,7 @@ const (
 // MergePolicyCheck is the status check merge_policy_check repos require.
 const MergePolicyCheck = "exemplar/merge-policy"
 
-// Stage 2 branch-rule reasons.
+// Branch-rule reasons for the auto-approve approval checks.
 const (
 	ReasonBranchRulesUnknown       = "branch_rules_unknown"
 	ReasonComplianceApprovals      = "compliance_repo_below_two_approvals"
@@ -34,7 +34,7 @@ type BranchRules struct {
 	Sources []string `json:"sources,omitempty"`
 }
 
-// BranchRulesResult is the Stage 2 branch-rules lookup trace.
+// BranchRulesResult is the auto-approve branch-rules lookup trace.
 type BranchRulesResult struct {
 	Pass       bool         `json:"pass"`
 	Reasons    []string     `json:"reasons,omitempty"`
@@ -50,14 +50,14 @@ type BranchRulesResult struct {
 	HumanApprovals int `json:"human_approvals"`
 }
 
-// CheckBranchRules is Stage 2's branch-rules lookup (spec §6.13). It
+// CheckBranchRules is the auto-approve branch-rules lookup. It
 // decides whether Exemplar's approval means what the repo's mode says:
 //   - rules that could not be read fail closed (nil rules);
 //   - a compliance repo must keep at least two required approvals, of
 //     which the bot is at most maxBotApprovals;
 //   - native_approve (the default) cannot satisfy a code-owner review
 //     requirement, since an App is never a code owner; such repos belong in
-//     merge_policy_check mode (T-0.3);
+//     merge_policy_check mode;
 //   - merge_policy_check is pointless unless exemplar/merge-policy is a
 //     required check.
 //

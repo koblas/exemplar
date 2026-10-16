@@ -131,7 +131,7 @@ func TestIgnoredAtMerge(t *testing.T) {
 	if out, err := sw.Handle(t.Context(), merge); err != nil || !slices.Equal(out.Kinds, []string{"ignored"}) {
 		t.Fatalf("merged = %+v, %v", out, err)
 	}
-	// The merge is recorded for counter-metrics (spec §12.5), and a later
+	// The merge is recorded for counter-metrics, and a later
 	// revert naming the PR marks it failed.
 	var reviewed, auto, reverted bool
 	var posted int

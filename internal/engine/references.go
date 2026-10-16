@@ -13,7 +13,7 @@ import (
 )
 
 // References answers the find_references tool from exemplar-search
-// (spec §6.4.4); *api.Client implements it.
+// *api.Client implements it.
 type References interface {
 	SnapshotStatus(ctx context.Context, prRepo, repo string) (api.SnapshotResponse, error)
 	FindReferences(ctx context.Context, prRepo, repo, snapshot, name, definedIn string) (api.FindReferencesResponse, error)
@@ -25,8 +25,8 @@ func (e *Engine) WithReferences(r References) *Engine {
 	return e
 }
 
-// searchPin is the exemplar-search snapshot a review is pinned to (spec
-// §6.4.1): every find_references call passes it.
+// searchPin is the exemplar-search snapshot a review is pinned to:
+// every find_references call passes it.
 type searchPin struct {
 	snapshot string
 	// degraded is set when search for the repo was in degraded mode when
@@ -81,7 +81,7 @@ var findReferencesDef = toolDef{
 }
 
 // findReferences answers the tool: exemplar-search at the pinned
-// snapshot, with the PR overlay (spec §6.4.4): index hits in files the PR
+// snapshot, with the PR overlay: index hits in files the PR
 // touches are replaced by matches in the PR's own versions of them.
 func (t *toolbox) findReferences(ctx context.Context, name, definedIn string) (string, error) {
 	res, err := t.refs.FindReferences(ctx, t.repo, t.repo, t.pin.snapshot, name, definedIn)

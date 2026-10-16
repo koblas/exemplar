@@ -26,7 +26,7 @@ type Config struct {
 	GatewayURL   string
 	GatewayToken string
 	HTTPClient   *http.Client
-	// Model is the pinned extractor model (spec §8.2: claude-sonnet-5-5).
+	// Model is the pinned extractor model (claude-sonnet-5-5).
 	// The gateway routes by stage; the model it reports is checked
 	// against this pin, and only results from the pinned model are cached.
 	Model string
@@ -231,7 +231,7 @@ type BatchOutcome struct {
 	Rate     float64 `json:"acceptance_rate"`
 }
 
-// Acceptance band from the calibration target (spec §8.2): alert outside it.
+// Acceptance band from the calibration target: alert outside it.
 const (
 	minAcceptance = 0.08
 	maxAcceptance = 0.20

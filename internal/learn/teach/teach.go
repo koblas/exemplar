@@ -1,10 +1,10 @@
-// Package teach is the teach-the-bot fast path and routing by reason
-// (spec §8.7, §9.3, PRD FR-L6.5). Nightly, for each rule:
+// Package teach is the teach-the-bot fast path and routing by reason.
+// Nightly, for each rule:
 //   - scope: "not important here" dismissals and reasons classed scope that
 //     cluster under one path prefix become a draft config PR adding a
 //     file_patterns exclusion for it;
 //   - exception and rule_wrong: reasons so classed open an owner review
-//     issue (the spec's description amendment and new negative eval case
+//     issue (the description amendment and new negative eval case
 //     for exception are left to the owner);
 //   - disagree: three "disagree with rule" open an owner review issue.
 //

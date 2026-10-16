@@ -2,7 +2,7 @@ package gates
 
 import "strings"
 
-// Compliance constants (spec §6.13). They live in code, CODEOWNERS-owned by
+// Auto-approve compliance constants. They live in code, CODEOWNERS-owned by
 // Security, and change only by code review and deploy; config cannot
 // touch them.
 

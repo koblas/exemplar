@@ -24,7 +24,7 @@ import (
 	"github.com/koblas/exemplar/internal/oidc"
 )
 
-// `exemplar login` and `exemplar review` (spec §10.1, PRD FR-S4): review
+// `exemplar login` and `exemplar review`: review
 // the working tree on exemplar-api with every lane and the verifier,
 // before a PR exists. No model key is on the laptop: the CLI signs in
 // with a device flow, to GitHub with the review app's client or to the

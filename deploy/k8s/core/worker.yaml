@@ -1,7 +1,7 @@
 # exemplar-worker: routes events and reviews live PRs (orchestrator, worker
-# and poster in one process, spec §5), and runs the periodic jobs on
+# and poster in one process), and runs the periodic jobs on
 # River's leader. Agents run in this process with read-only tools, so it
-# never holds a config-writer token (§5); its config checkout comes from a
+# never holds a config-writer token; its config checkout comes from a
 # git-sync sidecar with a read-only deploy key.
 apiVersion: apps/v1
 kind: Deployment
@@ -117,7 +117,7 @@ spec:
             - name: EXEMPLAR_SEARCH_TOKEN
               valueFrom: {secretKeyRef: {name: exemplar-search, key: token}}
             - {name: EXEMPLAR_AST_GREP, value: /usr/local/bin/ast-grep}
-            # Signed feedback links in comments (spec §6.12).
+            # Signed feedback links in comments.
             - name: EXEMPLAR_API_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
             - {name: EXEMPLAR_LINK_KEY_FILE, value: /var/run/secrets/exemplar/api/link-key}
@@ -129,7 +129,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 2
           # Four concurrent reviews, each a checkout plus git, ast-grep and
-          # Semgrep runs. Re-size from the Phase 0 monorepo benchmark (T-0.4).
+          # Semgrep runs. Re-size from the monorepo benchmark.
           resources:
             requests: {cpu: "1", memory: 2Gi, ephemeral-storage: 20Gi}
             limits: {cpu: "4", memory: 8Gi, ephemeral-storage: 40Gi}

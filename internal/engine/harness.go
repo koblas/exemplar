@@ -28,7 +28,7 @@ type HarnessConfig struct {
 	MaxTokens  int64
 }
 
-// Harness runs tool-using agents through the gateway (spec §6.5).
+// Harness runs tool-using agents through the gateway.
 type Harness struct {
 	client    anthropic.Client
 	maxTurns  int
@@ -78,7 +78,7 @@ type AgentSpec struct {
 	Task         string
 	OutputSchema map[string]any
 	Tools        *toolbox
-	// DataClasses overrides the declared data classes (FR-H4), which
+	// DataClasses overrides the declared data classes, which
 	// default to diff and pr_text plus file_context once a tool read code.
 	DataClasses string
 }
@@ -253,7 +253,7 @@ func (r *AgentResult) readHeaders(h http.Header) {
 }
 
 // ErrProvidersUnavailable marks a stage whose every provider failed; the
-// review is then incomplete (spec §6.15).
+// review is then incomplete.
 var ErrProvidersUnavailable = errors.New("engine: every provider for the stage is unavailable")
 
 func gatewayErrorDetail(err error) string {

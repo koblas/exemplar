@@ -63,7 +63,7 @@ type DeleteExpiredFindingsParams struct {
 }
 
 // Calibration labels and feedback events name a finding and go with it
-// (spec §13.1 retains findings and feedback events together).
+// (findings and feedback events are retained together).
 func (q *Queries) DeleteExpiredFindings(ctx context.Context, arg DeleteExpiredFindingsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteExpiredFindings, arg.Cutoff, arg.Batch)
 	if err != nil {
@@ -120,7 +120,7 @@ type NullExpiredPayloadsParams struct {
 	Batch  int32
 }
 
-// Retention (spec §13.1, FR-H7): each query handles one batch of at most
+// Retention: each query handles one batch of at most
 // @batch rows older than @cutoff, so a large backlog never holds a long
 // lock; the job repeats until a batch comes back short.
 // The row stays: it is the delivery's idempotency key.

@@ -32,7 +32,7 @@ func (p *Prepared) Touched() []string {
 	return out
 }
 
-// CheckOwners runs Stage 2's CODEOWNERS lookup (spec §6.13) against the
+// CheckOwners runs the auto-approve CODEOWNERS lookup against the
 // base commit's CODEOWNERS and the repo's auto_approve.approvable_owners.
 func (p *Prepared) CheckOwners() gates.OwnersResult {
 	var approvable []string

@@ -1,4 +1,4 @@
-// Package mirror keeps exemplar-search's git mirrors (spec §6.4.1): one
+// Package mirror keeps exemplar-search's git mirrors: one
 // full-object bare mirror per repo in scope (each opted-in repo plus its
 // context.extra_repos), fetched on relayed default-branch pushes (at most
 // once per 30 s per repo) and every 5 minutes as a backstop. It is the
@@ -28,8 +28,8 @@ import (
 
 // Limits.
 const (
-	MaxReadLines = 400 // spec §6.4.4 read_file
-	MaxLog       = 20  // spec §6.4.4 path_history
+	MaxReadLines = 400 // read_file
+	MaxLog       = 20  // path_history
 	maxSubject   = 200
 	maxFileBytes = 5 << 20
 	readTimeout  = 10 * time.Second

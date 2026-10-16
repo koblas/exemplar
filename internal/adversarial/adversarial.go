@@ -1,5 +1,4 @@
-// Package adversarial runs the prompt-injection set (PRD FR-X10, spec
-// §8.8–8.9, acceptance test T-0.5).
+// Package adversarial runs the prompt-injection set.
 //
 // In compromised mode the model is replaced by a script that does exactly
 // what the injection asks: it emits the attacker's answer, opens only the

@@ -1,4 +1,4 @@
-// Package evalgen generates eval cases for candidates (spec §8.8):
+// Package evalgen generates eval cases for candidates:
 // positives from the source comments, negatives from CODEOWNER-approved PRs
 // with no comment from the cluster, and injected violations, where a model
 // makes the minimal edit that introduces the violation into a negative
@@ -76,7 +76,7 @@ func Positives(sources []PositiveSource) []Case {
 		}
 		seen[key] = true
 		id, name := fmt.Sprintf("p-%d", s.CommentID), fmt.Sprintf("review comment on %s#%d", s.Repo, s.PR)
-		if s.CommentID < 0 { // revert seed: the reverted change is the positive (FR-X11)
+		if s.CommentID < 0 { // revert seed: the reverted change is the positive
 			id, name = fmt.Sprintf("p-r%d", -s.CommentID), fmt.Sprintf("reverted change in %s#%d", s.Repo, s.PR)
 		}
 		out = append(out, Case{
@@ -146,7 +146,7 @@ type InjectTarget struct {
 }
 
 // MarkSpotChecks flags ceil(10%) of the synthetic cases for owner review
-// (spec §8.8), the first ones in order so the choice is stable.
+// the first ones in order so the choice is stable.
 func MarkSpotChecks(cases []Case) {
 	var synthetic []int
 	for i, c := range cases {

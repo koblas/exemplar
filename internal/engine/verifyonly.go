@@ -7,8 +7,8 @@ import (
 	"github.com/koblas/exemplar/internal/scope"
 )
 
-// Candidate is a finding to verify on its own, as calibration does (spec
-// §6.8): the claim a generator would have made, without the generator.
+// Candidate is a finding to verify on its own, as calibration does:
+// the claim a generator would have made, without the generator.
 type Candidate struct {
 	RuleID    string
 	Path      string

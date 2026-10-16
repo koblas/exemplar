@@ -14,10 +14,10 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// SARIF for Security (spec §6.12): Security-category findings are also
+// SARIF for Security: Security-category findings are also
 // uploaded as code-scanning alerts, so they appear in Security's tools.
-// The log is SARIF 2.1.0, written with encoding/json: the spec names
-// go-sarif, but the few fields used here do not need a dependency.
+// The log is SARIF 2.1.0, written with encoding/json rather than
+// go-sarif: the few fields used here do not need a dependency.
 
 // SARIFTool is the driver name alerts carry; code_scanning_alert events
 // from other tools are not Exemplar's.
@@ -27,7 +27,7 @@ const SARIFTool = "Exemplar"
 const sarifCategory = "exemplar/"
 
 // FingerprintKey is the partialFingerprints key carrying the finding's
-// stable identity (spec §6.2), so GitHub keeps one alert per finding
+// stable identity, so GitHub keeps one alert per finding
 // across pushes.
 const FingerprintKey = "exemplarFingerprint/v1"
 

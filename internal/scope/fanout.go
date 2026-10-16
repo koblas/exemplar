@@ -6,7 +6,7 @@ import (
 )
 
 // Candidate is an in-scope exemplar rule competing for a slot under the
-// fan-out cap (spec §6.3 step 6, PRD FR-D2).
+// fan-out cap.
 type Candidate struct {
 	RuleID string
 	// Precision is the rule's recent precision. Higher runs first; NaN sorts

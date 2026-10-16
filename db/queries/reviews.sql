@@ -52,7 +52,7 @@ UPDATE gh_events SET processed_at = now() WHERE delivery_id = $1;
 
 -- name: LatestReviewAttempt :many
 -- A head's latest production review attempt and its status, so a Re-run
--- enqueues the next attempt of an incomplete review (spec §6.15). No row:
+-- enqueues the next attempt of an incomplete review. No row:
 -- the head was never reviewed.
 SELECT attempt, status FROM reviews
 WHERE repo = $1 AND pr_number = $2 AND head_sha = $3 AND caller = 'production'
@@ -70,5 +70,5 @@ SELECT EXISTS (
 ) AS reviewed;
 
 -- name: MarkReviewSuperseded :exec
--- A newer push replaced this review's head (spec §6.2).
+-- A newer push replaced this review's head.
 UPDATE reviews SET status = 'superseded', finished_at = coalesce(finished_at, now()) WHERE id = $1;

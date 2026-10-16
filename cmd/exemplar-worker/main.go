@@ -1,5 +1,5 @@
-// Command exemplar-worker reviews live pull requests (spec §5: the
-// orchestrator, worker and poster, run as one process for now).
+// Command exemplar-worker reviews live pull requests (the orchestrator,
+// worker and poster, run as one process for now).
 //
 //	exemplar-worker serve --config DIR --work-dir /var/lib/exemplar/work [--addr :8080] [--concurrency 4]
 //	exemplar-worker enqueue --repo org/repo --pr 123 --head SHA --installation ID
@@ -136,7 +136,7 @@ func runServe(args []string) error {
 	var snap atomic.Pointer[config.Snapshot]
 	snap.Store(first)
 
-	// Each running review holds a connection for its repo slot (FR-D6),
+	// Each running review holds a connection for its per-repo queue slot,
 	// besides what the review itself, River, the event, linter-check and
 	// feedback workers and the periodic jobs use.
 	st, err := store.OpenWithConns(ctx, dbURL, int32(*concurrency)*2+14)
@@ -171,10 +171,10 @@ func runServe(args []string) error {
 		GitHub: worker.AppClients{App: app}, Store: st,
 		Snapshot: func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil },
 		Engine:   eng, Scanner: sc, WorkDir: *workDir, Log: log,
-		// Mode eval (spec §8.9) evaluates exemplar-config's changed rules.
+		// Mode eval (config CI) evaluates exemplar-config's changed rules.
 		ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO"), Matcher: compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")},
 	}
-	// Feedback links (spec §6.12) need exemplar-api's URL and the key it
+	// Feedback links need exemplar-api's URL and the key it
 	// verifies with; without them comments name the slash commands only.
 	if apiURL, keyFile := os.Getenv("EXEMPLAR_API_URL"), os.Getenv("EXEMPLAR_LINK_KEY_FILE"); apiURL != "" || keyFile != "" {
 		key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
@@ -213,7 +213,7 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	// The web UI's playground (spec §12.8): the deployed config with the
+	// The web UI's playground: the deployed config with the
 	// draft rule file added.
 	tries, err := worker.NewPlaygroundWorker(wcfg, func(ruleYAML []byte) (*config.Snapshot, string, error) {
 		return playground.RuleFileSnapshot(os.DirFS(*configDir), ruleYAML, snap.Load().Version)

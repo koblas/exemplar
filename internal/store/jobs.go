@@ -43,7 +43,7 @@ type PRReviewArgs struct {
 	PR             int    `json:"pr"`
 	HeadSHA        string `json:"head_sha"`
 	// Attempt is reviews.attempt: 1, or more for a re-run of an incomplete
-	// review (spec §6.15), which must not be deduplicated against the first.
+	// review, which must not be deduplicated against the first.
 	Attempt int `json:"attempt,omitempty"`
 }
 
@@ -60,7 +60,7 @@ func (PRReviewArgs) InsertOpts() river.InsertOpts {
 const EventQueue = "events"
 
 // GHEventArgs is the River job the webhook receiver inserts, in the same
-// transaction as the gh_events row it names (spec §5). The orchestrator
+// transaction as the gh_events row it names. The orchestrator
 // turns it into reviews; the receiver itself has no business logic.
 type GHEventArgs struct {
 	DeliveryID string `json:"delivery_id"`
@@ -80,7 +80,7 @@ var openReviewStates = []string{"available", "pending", "retryable", "running", 
 // ReviewJobsToSupersede returns the ids of queued or running pr_review
 // jobs for repo#pr on any head other than keepHead ("" for every head,
 // when the PR closed). River's own table is queried because the job args
-// carry the PR identity (spec §6.2: superseded reviews are cancelled).
+// carry the PR identity (superseded reviews are cancelled).
 func ReviewJobsToSupersede(ctx context.Context, tx pgx.Tx, repo string, pr int, keepHead string) ([]int64, error) {
 	rows, err := tx.Query(ctx, `SELECT id FROM river_job
 		WHERE kind = $1 AND state = ANY($2::river_job_state[])
@@ -97,7 +97,7 @@ const LinterQueue = "linters"
 
 // LinterCheckArgs is the River job a completed CI check run enqueues: if
 // the check is one of the repo's configured linters, findings already
-// posted on the head that it also reports are minimized (spec §6.10).
+// posted on the head that it also reports are minimized.
 type LinterCheckArgs struct {
 	InstallationID int64  `json:"installation_id"`
 	Repo           string `json:"repo"`
@@ -133,7 +133,7 @@ func (s *Store) ReviewJobOpen(ctx context.Context, repo string, pr int, head str
 const FeedbackQueue = "feedback"
 
 // FeedbackCommandArgs is the River job a `/exemplar <command>` reply in an
-// Exemplar review thread enqueues (spec §6.12 slash commands).
+// Exemplar review thread enqueues.
 type FeedbackCommandArgs struct {
 	InstallationID int64  `json:"installation_id"`
 	Repo           string `json:"repo"`
@@ -158,7 +158,7 @@ func (FeedbackCommandArgs) InsertOpts() river.InsertOpts {
 }
 
 // AlertDismissalArgs is the River job a user's dismissal of one of
-// Exemplar's code-scanning alerts on a PR enqueues (spec §6.12): the
+// Exemplar's code-scanning alerts on a PR enqueues: the
 // dismissal reason becomes a feedback event on the finding.
 type AlertDismissalArgs struct {
 	InstallationID int64  `json:"installation_id"`
@@ -185,7 +185,7 @@ func (AlertDismissalArgs) InsertOpts() river.InsertOpts {
 // apart from PR reviews so a burst of CLI calls never delays them.
 const EvaluateQueue = "evaluate"
 
-// EvaluateArgs runs one evaluation (spec §10.1): the evaluations row
+// EvaluateArgs runs one evaluation: the evaluations row
 // holds the request.
 type EvaluateArgs struct {
 	ID string `json:"id"`
@@ -200,7 +200,7 @@ func (EvaluateArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{Queue: EvaluateQueue, MaxAttempts: 2, UniqueOpts: river.UniqueOpts{ByArgs: true}}
 }
 
-// PlaygroundArgs runs one web UI playground try (spec §12.8); the
+// PlaygroundArgs runs one web UI playground try; the
 // playground_runs row holds the request.
 type PlaygroundArgs struct {
 	ID int64 `json:"id"`
@@ -215,8 +215,8 @@ func (PlaygroundArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{Queue: EvaluateQueue, MaxAttempts: 2, UniqueOpts: river.UniqueOpts{ByArgs: true}}
 }
 
-// OwnerActionArgs carries out one owner action from the web UI (spec
-// §12.8); the owner_actions row holds the request.
+// OwnerActionArgs carries out one owner action from the web UI; the
+// owner_actions row holds the request.
 type OwnerActionArgs struct {
 	ID int64 `json:"id"`
 }
@@ -230,7 +230,7 @@ func (OwnerActionArgs) InsertOpts() river.InsertOpts {
 }
 
 // MergePolicyArgs re-decides exemplar/merge-policy on a PR whose reviews
-// changed (spec §6.13, merge_policy_check repos). Review and Action make
+// changed (merge_policy_check repos). Review and Action make
 // each event its own job.
 type MergePolicyArgs struct {
 	InstallationID int64  `json:"installation_id"`
@@ -248,7 +248,7 @@ func (MergePolicyArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{Queue: FeedbackQueue, MaxAttempts: 5, UniqueOpts: river.UniqueOpts{ByArgs: true}}
 }
 
-// Feedback signals seen in webhooks (spec §9.1), handled by the feedback
+// Feedback signals seen in webhooks, handled by the feedback
 // queue's signal worker.
 const (
 	SignalResolved = "resolved" // an Exemplar thread was resolved
@@ -286,7 +286,7 @@ func (FeedbackSignalArgs) InsertOpts() river.InsertOpts {
 }
 
 // FeedbackLinkArgs is the River job exemplar-api enqueues when someone
-// signed in through GitHub confirms a feedback link (spec §6.12 item 1).
+// signed in through GitHub confirms a feedback link.
 // The worker derives their role and records the event; exemplar-api holds
 // no installation credentials.
 type FeedbackLinkArgs struct {

@@ -1,5 +1,5 @@
 // Package worker reviews live pull requests: the pr_review River job
-// (spec §5 orchestrator, worker and poster, run as one process for now).
+// (the orchestrator, worker and poster, run as one process for now).
 // For one PR head it reads the PR from GitHub, checks it out, gathers the
 // facts the auto-approve gates need (author, head repo, commits, merge
 // safety, branch rules, team membership), runs the engine, persists the
@@ -39,7 +39,7 @@ import (
 // Caller is reviews.caller for live reviews.
 const Caller = "production"
 
-// GitHub mints the scoped clients a review needs (spec §5 token table);
+// GitHub mints the scoped clients a review needs ;
 // AppClients implements it over the GitHub App.
 type GitHub interface {
 	// Reader reads the PR repo (FlavorWorker).
@@ -57,7 +57,7 @@ type Config struct {
 	GitHub GitHub
 	// Store persists reviews and answers merge safety. Required in
 	// production; nil only in tests, which then persist nothing and
-	// measure no merge safety (so Stage 2 fails closed).
+	// measure no merge safety (so auto-approval fails closed).
 	Store *store.Store
 	// Snapshot returns the current exemplar-config snapshot.
 	Snapshot func(ctx context.Context) (*config.Snapshot, error)
@@ -69,7 +69,7 @@ type Config struct {
 	CloneURL func(repo string) string
 	Log      *slog.Logger
 	Now      func() time.Time
-	// Links, when set, signs feedback links into each comment (spec §6.12).
+	// Links, when set, signs feedback links into each comment.
 	Links *feedbacklink.Signer
 	// LinterPoll is how often a review re-reads the linters' check runs
 	// while it waits for them (default 10 s).
@@ -120,7 +120,7 @@ func (w *Worker) Timeout(*river.Job[store.PRReviewArgs]) time.Duration { return 
 
 // Work implements river.Worker. A bad job is cancelled, not retried.
 func (w *Worker) Work(ctx context.Context, job *river.Job[store.PRReviewArgs]) error {
-	// Per-repo fairness (FR-D6): wait for one of the repo's slots.
+	// Per-repo fairness: wait for one of the repo's slots.
 	if w.cfg.Store != nil {
 		snap, err := w.cfg.Snapshot(ctx)
 		if err != nil {
@@ -184,11 +184,11 @@ type Outcome struct {
 	Decision string
 	Posted   int
 	Approved bool
-	// Dismissed counts earlier Exemplar approvals dismissed (FR-A9).
+	// Dismissed counts earlier Exemplar approvals dismissed.
 	Dismissed int
 	// Closed counts earlier findings this head resolved or outdated.
 	Closed int
-	// Moved counts findings re-anchored after a rebase (FR-C4).
+	// Moved counts findings re-anchored after a rebase.
 	Moved int
 	// Shadow is set when the repo is reviewed in shadow: nothing posted.
 	Shadow bool
@@ -235,7 +235,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	}
 	poster := gh.NewPoster(posterClient)
 
-	// FR-A9: dismiss approvals on earlier heads before reviewing this one.
+	// Dismiss approvals on earlier heads before reviewing this one.
 	out := Outcome{}
 	if out.Dismissed, err = poster.DismissApprovals(ctx, target, "New commits were pushed; Exemplar re-reviews before approving again."); err != nil {
 		return out, err
@@ -275,7 +275,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	}
 	p, err := engine.Prepare(ctx, ws, snap, info, w.cfg.Scanner)
 	if errors.Is(err, engine.ErrIneligible) {
-		// Spec §6.2: no review, and a neutral check run says why; but a
+		// No review, and a neutral check run says why; but a
 		// shadow repo's PRs get nothing at all.
 		out.Status, out.Reason = StatusIneligible, err.Error()
 		if rc, ok := repoConfig(snap, a.Repo); ok && rc.Shadow {
@@ -293,7 +293,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	}
 	rec.Links = w.cfg.Links
 	out.ReviewID = rec.ReviewID
-	// A shadow repo (spec §6.9) is reviewed in full and stored, but
+	// A shadow repo is reviewed in full and stored, but
 	// nothing is written to its PRs: no check run, comments, replies or
 	// approval. Revoking an earlier Exemplar approval (above) still happens.
 	shadow := p.Effective.RepoConfig.Shadow
@@ -307,7 +307,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 
 	opt := engine.Options{ReviewID: rec.ReviewID, Caller: Caller, RuleRunIDs: rec.RunIDs}
 	// Findings earlier pushes posted: not posted again, and closed below
-	// when this head settles them (spec §6.2).
+	// when this head settles them.
 	var open []pipeline.OpenFinding
 	if w.cfg.Store != nil {
 		if open, err = w.cfg.Store.OpenFindings(ctx, queries.OpenFindingsParams{Repo: a.Repo, PrNumber: int32(a.PR)}); err != nil {
@@ -316,7 +316,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		if !shadow {
 			open = w.reanchor(ctx, reader, poster, target, p, open, &out)
 		}
-		// Suggestions committed since they were posted (spec §6.11). A
+		// Suggestions committed since they were posted. A
 		// failure loses a signal, not the review.
 		if n, err := pipeline.RecordAppliedSuggestions(ctx, w.cfg.Store, p, pipeline.AppliedSuggestions(ctx, p, open)); err != nil {
 			w.cfg.Log.Warn("applied suggestions not all recorded", "repo", a.Repo, "pr", a.PR, "err", err)
@@ -385,7 +385,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	}
 
 	if res.Incomplete != "" {
-		// Spec §6.15: no comments, no approval; the check says why.
+		// No comments, no approval; the check says why.
 		out.Status, out.Reason = StatusIncomplete, res.Incomplete
 		if shadow {
 			return out, nil
@@ -413,7 +413,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		return w.failed(ctx, poster, target, checkID, rec, out, err)
 	}
 	out.Status, out.Posted = StatusReviewed, po.Comments
-	// Security findings as code-scanning alerts (spec §6.12). The review
+	// Security findings as code-scanning alerts. The review
 	// is posted, so a failure is logged, not retried.
 	if out.SARIF, err = pipeline.UploadSARIF(ctx, w.cfg.Store, poster, p, res); err != nil {
 		w.cfg.Log.Warn("SARIF not uploaded", "repo", a.Repo, "pr", a.PR, "err", err)
@@ -428,7 +428,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		w.cfg.Log.Warn("earlier findings not all closed", "repo", a.Repo, "pr", a.PR, "closed", n, "err", err)
 	}
 	// A finding addressed without its suggestion: the light model checks
-	// the change (spec §9.1). A lost signal does not fail the review.
+	// the change. A lost signal does not fail the review.
 	if out.Fixed, err = w.recordFixed(ctx, p, closures); err != nil {
 		w.cfg.Log.Warn("fixed findings not all recorded", "repo", a.Repo, "pr", a.PR, "err", err)
 	}
@@ -461,11 +461,11 @@ func (w *Worker) mergePolicy(ctx context.Context, reader *github.Client, member 
 	return pass && gatesPassed
 }
 
-// linters returns the engine's linter-dedupe source (spec §6.10): it
+// linters returns the engine's linter-dedupe source: it
 // re-reads the configured linters' check runs on sha every LinterPoll until
 // all have completed or wait has passed, then returns the completed runs'
 // annotations, with the PR's open code-scanning alerts from tools of the
-// same names (spec §6.10). Nil when the repo configures no linters.
+// same names. Nil when the repo configures no linters.
 func (w *Worker) linters(c *github.Client, repo string, pr int, sha string, checks []string, wait int) func(context.Context) ([]engine.LinterAnnotation, error) {
 	if len(checks) == 0 {
 		return nil
@@ -582,7 +582,7 @@ func (w *Worker) failed(ctx context.Context, poster *gh.Poster, target gh.PR, ch
 }
 
 // supersede records a superseded review and completes its check run, so
-// the old head does not keep an in-progress check (spec §6.2). It runs on
+// the old head does not keep an in-progress check. It runs on
 // a fresh, short context: the job's own may already be cancelled. cause is
 // returned as the job's error (nil when the review noticed the push itself).
 func (w *Worker) supersede(ctx context.Context, poster *gh.Poster, target gh.PR, checkID int64, rec *pipeline.Record, out Outcome, cause error) (Outcome, error) {
@@ -624,8 +624,8 @@ func (w *Worker) approve(ctx context.Context, reader *github.Client, poster *gh.
 	return err == nil, err
 }
 
-// mergeSafety scores the PR (spec §6.13), or returns nil when it cannot:
-// Stage 2 then fails closed rather than the review failing.
+// mergeSafety scores the PR, or returns nil when it cannot: auto-approval
+// then fails closed rather than the review failing.
 func (w *Worker) mergeSafety(ctx context.Context, reader *github.Client, p *engine.Prepared) *gates.MergeSafetyResult {
 	if w.cfg.Store == nil {
 		return nil
@@ -689,7 +689,7 @@ func ineligibleText(err error) string {
 func short(sha string) string { return sha[:min(7, len(sha))] }
 
 // reanchor handles open findings from heads this one does not descend
-// from (a rebase or force-push, FR-C4): each is looked up by its anchor
+// from (a rebase or force-push): each is looked up by its anchor
 // code at the new head and moved there, or outdated with "No longer
 // present after rebase". It returns the findings still open. A head whose
 // ancestry GitHub cannot tell is left alone; the normal closure rules

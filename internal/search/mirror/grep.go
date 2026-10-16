@@ -12,7 +12,7 @@ import (
 	"github.com/koblas/exemplar/internal/gitexec"
 )
 
-// Exclusions returns repo's exclusion rules (spec §6.3 step 3) from the
+// Exclusions returns repo's exclusion rules from the
 // .gitattributes and .exemplarignore at commit; missing files mean none.
 func (m *Manager) Exclusions(ctx context.Context, repo, commit string) (exclude.Rules, error) {
 	dir, err := m.mirrored(repo)
@@ -44,7 +44,7 @@ type GrepMatch struct {
 const MaxPattern = 200
 
 // Grep runs git grep with an extended regexp at commit (degraded-mode
-// search_text, spec §6.4.4). pathGlob, when set, limits the paths (git
+// search_text). pathGlob, when set, limits the paths (git
 // glob pathspec). At most limit matches are returned; truncated reports
 // whether more existed.
 func (m *Manager) Grep(ctx context.Context, repo, commit, pattern, pathGlob string, limit int) ([]GrepMatch, bool, error) {
@@ -67,7 +67,7 @@ func (m *Manager) GrepWord(ctx context.Context, repo, commit, word string, limit
 // GrepIn runs git grep at commit restricted to paths, each a file or a
 // directory (its subtree), taken literally. word true searches for the
 // whole-word fixed string pattern; false, the extended regexp pattern.
-// Degraded-mode find_references and dependents (spec §6.4.4).
+// Degraded-mode find_references and dependents.
 func (m *Manager) GrepIn(ctx context.Context, repo, commit, pattern string, word bool, paths []string, limit int) ([]GrepMatch, bool, error) {
 	if len(paths) == 0 {
 		return []GrepMatch{}, false, nil

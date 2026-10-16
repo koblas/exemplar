@@ -8,7 +8,7 @@ import (
 )
 
 // CallRecorder writes gateway calls to model_calls (cost ledger and the
-// FR-H4 data-egress log).
+// provider data-egress log).
 type CallRecorder struct {
 	Store *Store
 }

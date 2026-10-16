@@ -19,7 +19,7 @@ jobs:
       # Postgres tests start their own pgvector container (testcontainers-go)
       # on the runner's Docker; fail rather than skip if it is unavailable.
       EXEMPLAR_REQUIRE_DB: "1"
-      # Real ast-grep, Semgrep and universal-ctags runs (Lane 1, compile
+      # Real ast-grep, Semgrep and universal-ctags runs (compiled rules, compile
       # attempts, exemplar-search symbols); fail rather than skip without them.
       EXEMPLAR_REQUIRE_ENGINES: "1"
     steps:
@@ -81,7 +81,7 @@ jobs:
       - run: go test -run='^$' -fuzz='^FuzzParse$' -fuzztime=30s ./internal/scope
       - run: go test -run='^$' -fuzz='^FuzzValidateAnchor$' -fuzztime=30s ./internal/scope
 
-  # T-0.5 on every change: the adversarial set in compromised mode needs no
+  # On every change: the adversarial set in compromised mode needs no
   # model access. Live mode runs where a gateway is available.
   adversarial:
     runs-on: ubuntu-latest

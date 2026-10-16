@@ -79,7 +79,7 @@ func GetPullRequest(ctx context.Context, c *github.Client, repo string, number i
 const MaxPRCommits = 250
 
 // PRCommitMessages returns the messages of the PR's commits (at most 250,
-// GitHub's limit), for Stage 1's Co-authored-by check.
+// GitHub's limit), for the auto-approve gates' Co-authored-by check.
 func PRCommitMessages(ctx context.Context, c *github.Client, repo string, number int) ([]string, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {

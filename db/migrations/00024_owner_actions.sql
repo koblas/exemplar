@@ -1,4 +1,4 @@
--- Owner actions from the web UI (spec §12.8): each request is recorded
+-- Owner actions from the web UI: each request is recorded
 -- with its actor, then a worker job checks the actor may take it and
 -- opens (and where it can, merges) the exemplar-config PR. Git stays the
 -- source of truth; this table is the audit of who asked for what.

@@ -1,5 +1,5 @@
-// Package exclude decides which paths are never reviewed, mined or indexed
-// (PRD FR-H2, spec §6.3 step 3, §13.1): lockfiles, minified assets, paths
+// Package exclude decides which paths are never reviewed, mined or indexed:
+// lockfiles, minified assets, paths
 // marked linguist-generated or linguist-vendored in .gitattributes, and
 // patterns from the repo's .exemplarignore. Both files are read from the
 // default branch. Review, ingest and indexing share these rules so the

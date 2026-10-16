@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// Pseudonymizer maps GitHub logins to stable HMAC-SHA256 pseudonyms (spec
-// §13.1). Logins are never stored; ranking counts distinct pseudonyms.
+// Pseudonymizer maps GitHub logins to stable HMAC-SHA256 pseudonyms.
+// Logins are never stored; ranking counts distinct pseudonyms.
 type Pseudonymizer struct{ key []byte }
 
 // NewPseudonymizer refuses keys shorter than 32 bytes.
@@ -33,9 +33,8 @@ func (p *Pseudonymizer) PID(login string) string {
 var urlRE = regexp.MustCompile(`https?://[^\s<>()\[\]"'` + "`" + `]+`)
 
 // DocURLs returns the normalized URLs in body whose host is on the docs
-// allowlist (spec §8.1, FR-L1.6). A host entry matches itself and its
-// subdomains; an entry with a path ("github.com/acme/style-guide") also
-// requires that path prefix.
+// allowlist. A host entry matches itself and its subdomains; an entry with
+// a path ("github.com/acme/style-guide") also requires that path prefix.
 func DocURLs(body string, allow []string) []string {
 	out := []string{}
 	for _, raw := range urlRE.FindAllString(body, -1) {

@@ -1,9 +1,9 @@
-"""Command line for the learning jobs (spec §8.3-8.5).
+"""Command line for the learning jobs.
 
 - ``check``: verify database access and schema version (a CronJob's first step).
-- ``cluster``: cluster embedded extractions and write a run snapshot (§8.4).
+- ``cluster``: cluster embedded extractions and write a run snapshot.
 
-- ``rank``: score the latest cluster run into owned candidates (§8.5).
+- ``rank``: score the latest cluster run into owned candidates.
 
 ``embed`` joins them once an embedding provider is approved.
 """

@@ -2,19 +2,19 @@ package gates
 
 import "math"
 
-// DefaultMinMergeSafety is the Stage 2 merge_safety_score bar (spec
-// §6.13). A repo's auto_approve.min_merge_safety_score can only raise it.
+// DefaultMinMergeSafety is the auto-approve merge_safety_score bar.
+// A repo's auto_approve.min_merge_safety_score can only raise it.
 const DefaultMinMergeSafety = 0.7
 
 // Decisions beyond approved and ineligible (approval_decisions.decision).
 const (
 	// DecisionBlockedCompliance: a compliance repo whose providers cannot
-	// give Stage 2 two independent judgments can never auto-approve, which
+	// give two independent judgments can never auto-approve, which
 	// is intended; the decision says so instead of "ineligible".
 	DecisionBlockedCompliance = "blocked_compliance"
 )
 
-// Stage 2 reasons.
+// Reasons from the auto-approve approval checks.
 const (
 	ReasonOwnersNotChecked      = "codeowners_not_checked"
 	ReasonOwners                = "codeowners"
@@ -42,9 +42,9 @@ func bar(def, configured float64) float64 {
 	return math.Max(def, configured)
 }
 
-// Stage2Input is everything Stage 2 combines. A nil part was not measured,
-// and Stage 2 fails closed on it. The bars are configured values (0 for
-// unset); EvaluateStage2 applies the defaults.
+// Stage2Input is everything the approval checks combine. A nil part was not
+// measured, and the checks fail closed on it. The bars are configured values
+// (0 for unset); EvaluateStage2 applies the defaults.
 type Stage2Input struct {
 	Repo           string
 	Owners         *OwnersResult
@@ -71,11 +71,12 @@ type Stage2Result struct {
 	ReviewConfidenceBar float64 `json:"review_confidence_bar"`
 }
 
-// EvaluateStage2 combines spec §6.13's Stage 2 checks. All must hold: the
-// CODEOWNERS lookup, the branch-rules lookup, merge_safety_score ≥ its bar
-// and review_confidence ≥ its bar. It only means anything after Stage 1
-// passed; Decide combines the two. A compliance repo whose categorizer
-// pair is not independent is blocked_compliance rather than ineligible.
+// EvaluateStage2 combines the auto-approve approval checks. All must hold: the
+// CODEOWNERS lookup, the branch-rules lookup, merge_safety_score ≥ its bar and
+// review_confidence ≥ its bar. It only means anything after the deterministic
+// gates (EvaluateStage1) passed; Decide combines the two. A compliance repo
+// whose categorizer pair is not independent is blocked_compliance rather than
+// ineligible.
 //
 // The deterministic checks come first in the reasons, and a caller may
 // skip the categorizer when they already fail (it costs model calls); a
@@ -125,8 +126,9 @@ func EvaluateStage2(in Stage2Input) Stage2Result {
 }
 
 // Decide is approval_decisions.decision for a run: approved only when
-// Stage 1 is eligible and Stage 2 ran and passed. Stage 2 is nil when it
-// did not run, which it never does after a Stage 1 failure.
+// the deterministic gates are eligible and the approval checks ran and
+// passed. s2 is nil when they did not run, which they never do after a
+// deterministic-gate failure.
 func Decide(s1 Stage1Result, s2 *Stage2Result) string {
 	switch {
 	case !s1.Eligible:

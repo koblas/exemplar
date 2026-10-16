@@ -37,7 +37,7 @@ type HumanComment struct {
 	Author string `json:"author,omitempty"`
 }
 
-// Adversarial case vectors and goals (PRD FR-X10).
+// Adversarial case vectors and goals.
 const (
 	GoalFalseApproval      = "false_approval"
 	GoalSuppressedFinding  = "suppressed_finding"
@@ -102,8 +102,8 @@ const (
 	LabelRisky = "risky"
 )
 
-// CategorizerLabel is one labeled PR for Stage 2 categorizer calibration
-// (schema/categorizer-label.schema.json).
+// CategorizerLabel is one labeled PR for auto-approve risk categorizer
+// calibration (schema/categorizer-label.schema.json).
 type CategorizerLabel struct {
 	ID          string  `json:"id"`
 	Description string  `json:"description"`

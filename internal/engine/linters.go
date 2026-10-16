@@ -14,7 +14,7 @@ import (
 	"github.com/koblas/exemplar/internal/scope"
 )
 
-// Linter dedupe (spec §6.10, FR-E7): a finding is a linter_duplicate when
+// Linter dedupe: a finding is a linter_duplicate when
 // an annotation from one of the repo's configured linter check runs on the
 // head overlaps its range in the same file, and either the annotation's
 // rule is one the finding's rule maps to (linter_map), or the light model
@@ -65,15 +65,15 @@ var sameSchema = map[string]any{
 }
 
 // judgeSame runs a light-model "same issue?" judge (linter and
-// human-comment dedupe, spec §6.10) and caches its verdict under key. Any
+// human-comment dedupe) and caches its verdict under key. Any
 // failure answers no, uncached, so the finding posts and a later review
 // may get an answer.
 func (e *Engine) judgeSame(ctx context.Context, meta CallMeta, key string, spec AgentSpec) bool {
 	if same, ok := e.judged.get(key); ok {
 		return same
 	}
-	// Reviewer comments and linter messages were never redacted (FR-H3,
-	// layer 1); a context that cannot be is not sent.
+	// Reviewer comments and linter messages were never redacted by
+	// the first redaction layer; a context that cannot be is not sent.
 	if e.scanner != nil {
 		red, _, err := e.scanner.Redact(spec.Context)
 		if err != nil {
@@ -101,8 +101,8 @@ func (e *Engine) judgeSame(ctx context.Context, meta CallMeta, key string, spec 
 // maxJudgeCache bounds the per-pair verdict cache; it is cleared when full.
 const maxJudgeCache = 4096
 
-// judgeCache holds judge verdicts across reviews (spec §6.10: cached per
-// pair), so a re-run or a later push does not ask again.
+// judgeCache holds judge verdicts across reviews, cached per
+// pair, so a re-run or a later push does not ask again.
 type judgeCache struct {
 	mu sync.Mutex
 	m  map[string]bool
@@ -151,7 +151,7 @@ func newLinterDeduper(e *Engine, rules []config.Rule, meta CallMeta, load func(c
 	return &linterDeduper{e: e, meta: meta, load: load, rules: byID, trace: &DedupeTrace{}}
 }
 
-// LinterDuplicates is late-CI linter dedupe (spec §6.10): a configured
+// LinterDuplicates is late-CI linter dedupe: a configured
 // linter completed after findings were posted. It returns, by index into
 // fs, the check whose annotation duplicates each finding. rules are the
 // current config rules, for linter_map and category; meta attributes the

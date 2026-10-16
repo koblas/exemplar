@@ -1,4 +1,4 @@
--- Compile to deterministic (spec §8.6): every attempt to turn a candidate
+-- Compile to deterministic: every attempt to turn a candidate
 -- into an ast-grep or Semgrep rule, accepted or not, with its eval scores.
 
 -- +goose Up

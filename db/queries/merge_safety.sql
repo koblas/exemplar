@@ -1,6 +1,6 @@
 -- name: RecentPathEvents :many
 -- Which of paths had an incident or a revert since the given time, and
--- the latest of each (spec §6.13; the bug lane's 90-day trigger, §6.7).
+-- the latest of each (merge_safety_score; the bug lane's 90-day trigger).
 SELECT path, kind, max(at)::timestamptz AS latest FROM path_events
 WHERE repo = @repo AND path = ANY(@paths::text[]) AND at >= @since
 GROUP BY path, kind;

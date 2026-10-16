@@ -1,5 +1,5 @@
 -- +goose Up
--- Re-anchoring after a rebase or force-push (spec §6.2, FR-C4): the
+-- Re-anchoring after a rebase or force-push: the
 -- normalized code a finding's fingerprint was computed from (the anchor
 -- with two lines of context) and its ordinal k among identical code in the
 -- file, so the new head can be searched for it.

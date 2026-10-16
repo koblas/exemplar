@@ -1,5 +1,5 @@
-// Package svcauth authenticates service callers of exemplar-api (spec §13
-// IN-5: a signed service JWT per calling system, PRD FR-S7). Each source
+// Package svcauth authenticates service callers of exemplar-api (a
+// signed service JWT per calling system). Each source
 // (internal/auth0, internal/ghactions) verifies RS256 JWTs from one issuer
 // against its JWKS with this package's Verifier, and maps the token to
 // Claims: who the caller is and which repos it may evaluate. Multi picks

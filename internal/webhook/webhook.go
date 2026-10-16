@@ -1,4 +1,4 @@
-// Package webhook receives GitHub App webhooks (spec §5 exemplar-webhook):
+// Package webhook receives GitHub App webhooks for exemplar-webhook:
 // it verifies X-Hub-Signature-256, stores the raw event in gh_events keyed
 // by X-GitHub-Delivery, and enqueues a gh_event job in the same
 // transaction, answering 202 well inside GitHub's 10 s window. It has no

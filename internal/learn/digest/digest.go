@@ -1,6 +1,6 @@
 // Package digest writes the weekly rule-health digest for each rule owner
-// (FR-B5, PRD §17.8, spec §9.4): an issue in exemplar-config per owner
-// team, from the same views the dashboards and auto-demotion read.
+// as an issue in exemplar-config per owner team, from the same views the
+// dashboards and auto-demotion read.
 package digest
 
 import (
@@ -27,7 +27,7 @@ const Window = 28
 // Label labels digest issues.
 const Label = "exemplar-digest"
 
-// closeTo is how near the eFP bar a rule is "close" (spec §12.5: within
+// closeTo is how near the eFP bar a rule is "close" (within
 // 5 points of the demotion threshold).
 const closeTo = 0.05
 
@@ -43,7 +43,7 @@ type Store interface {
 }
 
 // DriftBehind is how many config versions behind a repo's exports must be
-// to reach the platform digest (spec §10.2: more than two).
+// to reach the platform digest (more than two).
 const DriftBehind = 3
 
 // Repo opens the issues (gh.ConfigRepo).
@@ -67,7 +67,7 @@ type Runner struct {
 	Store Store
 	// Repo opens the issues; nil makes Run a dry run.
 	Repo Repo
-	// Platform, when set, also gets the export-drift digest (spec §10.2).
+	// Platform, when set, also gets the export-drift digest.
 	Platform string
 	// GitHubURL is the web base for links (default https://github.com/).
 	GitHubURL string
@@ -356,7 +356,7 @@ func prefix(p string) string {
 }
 
 // driftBody lists repos whose exported instruction files are more than
-// two config versions behind (spec §10.2).
+// two config versions behind.
 func driftBody(platform string, drift []queries.ExportDriftRow) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: these repos' coding-agent instruction files are more than two config versions behind the rules (spec §10.2). Same view as the shift-left board.\n\n", platform)

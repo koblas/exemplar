@@ -20,7 +20,7 @@ import (
 )
 
 // PlaygroundWorker runs playground_run jobs: the web UI's draft rule
-// alone on one PR (spec §12.8), as `exemplar try` does. Nothing is posted
+// alone on one PR, as `exemplar try` does. Nothing is posted
 // on the PR; the result is for the requester.
 type PlaygroundWorker struct {
 	river.WorkerDefaults[store.PlaygroundArgs]

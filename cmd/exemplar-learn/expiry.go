@@ -14,7 +14,7 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
-// runExpiry is daily rule expiry (spec §8.10): rules past review_by get
+// runExpiry is daily rule expiry: rules past review_by get
 // an extension PR for their owner, or a shadow PR that merges after
 // expiry.auto_demote_after_days without a response. --dry-run prints the
 // decisions and writes nothing.

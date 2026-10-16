@@ -1,4 +1,4 @@
--- merge_safety_score (spec §6.13) reads mined_prs by repo and merge time
+-- merge_safety_score reads mined_prs by repo and merge time
 -- for path churn.
 
 -- +goose Up

@@ -15,7 +15,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Retention (spec §13.1, FR-H7): a daily job enforces the periods in
+// Retention: a daily job enforces the periods in
 // exemplar-config/platform/retention.yaml (owned by Security).
 //   - gh_events.payload is nulled; the row stays as the idempotency key.
 //   - model_calls and findings (with their calibration labels) are deleted.

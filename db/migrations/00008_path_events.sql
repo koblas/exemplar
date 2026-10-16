@@ -1,4 +1,4 @@
--- path-events job (spec §8.1, FR-L1.7): where each repo's revert scan of
+-- path-events job: where each repo's revert scan of
 -- the default branch has reached.
 
 -- +goose Up

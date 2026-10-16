@@ -170,7 +170,7 @@ type Trial struct {
 	Result *engine.Result
 	// NoFiles: the rules match no reviewable file in the PR.
 	NoFiles bool
-	// Incomplete is why the PR could not be reviewed (spec §6.15).
+	// Incomplete is why the PR could not be reviewed.
 	Incomplete string
 	// Ineligible: the repo may not be reviewed under the snapshot.
 	Ineligible bool

@@ -9,7 +9,7 @@ import (
 	"github.com/koblas/exemplar/internal/search/mirror"
 )
 
-// Package scoping by imports (spec §6.4.3): a file's package identity per
+// Package scoping by imports: a file's package identity per
 // language, and how to recognize a line that imports it. Each language
 // gives a coarse pattern, written so it is valid both as RE2 (the index)
 // and as POSIX ERE (git grep in degraded mode), and a precise check in Go
@@ -126,7 +126,7 @@ func pySpec(file string) pkgSpec {
 
 // jsSpec: a module is its path without extension (an index file is also
 // its directory). Relative specifiers are resolved against the importer;
-// others match by their last two segments, as in the spec's example.
+// others match by their last two segments.
 func jsSpec(file string) pkgSpec {
 	target := strings.TrimSuffix(file, path.Ext(file))
 	stem := path.Base(target)

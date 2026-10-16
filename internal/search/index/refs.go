@@ -17,7 +17,7 @@ import (
 	"github.com/koblas/exemplar/internal/search/mirror"
 )
 
-// Limits (spec §6.4.4).
+// Limits.
 const (
 	MaxReferences         = 50
 	MaxReferencesDegraded = 25 // tighter cap for git grep
@@ -181,7 +181,7 @@ type DependentsResult struct {
 	Truncated bool `json:"truncated"`
 }
 
-// Dependents answers dependents(path, depth?) (spec §6.4.3): files whose
+// Dependents answers dependents(path, depth?): files whose
 // imports name path's package, repeated for importing packages up to depth
 // 2, at most 200 packages.
 func (ix *Index) Dependents(ctx context.Context, repo, file string, depth int, includeRoots []string) (DependentsResult, error) {
@@ -277,7 +277,7 @@ type RefResult struct {
 	Proximity bool `json:"proximity"`
 }
 
-// FindReferences answers find_references (spec §6.4.4): a word-boundary
+// FindReferences answers find_references: a word-boundary
 // search for Name restricted to the defining package's directory plus the
 // files of dependents(defined_in), ranked by proximity to defined_in, at
 // most 50 sites (25 in degraded mode) with two lines of context.

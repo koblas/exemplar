@@ -472,7 +472,7 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 
 // checkInbound checks how traffic gets in: the Ingresses there are, who the
 // NetworkPolicies admit to the webhook and the API, the webhook's
-// Postgres-only egress (spec §13), and the tunnel's routes.
+// Postgres-only egress, and the tunnel's routes.
 func checkInbound(t *testing.T, docs []obj, ingresses int, inbound []string) {
 	t.Helper()
 	services := map[string]bool{}
@@ -524,7 +524,7 @@ func checkInbound(t *testing.T, docs []obj, ingresses int, inbound []string) {
 			if app != "exemplar-webhook" {
 				continue
 			}
-			// The webhook reaches Postgres and nothing else (spec §13).
+			// The webhook reaches Postgres and nothing else.
 			eg := list(d, "spec", "egress")
 			if str(d, "metadata", "name") != app {
 				if len(eg) > 0 {

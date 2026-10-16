@@ -17,7 +17,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Late-CI linter dedupe (spec §6.10): a configured linter whose check run
+// Late-CI linter dedupe: a configured linter whose check run
 // completes after Exemplar posted is compared with the findings posted on
 // that head. Each duplicate's comment is minimized as outdated, recorded as
 // minimized / linter_duplicate, and gets a one-line reply naming the
