@@ -1,4 +1,4 @@
--- Rule exports (spec §4, §10.2): what was last proposed for each generated
+-- Rule exports: what was last proposed for each generated
 -- file, for drift (config_sha) and hand-edit detection (the block on the
 -- default branch must be the one proposed, or the one before it).
 

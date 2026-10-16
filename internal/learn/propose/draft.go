@@ -1,4 +1,4 @@
-// Package propose is the config writer (spec §8.7): it turns the top
+// Package propose is the config writer: it turns the top
 // candidates into draft PRs in exemplar-config, each adding one rule with
 // status shadow, for the candidate's owner to edit, promote or kill.
 // Nothing is enforced until an owner merges.
@@ -35,7 +35,7 @@ type Candidate struct {
 	Sources           []Source
 	Incidents         []Incident
 	EvalCases         []EvalCase
-	// Compiled is the latest accepted compile attempt (spec §8.6), if any;
+	// Compiled is the latest accepted compile attempt, if any;
 	// the draft is then kind: compiled.
 	Compiled *Compiled
 }
@@ -53,7 +53,7 @@ type Source struct {
 	PreferredApproach string
 }
 
-// EvalCase is a generated eval case (spec §8.8) to ship with the rule.
+// EvalCase is a generated eval case to ship with the rule.
 type EvalCase struct {
 	ID        string
 	Kind      string // positive | negative | injected
@@ -447,8 +447,8 @@ func evalFiles(ruleID string, cases []EvalCase) (map[string][]byte, error) {
 	return files, nil
 }
 
-// writeCompiled shows the compiled rule's scores beside the exemplar's
-// (PRD §17.5). Exemplar scores come from eval CI; until it has run they
+// writeCompiled shows the compiled rule's scores beside the exemplar's.
+// Exemplar scores come from eval CI; until it has run they
 // are not measured and the bar shown is eval_thresholds.
 func writeCompiled(b *bytes.Buffer, cc *Compiled) {
 	fmt.Fprintf(b, "\n### Compiled to %s\n\n", cc.Engine)

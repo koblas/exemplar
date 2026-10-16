@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Generate the Python contract models from ../schema (the source of truth,
-# spec §2.3). With --check, fail if the committed models differ (CI).
+# Generate the Python contract models from ../schema (the source of truth).
+# With --check, fail if the committed models differ (CI).
 #
 # Models are always generated into a temp dir, outside the project, so the
 # generator's formatting never depends on where the output lands; the

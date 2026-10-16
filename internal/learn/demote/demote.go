@@ -1,4 +1,4 @@
-// Package demote is auto-demotion (spec §9.4): nightly, a rule whose
+// Package demote is auto-demotion: nightly, a rule whose
 // recent feedback crosses both bars is put back in shadow through a config
 // PR the bot opens and merges, naming the owner. Demotion only reduces
 // behavior; promotion always requires a human.
@@ -72,7 +72,7 @@ func Wilson(k, n int) float64 {
 	return (p + z2/(2*nf) - z*math.Sqrt(p*(1-p)/nf+z2/(4*nf*nf))) / (1 + z2/nf)
 }
 
-// Decide applies §9.4 to one rule's stats.
+// Decide applies the demotion bars to one rule's stats.
 func Decide(s queries.DemotionStatsRow, cfg *schema.FeedbackConfig) Decision {
 	bar, floor := DefaultEFPBar, DefaultWilsonFloor
 	if cfg != nil {
@@ -278,13 +278,13 @@ func prBody(rule config.Rule, d Decision, now time.Time) string {
 // FlagLabel labels flag issues in exemplar-config.
 const FlagLabel = "exemplar-flag"
 
-// ResponseDays is how long an owner has to respond to a flag (spec §9.4,
-// feedback.owner_response_days) before the rule is demoted.
+// ResponseDays is how long an owner has to respond to a flag
+// (feedback.owner_response_days) before the rule is demoted.
 const ResponseDays = 14
 
 // flag opens one flag issue per rule version naming the owner, and after
 // ResponseDays with no response from a person (a comment, or closing it)
-// demotes the rule the same way the bars do (spec §9.4).
+// demotes the rule the same way the bars do.
 func (r Runner) flag(ctx context.Context, rule config.Rule, d Decision) (Outcome, error) {
 	if r.Repo == nil {
 		return Outcome{Decision: d, Action: "dry_run"}, nil

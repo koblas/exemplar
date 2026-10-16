@@ -18,9 +18,9 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
-// runPropose opens draft PRs in exemplar-config for the top candidates
-// (spec §8.7). --dry-run builds and validates the drafts and prints them
-// without any GitHub access.
+// runPropose opens draft PRs in exemplar-config for the top candidates.
+// --dry-run builds and validates the drafts and prints them without any
+// GitHub access.
 func runPropose(args []string) error {
 	fs := flag.NewFlagSet("propose", flag.ContinueOnError)
 	dryRun := fs.Bool("dry-run", false, "build and print drafts; write nothing")

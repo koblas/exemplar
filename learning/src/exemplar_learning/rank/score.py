@@ -1,10 +1,10 @@
-"""Candidate score and owner (spec §8.5).
+"""Candidate score and owner.
 
     score = log(1 + cluster_size) · (1 + distinct_reviewers)
             · recency_weight · resolution_weight · doc_boost · incident_boost
 
-The spec fixes the shape, doc_boost (1.5) and incident_boost (2.0). The
-other terms are not defined there; the choices below are deliberate, live
+The shape, doc_boost (1.5) and incident_boost (2.0) are fixed by design.
+The other terms are open; the choices below are deliberate, live
 in Params so they can be tuned against reviewer judgement, and are recorded
 with every score in score_detail.
 """
@@ -20,18 +20,18 @@ from datetime import datetime
 
 @dataclass(frozen=True)
 class Params:
-    # Accepted bot findings count for less than human comments (PRD FR-L1.2).
+    # Accepted bot findings count for less than human comments.
     bot_source_weight: float = 0.5
     # Recency: exponential decay on the median source age, never below the floor.
     half_life_days: float = 365.0
     recency_floor: float = 0.25
     # Resolution: 0.5 when no source thread was resolved, 1.0 when all were.
     resolution_base: float = 0.5
-    doc_boost: float = 1.5  # spec
-    incident_boost: float = 2.0  # spec
+    doc_boost: float = 1.5  # fixed by design
+    incident_boost: float = 2.0  # fixed by design
     # Clusters smaller than this do not become candidates.
     min_cluster_size: int = 2
-    # Owner when CODEOWNERS gives none or ties (spec: ties go to the platform team).
+    # Owner when CODEOWNERS gives none or ties (ties go to the platform team).
     default_owner: str = "@platform/exemplar"
 
 

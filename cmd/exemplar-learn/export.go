@@ -20,7 +20,7 @@ import (
 
 // runExport renders rule exports into each opted-in repo's coding-agent
 // instruction files and opens (or updates) one PR per repo when they
-// change (spec §10.2). It writes with the separate exports app, never the
+// change. It writes with the separate exports app, never the
 // review app; --dry-run renders and writes nothing.
 func runExport(args []string) error {
 	fs := flag.NewFlagSet("export", flag.ContinueOnError)
@@ -82,7 +82,7 @@ func runExport(args []string) error {
 	return err
 }
 
-// exportsAppFromEnv builds the exports app (spec §5 exemplar-exports) from
+// exportsAppFromEnv builds the exports app (exemplar-exports) from
 // EXEMPLAR_EXPORTS_*; EXEMPLAR_CONFIG_REPO is needed so its tokens can
 // refuse to reach exemplar-config.
 func exportsAppFromEnv() (*gh.App, error) {

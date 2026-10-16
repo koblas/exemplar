@@ -31,7 +31,7 @@ WHERE r.review_id = $1
 ORDER BY f.path, f.start_line, f.id;
 
 -- name: OpenProductionFindingsByFingerprint :many
--- Cross-push identity (spec §6.2): playground, baseline and eval runs never
+-- Cross-push identity: playground, baseline and eval runs never
 -- count as the same finding.
 SELECT f.* FROM findings f
 JOIN rule_runs r ON r.id = f.rule_run_id
@@ -52,7 +52,7 @@ SELECT coalesce(sum(cost_usd), 0)::float8 AS spend FROM model_calls WHERE review
 
 -- name: OpenFindings :many
 -- A PR's posted findings that are still open, from production reviews
--- (spec §6.2: a fingerprint is posted at most once per PR).
+-- (a fingerprint is posted at most once per PR).
 SELECT f.id, f.rule_id, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.anchor_code, f.anchor_ordinal,
        f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid
 FROM findings f
@@ -68,7 +68,7 @@ UPDATE findings SET state = $2, gh_thread_id = coalesce($3, gh_thread_id) WHERE 
 
 -- name: LastCompleteReview :many
 -- The PR's latest complete production review of another head: what an
--- incremental re-review diffs against (spec §6.2).
+-- incremental re-review diffs against.
 SELECT id, head_sha, base_sha FROM reviews
 WHERE repo = $1 AND pr_number = $2 AND head_sha <> $3 AND caller = 'production' AND status = 'done'
 ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1;
@@ -82,11 +82,11 @@ SELECT rr.rule_id, rr.rule_version, rr.lane, rr.status, rr.coverage, rr.scoped_f
 FROM rule_runs rr WHERE rr.review_id = $1;
 
 -- name: MoveFinding :exec
--- Re-anchored after a rebase (FR-C4): the same code now sits at these lines.
+-- Re-anchored after a rebase: the same code now sits at these lines.
 UPDATE findings SET start_line = $2, end_line = $3 WHERE id = $1 AND state = 'posted';
 
 -- name: PostedFindingsAtHead :many
--- Late-CI linter dedupe (spec §6.10): the findings production reviews of
+-- Late-CI linter dedupe: the findings production reviews of
 -- this head posted that are still open, with what the judge needs.
 SELECT f.id, f.rule_id, f.lane, f.severity, f.path, f.side, f.start_line, f.end_line, f.fingerprint,
        f.message, f.gh_comment_id, f.gh_thread_id
@@ -98,6 +98,6 @@ WHERE f.repo = $1 AND f.pr_number = $2 AND r.head_sha = $3 AND f.state = 'posted
 ORDER BY f.id;
 
 -- name: MinimizeFinding :execrows
--- A posted finding a late linter also reports (spec §6.10): its comment is
+-- A posted finding a late linter also reports: its comment is
 -- minimized, and it counts against neither precision nor feedback.
 UPDATE findings SET state = 'minimized', suppressed_reason = 'linter_duplicate' WHERE id = $1 AND state = 'posted';

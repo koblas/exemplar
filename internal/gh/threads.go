@@ -104,7 +104,7 @@ func (p *Poster) ThreadOf(ctx context.Context, pr PR, commentID int64) (string, 
 const resolveMutation = `mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id isResolved } } }`
 
 // CloseThread replies to an Exemplar comment and resolves its thread
-// (spec §6.2: "Addressed in <sha7>", a retired rule). threadID may be
+// ("Addressed in <sha7>", a retired rule). threadID may be
 // empty; it is then looked up. It returns the thread id. A thread already
 // resolved, by a person or earlier, gets no reply.
 func (p *Poster) CloseThread(ctx context.Context, pr PR, commentID int64, threadID, reply string) (string, error) {
@@ -136,8 +136,8 @@ func (p *Poster) CloseThread(ctx context.Context, pr PR, commentID int64, thread
 
 const minimizeMutation = `mutation($id: ID!) { minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { minimizedComment { isMinimized } } }`
 
-// MinimizeComment hides an Exemplar review comment as outdated (spec
-// §6.10: a linter that reported after posting also flags it). Minimizing
+// MinimizeComment hides an Exemplar review comment as outdated (a
+// linter that reported after posting also flags it). Minimizing
 // an already-minimized comment is a no-op, so a retry is safe.
 func (p *Poster) MinimizeComment(ctx context.Context, pr PR, commentID int64) error {
 	c, _, err := p.gh.PullRequests.GetComment(ctx, pr.Owner, pr.Repo, commentID)
@@ -185,7 +185,7 @@ type ReviewComment struct {
 const maxReviewCommentPages = 10
 
 // PRComments lists repo#number's inline review comments for human-comment
-// dedupe (spec §6.10). Outdated comments, which GitHub no longer places on
+// dedupe. Outdated comments, which GitHub no longer places on
 // the latest diff, are left out.
 func PRComments(ctx context.Context, c *github.Client, repo string, number int) ([]ReviewComment, error) {
 	owner, name, ok := strings.Cut(repo, "/")

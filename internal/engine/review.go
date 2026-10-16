@@ -27,7 +27,7 @@ type Engine struct {
 	compiled compiled.Runner
 	history  PathHistory
 	refs     References
-	// judged caches linter-dedupe verdicts per pair (spec §6.10).
+	// judged caches linter-dedupe verdicts per pair.
 	judged judgeCache
 }
 
@@ -51,39 +51,39 @@ type Options struct {
 	// gateway calls are attributed per rule run.
 	RuleRunIDs map[string]int64
 	// MergeSafety, when the caller measured it (internal/mergesafety), is
-	// logged in the Stage 1 trace and gates Stage 2.
+	// logged in the deterministic-gate trace and gates the approval checks.
 	MergeSafety *gates.MergeSafetyResult
 	// BranchRules looks up the base branch's merge requirements for
-	// Stage 2 (gh.BranchRules with a gate token). Nil means no lookup, and
-	// Stage 2 then fails closed.
+	// the approval checks (gh.BranchRules with a gate token). Nil means no
+	// lookup, and the approval checks then fail closed.
 	BranchRules func(ctx context.Context) (gates.BranchRules, error)
 	// Carry offers rule results to carry forward instead of re-running
-	// (spec §6.2 interdiff scoping), by rule id. The caller offers only
+	// (interdiff scoping), by rule id. The caller offers only
 	// exemplar rules whose scoped files are unchanged since a complete
 	// review on the same base. Review uses an offer only when the rule
 	// version matches, and ignores them all for an auto-approve candidate:
-	// Stage 1 needs every lane to have run.
+	// the deterministic gates need every lane to have run.
 	Carry map[string]CarriedRun
 	// CarryFrom is the head the offers come from, for the check run.
 	CarryFrom string
 	// PostedFingerprints are the fingerprints earlier production reviews
 	// of this PR posted and that are still open. A finding with one is the
 	// same finding: it is not posted again and does not count against the
-	// comment budget (spec §6.2, FR-C2).
+	// comment budget.
 	PostedFingerprints map[string]bool
 	// TeamMember reports whether login is in team ("@org/team"), for
 	// teams in auto_approve.allowed_authors (gh.TeamMember). Nil, or an
-	// error, leaves membership unknown, which fails Stage 1 for authors
+	// error, leaves membership unknown, which fails the gates for authors
 	// allowed only through a team.
 	TeamMember func(ctx context.Context, team, login string) (bool, error)
 	// Linters returns the annotations of the repo's configured linter
-	// check runs on the head, for linter dedupe (spec §6.10); the caller
+	// check runs on the head, for linter dedupe; the caller
 	// waits up to linter_wait_seconds for them to report. Review calls it
 	// at most once, and only when a finding could otherwise post or be
 	// stored as would-have-posted. Nil, or an error, dedupes nothing.
 	Linters func(ctx context.Context) ([]LinterAnnotation, error)
 	// HumanComments returns the PR's existing review comments, for
-	// human-comment dedupe (spec §6.10). Review calls it at most once, and
+	// human-comment dedupe. Review calls it at most once, and
 	// only when a finding could post. Nil, or an error, dedupes nothing.
 	HumanComments func(ctx context.Context) ([]HumanComment, error)
 }
@@ -93,7 +93,8 @@ type CarriedRun struct {
 	// FromRunID is the rule run that did the work.
 	FromRunID int64
 	Version   string
-	// Candidates are that run's candidate findings, which Stage 1 counts.
+	// Candidates are that run's candidate findings, which the
+	// deterministic gates count.
 	Candidates int
 }
 
@@ -103,14 +104,14 @@ type Result struct {
 	Findings []Finding
 	Coverage float64
 	Degraded bool
-	// Incomplete, when set, means nothing may be posted (spec §6.15).
+	// Incomplete, when set, means nothing may be posted.
 	Incomplete string
 	Stage1     gates.Stage1Result
 	// CarriedFrom is the head carried rules come from ("" for none).
 	CarriedFrom string
-	// BugLane is the bug lane's risk-gate decision (spec §6.7).
+	// BugLane is the bug lane's risk-gate decision.
 	BugLane *buglane.Gate
-	// Stage2 is nil unless Stage 1 passed (spec §6.13).
+	// Stage2 is nil unless the deterministic gates passed.
 	Stage2  *gates.Stage2Result
 	Verdict string // APPROVE or NO_OP
 	// Held back by the comment budget, for the check run.
@@ -144,8 +145,8 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 	meta := CallMeta{Caller: opt.Caller, Repo: p.PR.Repo, ReviewID: opt.ReviewID}
 	e.pinSearch(ctx, p)
 
-	// The auto-approve pre-check (spec §6.3): the parts of Stage 1 that do
-	// not depend on findings. A candidate forces the bug lane (FR-A7).
+	// The auto-approve pre-check: the deterministic gates that do not
+	// depend on findings. A candidate forces the bug lane.
 	policy := gates.CheckPolicy(p.policyInput(ctx, opt))
 	aa := p.Effective.RepoConfig.AutoApprove
 	candidate := p.Effective.Global.AutoApprove && aa != nil && aa.Enabled && !p.Effective.RepoConfig.Shadow &&
@@ -159,7 +160,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 
 	// Lane runs. One failed rule never fails the review; it is recorded
 	// with its status and counts against coverage. Bug classes share the
-	// concurrency slots, start after Lane 2, and are the first work shed
+	// concurrency slots, start after the rule agents, and are the first work shed
 	// once any call reports the run's budget past its soft ceiling.
 	runs := make([]agentRun, len(p.Scoped)+len(bugClasses))
 	var overBudget atomic.Bool
@@ -211,7 +212,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		return nil, err // superseded or shut down: the job retries or is cancelled
 	}
 
-	// Deferred rules are recorded and keep coverage below 100% (FR-D2).
+	// Deferred rules are recorded and keep coverage below 100%.
 	for _, d := range p.Deferred {
 		res.Runs = append(res.Runs, RunResult{RuleID: d.Rule.ID, RuleVersion: d.Rule.VersionSHA, Lane: d.Lane, ScopedFiles: d.Files, Status: RunDeferred})
 		res.Degraded = true
@@ -325,7 +326,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 	return res, nil
 }
 
-// runCompiled runs one Lane 1 rule. Matches are deterministic findings.
+// runCompiled runs one compiled rule. Matches are deterministic findings.
 func (e *Engine) runCompiled(ctx context.Context, p *Prepared, s ScopedRule) agentRun {
 	ar := agentRun{run: RunResult{RuleID: s.Rule.ID, RuleVersion: s.Rule.VersionSHA, Lane: LaneCompiled, ScopedFiles: s.Files}}
 	if s.Rule.Matcher == nil {
@@ -423,8 +424,7 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, post
 			continue
 		}
 		// Bug classes are not config rules. The bug lane is in shadow unless
-		// its class may post on critical paths and the finding is in one
-		// (the roadmap's Phase 4).
+		// its class may post on critical paths and the finding is in one.
 		if f.Lane == LaneBug && !p.bugPosts(f) || f.Lane != LaneBug && status[f.RuleID] != schema.StatusActive {
 			f.State = StateShadow
 			res.Findings = append(res.Findings, *f)
@@ -444,7 +444,7 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, post
 		}
 		f.State = StatePosted
 		if p.Effective.RepoConfig.Shadow {
-			// It would have posted; the repo is in shadow (spec §6.9).
+			// It would have posted; the repo is in shadow.
 			f.State, f.Suppressed = StateShadow, SuppressRepoShadow
 		}
 		res.Findings = append(res.Findings, *f)
@@ -461,7 +461,7 @@ func severityRank(s string) int {
 	return 2
 }
 
-// reviewCoverage is completed in-scope rules ÷ in-scope rules (FR-D4).
+// reviewCoverage is completed in-scope rules ÷ in-scope rules.
 // Verifier runs are not rules and do not count.
 func reviewCoverage(runs []RunResult) float64 {
 	total, done := 0, 0
@@ -480,7 +480,7 @@ func reviewCoverage(runs []RunResult) float64 {
 	return float64(done) / float64(total)
 }
 
-// Baseline runs the rule-less baseline reviewer in shadow (FR-X8). Its
+// Baseline runs the rule-less baseline reviewer in shadow. Its
 // findings are stored and never posted.
 func (e *Engine) Baseline(ctx context.Context, p *Prepared, opt Options) (*Result, error) {
 	res := &Result{Verdict: VerdictNoOp}

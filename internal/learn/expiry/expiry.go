@@ -1,12 +1,12 @@
-// Package expiry is rule expiry (spec §8.10): a daily job finds active
+// Package expiry is rule expiry: a daily job finds active
 // rules whose review_by date has passed. A rule whose last 90 days of
 // production feedback are under the eFP bar gets a PR extending review_by
 // by expiry.default_months, for its owner to merge. Any other gets a PR
 // setting status: shadow, which merges after expiry.auto_demote_after_days
 // unless a person responds (demotion is the safe direction).
 //
-// Deviation: the spec re-runs the rule's eval on cases from the last 90
-// days. This uses the last 90 days of production outcomes instead
+// Deviation: the original design re-runs the rule's eval on cases from the
+// last 90 days. This uses the last 90 days of production outcomes instead
 // (finding_outcomes), so a rule with no judged findings in that window
 // cannot be confirmed and goes to the shadow PR, which its owner can
 // close and replace with an extension.

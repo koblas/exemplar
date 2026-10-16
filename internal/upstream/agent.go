@@ -1,5 +1,5 @@
-// Package upstream measures whether rule exports work (spec §10.4, PRD
-// FR-S5): it recognises PRs written with a coding agent, and which
+// Package upstream measures whether rule exports work: it
+// recognises PRs written with a coding agent, and which
 // exported instruction files that agent reads, so violation rates can be
 // compared between PRs whose agent received a rule's export and PRs
 // that did not.

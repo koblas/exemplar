@@ -1,4 +1,4 @@
--- Evaluations (spec §10.1, PRD FR-S4, FR-S7): `exemplar review` sends a
+-- Evaluations: `exemplar review` sends a
 -- working-tree diff to exemplar-api, which records it here and enqueues
 -- an evaluate job; exemplar-worker runs the full review on the repo's
 -- base with the diff applied and stores the result for the requester.

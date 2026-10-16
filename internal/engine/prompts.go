@@ -80,7 +80,7 @@ func prContext(p *Prepared) string {
 }
 
 // ruleTask renders the per-agent rule block. It deliberately contains no
-// rule id or citation; code attaches those (FR-T1).
+// rule id or citation; code attaches those.
 func ruleTask(s ScopedRule) string {
 	var b strings.Builder
 	b.WriteString("<rule>\n")

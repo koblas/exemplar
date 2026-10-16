@@ -1,6 +1,6 @@
 name: release
 
-# The exemplar CLI (spec §10.1), built when a maintainer pushes a v* tag.
+# The exemplar CLI, built when a maintainer pushes a v* tag.
 # Each platform builds natively: the CLI embeds the tree-sitter grammars
 # (cgo), so it cannot be cross-compiled from one runner. Archives and
 # SHA256SUMS go to the tag's GitHub release.

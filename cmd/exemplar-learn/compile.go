@@ -23,7 +23,7 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
-// runCompile attempts deterministic compiles of candidates (spec §8.6).
+// runCompile attempts deterministic compiles of candidates.
 func runCompile(args []string) error {
 	fs := flag.NewFlagSet("compile", flag.ContinueOnError)
 	configDir := fs.String("config", "", "exemplar-config checkout: eval thresholds and eligibility (required)")

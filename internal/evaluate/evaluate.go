@@ -1,10 +1,10 @@
-// Package evaluate is the wire format of exemplar-api's /v1/evaluate
-// (spec §10.1, PRD FR-S4, FR-S7): `exemplar review` sends a working-tree
+// Package evaluate is the wire format of exemplar-api's /v1/evaluate:
+// `exemplar review` sends a working-tree
 // diff against a pushed base commit; exemplar-worker reviews the base
 // with the diff applied, every lane and the verifier, and the requester
 // polls for what would have been posted.
 //
-// Mode eval (spec §8.9) is config CI's: Repo is exemplar-config, BaseSHA
+// Mode eval is config CI's: Repo is exemplar-config, BaseSHA
 // the config PR's merge-base and HeadSHA its head, both pushed. The
 // worker evaluates the rules the PR changes (plus Rules) on their eval
 // cases at the head, as `exemplar eval` does, and returns the reports.
@@ -153,7 +153,7 @@ func (s Status) Final() bool {
 	return s.Status == StatusDone || s.Status == StatusRefused || s.Status == StatusFailed
 }
 
-// TryResult is a web UI playground run's answer (spec §12.8): a draft
+// TryResult is a web UI playground run's answer: a draft
 // rule alone on one PR.
 type TryResult struct {
 	// Ran is false when the rule could not run; Note says why.

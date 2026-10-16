@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Message Batches (spec §8.2): the learning plane's extraction runs as
+// Message Batches: the learning plane's extraction runs as
 // asynchronous batches at half price. The gateway serves the Anthropic
 // batch API so any SDK client pointed at it works unchanged:
 //

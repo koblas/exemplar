@@ -17,7 +17,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Feedback slash commands (spec §6.12): a reply "/exemplar <command>
+// Feedback slash commands: a reply "/exemplar <command>
 // [reason]" in an Exemplar review thread records a feedback event on its
 // finding. Commands are honored from the PR's author, a member of the
 // rule's owning team, or a human who reviewed or commented on the PR
@@ -185,7 +185,7 @@ func isRuleOwner(ctx context.Context, clients GitHub, inst int64, repo, owner, a
 	return gh.TeamMember(ctx, gate, owner, actor)
 }
 
-// rejections are the kinds whose free text teaches the bot (spec §8.7).
+// rejections are the kinds whose free text teaches the bot.
 var rejections = []string{"fb_wrong", "fb_not_important", "fb_handled", "fb_disagree"}
 
 // teach classifies a rejection's reason for teach-the-bot and stores the

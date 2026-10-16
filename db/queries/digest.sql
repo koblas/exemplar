@@ -1,4 +1,4 @@
--- Owner digests (FR-B5, PRD §17.8): the same views the dashboards and
+-- Owner digests: the same views the dashboards and
 -- auto-demotion read.
 
 -- name: DigestRuleStats :many
@@ -22,7 +22,7 @@ GROUP BY f.rule_id, e.kind, f.path;
 
 -- name: DigestAdjudicationQueue :many
 -- Findings an author marked wrong or disagreed with (their latest signal)
--- and no owner has adjudicated (spec §9.4).
+-- and no owner has adjudicated.
 SELECT f.id, f.rule_id, f.repo, f.pr_number, coalesce(f.gh_comment_id, 0)::bigint AS gh_comment_id, e.kind, e.observed_at
 FROM effective_events e JOIN findings f ON f.id = e.finding_id
 WHERE e.role = 'author' AND e.kind IN ('fb_wrong', 'fb_disagree')
@@ -31,7 +31,7 @@ ORDER BY e.observed_at;
 
 -- name: DigestAutoApproved :many
 -- PRs auto-approved in the window whose touched paths a team owns in
--- CODEOWNERS (FR-A5), from the Stage 2 trace.
+-- CODEOWNERS, from the approval_decisions.stage2 trace.
 SELECT r.repo, r.pr_number, left(r.head_sha, 12)::text AS head,
        (SELECT string_agg(DISTINCT p.key, ', ') FROM jsonb_each(d.stage2->'codeowners'->'owners') p, jsonb_array_elements_text(p.value) o
         WHERE lower(o) = lower(@owner::text))::text AS paths

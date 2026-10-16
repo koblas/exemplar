@@ -1,11 +1,12 @@
-// Package gates computes the auto-approve gates (spec §6.13). Stage 1 is
-// strictly deterministic: its input contains only facts measured by code,
-// never anything derived from model text.
+// Package gates computes the auto-approve gates. The first set,
+// EvaluateStage1, is strictly deterministic: its input contains only facts
+// measured by code, never anything derived from model text.
 //
-// Stage 1 is ineligible on any candidate finding, coverage below 100%,
+// A run is ineligible on any candidate finding, coverage below 100%,
 // degradation, an incomplete stage, same-family verification, a kill
 // switch, or a failed policy check (paths, author, fork, size; see
-// CheckPolicy). Stage 2 runs only when Stage 1 is eligible.
+// CheckPolicy). The later approval checks (EvaluateStage2) run only when
+// it is eligible.
 package gates
 
 // Stage1Input holds only code-measured facts. Do not add fields derived
@@ -25,12 +26,12 @@ type Stage1Input struct {
 	// generator's model family.
 	SameFamilyVerification bool
 	// BugLaneCovered is true when the bug lane (forced on auto-approve
-	// candidates, spec §6.3) ran to 100% coverage. The bug lane is Phase 4;
-	// until it exists this is false and no run is eligible.
+	// candidates) ran to 100% coverage. A run without it is never
+	// eligible.
 	BugLaneCovered    bool
 	GlobalAutoApprove bool
 	RepoAutoApprove   bool
-	// RepoShadow is set for a repo reviewed in shadow (spec §6.9): it may
+	// RepoShadow is set for a repo reviewed in shadow: it may
 	// never be approved.
 	RepoShadow bool
 	// The policy checks, from CheckPolicy: every path is in
@@ -70,8 +71,8 @@ type Stage1Result struct {
 	Eligible bool        `json:"eligible"`
 	Reasons  []string    `json:"reasons"`
 	Input    Stage1Input `json:"input"`
-	// MergeSafety is the deterministic score and its terms (spec §6.13),
-	// logged in this trace as the spec asks. It gates in Stage 2
+	// MergeSafety is the deterministic score and its terms,
+	// logged in this trace. It gates in the later approval checks
 	// (EvaluateStage2). It is kept out of
 	// Stage1Input, whose fields stay plain numbers and flags. Nil when the
 	// caller did not measure it.
@@ -82,7 +83,7 @@ type Stage1Result struct {
 	Policy *PolicyResult `json:"policy,omitempty"`
 }
 
-// EvaluateStage1 applies Stage 1. Every check must hold.
+// EvaluateStage1 applies the deterministic gates. Every check must hold.
 func EvaluateStage1(in Stage1Input) Stage1Result {
 	var reasons []string
 	if !in.Complete {

@@ -183,7 +183,7 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 	o.URL = pr.URL
 	// Only the generated blocks (or files Exemplar creates whole) change,
 	// so the PR may auto-merge where the repo allows it; branch protection
-	// still applies (spec §10.2).
+	// still applies.
 	auto := rc.Exports.AutoMergeGenerated
 	if auto {
 		if err := w.EnableAutoMerge(ctx, node); err != nil {

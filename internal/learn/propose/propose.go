@@ -28,7 +28,7 @@ type Repo interface {
 // Config configures a Writer.
 type Config struct {
 	// MaxOpenPerOwner is the throttle on open candidate PRs per owner team
-	// (spec §8.7: 3); the rest wait in candidates.
+	// (default 3); the rest wait in candidates.
 	MaxOpenPerOwner int
 	// MaxPerRun caps PRs opened in one run.
 	MaxPerRun int

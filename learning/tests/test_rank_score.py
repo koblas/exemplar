@@ -1,4 +1,4 @@
-"""Score and owner (spec §8.5), checked against hand-computed values."""
+"""Score and owner, checked against hand-computed values."""
 
 from __future__ import annotations
 

@@ -19,7 +19,7 @@ import (
 const gitTimeout = 2 * time.Minute
 
 // Workspace is a worker checkout of one PR: a partial clone with the head
-// commit checked out (spec §6.4.2). The model's tools are confined to Dir.
+// commit checked out. The model's tools are confined to Dir.
 type Workspace struct {
 	Dir     string
 	BaseSHA string
@@ -132,7 +132,7 @@ func isHexSHA(s string) bool {
 }
 
 // ChangedSince lists the paths whose content differs between rev (an
-// earlier head of the PR) and the head: the interdiff's files (spec §6.2).
+// earlier head of the PR) and the head: the interdiff's files.
 // rev is fetched (trees only) if the checkout lacks it; after a force-push
 // it may be gone, which is an error and means a full review.
 func (ws *Workspace) ChangedSince(ctx context.Context, rev string) ([]string, error) {
@@ -161,11 +161,10 @@ func (ws *Workspace) ChangedSince(ctx context.Context, rev string) ([]string, er
 // MaxPatch bounds a patch ApplyPatch accepts.
 const MaxPatch = 1 << 20
 
-// ApplyPatch commits patch (a git diff against the checked-out base) on
-// top of the head, and makes that commit the workspace's head: how a
-// working-tree diff from `exemplar review` becomes a reviewable change
-// (spec §10.1). git apply refuses paths outside the tree and through
-// symlinks; the commit runs no hooks.
+// ApplyPatch commits patch (a git diff against the checked-out base) on top of
+// the head, and makes that commit the workspace's head: how a working-tree
+// diff from `exemplar review` becomes a reviewable change. git apply refuses
+// paths outside the tree and through symlinks; the commit runs no hooks.
 func (ws *Workspace) ApplyPatch(ctx context.Context, patch []byte) error {
 	if len(patch) == 0 || len(patch) > MaxPatch {
 		return fmt.Errorf("engine: patch must be 1 to %d bytes", MaxPatch)

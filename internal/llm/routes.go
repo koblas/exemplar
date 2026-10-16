@@ -6,8 +6,9 @@ import (
 	"github.com/koblas/exemplar/internal/schema"
 )
 
-// Gateway stages (spec §2.2). The categorizer has two independent sides
-// with no failover between them: Stage 2 needs two different providers.
+// Gateway stages. The categorizer has two independent sides with no
+// failover between them: the auto-approve risk categorizer needs two
+// different providers.
 const (
 	StageGenerator    = "generator"
 	StageVerifier     = "verifier"

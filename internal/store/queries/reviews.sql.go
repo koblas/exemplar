@@ -247,7 +247,7 @@ type LatestReviewAttemptRow struct {
 }
 
 // A head's latest production review attempt and its status, so a Re-run
-// enqueues the next attempt of an incomplete review (spec §6.15). No row:
+// enqueues the next attempt of an incomplete review. No row:
 // the head was never reviewed.
 func (q *Queries) LatestReviewAttempt(ctx context.Context, arg LatestReviewAttemptParams) ([]LatestReviewAttemptRow, error) {
 	rows, err := q.db.Query(ctx, latestReviewAttempt, arg.Repo, arg.PrNumber, arg.HeadSha)
@@ -282,7 +282,7 @@ const markReviewSuperseded = `-- name: MarkReviewSuperseded :exec
 UPDATE reviews SET status = 'superseded', finished_at = coalesce(finished_at, now()) WHERE id = $1
 `
 
-// A newer push replaced this review's head (spec §6.2).
+// A newer push replaced this review's head.
 func (q *Queries) MarkReviewSuperseded(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, markReviewSuperseded, id)
 	return err

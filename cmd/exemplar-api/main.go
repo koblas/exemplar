@@ -1,10 +1,10 @@
-// Command exemplar-api is Exemplar's public HTTP surface (spec §2.2). It
-// serves the signed feedback links of review comments (spec §6.12), and
-// /v1/evaluate for `exemplar review` (spec §10.1):
+// Command exemplar-api is Exemplar's public HTTP surface. It serves the
+// signed feedback links of review comments, and /v1/evaluate for
+// `exemplar review`:
 //
 //	exemplar-api [--addr :8080] [--evaluate-daily-usd 5] [--evaluate-daily-runs 50] [--evaluate-per-minute 6]
 //
-// /ui/ is the web UI (spec §12.8): rules, findings, candidates, the
+// /ui/ is the web UI: rules, findings, candidates, the
 // auto-approve audit, cost and the playground, after sign-in, with
 // repo-specific rows only for repos the viewer can read.
 //
@@ -181,7 +181,7 @@ func run(args []string) error {
 		return err
 	}
 
-	// Service callers (spec §13 IN-5): Auth0 access tokens for this API.
+	// Service callers: Auth0 access tokens for this API.
 	var sources svcauth.Multi
 	switch domain, aud := os.Getenv("EXEMPLAR_AUTH0_DOMAIN"), os.Getenv("EXEMPLAR_AUTH0_AUDIENCE"); {
 	case domain != "" && aud != "":

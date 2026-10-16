@@ -1,4 +1,4 @@
--- Eval cases name the files a rule runs on (spec §8.8, §8.9). Negatives
+-- Eval cases name the files a rule runs on. Negatives
 -- need them: their expect list is empty. Positives default to the
 -- expected paths.
 

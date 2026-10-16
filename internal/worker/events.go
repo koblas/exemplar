@@ -30,15 +30,15 @@ type Route struct {
 	// head's next attempt.
 	ReRun bool
 	// Supersede, when set, cancels the PR's queued and running reviews of
-	// other heads (spec §6.2).
+	// other heads.
 	Supersede *Supersede
-	// LinterChecks are late-CI linter checks to enqueue (spec §6.10).
+	// LinterChecks are late-CI linter checks to enqueue.
 	LinterChecks []store.LinterCheckArgs
-	// FeedbackCommands are `/exemplar` replies to handle (spec §6.12).
+	// FeedbackCommands are `/exemplar` replies to handle.
 	FeedbackCommands []store.FeedbackCommandArgs
 	// AlertDismissals are dismissed Exemplar code-scanning alerts.
 	AlertDismissals []store.AlertDismissalArgs
-	// Signals are other feedback signals (spec §9.1).
+	// Signals are other feedback signals.
 	Signals []store.FeedbackSignalArgs
 	// MergePolicy re-decides exemplar/merge-policy after a review changed.
 	MergePolicy []store.MergePolicyArgs
@@ -246,7 +246,7 @@ func ParseCommand(body string) (command, reason string, ok bool) {
 	return command, reason, true
 }
 
-// RouteEvent decides what a stored event asks for (spec §6.2). It reads
+// RouteEvent decides what a stored event asks for. It reads
 // only the payload: GitHub is not called.
 //   - pull_request opened, reopened, synchronize, ready_for_review, and an
 //     edit that changed the base: review the head, and supersede reviews of
@@ -256,13 +256,13 @@ func ParseCommand(body string) (command, reason string, ok bool) {
 //   - check_run rerequested, or its Re-run action, on Exemplar's check:
 //     re-run the head's review as the next attempt.
 //   - check_run completed on any other check of a PR: a late-CI linter
-//     check (spec §6.10). The job reads config to decide whether the
+//     check. The job reads config to decide whether the
 //     check is one of the repo's linters.
 //   - pull_request_review_comment created, a reply starting with
-//     "/exemplar": a feedback command (spec §6.12). The job decides whether
+//     "/exemplar": a feedback command. The job decides whether
 //     the thread is Exemplar's and the commenter may give feedback.
 //   - code_scanning_alert closed_by_user on one of Exemplar's alerts on a
-//     PR ref: a dismissal to record as feedback (spec §6.12).
+//     PR ref: a dismissal to record as feedback.
 //   - pull_request_review submitted, edited or dismissed by a person on an
 //     open PR: re-decide exemplar/merge-policy. The job ignores repos not
 //     in merge_policy_check mode.
@@ -285,7 +285,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 			}
 			r := Route{Supersede: &Supersede{Repo: e.Repository.FullName, PR: e.Number}}
 			if e.PullRequest.Merged {
-				// Findings still untouched at merge were ignored (spec §9.1).
+				// Findings still untouched at merge were ignored.
 				r.Signals = []store.FeedbackSignalArgs{{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.Number,
 					Signal: store.SignalMerged, Actor: e.PullRequest.User.Login, HeadSHA: e.PullRequest.Head.SHA, At: e.PullRequest.MergedAt}}
 			}
@@ -319,7 +319,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 			return Route{Ignored: "review comment from a " + c.User.Type}, nil
 		case !ok:
 			// Not a command: a reply in a thread, or a new comment that may
-			// raise a finding's concern (spec §9.1).
+			// raise a finding's concern.
 			sig := store.FeedbackSignalArgs{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.PullRequest.Number,
 				Signal: store.SignalReply, CommentID: c.ID, ThreadRoot: c.InReplyTo, Actor: c.User.Login, Association: c.Association,
 				At: c.CreatedAt, Body: truncate(c.Body, maxSignalBody)}

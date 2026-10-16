@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// compiledRuleYAML is the compiled-rule example from spec Appendix A.
+// compiledRuleYAML is the reference compiled-rule example.
 const compiledRuleYAML = `
 id: no-raw-sql-concat
 kind: compiled

@@ -9,7 +9,7 @@ import (
 // ContextFetch mints a context-flavor token for repo (contents and issues
 // read; never the config repo) and reads the repo's visibility with it.
 // exemplar-search uses the token to fetch its mirror and the visibility
-// to keep context within one visibility tier (spec §6.4.4).
+// to keep context within one visibility tier.
 func (a *App) ContextFetch(ctx context.Context, installationID int64, repo string) (token, visibility string, err error) {
 	tok, err := a.Token(ctx, installationID, FlavorContext, []string{repo})
 	if err != nil {

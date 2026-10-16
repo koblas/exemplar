@@ -77,7 +77,7 @@ type RecentPathEventsRow struct {
 }
 
 // Which of paths had an incident or a revert since the given time, and
-// the latest of each (spec §6.13; the bug lane's 90-day trigger, §6.7).
+// the latest of each (merge_safety_score; the bug lane's 90-day trigger).
 func (q *Queries) RecentPathEvents(ctx context.Context, arg RecentPathEventsParams) ([]RecentPathEventsRow, error) {
 	rows, err := q.db.Query(ctx, recentPathEvents, arg.Repo, arg.Paths, arg.Since)
 	if err != nil {

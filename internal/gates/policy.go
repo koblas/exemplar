@@ -8,7 +8,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// Stage 1 policy (spec §6.13): the path, author, fork and size checks.
+// Deterministic auto-approve policy: the path, author, fork and size checks.
 // Every input is a fact from GitHub, git or config, never model output.
 // CheckPolicy turns them into the flags Stage1Input carries and a trace
 // of which path or identity failed.
@@ -50,7 +50,8 @@ type BotIdentity struct {
 	Paths    []string `json:"paths"`
 }
 
-// AutoApprovePolicy is a repo's auto_approve settings that Stage 1 uses.
+// AutoApprovePolicy is a repo's auto_approve settings that the
+// deterministic gates use.
 type AutoApprovePolicy struct {
 	Paths           []string      `json:"paths"`
 	ExtraDenylist   []string      `json:"extra_denylist,omitempty"`
@@ -114,7 +115,7 @@ type PolicyResult struct {
 	Notes   []string `json:"notes,omitempty"`
 }
 
-// CheckPolicy evaluates Stage 1's policy checks.
+// CheckPolicy evaluates the deterministic gates' policy checks.
 func CheckPolicy(in PolicyInput) PolicyResult {
 	res := PolicyResult{Reasons: []string{}, Files: in.Files, ChangedLines: in.ChangedLines}
 	reason := func(r string) {
@@ -185,10 +186,10 @@ func CheckPolicy(in PolicyInput) PolicyResult {
 	return res
 }
 
-// checkAuthor applies FR-A6: a human must be on allowed_authors; every bot
-// or agent identity (the account itself, or a Co-authored-by agent) must be
-// allowlisted under bot_authors, and every path must be inside each one's
-// narrower paths. A human PR with an agent co-author needs both.
+// checkAuthor applies the author policy: a human must be on allowed_authors;
+// every bot or agent identity (the account itself, or a Co-authored-by agent)
+// must be allowlisted under bot_authors, and every path must be inside each
+// one's narrower paths. A human PR with an agent co-author needs both.
 func checkAuthor(in PolicyInput, paths []string, res *PolicyResult, reason func(string)) bool {
 	ok := true
 	isBot := strings.EqualFold(in.AuthorType, "Bot") || strings.HasSuffix(strings.ToLower(in.Author), "[bot]")

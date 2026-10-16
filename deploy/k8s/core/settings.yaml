@@ -2,7 +2,7 @@
 # name only and supplied outside this repository (see deploy/README.md):
 #   exemplar-database        url
 #   exemplar-github-app      private-key, webhook-secret
-#   exemplar-exports-app     private-key (the separate exports app, spec §5)
+#   exemplar-exports-app     private-key (the separate exports app)
 #   exemplar-gateway         token
 #   exemplar-providers       anthropic-api-key
 #   exemplar-search          token
@@ -24,7 +24,7 @@ data:
   EXEMPLAR_CONFIG_GIT_URL: "git@github.com:example-org/exemplar-config.git"
   EXEMPLAR_GH_APP_ID: "0"
   EXEMPLAR_GH_INSTALLATION_ID: "0"
-  # The exports app (rule exports, spec §10.2); 0 until it is registered.
+  # The exports app for rule exports; 0 until it is registered.
   EXEMPLAR_EXPORTS_APP_ID: "0"
   # exemplar-api's public URL, and the review app's OAuth client id.
   EXEMPLAR_API_URL: "https://exemplar.example.invalid"

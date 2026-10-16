@@ -1,4 +1,4 @@
-"""Graph clustering within one partition (spec §8.4 steps 1-2).
+"""Graph clustering within one partition: kNN graph, then Leiden communities.
 
 Vectors are L2-normalized, so inner product is cosine similarity. The kNN
 search is exact (faiss IndexFlatIP), and Leiden runs with a fixed seed, so
@@ -14,7 +14,7 @@ import igraph as ig
 import leidenalg
 import numpy as np
 
-# Spec §8.4 defaults.
+# Clustering defaults.
 K_NEIGHBOURS = 20
 EDGE_THRESHOLD = 0.65
 MAX_COMMUNITY = 200

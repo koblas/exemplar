@@ -1,4 +1,4 @@
--- Ingest (spec §8.1): resumable per-repo GraphQL paging over PRs.
+-- Ingest: resumable per-repo GraphQL paging over PRs.
 
 -- +goose Up
 CREATE TABLE ingest_cursors (

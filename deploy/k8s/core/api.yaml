@@ -1,4 +1,4 @@
-# exemplar-api: serves the signed feedback links (spec §6.12) behind org SSO
+# exemplar-api: serves the signed feedback links behind org SSO
 # at the ingress; stateless. It holds no installation credentials.
 apiVersion: apps/v1
 kind: Deployment
@@ -98,7 +98,7 @@ spec:
         - name: tmp
           emptyDir: {sizeLimit: 64Mi}
 ---
-# People reach the Service (spec §13 IN-2) through the inbound component the
+# People reach the Service through the inbound component the
 # build picks, with org SSO in front of the whole host; see deploy/README.md.
 apiVersion: v1
 kind: Service

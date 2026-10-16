@@ -17,7 +17,7 @@ import (
 	"github.com/koblas/exemplar/internal/search/mirror"
 )
 
-// MaxDefinitions is find_definition's cap (spec §6.4.4).
+// MaxDefinitions is find_definition's cap.
 const MaxDefinitions = 10
 
 // maxCandidates bounds the lines inspected in regex mode.
@@ -46,7 +46,7 @@ type DefResult struct {
 	Commit      string       `json:"commit"`
 	// Symbols is true when answered from ctags symbols in the index;
 	// otherwise per-language definition regexes were used and Degraded is
-	// set (spec §6.4.4).
+	// set.
 	Symbols  bool `json:"symbols"`
 	Degraded bool `json:"degraded"`
 }
@@ -233,8 +233,8 @@ func langQuery(lang string) query.Q {
 
 func fileLang(p string) string { return enry.GetLanguage(path.Base(p), nil) }
 
-// defPatterns are per-language definition regexes (degraded mode, spec
-// §6.4.4); %s is the quoted name. They aim for recall on common forms,
+// defPatterns are per-language definition regexes (degraded
+// mode); %s is the quoted name. They aim for recall on common forms,
 // not a parse: ranking and the 10-result cap do the rest.
 var defPatterns = map[string][]string{
 	"Go": {

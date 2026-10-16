@@ -169,7 +169,7 @@ type ProposableCandidatesRow struct {
 	Owner             string
 }
 
-// Highest-scoring candidates not yet proposed (spec §8.7).
+// Highest-scoring candidates not yet proposed.
 func (q *Queries) ProposableCandidates(ctx context.Context, limit int32) ([]ProposableCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, proposableCandidates, limit)
 	if err != nil {

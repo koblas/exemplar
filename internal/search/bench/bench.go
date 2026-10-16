@@ -1,7 +1,7 @@
-// Package bench is the Phase 0 monorepo benchmark (acceptance test T-0.4,
-// spec §6.4.1): shallow sparse clone time, zoekt full and incremental index
-// time and size, query latency, and ctags symbol coverage per language. Its
-// numbers size exemplar-search and confirm the v1 language list.
+// Package bench is the monorepo benchmark: shallow sparse clone time, zoekt
+// full and incremental index time and size, query latency, and ctags symbol
+// coverage per language. Its numbers size exemplar-search and confirm the v1
+// language list.
 //
 // It drives the standard binaries (git, zoekt-git-index, zoekt-webserver,
 // universal-ctags) so it measures what exemplar-search will run. Query
@@ -46,7 +46,7 @@ type Config struct {
 	// incremental-index measurement from (default 1, 10, 100).
 	IncrementalDepths []int
 	// Queries are run against the index; defaults cover literal, regex,
-	// symbol and import-pattern searches (spec §6.4.3).
+	// symbol and import-pattern searches.
 	Queries []string
 	// QueryRepeats is how many times each query runs (default 20).
 	QueryRepeats int
@@ -56,7 +56,7 @@ type Config struct {
 	Token string
 }
 
-// Report is the T-0.4 result.
+// Report is a benchmark run's result.
 type Report struct {
 	Repo      string    `json:"repo"`
 	Branch    string    `json:"branch"`
@@ -151,7 +151,7 @@ var DefaultQueries = []string{
 	`file:_test\.go$ t\.Run`,         // path filter
 }
 
-// languages maps extensions to the v1 language list (spec §6.4.5).
+// languages maps extensions to the v1 language list.
 var languages = map[string]string{
 	".go": "Go",
 	".c":  "C/C++", ".h": "C/C++", ".cc": "C/C++", ".cpp": "C/C++", ".cxx": "C/C++", ".hpp": "C/C++", ".hh": "C/C++",
@@ -196,7 +196,7 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	}
 	env := gitEnv(cfg.Token)
 
-	// 1. Worker checkout, cold then warm (spec §6.4.2 command sequence).
+	// 1. Worker checkout, cold then warm, with the worker's command sequence.
 	cold, steps, err := sparseClone(ctx, env, cfg, filepath.Join(cfg.WorkDir, "wt-cold"))
 	if err != nil {
 		return nil, fmt.Errorf("sparse clone: %w", err)

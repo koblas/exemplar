@@ -1,4 +1,4 @@
-// Package evalrun evaluates rules against their eval cases (spec §8.9):
+// Package evalrun evaluates rules against their eval cases:
 // compiled rules by running the engine, exemplar rules by the full lane
 // and verifier. It scores each case (a positive or synthetic case is hit
 // when a kept finding overlaps an expected range; a negative with any kept

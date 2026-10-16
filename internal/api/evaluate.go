@@ -18,14 +18,14 @@ import (
 	"github.com/koblas/exemplar/internal/svcauth"
 )
 
-// /v1/evaluate (spec §10.1, PRD FR-S4, FR-S7) is `exemplar review`'s API:
+// /v1/evaluate is `exemplar review`'s API:
 //
 //	POST /v1/evaluate       a working-tree diff against a pushed base; 202 with its id
 //	GET  /v1/evaluate/{id}  its status and, when done, what would have been posted
 //
 // Callers send either a GitHub user token (the CLI signs in with the
 // review app's device flow; org SSO sits in front at the ingress) or,
-// for services, a JWT from a configured source (spec §13 IN-5): an Auth0
+// for services, a JWT from a configured source: an Auth0
 // access token for this API ("svc:<sub>"), or a GitHub Actions OIDC token
 // ("gha:<owner>/<repo>"). A user must be able to read the repo; a service
 // needs an `evaluate:<owner>/<repo>` (or `<owner>/*`, `*`) permission
@@ -198,7 +198,7 @@ func (e *Evaluations) caller(w http.ResponseWriter, r *http.Request, kind string
 	return id, true
 }
 
-// canEvaluate applies FR-S7: users must read the repo, services need the
+// canEvaluate decides repo access: users must read the repo, services need the
 // permission.
 func (e *Evaluations) canEvaluate(ctx context.Context, id identity, repo string) (bool, error) {
 	if id.service != nil {
@@ -228,7 +228,7 @@ func (e *Evaluations) create(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Results are only for repos the caller can read (FR-S7).
+	// Results are only for repos the caller can read.
 	if ok, err := e.canEvaluate(r.Context(), id, req.Repo); err != nil {
 		e.cfg.Log.Warn("evaluate: repo access not checked", "repo", req.Repo, "err", err)
 		jsonError(w, http.StatusBadGateway, "could not check your access to the repo")

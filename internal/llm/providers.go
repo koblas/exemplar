@@ -15,12 +15,12 @@ import (
 // Spec describes one provider implementation. Providers are pluggable in
 // code: adding one means writing a Spec and registering it below. Config
 // can only choose among registered providers, so this registry is still
-// the hardcoded allowlist required by spec §13.1 (FR-H4); register a
-// provider only once its data-processing terms are approved.
+// the hardcoded provider allowlist; register a provider only once its
+// data-processing terms are approved.
 type Spec struct {
 	// Family returns the model family serving model on this provider. Two
 	// routes with the same family are not independent for verification or
-	// Stage 2 (same_family, spec §6.8, §6.13).
+	// the auto-approve risk categorizer (same_family).
 	Family func(model string) string
 	// ValidateModel rejects model ids this provider cannot serve.
 	ValidateModel func(model string) error
@@ -116,7 +116,7 @@ type Response struct {
 }
 
 // ProviderError is a failed call. Retryable errors move the call to the
-// next provider in the stage's list (spec §6.15 FR-D3).
+// next provider in the stage's list.
 type ProviderError struct {
 	Status    int
 	Retryable bool

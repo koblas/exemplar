@@ -1,10 +1,10 @@
-// Package precheck runs the config-PR checks that sit beside eval (spec
-// §8.7, §8.9): the pre-launch volume estimate (§6.10) and linter overlap.
+// Package precheck runs the config-PR checks that sit beside eval:
+// the pre-launch volume estimate and linter overlap.
 //
 // Volume estimate: on a config PR that adds or activates a rule, run it
 // alone over a sample of PRs merged in the last 30 days in the repos it
 // applies to, and report the share of PRs it would comment on and the
-// comments per PR after the comment budget. The spec draws PRs from the
+// comments per PR after the comment budget. PRs should come from the
 // replay harness's stored tuples; until production reviews are stored,
 // PRs come from GitHub, sampled to bound model cost.
 //
@@ -12,7 +12,7 @@
 // repo's configured linters (repos/<org>/<repo>.yaml linters) reported on
 // that commit are compared with the expected lines; any overlap fails the
 // check, naming the linter and its rule. This reads what the repo's CI
-// already reported (the same source linter dedupe uses, §6.10) rather
+// already reported (the same source linter dedupe uses) rather
 // than re-running linters outside the repo's build. Synthetic cases have
 // no CI runs and are skipped.
 package precheck
@@ -196,7 +196,7 @@ func Volume(ctx context.Context, src PRSource, trial PRRunner, snap *config.Snap
 				if f.RuleID != rule.ID || f.State == engine.StateDropped {
 					continue
 				}
-				// The comment budget (§6.10) caps what is posted, except for
+				// The comment budget caps what is posted, except for
 				// Security and blocking findings.
 				if !exempt && (perFile[f.Anchor.Path] >= budget.PerFile || n >= budget.PerPR) {
 					continue

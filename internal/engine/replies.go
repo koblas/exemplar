@@ -10,7 +10,7 @@ import (
 	"github.com/koblas/exemplar/internal/llm"
 )
 
-// Reply classification (spec §9.1 "Reply sentiment"): a human reply in an
+// Reply classification (the reply-sentiment signal): a human reply in an
 // Exemplar thread that is not a command is classified agree, disagree or
 // question by the light model.
 
@@ -85,7 +85,7 @@ func (e *Engine) ClassifyReply(ctx context.Context, meta CallMeta, f Finding, re
 }
 
 // HumanSameConcern asks the human-comment judge whether c raises f's
-// concern (spec §9.1 "Human independently raised"); verdicts share the
+// concern (the human-independently-raised signal); verdicts share the
 // dedupe judge's cache.
 func (e *Engine) HumanSameConcern(ctx context.Context, meta CallMeta, f Finding, c HumanComment) bool {
 	return e.judgeSame(ctx, meta, humanJudgeKey(&f, c), AgentSpec{
@@ -110,7 +110,7 @@ Answer with JSON only: {"same": true | false}.`
 const maxChangeChars = 4000
 
 // ChangeAddresses asks the light model whether the code after a change
-// addresses f (spec §9.1 "Fixed without suggestion"). before is the code
+// addresses f (the fixed-without-suggestion signal). before is the code
 // the finding was anchored to, after the code there now.
 func (e *Engine) ChangeAddresses(ctx context.Context, meta CallMeta, f Finding, before, after string) bool {
 	clip := func(s string) string {
@@ -129,7 +129,7 @@ func (e *Engine) ChangeAddresses(ctx context.Context, meta CallMeta, f Finding, 
 	})
 }
 
-// Teach-the-bot classes (spec §8.7, PRD FR-L6.5).
+// Teach-the-bot classes.
 const (
 	TeachScope     = "scope"      // the rule ran on paths it should not cover
 	TeachException = "exception"  // a legitimate pattern the rule should allow
@@ -161,8 +161,8 @@ var teachSchema = map[string]any{
 	},
 }
 
-// ClassifyTeach classifies a rejection's free text (spec §8.7 teach-the-
-// bot). It returns "" when the model could not answer.
+// ClassifyTeach classifies a rejection's free text
+// (teach-the-bot). It returns "" when the model could not answer.
 func (e *Engine) ClassifyTeach(ctx context.Context, meta CallMeta, f Finding, reason string) string {
 	if utf8.RuneCountInString(reason) > maxReplyChars {
 		reason = string([]rune(reason)[:maxReplyChars]) + " …"

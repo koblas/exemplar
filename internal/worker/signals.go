@@ -19,7 +19,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Webhook-observed feedback signals (spec §9.1):
+// Webhook-observed feedback signals:
 //   - resolved: someone resolved an Exemplar thread (ambiguous alone: it is
 //     kept, but enters neither acceptance nor eFP);
 //   - reply: a reply in an Exemplar thread that is not a command, classified
@@ -96,14 +96,14 @@ func (w *FeedbackSignalWorker) Handle(ctx context.Context, a store.FeedbackSigna
 
 // merged records ignored for each finding still posted with no signal.
 func (w *FeedbackSignalWorker) merged(ctx context.Context, a store.FeedbackSignalArgs, snap *config.Snapshot) (SignalOutcome, error) {
-	// The merge itself, for counter-metrics (spec §12.5).
+	// The merge itself, for counter-metrics.
 	if a.HeadSHA != "" && !a.At.IsZero() {
 		if err := w.cfg.Store.UpsertPRMerge(ctx, queries.UpsertPRMergeParams{Repo: a.Repo, PrNumber: int32(a.PR), HeadSha: a.HeadSHA,
 			MergedAt: pgtype.Timestamptz{Time: a.At, Valid: true}}); err != nil {
 			return SignalOutcome{}, err
 		}
 	}
-	// Reactions are polled once more at close (spec §9.1), so a finding
+	// Reactions are polled once more at close, so a finding
 	// someone reacted to is not counted as ignored.
 	if _, err := pollReactions(ctx, w.cfg, snap, a.InstallationID, a.Repo, a.PR); err != nil {
 		return SignalOutcome{}, err
@@ -228,7 +228,7 @@ func (w *FeedbackSignalWorker) comment(ctx context.Context, a store.FeedbackSign
 	return out, err
 }
 
-// role is the actor's role on the PR (spec §9.1): the author, the rule's
+// role is the actor's role on the PR: the author, the rule's
 // owner, a reviewer (with participate, only one who reviewed or commented
 // before), or else an observer.
 func (w *FeedbackSignalWorker) role(ctx context.Context, a store.FeedbackSignalArgs, snap *config.Snapshot, ruleID string, participate bool) (string, error) {

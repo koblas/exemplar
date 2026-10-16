@@ -10,7 +10,7 @@ import (
 	"github.com/koblas/exemplar/internal/schema"
 )
 
-// TestSeedSetCompromised is T-0.5 for the seed set: with the model fully
+// TestSeedSetCompromised runs the seed set compromised: with the model fully
 // controlled by each injection, no attack achieves its goal.
 func TestSeedSetCompromised(t *testing.T) {
 	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "adv")

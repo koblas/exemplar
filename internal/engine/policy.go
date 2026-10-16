@@ -7,8 +7,8 @@ import (
 	"github.com/koblas/exemplar/internal/gates"
 )
 
-// bugLaneCovered reports whether a bug-lane run reached full coverage.
-// The bug lane (Phase 4) does not run yet, so this is false.
+// bugLaneCovered reports whether the bug lane ran and every bug-lane run
+// reached full coverage. It is false when no bug class ran.
 func bugLaneCovered(runs []RunResult) bool {
 	ran := false
 	for _, r := range runs {
@@ -23,9 +23,9 @@ func bugLaneCovered(runs []RunResult) bool {
 	return ran
 }
 
-// policyInput gathers Stage 1's policy facts: the touched paths and size
-// from the diff, the author, head repo and commits from PRInfo, and the
-// repo's auto_approve settings. Team memberships are looked up only when
+// policyInput gathers the deterministic gates' policy facts: the touched paths
+// and size from the diff, the author, head repo and commits from PRInfo, and
+// the repo's auto_approve settings. Team memberships are looked up only when
 // auto-approve is on for the repo, since they cost GitHub calls.
 func (p *Prepared) policyInput(ctx context.Context, opt Options) gates.PolicyInput {
 	in := gates.PolicyInput{

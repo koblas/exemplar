@@ -1,4 +1,4 @@
--- Playground runs from the web UI (spec §12.8): a draft rule tried on one
+-- Playground runs from the web UI: a draft rule tried on one
 -- PR. exemplar-api records the request after checking the viewer can read
 -- the PR's repo; a worker job runs the rule alone and stores what it
 -- found. Results carry finding text, so they keep findings' retention.

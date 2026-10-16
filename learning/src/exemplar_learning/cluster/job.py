@@ -1,5 +1,5 @@
 """The cluster job: load embedded extractions, cluster each partition,
-merge near clusters, and write one run snapshot (spec §8.4)."""
+merge near clusters, and write one run snapshot."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from exemplar_learning.cluster import graph, merge
 
 log = logging.getLogger(__name__)
 
-AGNOSTIC = "*"  # partition for language-agnostic extractions (§8.4 step 1)
+AGNOSTIC = "*"  # partition for language-agnostic extractions
 SUMMARY_ITEMS = 5  # most central members shown to the judge
 
 

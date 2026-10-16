@@ -8,14 +8,14 @@ import (
 	"github.com/koblas/exemplar/internal/codeowners"
 )
 
-// Stage 2 owner reasons.
+// Owner reasons for the auto-approve approval checks.
 const (
 	ReasonNoApprovableOwners = "no_approvable_owners_configured"
 	ReasonUnownedPath        = "unowned_path"
 	ReasonOwnerNotApprovable = "owner_not_auto_approvable"
 )
 
-// OwnersResult is the Stage 2 CODEOWNERS lookup trace.
+// OwnersResult is the auto-approve CODEOWNERS lookup trace.
 type OwnersResult struct {
 	Pass    bool     `json:"pass"`
 	Reasons []string `json:"reasons,omitempty"`
@@ -25,11 +25,11 @@ type OwnersResult struct {
 	// the repo's auto_approve.approvable_owners.
 	NotApprovable map[string][]string `json:"not_approvable,omitempty"`
 	// Owners maps each owned touched path to its CODEOWNERS owners, so
-	// an auto-approved PR shows in their weekly digest (FR-A5).
+	// an auto-approved PR shows in their weekly digest.
 	Owners map[string][]string `json:"owners,omitempty"`
 }
 
-// CheckOwners is Stage 2's CODEOWNERS lookup (spec §6.13): every touched
+// CheckOwners is the auto-approve CODEOWNERS lookup: every touched
 // path's owners must all be in the repo's auto-approvable set. It fails
 // closed: a path with no owner (including when the repo has no CODEOWNERS)
 // has nobody to vouch for it, and an empty set approves nothing. co must

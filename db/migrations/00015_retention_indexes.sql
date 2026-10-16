@@ -1,5 +1,5 @@
 -- +goose NO TRANSACTION
--- Indexes for the daily retention job (spec §13.1, FR-H7), built without
+-- Indexes for the daily retention job, built without
 -- blocking writes.
 
 -- +goose Up

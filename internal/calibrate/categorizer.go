@@ -15,7 +15,8 @@ import (
 	"github.com/koblas/exemplar/internal/schema"
 )
 
-// PRLabel is one labeled PR for Stage 2 categorizer calibration.
+// PRLabel is one labeled PR for auto-approve risk categorizer
+// calibration.
 type PRLabel struct {
 	ID      string
 	Label   string // schema.LabelSafe | schema.LabelRisky
@@ -49,7 +50,7 @@ type PROutcome struct {
 	Error            string  `json:"error,omitempty"`
 }
 
-// CategorizerReport is a Stage 2 calibration run.
+// CategorizerReport is a risk categorizer calibration run.
 type CategorizerReport struct {
 	KnownRisky ApprovalRates `json:"known_risky"`
 	KnownSafe  ApprovalRates `json:"known_safe"`
@@ -61,7 +62,7 @@ type CategorizerReport struct {
 	Reasons    []string      `json:"reasons,omitempty"`
 }
 
-// Categorizer replays labeled PRs through Stage 2's two-model
+// Categorizer replays labeled PRs through the auto-approve two-model
 // categorization. A PR counts as approved when review_confidence reaches
 // the bar. It fails if too many risky PRs or too few safe ones are
 // approved, if a class is empty, or if any PR cannot be replayed.
@@ -71,7 +72,7 @@ func (r *Runner) Categorizer(ctx context.Context, labels []PRLabel, t *schema.Ca
 		return rep, errors.New("calibrate: global.yaml has no eval_thresholds.categorizer")
 	}
 	// The production bar: calibrating against a lower one would pass a
-	// categorizer that approves less safely than Stage 2 requires.
+	// categorizer that approves less safely than auto-approve requires.
 	rep.Bar = gates.ReviewConfidenceBar(t.MinReviewConfidence)
 	for i, l := range labels {
 		o := PROutcome{ID: l.ID, Label: l.Label}

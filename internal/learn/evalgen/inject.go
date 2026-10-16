@@ -17,7 +17,7 @@ import (
 	"github.com/koblas/exemplar/internal/redact"
 )
 
-// Limits from spec §8.8.
+// Limits on injected violations.
 const (
 	maxDiffLines   = 15  // changed lines (added + removed) in an injected patch
 	maxShownLines  = 400 // file lines shown to the model
@@ -56,7 +56,7 @@ type Parser func(path string, src []byte) error
 
 // DefaultParsers covers languages with a parser available in Go. Files in
 // other languages are not injected into: an unvalidated synthetic case is
-// worse than none. tree-sitter grammars (spec §14) widen this later.
+// worse than none. tree-sitter grammars widen this later.
 var DefaultParsers = map[string]Parser{
 	".go": func(p string, src []byte) error {
 		_, err := parser.ParseFile(token.NewFileSet(), p, src, parser.AllErrors)

@@ -1,5 +1,5 @@
 // Package redact finds and removes secrets before any text reaches a model
-// provider (PRD FR-H3, spec §6.3 step 4). The worker redacts every model
+// provider. The worker redacts every model
 // input; the gateway scans every request again and refuses any that still
 // contains a match.
 //

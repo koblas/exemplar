@@ -1,6 +1,6 @@
--- Message Batches routed through the gateway (learning-plane extraction,
--- spec §8.2). The gateway records which provider owns each batch so later
--- calls go to the same place, and books usage to model_calls exactly once.
+-- Message Batches routed through the gateway (learning-plane extraction).
+-- The gateway records which provider owns each batch so later calls go to
+-- the same place, and books usage to model_calls exactly once.
 
 -- +goose Up
 CREATE TABLE model_batches (

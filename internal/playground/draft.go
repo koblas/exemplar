@@ -1,5 +1,5 @@
 // Package playground runs draft rules from exemplar-config PRs on real PRs
-// (spec §8.7: /exemplar try org/repo#1234; §10.1: exemplar try). A run
+// (/exemplar try org/repo#1234, or the exemplar try CLI). A run
 // checks that the person asking can read the target repo and that the repo
 // is eligible, runs only the draft rules, posts nothing on the target PR,
 // and answers with file paths, line numbers and finding messages: never

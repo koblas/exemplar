@@ -27,7 +27,7 @@ type Script struct {
 	// VerdictFor, when set, picks the verdict for each verifier call from
 	// its task text (calibration tests: refute some claims, confirm others).
 	VerdictFor func(task string) string
-	// Categorizer answers Stage 2 categorizer calls (stage is categorizer-a
+	// Categorizer answers risk categorizer calls (stage is categorizer-a
 	// or categorizer-b; prContext is the PR as the model sees it). Nil
 	// answers medium risk.
 	Categorizer func(stage, prContext string) string

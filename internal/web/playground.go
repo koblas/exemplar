@@ -19,7 +19,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// The playground (spec §12.8): paste a draft rule, or start from an
+// The playground: paste a draft rule, or start from an
 // existing one, pick a PR the viewer can read, and run the rule alone on
 // it in exemplar-worker (nothing is posted on the PR). A finished run can
 // be saved as a draft config PR (owner action propose_rule).

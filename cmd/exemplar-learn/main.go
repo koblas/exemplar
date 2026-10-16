@@ -1,17 +1,17 @@
-// Command exemplar-learn runs the learning plane's batch jobs (spec §2.2).
+// Command exemplar-learn runs the learning plane's batch jobs.
 // Subcommands:
 //
-//	exemplar-learn ingest --config DIR [--repos a/b,c/d] [--once]  (spec §8.1)
-//	exemplar-learn path-events --config DIR [--incidents FEED.jsonl]  (spec §8.1)
-//	exemplar-learn extract [--once] [--poll 5m]   (spec §8.2)
-//	exemplar-learn evals [--no-inject]           (spec §8.8)
-//	exemplar-learn compile --config DIR [--limit 20]  (spec §8.6)
-//	exemplar-learn propose [--dry-run]           (spec §8.7)
-//	exemplar-learn demote --config DIR [--dry-run] [--all]  (spec §9.4)
-//	exemplar-learn expiry --config DIR [--dry-run]          (spec §8.10)
-//	exemplar-learn digest --config DIR [--dry-run]          (FR-B5)
-//	exemplar-learn teach --config DIR [--dry-run]           (spec §8.7, §9.3)
-//	exemplar-learn export --config DIR [--dry-run]          (spec §10.2)
+//	exemplar-learn ingest --config DIR [--repos a/b,c/d] [--once]
+//	exemplar-learn path-events --config DIR [--incidents FEED.jsonl]
+//	exemplar-learn extract [--once] [--poll 5m]
+//	exemplar-learn evals [--no-inject]
+//	exemplar-learn compile --config DIR [--limit 20]
+//	exemplar-learn propose [--dry-run]
+//	exemplar-learn demote --config DIR [--dry-run] [--all]
+//	exemplar-learn expiry --config DIR [--dry-run]
+//	exemplar-learn digest --config DIR [--dry-run]
+//	exemplar-learn teach --config DIR [--dry-run]
+//	exemplar-learn export --config DIR [--dry-run]
 //
 // ingest: mines review-thread roots from eligible repos (all opted-in
 // repos by default) over GraphQL with a read-only ingest token, resuming
@@ -20,7 +20,7 @@
 // from the KMS-held secret) and the EXEMPLAR_GH_* app settings.
 //
 // path-events: records paths touched by reverts on default branches and
-// by PRs or commits an incident feed links (FR-L1.7). Reverts are scanned
+// by PRs or commits an incident feed links. Reverts are scanned
 // from each repo's saved point with the ingest token; only refs (PR number,
 // SHA, incident id) are stored in path_events. Unless --no-seeds, a
 // reverted PR's hunks no reviewer commented on also become revert seeds

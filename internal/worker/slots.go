@@ -13,7 +13,7 @@ import (
 	"github.com/koblas/exemplar/internal/config"
 )
 
-// Per-repo concurrency (spec §6.15 backpressure, FR-D6): at most
+// Per-repo concurrency (backpressure): at most
 // queues.per_repo_concurrency reviews of one repo run at once across every
 // worker replica, 32 for queues.large_repos. River's queue MaxWorkers is
 // per process, so the limit is a set of Postgres advisory-lock slots: a

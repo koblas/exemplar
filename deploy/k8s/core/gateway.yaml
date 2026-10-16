@@ -1,4 +1,4 @@
-# exemplar-gateway: the only process holding model provider keys (spec §5).
+# exemplar-gateway: the only process holding model provider keys.
 # It reads global.yaml (provider routes, budgets) from an exemplar-config
 # checkout kept current by a git-sync sidecar.
 apiVersion: apps/v1

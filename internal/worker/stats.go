@@ -12,7 +12,7 @@ import (
 	"github.com/koblas/exemplar/internal/store"
 )
 
-// StatsEvery is how often the feedback roll-ups are refreshed (spec §12.6).
+// StatsEvery is how often the feedback roll-ups are refreshed.
 const StatsEvery = 15 * time.Minute
 
 // StatsArgs is the periodic job that refreshes the materialized views the

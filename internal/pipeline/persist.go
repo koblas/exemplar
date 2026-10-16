@@ -31,7 +31,7 @@ type Record struct {
 	caller string
 	// feedback weighs the feedback events the review records.
 	feedback *schema.FeedbackConfig
-	// Links, when set, signs each comment's feedback links (spec §6.12).
+	// Links, when set, signs each comment's feedback links.
 	Links *feedbacklink.Signer
 }
 
@@ -69,8 +69,8 @@ func Begin(ctx context.Context, st *store.Store, p *engine.Prepared, caller stri
 	if err := q.StartReview(ctx, rv.ID); err != nil {
 		return nil, err
 	}
-	// Only the agent's name is kept, for upstream effectiveness (spec
-	// §10.4); never the commit messages or labels it was read from.
+	// Only the agent's name is kept, for upstream effectiveness;
+	// never the commit messages or labels it was read from.
 	if caller == "production" {
 		agent := upstream.Detect(p.PR.Author, p.PR.Labels, p.PR.CommitMessages)
 		if err := q.SetReviewAgent(ctx, queries.SetReviewAgentParams{ID: rv.ID, Agent: &agent, AgentReads: nonNil(upstream.Reads(agent))}); err != nil {
@@ -148,7 +148,7 @@ func Finish(ctx context.Context, st *store.Store, rec *Record, res *engine.Resul
 		}
 		f.ID, f.RuleRunID = id, runID
 	}
-	// A withheld human duplicate is the reviewer's agreement (spec §9.1).
+	// A withheld human duplicate is the reviewer's agreement.
 	if _, err := RecordEvents(ctx, st, rec.feedback, humanAgreedEvents(res)); err != nil {
 		return err
 	}
@@ -284,7 +284,7 @@ func commentBody(f engine.Finding, links *feedbacklink.Signer) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s:** %s", f.CCLabel, f.Message)
 	if f.FixValid != nil && *f.FixValid {
-		// Replaces exactly the anchored lines (spec §6.11).
+		// Replaces exactly the anchored lines.
 		b.WriteString("\n\n```suggestion\n" + engine.SuggestionText(f) + "\n```")
 	}
 	if links != nil && f.ID != 0 {
@@ -294,7 +294,7 @@ func commentBody(f engine.Finding, links *feedbacklink.Signer) string {
 	if f.Citation != "" {
 		b.WriteString(" · [why](" + f.Citation + ")")
 	}
-	// FR-B1: every comment offers structured responses (spec §6.12).
+	// Every comment offers structured responses.
 	if links != nil && f.ID != 0 {
 		b.WriteString(" · or reply `/exemplar <reason>`</sub>")
 	} else {

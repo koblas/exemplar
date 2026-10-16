@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// TestStage1Invariants is the spec §16.1 property test: any candidate
+// TestStage1Invariants is a property test: any candidate
 // finding, coverage below 1.0, degradation, incompleteness or same-family
 // verification forces ineligible, whatever else is true; and a run is
 // eligible exactly when every check holds.
