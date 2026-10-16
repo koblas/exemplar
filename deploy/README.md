@@ -20,6 +20,7 @@ CI repeats the build, render and schema check (the `images` job).
 | `k8s/base/` | **The default build:** core plus the tunnel. Render with `kubectl kustomize deploy/k8s/base`. |
 | `k8s/direct/` | Core plus the Ingresses, with no tunnel. Render with `kubectl kustomize deploy/k8s/direct`. |
 | `manifests_test.go` | Checks the manifests against the code (below). |
+| `../examples/k8s/acme/` | An example installation overlay: the default build, Docker Hub images, settings, sign-in, tunnel routes and search storage. The Ingress and Postgres pieces are commented out. CI renders it. |
 
 ## Inbound
 
@@ -97,16 +98,16 @@ The `exemplar-config` checkout comes from a git-sync v4.7.1 sidecar with a read-
 
 ## What an installation supplies
 
-**Images.** `.github/workflows/images.yml` pushes both images to Docker Hub as `koblas/exemplar` on every push to main and each `v*` tag: the services image under `sha-<short>`, `main` and `<version>`, the learning image under the same tags with a `learning-` prefix. Its run summary prints each digest and the entry below. Pin them in an overlay, matching the names the base renders (the base already rewrote `exemplar` to its placeholder registry):
+**Images.** `.github/workflows/images.yml` pushes both images to Docker Hub as `koblas/exemplar` on every push to main and each `v*` tag. The services image is tagged `sha-<short>`, `main` and `<version>`, and the learning image gets the same tags with a `learning-` prefix. Its run summary prints each digest and the entry below. The base keeps the logical names `exemplar` and `exemplar-learning`. Kustomize matches images by name alone, and both images share one repository, so renaming them in the base would leave an overlay unable to pin them apart. An overlay maps each name, as [`examples/k8s/acme`](../examples/k8s/acme) does:
 
 ```yaml
 images:
-  - name: registry.example.invalid/koblas/exemplar
+  - name: exemplar
     newName: docker.io/koblas/exemplar
-    digest: sha256:<digest it built>
-  - name: registry.example.invalid/koblas/exemplar-learning
+    digest: sha256:<services digest>
+  - name: exemplar-learning
     newName: docker.io/koblas/exemplar
-    digest: sha256:<digest it built>
+    digest: sha256:<learning digest>
 ```
 
 The base's all-zero digests make an unpinned deploy fail to pull.

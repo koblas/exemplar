@@ -126,7 +126,7 @@ images: ## Build the service and learning images (nothing is pushed)
 # overlays are written into deploy/k8s (they refer to ../base) and removed
 # afterwards.
 .PHONY: manifests
-manifests: ## Render each Kustomize build to out/ and schema-check it
+manifests: ## Render each Kustomize build and the example overlay to out/ and schema-check them
 	@command -v kubectl >/dev/null || { echo "kubectl is required (not provided by devenv)" >&2; exit 1; }
 	@mkdir -p $(OUT)
 	both=deploy/k8s/.make-both; pg=deploy/k8s/.make-postgres; trap 'rm -rf "$$both" "$$pg"' EXIT; mkdir -p "$$both" "$$pg"; \
@@ -136,7 +136,9 @@ manifests: ## Render each Kustomize build to out/ and schema-check it
 	  dir=deploy/k8s/$$v; [ "$$v" = both ] && dir=$$both; [ "$$v" = postgres ] && dir=$$pg; \
 	  kubectl kustomize "$$dir" > $(OUT)/rendered-$$v.yaml; \
 	  go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/rendered-$$v.yaml; \
-	done
+	done; \
+	kubectl kustomize examples/k8s/acme > $(OUT)/rendered-example.yaml; \
+	go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/rendered-example.yaml
 
 .PHONY: deploy-test
 deploy-test: ## Check every build's manifests against the code (go test ./deploy)

@@ -14,13 +14,15 @@ resources:
   - worker.yaml
   - search.yaml
   - learn.yaml
-# Manifests name the two images by family; the release pipeline pins each to
-# the digest it built. The all-zero digests make an unpinned deploy fail to
-# pull rather than run something unknown.
+# Manifests name the two images by family, and an overlay maps each to its
+# registry and digest (examples/k8s/acme uses Docker Hub's koblas/exemplar,
+# where both live). The names stay logical here: both images share one
+# Docker Hub repository, and kustomize matches images by name only, so a
+# rename here would leave an overlay unable to pin them apart. The all-zero
+# digests make an unpinned deploy fail to pull rather than run something
+# unknown.
 images:
   - name: exemplar
-    newName: registry.example.invalid/koblas/exemplar
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
   - name: exemplar-learning
-    newName: registry.example.invalid/koblas/exemplar-learning
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
