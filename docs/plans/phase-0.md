@@ -2207,3 +2207,9 @@ The user asked for the lint configuration to match their usual setup (`default: 
   - `golangci-lint run` reports 0 issues, also with `--uniq-by-line=false`, and `golangci-lint fmt --diff` is clean.
   - `go build` and `go vet` pass.
   - `go test -race ./...` passes, and the Postgres tests ran in containers. `TestRealSemgrep` passes only with `/usr/bin` on PATH: semgrep needs macOS `security` for CA certs. It fails the same way on `main`.
+
+### Docs: ARCHITECTURE.md (2026-10-16)
+
+- **What:** a top-level [`ARCHITECTURE.md`](../../ARCHITECTURE.md) with Mermaid diagrams (GitHub renders them): system context, components, the online PR review sequence, the engine stages, the learning plane, the feedback loop, shift left, trust boundaries, and a code map. Linked from the README.
+- **Decision:** it describes the code and manifests as built, not the spec's target. Where they differ (the orchestrator, poster and feedback roles run as jobs in `exemplar-worker`; there is no `embed` job yet) it says so and links the spec. Network edges follow `deploy/k8s/core/networkpolicies.yaml`. Build status stays in `docs/plans/README.md` rather than being copied.
+- **Checked:** every relative link resolves. Not checked: Mermaid rendering (no renderer in devenv); confirm on GitHub.
