@@ -67,7 +67,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   # Short fuzz runs on every change; seed corpora and saved regressions in
   # testdata/fuzz already run as ordinary tests in the test job.
