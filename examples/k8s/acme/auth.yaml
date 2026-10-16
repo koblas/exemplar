@@ -1,0 +1,13 @@
+# Who may sign in to exemplar-api (README.md, "Sign-in"). The settings
+# mirror Coder's; the full list is in internal/oidc.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-auth
+  namespace: exemplar
+data:
+  EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS: "acme"
+  # OpenID Connect instead of, or as well as, GitHub:
+  # EXEMPLAR_OIDC_ISSUER_URL: "https://acme.okta.com"
+  # EXEMPLAR_OIDC_CLIENT_ID: "<client id>"
+  # EXEMPLAR_OIDC_GROUP_REPOS: '{"engineering": ["acme/*"]}'

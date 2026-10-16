@@ -654,3 +654,53 @@ func envNames(t *testing.T) map[string]bool {
 	}
 	return out
 }
+
+// TestExampleOverlay keeps examples/k8s/acme in step with the base: it maps
+// every image the base names, pins each by digest, and lists only paths
+// that exist. CI renders it with kustomize; this catches drift without one.
+func TestExampleOverlay(t *testing.T) {
+	read := func(dir string) obj {
+		t.Helper()
+		raw, err := os.ReadFile(filepath.Join(dir, "kustomization.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var k obj
+		if err := yaml.Unmarshal(raw, &k); err != nil {
+			t.Fatal(err)
+		}
+		return k
+	}
+	const dir = "../examples/k8s/acme"
+	example := read(dir)
+
+	core := list(read("k8s/core"), "images")
+	want := make([]string, 0, len(core))
+	got := make([]string, 0, len(core))
+	for _, im := range core {
+		want = append(want, str(im, "name"))
+	}
+	for _, im := range list(example, "images") {
+		got = append(got, str(im, "name"))
+		if str(im, "newName") == "" || !strings.HasPrefix(str(im, "digest"), "sha256:") {
+			t.Errorf("image %s: no newName or digest", str(im, "name"))
+		}
+	}
+	slices.Sort(want)
+	slices.Sort(got)
+	if !slices.Equal(want, got) {
+		t.Errorf("example maps images %v, the base names %v", got, want)
+	}
+
+	paths := list(example, "resources")
+	for _, p := range list(example, "patches") {
+		if s := str(p, "path"); s != "" {
+			paths = append(paths, s)
+		}
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(filepath.Join(dir, as[string](t, p, "path"))); err != nil {
+			t.Errorf("example: %v", err)
+		}
+	}
+}

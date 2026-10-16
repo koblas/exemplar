@@ -31,7 +31,7 @@ This installs Exemplar into one Kubernetes namespace (`exemplar`), reviewing rep
 
 The steps:
 1. Check the prerequisites.
-2. Build and publish the images.
+2. Choose the image version.
 3. Create the `exemplar-config` repository.
 4. Register the GitHub App.
 5. Prepare Postgres.
@@ -52,33 +52,31 @@ Nothing below touches a cluster until step 8 tells you to.
 | A way in, with TLS | Two public hosts: one for GitHub's webhooks, one for people (exemplar-api). **Default:** a Cloudflare Tunnel (a Cloudflare account and a zone for the hosts); the cluster then needs no public ingress at all. **Or** an ingress controller (`deploy/k8s/direct`, which assumes `ingress-nginx`), or both. See step 7. |
 | A storage class for local SSD | `exemplar-search` asks for 500Gi per replica on `local-ssd`. Change both in the overlay. |
 | **Postgres 16** with **pgvector** | Reachable from the cluster on 5432. Use a read replica for Grafana if you add it. |
-| A container registry | The cluster must be able to pull from it. |
+| Docker Hub access | The cluster pulls the published images from `docker.io/koblas/exemplar`. To run images you build yourself, see [Building your own images](#building-your-own-images). |
 | A model provider | An Anthropic API key, or AWS Bedrock through workload identity (see `global.yaml` `providers`). |
 | GitHub org owner rights | To register and install the GitHub App. GitHub Enterprise Server works too (see step 7). |
-| Tooling on your machine | Docker with BuildKit (`docker buildx`), `kubectl`, Go 1.27 (for the CLI and checks), `openssl`, `git`, and `cloudflared` (to create the tunnel, unless you use `deploy/k8s/direct`). |
+| Tooling on your machine | Docker (`docker buildx imagetools` looks up image digests), `kubectl`, Go 1.27 (for the CLI and checks), `openssl`, `git`, and `cloudflared` (to create the tunnel, unless you use `deploy/k8s/direct`). |
 
-### 2. Build and publish the images
+### 2. Choose the image version
 
-There are two images. Both run as UID 65532 with a read-only root filesystem.
+Exemplar ships two images, both in `docker.io/koblas/exemplar`. Both run as UID 65532 with a read-only root filesystem, and both are built for `linux/amd64`.
 
-- `deploy/docker/Dockerfile` builds every Go service, plus git, universal-ctags, ast-grep and Semgrep.
-- `deploy/docker/learning.Dockerfile` builds the Python learning jobs.
+| Image | Tags | What |
+|---|---|---|
+| Services | `<version>`, `<major>.<minor>`, `main`, `sha-<short>` | Every Go service, plus git, universal-ctags, ast-grep, Semgrep and clang-format |
+| Learning | `learning-<version>`, `learning-main`, … | The Python learning jobs (`cluster`, `rank`) |
 
-Both are built for `linux/amd64`. Build them:
+CI publishes them (`.github/workflows/images.yml`) on every push to `main` and every `v*` release tag. Use a release version. The manifests pin images by **digest**, never by tag, so record both digests for step 7:
 
 ```bash
-docker buildx build --platform linux/amd64 --load -f deploy/docker/Dockerfile -t exemplar:dev .
+docker buildx imagetools inspect koblas/exemplar:<version> --format '{{json .Manifest.Digest}}'
 ```
 
 ```bash
-docker buildx build --platform linux/amd64 --load -f deploy/docker/learning.Dockerfile -t exemplar-learning:dev .
+docker buildx imagetools inspect koblas/exemplar:learning-<version> --format '{{json .Manifest.Digest}}'
 ```
 
-Tag and push both to your registry. Then record each image's **digest**: the manifests pin images by digest, never by tag.
-
-```bash
-docker buildx imagetools inspect <registry>/exemplar:<tag> --format '{{json .Manifest.Digest}}'
-```
+Each publish run's summary also prints both digests.
 
 ### 3. Create the `exemplar-config` repository
 
@@ -257,110 +255,51 @@ Then, in the Cloudflare dashboard. These take over from the Ingress's controls (
 
 Cloudflare ends TLS at its edge, so it sees requests in clear text, webhook payloads included. If that's not acceptable, use `deploy/k8s/direct`.
 
-The build is complete except for your installation's values. Put those in an overlay, kept wherever you keep deployment config:
+The build is complete except for your installation's values. Put those in an overlay. [`examples/k8s/acme`](examples/k8s/acme) is a working one: copy it to wherever you keep deployment config, then replace the `acme` values.
 
-```text
-overlays/acme/
-  kustomization.yaml
-  settings.yaml
-  auth.yaml
-  tunnel.yaml
-```
+| File | Sets |
+|---|---|
+| `kustomization.yaml` | The build, the image digests from step 2, and the search volume's storage class and size. The Ingress and in-cluster Postgres pieces are there, commented out. |
+| `settings.yaml` | The `exemplar-settings` ConfigMap: the config repo, the GitHub App, the API URL |
+| `auth.yaml` | The `exemplar-auth` ConfigMap: who may sign in (see *Sign-in* below) |
+| `tunnel.yaml` | The `exemplar-cloudflared` ConfigMap: the tunnel id and host names. Keep the webhook's path rule and the catch-all. |
 
-**`kustomization.yaml`:**
+Its `kustomization.yaml`, without the comments:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - <path-to-this-repo>/deploy/k8s/base
+  - github.com/koblas/exemplar//deploy/k8s/base?ref=<version>
 # For both ways in, also:
 # components:
-#   - <path-to-this-repo>/deploy/k8s/components/ingress
-# Match the names the base renders, and pin the digests from step 2.
+#   - github.com/koblas/exemplar//deploy/k8s/components/ingress?ref=<version>
 images:
-  - name: registry.example.invalid/koblas/exemplar
-    newName: <registry>/exemplar
-    digest: sha256:<exemplar digest>
-  - name: registry.example.invalid/koblas/exemplar-learning
-    newName: <registry>/exemplar-learning
-    digest: sha256:<exemplar-learning digest>
+  - name: exemplar
+    newName: docker.io/koblas/exemplar
+    digest: sha256:<services digest>
+  - name: exemplar-learning
+    newName: docker.io/koblas/exemplar
+    digest: sha256:<learning digest>
 patches:
   - path: settings.yaml
   - path: auth.yaml
   - path: tunnel.yaml
-```
-
-With `deploy/k8s/direct` (or the ingress component), drop `tunnel.yaml` and patch the Ingress hosts instead:
-
-```yaml
-  - target: {kind: Ingress, name: exemplar-webhook}
+  - target: {kind: StatefulSet, name: exemplar-search}
     patch: |-
-      - {op: replace, path: /spec/rules/0/host, value: exemplar-webhook.acme.com}
-      - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar-webhook.acme.com}
-  - target: {kind: Ingress, name: exemplar-api}
-    patch: |-
-      - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
-      - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar.acme.com}
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/storageClassName, value: local-ssd}
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 500Gi}
 ```
 
-The base's placeholder digests are all zeros, so an overlay that forgets to pin an image fails to pull rather than running something unknown.
+In this repository it points at `../../../deploy/k8s/base` instead, so CI renders it against the current manifests.
 
-**`settings.yaml`** sets the installation's values:
+For an Ingress (`deploy/k8s/direct`, or the ingress component for both ways in), uncomment the Ingress patches in the example: they set each Ingress's host, TLS secret and class. With `deploy/k8s/direct`, also drop `tunnel.yaml`.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: exemplar-settings
-  namespace: exemplar
-data:
-  EXEMPLAR_CONFIG_REPO: "acme/exemplar-config"
-  EXEMPLAR_CONFIG_GIT_URL: "git@github.com:acme/exemplar-config.git"
-  EXEMPLAR_GH_APP_ID: "<App ID>"
-  EXEMPLAR_GH_INSTALLATION_ID: "<installation id>"
-  EXEMPLAR_API_URL: "https://exemplar.acme.com"
-  EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID: "<Client ID>"
-```
-
-**`tunnel.yaml`** sets the tunnel id and host names. Keep the path rule and the catch-all:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: exemplar-cloudflared
-  namespace: exemplar
-data:
-  config.yaml: |
-    tunnel: <tunnel-id>
-    credentials-file: /etc/cloudflared/credentials/credentials.json
-    ingress:
-      - hostname: exemplar-webhook.acme.com
-        path: ^/webhook$
-        service: http://exemplar-webhook.exemplar.svc:80
-      - hostname: exemplar.acme.com
-        service: http://exemplar-api.exemplar.svc:80
-      - service: http_status:404
-```
-
-**`auth.yaml`** chooses who may sign in. It mirrors Coder's settings (see *Sign-in* below):
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: exemplar-auth
-  namespace: exemplar
-data:
-  EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS: "acme"
-```
+The base pins both images to all-zero digests, so an overlay that forgets to pin one fails to pull rather than running something unknown.
 
 **Other patches the overlay usually needs:**
-- **Ingress** (direct builds only): the TLS secret names (`exemplar-webhook-tls`, `exemplar-api-tls`) and `ingressClassName`.
 - **Org SSO:** put it in front of the API host, unless you use OIDC sign-in: Cloudflare Access with the tunnel; an IdP-aware proxy or ingress auth annotations with an Ingress.
-- **Search storage:** the `storageClassName` and size on the `exemplar-search` StatefulSet.
-- **Ingress controller namespace** (direct builds only): if your controller doesn't run in `ingress-nginx`, change the namespace `exemplar-webhook-from-ingress` and `exemplar-api-from-ingress` admit.
+- **Ingress controller namespace** (Ingress builds only): if your controller doesn't run in `ingress-nginx`, uncomment the example's NetworkPolicy patches and set the namespace.
 - **GitHub Enterprise Server:** set `EXEMPLAR_GH_WEB_URL` (`https://<host>/`) and `EXEMPLAR_GH_API_URL` (`https://<host>/api/v3/`) in `exemplar-settings`. Set `EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL` in `exemplar-auth`.
 
 #### Sign-in
@@ -467,9 +406,23 @@ The eval job needs repository variables `EXEMPLAR_API_URL`, `EXEMPLAR_AUTH0_DOMA
 
 ### Upgrading
 
-Build new images, pin the new digests in the overlay, render, validate and apply.
+Look up the new release's digests (step 2), pin them in the overlay, and move its `ref=` to the same version. Then render, validate and apply.
 - **Migrations** run automatically when the new pods start. They are forward-only in production.
 - **Shutdown** is graceful. Each pod's termination grace period outlasts its shutdown deadline, so in-flight reviews finish or are retried by River.
+
+### Building your own images
+
+You only need this to run changes that aren't published, or to pull from your own registry. Build both images from the repository root (BuildKit, `linux/amd64` only):
+
+```bash
+docker buildx build --platform linux/amd64 --load -f deploy/docker/Dockerfile -t exemplar:dev .
+```
+
+```bash
+docker buildx build --platform linux/amd64 --load -f deploy/docker/learning.Dockerfile -t exemplar-learning:dev .
+```
+
+Tag and push both to your registry, and look up each digest as in step 2. In the overlay, set each image's `newName` to your repository, for example `<registry>/exemplar` and `<registry>/exemplar-learning`, and its `digest` to what you pushed.
 
 ---
 
