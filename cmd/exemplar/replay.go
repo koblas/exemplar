@@ -37,7 +37,7 @@ func newReplayCmd() *cobra.Command {
 			}
 			fx, err := replay.LoadFixtures(fixtures)
 			if err != nil {
-				return err
+				return fmt.Errorf("load fixtures: %w", err)
 			}
 			h, err := model.harness(false)
 			if err != nil {
@@ -49,7 +49,7 @@ func newReplayCmd() *cobra.Command {
 			}
 			if workDir == "" {
 				if workDir, err = os.MkdirTemp("", "exemplar-replay-*"); err != nil {
-					return err
+					return fmt.Errorf("create work dir: %w", err)
 				}
 				defer func() { _ = os.RemoveAll(workDir) }()
 			}
@@ -60,11 +60,11 @@ func newReplayCmd() *cobra.Command {
 			if dbURL != "" {
 				st, err := store.Open(ctx, dbURL)
 				if err != nil {
-					return err
+					return fmt.Errorf("open store: %w", err)
 				}
 				defer st.Close()
 				if err := st.Migrate(ctx); err != nil {
-					return err
+					return fmt.Errorf("migrate store: %w", err)
 				}
 				r.Store = st
 			}
@@ -76,7 +76,7 @@ func newReplayCmd() *cobra.Command {
 				r.CloneTokenFor = func(ctx context.Context, repo string) (string, error) {
 					tok, err := ghApp.Token(ctx, app.installationID, gh.FlavorWorker, []string{repo})
 					if err != nil {
-						return "", err
+						return "", fmt.Errorf("installation token: %w", err)
 					}
 					return tok.GetToken(), nil
 				}
@@ -84,7 +84,7 @@ func newReplayCmd() *cobra.Command {
 					r.PosterFor = func(ctx context.Context, repo string) (*gh.Poster, error) {
 						c, err := ghApp.Client(ctx, app.installationID, gh.FlavorPoster, []string{repo})
 						if err != nil {
-							return nil, err
+							return nil, fmt.Errorf("poster client: %w", err)
 						}
 						return gh.NewPoster(c), nil
 					}
@@ -93,15 +93,15 @@ func newReplayCmd() *cobra.Command {
 
 			outs, errs, err := r.RunAll(ctx, fx)
 			if err != nil {
-				return err
+				return fmt.Errorf("run fixtures: %w", err)
 			}
 			data, err := replay.MarshalOutcomes(outs)
 			if err != nil {
-				return err
+				return fmt.Errorf("marshal outcomes: %w", err)
 			}
 			if outFile != "" {
 				if err := os.WriteFile(outFile, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-					return err
+					return fmt.Errorf("write outcomes: %w", err)
 				}
 			} else {
 				fmt.Fprintln(cmd.OutOrStdout(), string(data))
@@ -115,7 +115,7 @@ func newReplayCmd() *cobra.Command {
 				for _, id := range ids {
 					fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", id, errs[id])
 				}
-				return fmt.Errorf("%d fixture(s) failed", len(errs))
+				return fmt.Errorf("%d %w", len(errs), errFixturesFailed)
 			}
 			return nil
 		},

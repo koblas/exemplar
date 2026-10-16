@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -32,39 +31,39 @@ func runPathEvents(args []string) error {
 	bots := fs.String("bot-logins", os.Getenv("EXEMPLAR_BOT_LOGINS"), "comma-separated extra bot logins, including the Exemplar app's")
 	backfill := fs.Duration("backfill", 365*24*time.Hour, "how far back a repo's first revert scan goes")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-learn")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	if *configDir == "" {
-		return errors.New("--config is required: path events are gated on exemplar-config eligibility")
+		return fmt.Errorf("--config is %w: path events are gated on exemplar-config eligibility", errRequired)
 	}
 	snap, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config snapshot: %w", err)
 	}
 	// Parse the feed before touching GitHub so a bad export fails fast.
 	var incs []pathevents.Incident
 	if *incidents != "" {
 		f, err := os.Open(*incidents)
 		if err != nil {
-			return err
+			return fmt.Errorf("open incidents: %w", err)
 		}
 		incs, err = pathevents.ReadIncidents(f)
 		_ = f.Close()
 		if err != nil {
-			return err
+			return fmt.Errorf("read incidents: %w", err)
 		}
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL is required")
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
 	app, installation, _, err := appFromEnv()
 	if err != nil {
@@ -72,16 +71,16 @@ func runPathEvents(args []string) error {
 	}
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	if err := st.Migrate(ctx); err != nil {
-		return err
+		return fmt.Errorf("migrate store: %w", err)
 	}
 	connect := func(ctx context.Context, repo string) (pathevents.API, error) {
 		c, err := app.Client(ctx, installation, gh.FlavorIngest, []string{repo})
 		if err != nil {
-			return pathevents.API{}, err
+			return pathevents.API{}, fmt.Errorf("create github client: %w", err)
 		}
 		return pathevents.API{
 			Query: func(ctx context.Context, q string, vars map[string]any, out any) error {
@@ -104,13 +103,13 @@ func runPathEvents(args []string) error {
 		}
 		sc, err := redact.New()
 		if err != nil {
-			return err
+			return fmt.Errorf("create redaction scanner: %w", err)
 		}
 		cfg.Seeds = &pathevents.Seeds{Pseudonyms: pseudo, Scanner: sc, BotLogins: split(*bots), DocHosts: split(*docHosts)}
 	}
 	job, err := pathevents.New(cfg, connect, st, snap)
 	if err != nil {
-		return err
+		return fmt.Errorf("create path events job: %w", err)
 	}
 
 	var failed []string
@@ -137,12 +136,12 @@ func runPathEvents(args []string) error {
 	if len(incs) > 0 {
 		stats, err := job.Incidents(ctx, incs)
 		if err != nil {
-			return err
+			return fmt.Errorf("process incidents: %w", err)
 		}
 		printJSON(stats)
 	}
 	if len(failed) > 0 {
-		return fmt.Errorf("revert scan failed for %v", failed)
+		return fmt.Errorf("%w for %v", errRevertScanFailed, failed)
 	}
 	return nil
 }

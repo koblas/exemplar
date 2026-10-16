@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -57,7 +56,7 @@ type FeedbackCommandWorker struct {
 // Snapshot.
 func NewFeedbackCommandWorker(cfg Config) (*FeedbackCommandWorker, error) {
 	if cfg.Store == nil {
-		return nil, errors.New("worker: feedback commands need a store")
+		return nil, fmt.Errorf("%w: feedback commands need a store", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -90,7 +89,7 @@ func (w *FeedbackCommandWorker) Work(ctx context.Context, job *river.Job[store.F
 func (w *FeedbackCommandWorker) Handle(ctx context.Context, a store.FeedbackCommandArgs) (CommandOutcome, error) {
 	rows, err := w.cfg.Store.FindingByComment(ctx, queries.FindingByCommentParams{Repo: a.Repo, PrNumber: int32(a.PR), GhCommentID: &a.ThreadRoot})
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: finding by comment: %w", err)
 	}
 	if len(rows) == 0 {
 		// Not an Exemplar thread: say nothing in someone else's thread.
@@ -99,19 +98,19 @@ func (w *FeedbackCommandWorker) Handle(ctx context.Context, a store.FeedbackComm
 	finding := rows[0]
 	reader, err := w.cfg.GitHub.Reader(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: reader client: %w", err)
 	}
 	pr, err := gh.GetPullRequest(ctx, reader, a.Repo, a.PR)
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: get pull request: %w", err)
 	}
 	target, err := gh.ParsePR(a.Repo, a.PR, pr.HeadSHA)
 	if err != nil {
-		return CommandOutcome{}, river.JobCancel(err)
+		return CommandOutcome{}, river.JobCancel(fmt.Errorf("worker: parse pr: %w", err))
 	}
 	posterClient, err := w.cfg.GitHub.Poster(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: poster client: %w", err)
 	}
 	poster := gh.NewPoster(posterClient)
 	reply := func(msg string) (CommandOutcome, error) {
@@ -146,7 +145,7 @@ func (w *FeedbackCommandWorker) Handle(ctx context.Context, a store.FeedbackComm
 	default:
 		took, err := gh.Participated(ctx, reader, a.Repo, a.PR, a.Actor, a.At, a.CommentID)
 		if err != nil {
-			return CommandOutcome{}, err
+			return CommandOutcome{}, fmt.Errorf("worker: check participation: %w", err)
 		}
 		if !took {
 			return reply(replyNotAllowed)
@@ -158,7 +157,7 @@ func (w *FeedbackCommandWorker) Handle(ctx context.Context, a store.FeedbackComm
 		Evidence: map[string]any{"comment_id": a.CommentID},
 	}})
 	if err != nil {
-		return CommandOutcome{}, err
+		return CommandOutcome{}, fmt.Errorf("worker: record events: %w", err)
 	}
 	if n > 0 { // a repeat of the same command keeps the first reason's class
 		teach(ctx, w.cfg, a.Repo, finding.ID, kind, a.Actor, a.Reason)
@@ -181,9 +180,13 @@ func isRuleOwner(ctx context.Context, clients GitHub, inst int64, repo, owner, a
 	}
 	gate, err := clients.Gate(ctx, inst, repo)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("worker: gate client: %w", err)
 	}
-	return gh.TeamMember(ctx, gate, owner, actor)
+	member, err := gh.TeamMember(ctx, gate, owner, actor)
+	if err != nil {
+		return false, fmt.Errorf("worker: team member: %w", err)
+	}
+	return member, nil
 }
 
 // rejections are the kinds whose free text teaches the bot.

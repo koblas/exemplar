@@ -17,6 +17,13 @@ import (
 	"github.com/koblas/exemplar/internal/svcauth"
 )
 
+var (
+	// ErrInvalidDomain is returned by New for a domain that is not a bare host name.
+	ErrInvalidDomain = errors.New("auth0: invalid domain")
+	// ErrNoAudience is returned by New without an API audience.
+	ErrNoAudience = errors.New("auth0: an audience is required")
+)
+
 // Source verifies one tenant's tokens for one API.
 type Source struct{ *svcauth.Verifier }
 
@@ -27,10 +34,10 @@ var domainRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-
 func New(domain, audience string) (*Source, error) {
 	domain = strings.ToLower(strings.TrimSuffix(domain, "/"))
 	if !domainRE.MatchString(domain) {
-		return nil, fmt.Errorf("auth0: domain %q must be a host name, without https://", domain)
+		return nil, fmt.Errorf("%w: domain %q must be a host name, without https://", ErrInvalidDomain, domain)
 	}
 	if audience == "" {
-		return nil, errors.New("auth0: an audience is required")
+		return nil, ErrNoAudience
 	}
 	return &Source{svcauth.NewVerifier("https://"+domain+"/", audience, "https://"+domain+"/.well-known/jwks.json")}, nil
 }
@@ -46,7 +53,7 @@ func (s *Source) Verify(ctx context.Context, token string) (svcauth.Claims, erro
 		Permissions []string `json:"permissions"`
 	}
 	if err := s.Verifier.Verify(ctx, token, &c); err != nil {
-		return svcauth.Claims{}, err
+		return svcauth.Claims{}, fmt.Errorf("auth0: verify token: %w", err)
 	}
 	perms := append(slices.Clone(c.Permissions), strings.Fields(c.Scope)...)
 	return svcauth.Claims{Subject: "svc:" + c.Sub, Permissions: perms}, nil

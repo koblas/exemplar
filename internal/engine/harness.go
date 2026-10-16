@@ -276,10 +276,10 @@ func decodeStrict(text string, out any) error {
 	dec := json.NewDecoder(strings.NewReader(strings.TrimSpace(text)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(out); err != nil {
-		return err
+		return fmt.Errorf("decode answer: %w", err)
 	}
 	if dec.More() {
-		return errors.New("trailing data after JSON answer")
+		return fmt.Errorf("%w: trailing data after JSON answer", errInvalidAnswer)
 	}
 	return nil
 }

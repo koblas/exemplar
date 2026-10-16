@@ -181,7 +181,7 @@ func Volume(ctx context.Context, src PRSource, trial PRRunner, snap *config.Snap
 			}
 			tr, err := trial.RunPR(ctx, snap, []string{rule.ID}, pr)
 			if err != nil {
-				return rep, err
+				return rep, fmt.Errorf("try rule %s on %s#%d: %w", rule.ID, pr.Repo, pr.Number, err)
 			}
 			if tr.Result == nil {
 				continue // ineligible, incomplete, or excluded files only

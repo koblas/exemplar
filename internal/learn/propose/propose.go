@@ -83,11 +83,11 @@ type Outcome struct {
 func (w *Writer) Run(ctx context.Context) ([]Outcome, error) {
 	rows, err := w.store.ProposableCandidates(ctx, int32(w.cfg.Scan))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list proposable candidates: %w", err)
 	}
 	openRows, err := w.store.OpenCandidatePRsByOwner(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list open candidate PRs: %w", err)
 	}
 	open := map[string]int{}
 	for _, r := range openRows {
@@ -97,7 +97,7 @@ func (w *Writer) Run(ctx context.Context) ([]Outcome, error) {
 	var base, baseSHA string
 	if w.repo != nil {
 		if base, baseSHA, err = w.repo.DefaultBranch(ctx); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get default branch: %w", err)
 		}
 	}
 
@@ -144,7 +144,7 @@ func (w *Writer) Run(ctx context.Context) ([]Outcome, error) {
 		}
 		n, err := w.store.MarkCandidateProposed(ctx, queries.MarkCandidateProposedParams{ID: row.ID, ConfigPrUrl: &url})
 		if err != nil {
-			return outs, err
+			return outs, fmt.Errorf("mark candidate proposed: %w", err)
 		}
 		out.URL = url
 		out.Action = "opened"
@@ -166,14 +166,16 @@ func (w *Writer) Run(ctx context.Context) ([]Outcome, error) {
 // PR. If a PR from the branch already exists (a run that crashed before
 // recording it), it is reused instead of opening another.
 func (w *Writer) publish(ctx context.Context, d *Draft, base, baseSHA string) (string, bool, error) {
-	if url, found, err := w.repo.FindPR(ctx, d.Branch); err != nil || found {
-		return url, found, err
+	if url, found, err := w.repo.FindPR(ctx, d.Branch); err != nil {
+		return "", false, fmt.Errorf("find PR: %w", err)
+	} else if found {
+		return url, true, nil
 	}
 	if err := w.repo.EnsureBranch(ctx, d.Branch, baseSHA); err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("ensure branch: %w", err)
 	}
 	if err := w.repo.PutFile(ctx, d.Branch, d.Path, d.Rule, "Propose candidate rule "+d.RuleID); err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("put file: %w", err)
 	}
 	paths := make([]string, 0, len(d.Files))
 	for p := range d.Files {
@@ -182,12 +184,17 @@ func (w *Writer) publish(ctx context.Context, d *Draft, base, baseSHA string) (s
 	slices.Sort(paths)
 	for _, p := range paths {
 		if err := w.repo.PutFile(ctx, d.Branch, p, d.Files[p], "Add generated eval cases for "+d.RuleID); err != nil {
-			return "", false, err
+			return "", false, fmt.Errorf("put file: %w", err)
 		}
 	}
 	url, err := w.repo.OpenDraftPR(ctx, d.Branch, base, d.Title, d.Body)
-	return url, false, err
+	if err != nil {
+		return "", false, fmt.Errorf("open draft PR: %w", err)
+	}
+	return url, false, nil
 }
+
+var errNoSources = errors.New("propose: candidate has no sources")
 
 func (w *Writer) load(ctx context.Context, row queries.ProposableCandidatesRow) (Candidate, error) {
 	c := Candidate{
@@ -200,7 +207,7 @@ func (w *Writer) load(ctx context.Context, row queries.ProposableCandidatesRow) 
 	}
 	srcs, err := w.store.CandidateSourceDetails(ctx, row.ID)
 	if err != nil {
-		return c, err
+		return c, fmt.Errorf("load candidate sources: %w", err)
 	}
 	for _, s := range srcs {
 		c.Sources = append(c.Sources, Source{
@@ -210,14 +217,14 @@ func (w *Writer) load(ctx context.Context, row queries.ProposableCandidatesRow) 
 	}
 	incs, err := w.store.CandidateIncidents(ctx, row.ID)
 	if err != nil {
-		return c, err
+		return c, fmt.Errorf("load candidate incidents: %w", err)
 	}
 	for _, i := range incs {
 		c.Incidents = append(c.Incidents, Incident{Repo: i.Repo, Path: i.Path, Kind: i.Kind, Ref: i.Ref})
 	}
 	cases, err := w.store.CandidateEvalCases(ctx, row.ID)
 	if err != nil {
-		return c, err
+		return c, fmt.Errorf("load candidate eval cases: %w", err)
 	}
 	for _, e := range cases {
 		ec := EvalCase{ID: e.CaseID, Kind: e.Kind, Name: e.Name, Ref: e.Ref, Patch: deref(e.Patch), SpotCheck: e.SpotCheck, Paths: e.Paths}
@@ -229,7 +236,7 @@ func (w *Writer) load(ctx context.Context, row queries.ProposableCandidatesRow) 
 	switch cc, err := w.store.LatestAcceptedCompile(ctx, row.ID); {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
-		return c, err
+		return c, fmt.Errorf("load latest compile: %w", err)
 	default:
 		c.Compiled = &Compiled{
 			AttemptID: cc.ID, Engine: deref(cc.Engine), Rule: deref(cc.RuleBody), Cases: int(cc.Cases),
@@ -238,7 +245,7 @@ func (w *Writer) load(ctx context.Context, row queries.ProposableCandidatesRow) 
 		}
 	}
 	if len(c.Sources) == 0 {
-		return c, errors.New("propose: candidate has no sources")
+		return c, errNoSources
 	}
 	return c, nil
 }

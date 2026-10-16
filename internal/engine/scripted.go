@@ -79,11 +79,13 @@ var (
 	candidateRE    = regexp.MustCompile(`(?m)^\[(\d+)\] (\S+) (RIGHT|LEFT) lines (\d+)-(\d+)$`)
 )
 
+var errUnexpectedRequest = errors.New("scripted: unexpected request shape")
+
 // RoundTrip implements http.RoundTripper.
 func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scripted: read request: %w", err)
 	}
 	_ = req.Body.Close()
 	stage := req.Header.Get(llm.HeaderStage)
@@ -101,7 +103,7 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		return nil, fmt.Errorf("scripted: decode request: %w", err)
 	}
 	if len(in.Messages) == 0 || len(in.Messages[0].Content) < 2 {
-		return nil, errors.New("scripted: unexpected request shape")
+		return nil, errUnexpectedRequest
 	}
 	var task, prCtx struct {
 		Text string `json:"text"`

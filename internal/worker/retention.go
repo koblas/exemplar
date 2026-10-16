@@ -65,7 +65,7 @@ type RetentionWorker struct {
 // NewRetentionWorker returns a RetentionWorker.
 func NewRetentionWorker(st *store.Store, snapshot func(context.Context) (*config.Snapshot, error), log *slog.Logger) (*RetentionWorker, error) {
 	if st == nil || snapshot == nil {
-		return nil, errors.New("worker: retention needs a store and the config")
+		return nil, fmt.Errorf("%w: retention needs a store and the config", errMissingDependency)
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -126,7 +126,7 @@ func (w *RetentionWorker) Run(ctx context.Context) (RetentionResult, error) {
 	for _, p := range policies {
 		if p.days < 1 {
 			// The schema requires at least 1; never read 0 as "delete all".
-			errs = append(errs, fmt.Errorf("retention: %s has no period; skipped", p.name))
+			errs = append(errs, fmt.Errorf("retention: %s %w; skipped", p.name, errNoPeriod))
 			continue
 		}
 		cutoff := pgtype.Timestamptz{Time: w.now().AddDate(0, 0, -p.days), Valid: true}

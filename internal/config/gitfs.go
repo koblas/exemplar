@@ -14,13 +14,19 @@ import (
 // gitTimeout bounds each git invocation that builds a GitFS.
 const gitTimeout = 30 * time.Second
 
+var (
+	// ErrInvalidRevision is returned by GitFS for an empty or option-like revision.
+	ErrInvalidRevision = errors.New("gitfs: invalid revision")
+	errLsTreeLine      = errors.New("gitfs: unexpected ls-tree line")
+)
+
 // GitFS returns the files under the given path prefixes as they are at rev
 // in the git repository at dir. Reading config through it, with rev set to
 // the PR's base commit, is what keeps PR heads from changing their own
 // review configuration.
 func GitFS(ctx context.Context, dir, rev string, prefixes ...string) (fstest.MapFS, error) {
 	if rev == "" || strings.HasPrefix(rev, "-") {
-		return nil, fmt.Errorf("gitfs: invalid revision %q", rev)
+		return nil, fmt.Errorf("%w %q", ErrInvalidRevision, rev)
 	}
 	args := make([]string, 0, 8+len(prefixes))
 	args = append(args, "-C", dir, "ls-tree", "-r", "-z", "--full-tree", rev, "--")
@@ -37,7 +43,7 @@ func GitFS(ctx context.Context, dir, rev string, prefixes ...string) (fstest.Map
 		// "<mode> <type> <object>\t<path>"
 		meta, p, ok := bytes.Cut(entry, []byte{'\t'})
 		if !ok {
-			return nil, fmt.Errorf("gitfs: unexpected ls-tree line %q", entry)
+			return nil, fmt.Errorf("%w %q", errLsTreeLine, entry)
 		}
 		fields := strings.Fields(string(meta))
 		if len(fields) != 3 || fields[1] != "blob" {

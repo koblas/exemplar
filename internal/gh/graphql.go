@@ -18,6 +18,22 @@ var ErrRateLimited = errors.New("gh: rate limited")
 // caller maps it): the object does not exist or the token cannot see it.
 var ErrNotFound = errors.New("gh: not found")
 
+// ErrInvalidRepo is a repository name that is not owner/name.
+var ErrInvalidRepo = errors.New("gh: repo must be owner/name")
+
+// ErrNotAFile is a repository path that is a directory, not a file.
+var ErrNotAFile = errors.New("gh: not a file")
+
+var (
+	// errGraphQL is a GraphQL response carrying errors of no more specific kind.
+	errGraphQL       = errors.New("graphql error")
+	errCompareStatus = errors.New("unexpected status")
+	errCommentRange  = errors.New("gh: invalid comment range")
+	errNoConclusion  = errors.New("gh: check conclusion is required")
+	errInvalidTeam   = errors.New("gh: team must be @org/slug")
+	errNoNodeID      = errors.New("has no node id")
+)
+
 // GraphQL runs query against c's GraphQL endpoint and decodes "data" into
 // out. GraphQL errors become a Go error; RATE_LIMITED (in the body or as a
 // REST rate-limit response) wraps ErrRateLimited.
@@ -50,7 +66,7 @@ func GraphQL(ctx context.Context, c *github.Client, query string, vars map[strin
 		if resp.Errors[0].Type == "NOT_FOUND" {
 			return fmt.Errorf("%w: %s", ErrNotFound, resp.Errors[0].Message)
 		}
-		return fmt.Errorf("gh: graphql: %s", resp.Errors[0].Message)
+		return fmt.Errorf("gh: %w: %s", errGraphQL, resp.Errors[0].Message)
 	}
 	if out == nil || len(resp.Data) == 0 {
 		return nil

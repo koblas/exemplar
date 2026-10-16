@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -68,6 +69,11 @@ const (
 // ErrLinkedElsewhere is a GitHub account already connected to another
 // OIDC identity.
 var ErrLinkedElsewhere = errors.New("api: the GitHub account is connected to another sign-in")
+
+var (
+	errSessionTooLarge = errors.New("api: the UI session is too large for a cookie (too many repo patterns)")
+	errBadSealed       = errors.New("api: bad sealed value")
+)
 
 // Identities stores GitHub accounts connected to OIDC identities.
 type Identities interface {
@@ -170,7 +176,11 @@ func (s *Server) githubAllowed(ctx context.Context, token, login string) (bool, 
 	if s.cfg.GitHub.AllowEveryone {
 		return true, nil
 	}
-	return s.cfg.Users.InOrgs(ctx, token, login, s.cfg.GitHub.AllowedOrgs)
+	ok, err := s.cfg.Users.InOrgs(ctx, token, login, s.cfg.GitHub.AllowedOrgs)
+	if err != nil {
+		return false, fmt.Errorf("check org membership: %w", err)
+	}
+	return ok, nil
 }
 
 // startSession sets the session cookie and, when ui (or always for OIDC,
@@ -184,14 +194,14 @@ func (s *Server) startSession(w http.ResponseWriter, login string, ui uiSession,
 	}
 	data, err := json.Marshal(ui)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode ui session: %w", err)
 	}
 	sealed, err := s.seal(login, data)
 	if err != nil {
 		return err
 	}
 	if len(sealed) > 3800 {
-		return errors.New("api: the UI session is too large for a cookie (too many repo patterns)")
+		return errSessionTooLarge
 	}
 	s.setCookie(w, uiTokenCookie, sealed, "/ui/", sessionTTL)
 	return nil
@@ -434,15 +444,15 @@ func (s *Server) uiKey() []byte {
 func (s *Server) seal(aad string, plain []byte) (string, error) {
 	block, err := aes.NewCipher(s.uiKey())
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("new cipher: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("new gcm: %w", err)
 	}
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return "", err
+		return "", fmt.Errorf("read nonce: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(gcm.Seal(nonce, nonce, plain, []byte(aad))), nil
 }
@@ -450,17 +460,21 @@ func (s *Server) seal(aad string, plain []byte) (string, error) {
 func (s *Server) open(aad, value string) ([]byte, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode sealed value: %w", err)
 	}
 	block, err := aes.NewCipher(s.uiKey())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new cipher: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil || len(raw) < gcm.NonceSize() {
-		return nil, errors.New("api: bad sealed value")
+		return nil, errBadSealed
 	}
-	return gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], []byte(aad))
+	plain, err := gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], []byte(aad))
+	if err != nil {
+		return nil, fmt.Errorf("open sealed value: %w", err)
+	}
+	return plain, nil
 }
 
 // Access reports whether the viewer can read a repo.

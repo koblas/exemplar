@@ -37,6 +37,7 @@ const schemaBase = "https://exemplar.internal/schema/"
 var (
 	compileOnce sync.Once
 	compiled    map[Document]*jsonschema.Schema
+	errNoSchema = errors.New("no schema for")
 	compileErr  error //nolint:errname // compileAll's cached result, not a sentinel
 )
 
@@ -88,7 +89,7 @@ func schemaFor(d Document) (*jsonschema.Schema, error) {
 	}
 	s, ok := compiled[d]
 	if !ok {
-		return nil, fmt.Errorf("no schema for %q", d)
+		return nil, fmt.Errorf("%w %q", errNoSchema, d)
 	}
 	return s, nil
 }

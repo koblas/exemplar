@@ -26,10 +26,10 @@ func (p *Poster) UploadSARIF(ctx context.Context, pr PR, sarif []byte) (string, 
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	if _, err := zw.Write(sarif); err != nil {
-		return "", err
+		return "", fmt.Errorf("gh: gzip sarif: %w", err)
 	}
 	if err := zw.Close(); err != nil {
-		return "", err
+		return "", fmt.Errorf("gh: gzip sarif: %w", err)
 	}
 	id, _, err := p.gh.CodeScanning.UploadSarif(ctx, pr.Owner, pr.Repo, &github.SarifAnalysis{
 		CommitSHA: new(pr.HeadSHA),
@@ -57,7 +57,7 @@ const maxAlertPages = 10
 func CodeScanningAnnotations(ctx context.Context, c *github.Client, repo string, number int, tools []string) ([]Annotation, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	want := func(n string) bool {
 		return slices.ContainsFunc(tools, func(t string) bool { return strings.EqualFold(t, n) })

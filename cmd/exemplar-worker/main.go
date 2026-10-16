@@ -64,6 +64,12 @@ import (
 	"github.com/koblas/exemplar/internal/worker"
 )
 
+var (
+	// errRequired marks a missing flag or environment setting.
+	errRequired       = errors.New("required")
+	errBadConcurrency = errors.New("--concurrency must be at least 1")
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -99,39 +105,39 @@ func runServe(args []string) error {
 	drain := fs.Duration("drain", 5*time.Second, "how long readiness reports false before stopping")
 	stopAfter := fs.Duration("stop-timeout", 60*time.Second, "how long running reviews may finish on shutdown before they are cancelled")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	if *configDir == "" || *workDir == "" {
-		return errors.New("--config and --work-dir are required")
+		return fmt.Errorf("--config and --work-dir are %w", errRequired)
 	}
 	if *concurrency < 1 {
-		return errors.New("--concurrency must be at least 1")
+		return errBadConcurrency
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), os.Getenv("EXEMPLAR_GATEWAY_TOKEN")
 	if dbURL == "" || gwURL == "" || gwToken == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL, EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are required")
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL, EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are %w", errRequired)
 	}
 	app, err := appFromEnv()
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(*workDir, 0o750); err != nil {
-		return err
+		return fmt.Errorf("create work dir: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-worker")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	// Fail at startup on an invalid config; later reloads keep the last good one.
 	first, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config snapshot: %w", err)
 	}
 	var snap atomic.Pointer[config.Snapshot]
 	snap.Store(first)
@@ -141,26 +147,26 @@ func runServe(args []string) error {
 	// feedback workers and the periodic jobs use.
 	st, err := store.OpenWithConns(ctx, dbURL, int32(*concurrency)*2+14)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	if err := st.Migrate(ctx); err != nil {
-		return err
+		return fmt.Errorf("migrate store: %w", err)
 	}
 	sc, err := redact.New()
 	if err != nil {
-		return err
+		return fmt.Errorf("create redaction scanner: %w", err)
 	}
 	eng := engine.New(engine.NewHarness(engine.HarnessConfig{GatewayURL: gwURL, GatewayToken: gwToken}), sc,
 		compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")})
 	if url, tok := os.Getenv("EXEMPLAR_SEARCH_URL"), os.Getenv("EXEMPLAR_SEARCH_TOKEN"); url != "" {
 		search, err := api.NewClient(url, tok, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("create search client: %w", err)
 		}
 		hist, err := pathhistory.New(st, pathhistory.Remote(search))
 		if err != nil {
-			return err
+			return fmt.Errorf("create path history: %w", err)
 		}
 		eng.WithReferences(search).WithPathHistory(hist)
 	} else {
@@ -182,36 +188,36 @@ func runServe(args []string) error {
 			return fmt.Errorf("EXEMPLAR_API_URL and EXEMPLAR_LINK_KEY_FILE go together: %w", err)
 		}
 		if wcfg.Links, err = feedbacklink.New(bytes.TrimSpace(key), apiURL); err != nil {
-			return err
+			return fmt.Errorf("create feedback link signer: %w", err)
 		}
 	}
 	w, err := worker.New(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create review worker: %w", err)
 	}
 	linterChecks, err := worker.NewLinterCheckWorker(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create linter check worker: %w", err)
 	}
 	commands, err := worker.NewFeedbackCommandWorker(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create feedback command worker: %w", err)
 	}
 	dismissals, err := worker.NewAlertDismissalWorker(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create alert dismissal worker: %w", err)
 	}
 	signals, err := worker.NewFeedbackSignalWorker(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create feedback signal worker: %w", err)
 	}
 	mergePolicy, err := worker.NewMergePolicyWorker(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create merge policy worker: %w", err)
 	}
 	evaluations, err := worker.NewEvaluateWorker(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create evaluate worker: %w", err)
 	}
 	// The web UI's playground: the deployed config with the
 	// draft rule file added.
@@ -219,7 +225,7 @@ func runServe(args []string) error {
 		return playground.RuleFileSnapshot(os.DirFS(*configDir), ruleYAML, snap.Load().Version)
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("create playground worker: %w", err)
 	}
 	// Owner actions from the web UI write exemplar-config with the
 	// config-writer token and check teams with the gate token, both
@@ -235,7 +241,7 @@ func runServe(args []string) error {
 			}
 			c, err := app.Client(ctx, inst, gh.FlavorConfigWriter, []string{cfgRepo})
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("create github client: %w", err)
 			}
 			return gh.NewConfigRepo(c, cfgRepo)
 		},
@@ -246,42 +252,42 @@ func runServe(args []string) error {
 			}
 			c, err := app.Client(ctx, inst, gh.FlavorGate, []string{cfgRepo})
 			if err != nil {
-				return false, err
+				return false, fmt.Errorf("create github client: %w", err)
 			}
 			return gh.TeamMember(ctx, c, team, login)
 		},
 	}, func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil }, log)
 	if err != nil {
-		return err
+		return fmt.Errorf("create owner action worker: %w", err)
 	}
 	reactions, err := worker.NewReactionsWorker(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create reactions worker: %w", err)
 	}
 	linkClicks, err := worker.NewFeedbackLinkWorker(wcfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create feedback link worker: %w", err)
 	}
 	stats, err := worker.NewStatsWorker(st, log)
 	if err != nil {
-		return err
+		return fmt.Errorf("create stats worker: %w", err)
 	}
 	events, err := worker.NewEventWorker(st, log)
 	if err != nil {
-		return err
+		return fmt.Errorf("create event worker: %w", err)
 	}
 	snapshot := func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil }
 	reconcile, err := worker.NewReconcileWorker(st, app, log)
 	if err != nil {
-		return err
+		return fmt.Errorf("create reconcile worker: %w", err)
 	}
 	sweep, err := worker.NewSweepWorker(st, app, snapshot, log)
 	if err != nil {
-		return err
+		return fmt.Errorf("create sweep worker: %w", err)
 	}
 	retain, err := worker.NewRetentionWorker(st, snapshot, log)
 	if err != nil {
-		return err
+		return fmt.Errorf("create retention worker: %w", err)
 	}
 	workers := river.NewWorkers()
 	river.AddWorker(workers, w)
@@ -314,7 +320,7 @@ func runServe(args []string) error {
 		Workers:      workers, Logger: log,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("create river client: %w", err)
 	}
 
 	var draining atomic.Bool
@@ -342,7 +348,7 @@ func runServe(args []string) error {
 	// Jobs run on their own context so a signal lets them finish (Stop)
 	// before they are cancelled (StopAndCancel).
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {
-		return err
+		return fmt.Errorf("start river client: %w", err)
 	}
 	workCtx, cancelWork := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
@@ -379,7 +385,10 @@ func runServe(args []string) error {
 	wg.Wait()
 	hctx, hcancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer hcancel()
-	return hs.Shutdown(hctx)
+	if err := hs.Shutdown(hctx); err != nil {
+		return fmt.Errorf("shut down http server: %w", err)
+	}
+	return nil
 }
 
 // reloadConfig re-reads exemplar-config so kill switches and eligibility
@@ -412,28 +421,28 @@ func runEnqueue(args []string) error {
 	fs.Int64Var(&a.InstallationID, "installation", 0, "the app's installation id on the org (required)")
 	fs.IntVar(&a.Attempt, "attempt", 0, "re-run attempt for an incomplete review")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	if a.Repo == "" || a.PR < 1 || a.HeadSHA == "" || a.InstallationID == 0 {
-		return errors.New("--repo, --pr, --head and --installation are required")
+		return fmt.Errorf("--repo, --pr, --head and --installation are %w", errRequired)
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL is required")
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
 	ctx := context.Background()
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	client, err := river.NewClient(riverpgxv5.New(st.Pool), &river.Config{})
 	if err != nil {
-		return err
+		return fmt.Errorf("create river client: %w", err)
 	}
 	res, err := client.Insert(ctx, a, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("insert job: %w", err)
 	}
 	if res.UniqueSkippedAsDuplicate {
 		fmt.Printf("already queued: job %d\n", res.Job.ID)
@@ -448,11 +457,15 @@ func appFromEnv() (*gh.App, error) {
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
 	if appID == 0 || keyFile == "" || cfgRepo == "" {
-		return nil, errors.New("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are required")
+		return nil, fmt.Errorf("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are %w", errRequired)
 	}
 	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return nil, fmt.Errorf("read private key: %w", err)
 	}
-	return gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: cfgRepo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
+	app, err := gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: cfgRepo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create github app: %w", err)
+	}
+	return app, nil
 }

@@ -173,35 +173,35 @@ func (r Runner) load(ctx context.Context, snap *config.Snapshot) (inputs, error)
 	}
 	stats, err := r.Store.DigestRuleStats(ctx, Window)
 	if err != nil {
-		return in, err
+		return in, fmt.Errorf("load rule stats: %w", err)
 	}
 	for _, s := range stats {
 		in.stats[s.RuleID] = s
 	}
 	dis, err := r.Store.DigestDismissals(ctx, Window)
 	if err != nil {
-		return in, err
+		return in, fmt.Errorf("load dismissals: %w", err)
 	}
 	for _, d := range dis {
 		in.dismissals[d.RuleID] = append(in.dismissals[d.RuleID], d)
 	}
 	q, err := r.Store.DigestAdjudicationQueue(ctx)
 	if err != nil {
-		return in, err
+		return in, fmt.Errorf("load adjudication queue: %w", err)
 	}
 	for _, f := range q {
 		in.queue[f.RuleID] = append(in.queue[f.RuleID], f)
 	}
 	ds, err := r.Store.DemotionStats(ctx, demote.Window)
 	if err != nil {
-		return in, err
+		return in, fmt.Errorf("load demotion stats: %w", err)
 	}
 	for _, s := range ds {
 		in.decisions[s.RuleID] = demote.Decide(s, snap.Global.Feedback)
 	}
 	ups, err := r.Store.UpstreamRuleStats(ctx, upstream.Window)
 	if err != nil {
-		return in, err
+		return in, fmt.Errorf("load upstream rule stats: %w", err)
 	}
 	for _, u := range ups {
 		in.upstream[u.RuleID] = upstream.Judge(

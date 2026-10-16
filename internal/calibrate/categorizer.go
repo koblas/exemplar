@@ -62,6 +62,15 @@ type CategorizerReport struct {
 	Reasons    []string      `json:"reasons,omitempty"`
 }
 
+var (
+	// ErrNoThreshold is a calibration run without its eval_thresholds entry
+	// in global.yaml.
+	ErrNoThreshold     = errors.New("calibrate: global.yaml has no eval_thresholds")
+	errIncomplete      = errors.New("incomplete")
+	errCategorizerSide = errors.New("categorizer side")
+	errVerifierRun     = errors.New("verifier run")
+)
+
 // Categorizer replays labeled PRs through the auto-approve two-model
 // categorization. A PR counts as approved when review_confidence reaches
 // the bar. It fails if too many risky PRs or too few safe ones are
@@ -69,7 +78,7 @@ type CategorizerReport struct {
 func (r *Runner) Categorizer(ctx context.Context, labels []PRLabel, t *schema.CategorizerThreshold) (CategorizerReport, error) {
 	rep := CategorizerReport{Outcomes: []PROutcome{}}
 	if t == nil {
-		return rep, errors.New("calibrate: global.yaml has no eval_thresholds.categorizer")
+		return rep, fmt.Errorf("%w.categorizer", ErrNoThreshold)
 	}
 	// The production bar: calibrating against a lower one would pass a
 	// categorizer that approves less safely than auto-approve requires.
@@ -80,7 +89,7 @@ func (r *Runner) Categorizer(ctx context.Context, labels []PRLabel, t *schema.Ca
 		rep.CostUSD += cost
 		if err != nil {
 			if ctx.Err() != nil {
-				return rep, ctx.Err()
+				return rep, fmt.Errorf("calibrate: %w", ctx.Err())
 			}
 			o.Error = err.Error()
 			rep.Errors++
@@ -126,7 +135,7 @@ func (r *Runner) categorize(ctx context.Context, l PRLabel, dir string) (gates.S
 	defer func() { _ = os.RemoveAll(dir) }()
 	cloneURL, base, head, err := replay.Materialize(ctx, l.Fixture, filepath.Join(dir, "source"))
 	if err != nil {
-		return gates.Stage2Categorization{}, 0, err
+		return gates.Stage2Categorization{}, 0, fmt.Errorf("materialize fixture: %w", err)
 	}
 	token := ""
 	if l.Fixture.Synthetic == nil && r.CloneToken != nil {
@@ -136,7 +145,7 @@ func (r *Runner) categorize(ctx context.Context, l PRLabel, dir string) (gates.S
 	}
 	ws, err := engine.Checkout(ctx, filepath.Join(dir, "wt"), engine.CheckoutOptions{CloneURL: cloneURL, BaseSHA: base, HeadSHA: head, Token: token})
 	if err != nil {
-		return gates.Stage2Categorization{}, 0, err
+		return gates.Stage2Categorization{}, 0, fmt.Errorf("checkout: %w", err)
 	}
 	fx := l.Fixture
 	p, err := engine.Prepare(ctx, ws, r.Snapshot, engine.PRInfo{
@@ -144,10 +153,10 @@ func (r *Runner) categorize(ctx context.Context, l PRLabel, dir string) (gates.S
 		Author: fx.Author, BaseSHA: base, HeadSHA: head,
 	}, r.Scanner)
 	if err != nil {
-		return gates.Stage2Categorization{}, 0, err
+		return gates.Stage2Categorization{}, 0, fmt.Errorf("prepare: %w", err)
 	}
 	if p.Incomplete != "" {
-		return gates.Stage2Categorization{}, 0, fmt.Errorf("incomplete: %s", p.Incomplete)
+		return gates.Stage2Categorization{}, 0, fmt.Errorf("%w: %s", errIncomplete, p.Incomplete)
 	}
 	s2, runs := r.Engine.Categorize(ctx, p, "eval")
 	cost := 0.0
@@ -158,7 +167,7 @@ func (r *Runner) categorize(ctx context.Context, l PRLabel, dir string) (gates.S
 	// otherwise an outage would pass the risky half of the calibration.
 	for _, s := range []gates.Categorization{s2.A, s2.B} {
 		if !s.OK {
-			return s2, cost, fmt.Errorf("categorizer side %s: %s", s.Side, s.Detail)
+			return s2, cost, fmt.Errorf("%w %s: %s", errCategorizerSide, s.Side, s.Detail)
 		}
 	}
 	return s2, cost, nil

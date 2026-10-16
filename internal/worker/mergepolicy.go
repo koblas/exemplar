@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -31,12 +30,15 @@ type mergePolicyInput struct {
 // naming what it waits for. It reports whether the check passed.
 func reportMergePolicy(ctx context.Context, reader *github.Client, member gates.MemberFunc, poster *gh.Poster, target gh.PR, in mergePolicyInput) (bool, error) {
 	if in.gatesPassed {
-		return true, poster.SetMergePolicy(ctx, target, true, "Auto-approve gates passed",
-			"Exemplar found nothing to flag on this commit, and every auto-approve gate passed.")
+		if err := poster.SetMergePolicy(ctx, target, true, "Auto-approve gates passed",
+			"Exemplar found nothing to flag on this commit, and every auto-approve gate passed."); err != nil {
+			return true, fmt.Errorf("worker: set merge policy: %w", err)
+		}
+		return true, nil
 	}
 	rs, err := gh.Reviews(ctx, reader, in.repo, in.number)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("worker: list reviews: %w", err)
 	}
 	reviews := make([]gates.PolicyReview, 0, len(rs))
 	for _, r := range rs {
@@ -44,10 +46,13 @@ func reportMergePolicy(ctx context.Context, reader *github.Client, member gates.
 	}
 	res, err := gates.HumanMergePolicy(ctx, in.touched, in.owners, in.author, target.HeadSHA, reviews, member)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("worker: merge policy: %w", err)
 	}
 	if res.Pass {
-		return true, poster.SetMergePolicy(ctx, target, true, "Approved", "Approved on this commit by "+strings.Join(res.Approvers, ", ")+".")
+		if err := poster.SetMergePolicy(ctx, target, true, "Approved", "Approved on this commit by "+strings.Join(res.Approvers, ", ")+"."); err != nil {
+			return true, fmt.Errorf("worker: set merge policy: %w", err)
+		}
+		return true, nil
 	}
 	var b strings.Builder
 	b.WriteString("Exemplar's auto-approve gates did not all pass on this commit, so it needs people's approval. Waiting for:\n\n")
@@ -55,7 +60,10 @@ func reportMergePolicy(ctx context.Context, reader *github.Client, member gates.
 		b.WriteString("- " + m + "\n")
 	}
 	b.WriteString("\nAn approval counts once it is on this commit; a push needs a new one.")
-	return false, poster.SetMergePolicy(ctx, target, false, "Waiting for a code-owner approval", b.String())
+	if err := poster.SetMergePolicy(ctx, target, false, "Waiting for a code-owner approval", b.String()); err != nil {
+		return false, fmt.Errorf("worker: set merge policy: %w", err)
+	}
+	return false, nil
 }
 
 // MergePolicyWorker runs merge_policy jobs: a PR's reviews changed, so
@@ -69,7 +77,7 @@ type MergePolicyWorker struct {
 // NewMergePolicyWorker validates cfg; it needs GitHub, Store and Snapshot.
 func NewMergePolicyWorker(cfg Config) (*MergePolicyWorker, error) {
 	if cfg.Store == nil {
-		return nil, errors.New("worker: merge policy needs a store")
+		return nil, fmt.Errorf("%w: merge policy needs a store", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -107,23 +115,23 @@ func (w *MergePolicyWorker) Handle(ctx context.Context, a store.MergePolicyArgs)
 	}
 	reader, err := w.cfg.GitHub.Reader(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return false, "", err
+		return false, "", fmt.Errorf("worker: reader client: %w", err)
 	}
 	pr, err := gh.GetPullRequest(ctx, reader, a.Repo, a.PR)
 	if err != nil {
-		return false, "", err
+		return false, "", fmt.Errorf("worker: get pull request: %w", err)
 	}
 	if pr.State != "open" {
 		return false, "pull request is " + pr.State, nil
 	}
 	passed, err := w.cfg.Store.HeadAutoApproved(ctx, queries.HeadAutoApprovedParams{Repo: a.Repo, PrNumber: int32(a.PR), HeadSha: pr.HeadSHA})
 	if err != nil {
-		return false, "", err
+		return false, "", fmt.Errorf("worker: head auto-approved: %w", err)
 	}
 	owner, name, _ := strings.Cut(a.Repo, "/")
 	files, err := gh.PRFilePatches(ctx, reader, owner, name, a.PR)
 	if err != nil {
-		return false, "", err
+		return false, "", fmt.Errorf("worker: list pr files: %w", err)
 	}
 	var touched []string
 	for _, f := range files {
@@ -138,11 +146,11 @@ func (w *MergePolicyWorker) Handle(ctx context.Context, a store.MergePolicyArgs)
 	}
 	posterClient, err := w.cfg.GitHub.Poster(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return false, "", err
+		return false, "", fmt.Errorf("worker: poster client: %w", err)
 	}
 	target, err := gh.ParsePR(a.Repo, a.PR, pr.HeadSHA)
 	if err != nil {
-		return false, "", err
+		return false, "", fmt.Errorf("worker: parse pr: %w", err)
 	}
 	gate := lazyGateFor(w.cfg.GitHub, a.InstallationID, a.Repo)
 	member := func(ctx context.Context, team, login string) (bool, error) {
@@ -163,7 +171,7 @@ func baseOwners(ctx context.Context, c *github.Client, repo, base string) (codeo
 	for _, loc := range codeowners.Locations {
 		data, ok, err := gh.ReadFile(ctx, c, repo, base, loc)
 		if err != nil {
-			return codeowners.File{}, err
+			return codeowners.File{}, fmt.Errorf("worker: read %s: %w", loc, err)
 		}
 		if ok {
 			return codeowners.Parse(string(data)), nil

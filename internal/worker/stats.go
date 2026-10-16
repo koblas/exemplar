@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -39,7 +38,7 @@ type StatsWorker struct {
 // NewStatsWorker returns a StatsWorker.
 func NewStatsWorker(st *store.Store, log *slog.Logger) (*StatsWorker, error) {
 	if st == nil {
-		return nil, errors.New("worker: stats need a store")
+		return nil, fmt.Errorf("%w: stats need a store", errMissingDependency)
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)

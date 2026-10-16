@@ -15,6 +15,9 @@ import (
 	"time"
 )
 
+// errEscapes reports a fixture path outside the repository.
+var errEscapes = errors.New("escapes the repository")
+
 // Repo is a built repository with a base and a head commit.
 type Repo struct {
 	Dir     string
@@ -27,7 +30,7 @@ type Repo struct {
 // deleted. File names come from fixtures, so they are confined to dir.
 func Build(ctx context.Context, dir string, base, head map[string]string, deleted []string) (*Repo, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("synth: create %s: %w", dir, err)
 	}
 	r := &Repo{Dir: dir}
 	if err := r.git(ctx, "init", "-q", "-b", "main"); err != nil {
@@ -80,10 +83,10 @@ func writeFiles(dir string, files map[string]string) error {
 			return err
 		}
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			return err
+			return fmt.Errorf("synth: create dir for %s: %w", n, err)
 		}
 		if err := os.WriteFile(full, []byte(files[n]), 0o600); err != nil {
-			return err
+			return fmt.Errorf("synth: write %s: %w", n, err)
 		}
 	}
 	return nil
@@ -93,7 +96,7 @@ func confined(dir, rel string) (string, error) {
 	clean := filepath.Clean(filepath.FromSlash(rel))
 	if rel == "" || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) ||
 		clean == ".git" || strings.HasPrefix(clean, ".git"+string(filepath.Separator)) {
-		return "", fmt.Errorf("synth: path %q escapes the repository", rel)
+		return "", fmt.Errorf("synth: path %q %w", rel, errEscapes)
 	}
 	return filepath.Join(dir, clean), nil
 }

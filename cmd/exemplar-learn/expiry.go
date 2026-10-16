@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,34 +23,34 @@ func runExpiry(args []string) error {
 	configDir := fs.String("config", "", "exemplar-config checkout (required)")
 	dryRun := fs.Bool("dry-run", false, "print decisions; write nothing")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	if *configDir == "" {
-		return errors.New("--config is required")
+		return fmt.Errorf("--config is %w", errRequired)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-learn")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	snap, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config snapshot: %w", err)
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL is required")
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	if err := st.Migrate(ctx); err != nil {
-		return err
+		return fmt.Errorf("migrate store: %w", err)
 	}
 	r := expiry.Runner{Stats: st, Log: log}
 	if !*dryRun {
@@ -62,5 +62,8 @@ func runExpiry(args []string) error {
 	for _, o := range outs {
 		printJSON(o)
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("run expiry: %w", err)
+	}
+	return nil
 }

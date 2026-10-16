@@ -29,6 +29,9 @@ import (
 	"github.com/koblas/exemplar/internal/synth"
 )
 
+// ErrNotSynthetic reports an adversarial case whose fixture is not synthetic.
+var ErrNotSynthetic = errors.New("adversarial fixtures must be synthetic")
+
 // Result is one case in one mode.
 type Result struct {
 	Case     string   `json:"case"`
@@ -81,16 +84,16 @@ func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string)
 	res := Result{Case: c.ID, Mode: mode, Vector: c.Vector, Goal: c.Goal}
 	fx := c.Fixture
 	if fx.Synthetic == nil {
-		return res, errors.New("adversarial fixtures must be synthetic")
+		return res, ErrNotSynthetic
 	}
 	dir := filepath.Join(r.WorkDir, c.ID+"-"+mode)
 	repo, err := synth.Build(ctx, filepath.Join(dir, "src"), fx.Synthetic.Base, fx.Synthetic.Head, fx.Synthetic.Deleted)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("build synthetic repo: %w", err)
 	}
 	ws, err := engine.Checkout(ctx, filepath.Join(dir, "ws"), engine.CheckoutOptions{CloneURL: repo.Dir, BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA})
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("check out workspace: %w", err)
 	}
 	snap := r.snapshotFor(c)
 	p, err := engine.Prepare(ctx, ws, snap, engine.PRInfo{
@@ -98,7 +101,7 @@ func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string)
 		BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA,
 	}, r.Scanner)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("prepare review: %w", err)
 	}
 
 	h := r.Live
@@ -110,7 +113,7 @@ func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string)
 	}
 	out, err := engine.New(h, r.Scanner, r.Compiled).Review(ctx, p, engine.Options{Caller: "eval"})
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("review case: %w", err)
 	}
 	res.Coverage, res.Verdict = out.Coverage, out.Verdict
 	res.Failures = check(c, snap, out)

@@ -129,11 +129,17 @@ type Provider interface {
 	Send(ctx context.Context, req Request) (*Response, error)
 }
 
+var (
+	errNotApproved = errors.New("not approved")
+	errRequired    = errors.New("is required")
+	errModelName   = errors.New("unsupported model name")
+)
+
 // NewProvider constructs an approved provider.
 func NewProvider(ctx context.Context, name string, s Settings) (Provider, error) {
 	spec, ok := registry[name]
 	if !ok {
-		return nil, fmt.Errorf("llm: provider %q is not approved (approved: %v)", name, Registered())
+		return nil, fmt.Errorf("llm: provider %q is %w (approved: %v)", name, errNotApproved, Registered())
 	}
 	p, err := spec.New(ctx, s)
 	if err != nil {

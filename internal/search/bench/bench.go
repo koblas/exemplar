@@ -163,6 +163,13 @@ var languages = map[string]string{
 // LanguageOf returns the v1 language for path, or "".
 func LanguageOf(path string) string { return languages[strings.ToLower(filepath.Ext(path))] }
 
+// Tool and server errors.
+var (
+	errMissingTools = errors.New("bench: missing tools")
+	errNotUniversal = errors.New("bench: ctags is not universal-ctags")
+	errNotReady     = errors.New("zoekt-webserver did not become ready")
+)
+
 // RequiredTools are the binaries Run needs.
 var RequiredTools = []string{"git", "zoekt-git-index", "zoekt-webserver", "ctags"}
 
@@ -175,11 +182,11 @@ func CheckTools() error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("bench: missing tools: %s", strings.Join(missing, ", "))
+		return fmt.Errorf("%w: %s", errMissingTools, strings.Join(missing, ", "))
 	}
 	out, _ := exec.Command("ctags", "--version").Output() //nolint:noctx // one-off probe
 	if !bytes.Contains(out, []byte("Universal Ctags")) {
-		return errors.New("bench: ctags is not universal-ctags")
+		return errNotUniversal
 	}
 	return nil
 }
@@ -192,7 +199,7 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	cfg.defaults()
 	r := &Report{Repo: cfg.RepoURL, Branch: cfg.Branch, StartedAt: time.Now().UTC()}
 	if err := os.MkdirAll(cfg.WorkDir, 0o755); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("bench: work dir: %w", err)
 	}
 	env := gitEnv(cfg.Token)
 
@@ -339,7 +346,7 @@ func queryLatency(ctx context.Context, index string, queries []string, repeats i
 	var lc net.ListenConfig
 	l, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("bench: listen: %w", err)
 	}
 	addr := l.Addr().String()
 	_ = l.Close()
@@ -348,7 +355,7 @@ func queryLatency(ctx context.Context, index string, queries []string, repeats i
 	srv := exec.CommandContext(sctx, "zoekt-webserver", "-index", index, "-listen", addr, "-rpc")
 	srv.Stdout, srv.Stderr = io.Discard, io.Discard
 	if err := srv.Start(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("bench: start zoekt-webserver: %w", err)
 	}
 	defer func() { cancel(); _ = srv.Wait() }()
 
@@ -361,12 +368,12 @@ func queryLatency(ctx context.Context, index string, queries []string, repeats i
 		start := time.Now()
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+addr+"/api/search", bytes.NewReader(body))
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("build search request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("search request: %w", err)
 		}
 		defer func() { _ = resp.Body.Close() }()
 		var out struct {
@@ -375,7 +382,7 @@ func queryLatency(ctx context.Context, index string, queries []string, repeats i
 			} `json:"Result"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("decode search response: %w", err)
 		}
 		return out.Result.MatchCount, time.Since(start), nil
 	}
@@ -386,7 +393,7 @@ func queryLatency(ctx context.Context, index string, queries []string, repeats i
 			break
 		}
 		if time.Now().After(deadline) {
-			return nil, errors.New("zoekt-webserver did not become ready")
+			return nil, errNotReady
 		}
 		time.Sleep(500 * time.Millisecond)
 	}

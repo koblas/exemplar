@@ -111,8 +111,14 @@ func (f *CheckoutFiles) FileAt(ctx context.Context, repo, sha, path string) ([]b
 	if err != nil {
 		return nil, err
 	}
-	return ws.Show(ctx, sha, path)
+	data, err := ws.Show(ctx, sha, path)
+	if err != nil {
+		return nil, fmt.Errorf("show %s@%s:%s: %w", repo, sha, path, err)
+	}
+	return data, nil
 }
+
+var errCheckoutRoot = errors.New("evalgen: CheckoutFiles.Root is required")
 
 func (f *CheckoutFiles) workspace(ctx context.Context, repo, sha string) (*engine.Workspace, error) {
 	f.mu.Lock()
@@ -122,7 +128,7 @@ func (f *CheckoutFiles) workspace(ctx context.Context, repo, sha string) (*engin
 		return ws, nil
 	}
 	if f.Root == "" {
-		return nil, errors.New("evalgen: CheckoutFiles.Root is required")
+		return nil, errCheckoutRoot
 	}
 	url := "https://github.com/" + repo + ".git"
 	if f.CloneURL != nil {
@@ -139,7 +145,7 @@ func (f *CheckoutFiles) workspace(ctx context.Context, repo, sha string) (*engin
 	// Empty sparse cone: no working tree, files are read from git.
 	ws, err := engine.Checkout(ctx, dir, engine.CheckoutOptions{CloneURL: url, BaseSHA: sha, HeadSHA: sha, Token: token, SparseDirs: []string{}})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("check out: %w", err)
 	}
 	if f.wss == nil {
 		f.wss = map[string]*engine.Workspace{}

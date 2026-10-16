@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -134,7 +133,7 @@ type ReconcileWorker struct {
 // NewReconcileWorker returns a ReconcileWorker.
 func NewReconcileWorker(st *store.Store, app Deliveries, log *slog.Logger) (*ReconcileWorker, error) {
 	if st == nil || app == nil {
-		return nil, errors.New("worker: the reconciler needs a store and the App")
+		return nil, fmt.Errorf("%w: the reconciler needs a store and the App", errMissingDependency)
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -146,7 +145,7 @@ func NewReconcileWorker(st *store.Store, app Deliveries, log *slog.Logger) (*Rec
 func (w *ReconcileWorker) Work(ctx context.Context, _ *river.Job[ReconcileArgs]) error {
 	ds, err := w.app.HookDeliveries(ctx, w.now().Add(-ReconcileLookback))
 	if err != nil {
-		return err
+		return fmt.Errorf("list hook deliveries: %w", err)
 	}
 	var ids []uuid.UUID
 	for _, d := range ds {
@@ -156,7 +155,7 @@ func (w *ReconcileWorker) Work(ctx context.Context, _ *river.Job[ReconcileArgs])
 	}
 	rows, err := w.st.StoredDeliveries(ctx, ids)
 	if err != nil {
-		return err
+		return fmt.Errorf("stored deliveries: %w", err)
 	}
 	stored := map[string]bool{}
 	for _, id := range rows {
@@ -280,7 +279,7 @@ type SweepWorker struct {
 // NewSweepWorker returns a SweepWorker.
 func NewSweepWorker(st *store.Store, search PRSearch, snapshot func(context.Context) (*config.Snapshot, error), log *slog.Logger) (*SweepWorker, error) {
 	if st == nil || search == nil || snapshot == nil {
-		return nil, errors.New("worker: the sweeper needs a store, the App and the config")
+		return nil, fmt.Errorf("%w: the sweeper needs a store, the App and the config", errMissingDependency)
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)

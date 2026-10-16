@@ -72,7 +72,7 @@ func mutationLang(p string) string {
 func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo, sha string, globs []string, perOp, maxPerClass int, dryRun bool) error {
 	snap, err := config.LoadSnapshot(os.DirFS(configDir), configDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config: %w", err)
 	}
 	if len(globs) == 0 {
 		if rc, ok := snap.Repos[repo]; ok && rc.BugLane != nil {
@@ -80,7 +80,7 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 		}
 	}
 	if len(globs) == 0 {
-		return fmt.Errorf("%s has no bug_lane.critical_paths; pass --paths", repo)
+		return fmt.Errorf("%s %w; pass --paths", repo, errNoCriticalPaths)
 	}
 	if sha == "" {
 		head, err := exec.CommandContext(ctx, "git", "-C", checkout, "rev-parse", "HEAD").Output()
@@ -109,7 +109,7 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 		}
 		src, err := os.ReadFile(filepath.Join(checkout, filepath.FromSlash(p)))
 		if err != nil {
-			return err
+			return fmt.Errorf("read %s: %w", p, err)
 		}
 		var ms []mutate.Mutation
 		if lang == "go" {
@@ -149,7 +149,7 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 				return fmt.Errorf("%s: %w", file, err)
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
+			return fmt.Errorf("read %s: %w", file, err)
 		}
 		added := 0
 		for _, c := range byClass[class] {
@@ -161,10 +161,10 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 			if !dryRun {
 				pf := filepath.Join(dir, filepath.FromSlash(c.Patch))
 				if err := os.MkdirAll(filepath.Dir(pf), 0o755); err != nil {
-					return err
+					return fmt.Errorf("create patch dir: %w", err)
 				}
 				if err := os.WriteFile(pf, []byte(patches[class+"/"+c.Patch]), 0o644); err != nil { //nolint:gosec // G306: a file in the config repository checkout, committed to git; ordinary source file mode
-					return err
+					return fmt.Errorf("write patch: %w", err)
 				}
 			}
 		}
@@ -177,7 +177,7 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 			continue
 		}
 		if err := os.WriteFile(file, data, 0o644); err != nil { //nolint:gosec // G306: a file in the config repository checkout, committed to git; ordinary source file mode
-			return err
+			return fmt.Errorf("write %s: %w", file, err)
 		}
 	}
 	return nil
@@ -214,7 +214,7 @@ func renderCases(doc schema.EvalCases) ([]byte, error) {
 	}
 	data, err := yaml.Marshal(y)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal cases: %w", err)
 	}
 	data = append([]byte("# Bug-class recall cases; mutation cases come from `exemplar mutations` (spec §8.8).\n"), data...)
 	var check schema.EvalCases

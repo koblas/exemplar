@@ -98,7 +98,7 @@ type Handler struct{ cfg Config }
 // New validates cfg.
 func New(cfg Config) (*Handler, error) {
 	if cfg.Store == nil || cfg.Session == nil || cfg.SignOut == nil || cfg.Act == nil || cfg.FalsePositive == nil || cfg.Try == nil {
-		return nil, errors.New("web: Store, Session, SignOut, Act, FalsePositive and Try are required")
+		return nil, errMissingDependency
 	}
 	if cfg.PlaygroundDailyUSD <= 0 {
 		cfg.PlaygroundDailyUSD = 5
@@ -107,7 +107,7 @@ func New(cfg Config) (*Handler, error) {
 		cfg.PlaygroundDailyRuns = 20
 	}
 	if len(cfg.FormKey) < 32 {
-		return nil, errors.New("web: the form key must be at least 32 bytes")
+		return nil, errShortFormKey
 	}
 	if cfg.GitHubWeb == "" {
 		cfg.GitHubWeb = "https://github.com/"
@@ -192,6 +192,11 @@ type handlerFunc func(w http.ResponseWriter, r *http.Request, v *viewer) (string
 
 var errNotFound = errors.New("not found")
 
+var (
+	errMissingDependency = errors.New("web: Store, Session, SignOut, Act, FalsePositive and Try are required")
+	errShortFormKey      = errors.New("web: the form key must be at least 32 bytes")
+)
+
 func (h *Handler) page(fn handlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		login, read, ok := h.cfg.Session(r)
@@ -274,7 +279,7 @@ type rulesBody struct {
 func (h *Handler) rules(_ http.ResponseWriter, r *http.Request, v *viewer) (string, string, any, error) {
 	rows, err := h.cfg.Store.UIRules(r.Context(), Window)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list rules: %w", err)
 	}
 	q := r.URL.Query()
 	b := rulesBody{Owner: q.Get("owner"), Status: q.Get("status"), Search: strings.TrimSpace(q.Get("q")), Window: Window}
@@ -319,7 +324,7 @@ func (h *Handler) rule(_ http.ResponseWriter, r *http.Request, v *viewer) (strin
 	id := r.PathValue("id")
 	rows, err := h.cfg.Store.UIRules(r.Context(), Window)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list rules: %w", err)
 	}
 	i := slices.IndexFunc(rows, func(x queries.UIRulesRow) bool { return x.RuleID == id })
 	if i < 0 || !visibleRule(v, rows[i].Scope) {
@@ -327,11 +332,11 @@ func (h *Handler) rule(_ http.ResponseWriter, r *http.Request, v *viewer) (strin
 	}
 	b := ruleBody{Rule: toRuleRow(rows[i]), ShadowToken: h.token(v.Login, "shadow_rule", id), KillToken: h.token(v.Login, "kill_rule", id)}
 	if b.Weeks, err = h.cfg.Store.UIRuleWeeks(r.Context(), id); err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list rule weeks: %w", err)
 	}
 	fs, err := h.cfg.Store.UIRuleFindings(r.Context(), queries.UIRuleFindingsParams{RuleID: id, Limit: 100})
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list rule findings: %w", err)
 	}
 	for _, f := range fs {
 		if !v.can(f.Repo) {
@@ -368,7 +373,7 @@ func (h *Handler) finding(_ http.ResponseWriter, r *http.Request, v *viewer) (st
 	}
 	f, err := h.cfg.Store.UIFinding(r.Context(), id)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("get finding: %w", err)
 	}
 	// Someone who cannot read the repo sees the same page as for no
 	// finding at all.
@@ -383,7 +388,7 @@ func (h *Handler) finding(_ http.ResponseWriter, r *http.Request, v *viewer) (st
 		b.Comment = fmt.Sprintf("%s#discussion_r%d", b.PR, f.GhCommentID)
 	}
 	if b.Events, err = h.cfg.Store.UIFindingEvents(r.Context(), id); err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list finding events: %w", err)
 	}
 	return "finding", fmt.Sprintf("Finding %d", id), b, nil
 }
@@ -398,7 +403,7 @@ type candidateRow struct {
 func (h *Handler) candidates(_ http.ResponseWriter, r *http.Request, v *viewer) (string, string, any, error) {
 	rows, err := h.cfg.Store.UICandidates(r.Context(), 200)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list candidates: %w", err)
 	}
 	var out []candidateRow
 	for _, c := range rows {
@@ -433,7 +438,7 @@ type repoSwitch struct{ Repo, Token string }
 func (h *Handler) audit(_ http.ResponseWriter, r *http.Request, v *viewer) (string, string, any, error) {
 	rows, err := h.cfg.Store.UIDecisions(r.Context(), 500)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list decisions: %w", err)
 	}
 	var b auditBody
 	seen := map[string]bool{}
@@ -470,7 +475,7 @@ func (h *Handler) cost(_ http.ResponseWriter, r *http.Request, _ *viewer) (strin
 	}
 	rows, err := h.cfg.Store.UICost(r.Context(), int32(days))
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("get cost: %w", err)
 	}
 	b := costBody{Rows: rows, Days: days}
 	totals := map[string]*costTotal{}
@@ -611,7 +616,7 @@ func (h *Handler) falsePositive(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) actions(_ http.ResponseWriter, r *http.Request, v *viewer) (string, string, any, error) {
 	rows, err := h.cfg.Store.OwnerActionsBy(r.Context(), v.Login)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", nil, fmt.Errorf("list owner actions: %w", err)
 	}
 	return "actions", "Your actions", rows, nil
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -30,22 +29,22 @@ func runIngest(args []string) error {
 	docHosts := fs.String("doc-hosts", os.Getenv("EXEMPLAR_DOC_HOSTS"), "comma-separated internal docs hosts (FR-L1.6)")
 	bots := fs.String("bot-logins", os.Getenv("EXEMPLAR_BOT_LOGINS"), "comma-separated extra bot logins, including the Exemplar app's")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-learn")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	if *configDir == "" {
-		return errors.New("--config is required: mining is gated on exemplar-config eligibility")
+		return fmt.Errorf("--config is %w: mining is gated on exemplar-config eligibility", errRequired)
 	}
 	snap, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config snapshot: %w", err)
 	}
 	targets := split(*repos)
 	if len(targets) == 0 {
@@ -63,7 +62,7 @@ func runIngest(args []string) error {
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL is required")
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
 	app, installation, _, err := appFromEnv()
 	if err != nil {
@@ -71,15 +70,15 @@ func runIngest(args []string) error {
 	}
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	if err := st.Migrate(ctx); err != nil {
-		return err
+		return fmt.Errorf("migrate store: %w", err)
 	}
 	sc, err := redact.New()
 	if err != nil {
-		return err
+		return fmt.Errorf("create redaction scanner: %w", err)
 	}
 	cfg := ingest.Config{BotLogins: split(*bots), DocHosts: split(*docHosts), PageSize: *pageSize, MaxPages: *maxPages, Logger: log}
 
@@ -89,14 +88,14 @@ func runIngest(args []string) error {
 			// A fresh read-only token per run: backfills outlive the 1h token.
 			c, err := app.Client(ctx, installation, gh.FlavorIngest, []string{repo})
 			if err != nil {
-				return err
+				return fmt.Errorf("create github client: %w", err)
 			}
 			q := func(ctx context.Context, query string, vars map[string]any, out any) error {
 				return gh.GraphQL(ctx, c, query, vars, out)
 			}
 			job, err := ingest.New(cfg, q, st, snap, sc, pseudo)
 			if err != nil {
-				return err
+				return fmt.Errorf("create ingest job: %w", err)
 			}
 			stats, err := job.Run(ctx, repo)
 			if err != nil {
@@ -121,7 +120,7 @@ func runIngest(args []string) error {
 		}
 	}
 	if len(failed) > 0 {
-		return fmt.Errorf("ingest failed for %s", strings.Join(failed, ", "))
+		return fmt.Errorf("%w for %s", errIngestFailed, strings.Join(failed, ", "))
 	}
 	return nil
 }

@@ -186,11 +186,11 @@ func (r *Runner) RunPR(ctx context.Context, snap *config.Snapshot, ruleIDs []str
 		return Trial{}, fmt.Errorf("playground: token for %s: %w", pr.Repo, err)
 	}
 	if err := os.MkdirAll(r.WorkDir, 0o750); err != nil {
-		return Trial{}, err
+		return Trial{}, fmt.Errorf("playground: create work dir: %w", err)
 	}
 	dir, err := os.MkdirTemp(r.WorkDir, "try-")
 	if err != nil {
-		return Trial{}, err
+		return Trial{}, fmt.Errorf("playground: create temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	url := "https://github.com/" + pr.Repo + ".git"

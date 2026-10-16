@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -116,23 +117,26 @@ func decodeViolations(text string) ([]Violation, error) {
 	return out.Violations, nil
 }
 
+// errInvalidAnswer is a model answer that breaks its output contract.
+var errInvalidAnswer = errors.New("invalid answer")
+
 // validateViolations enforces the Violation contract's limits in code.
 func validateViolations(vs []Violation) error {
 	if len(vs) > maxViolations {
-		return fmt.Errorf("answer has %d violations, limit %d", len(vs), maxViolations)
+		return fmt.Errorf("%w: answer has %d violations, limit %d", errInvalidAnswer, len(vs), maxViolations)
 	}
 	for i, v := range vs {
 		switch {
 		case v.Path == "":
-			return fmt.Errorf("violation %d has no path", i)
+			return fmt.Errorf("%w: violation %d has no path", errInvalidAnswer, i)
 		case v.Side != string(scope.SideRight) && v.Side != string(scope.SideLeft):
-			return fmt.Errorf("violation %d has side %q", i, v.Side)
+			return fmt.Errorf("%w: violation %d has side %q", errInvalidAnswer, i, v.Side)
 		case v.StartLine < 1 || v.EndLine < v.StartLine:
-			return fmt.Errorf("violation %d has range %d-%d", i, v.StartLine, v.EndLine)
+			return fmt.Errorf("%w: violation %d has range %d-%d", errInvalidAnswer, i, v.StartLine, v.EndLine)
 		case strings.TrimSpace(v.Explanation) == "" || utf8.RuneCountInString(v.Explanation) > maxExplanationLen:
-			return fmt.Errorf("violation %d explanation is empty or too long", i)
+			return fmt.Errorf("%w: violation %d explanation is empty or too long", errInvalidAnswer, i)
 		case utf8.RuneCountInString(v.SuggestedFix) > maxFixLen:
-			return fmt.Errorf("violation %d suggested fix is too long", i)
+			return fmt.Errorf("%w: violation %d suggested fix is too long", errInvalidAnswer, i)
 		}
 	}
 	return nil

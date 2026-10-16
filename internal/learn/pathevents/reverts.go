@@ -77,10 +77,16 @@ type Job struct {
 	elig    Eligibility
 }
 
+var (
+	errConfig          = errors.New("pathevents: invalid config")
+	errNotOwnerName    = errors.New("must be owner/name")
+	errNoDefaultBranch = errors.New("has no default branch")
+)
+
 // New returns a Job.
 func New(cfg Config, connect Connect, st *store.Store, elig Eligibility) (*Job, error) {
 	if connect == nil || st == nil || elig == nil {
-		return nil, errors.New("pathevents: connect, store and eligibility are required")
+		return nil, fmt.Errorf("%w: connect, store and eligibility are required", errConfig)
 	}
 	if cfg.Backfill <= 0 {
 		cfg.Backfill = 365 * 24 * time.Hour
@@ -99,7 +105,7 @@ func New(cfg Config, connect Connect, st *store.Store, elig Eligibility) (*Job, 
 	}
 	if s := cfg.Seeds; s != nil {
 		if s.Pseudonyms == nil || s.Scanner == nil {
-			return nil, errors.New("pathevents: seeds need a pseudonymizer and a secret scanner")
+			return nil, fmt.Errorf("%w: seeds need a pseudonymizer and a secret scanner", errConfig)
 		}
 		if s.MaxFiles <= 0 {
 			s.MaxFiles = 5
@@ -164,7 +170,7 @@ func (j *Job) Reverts(ctx context.Context, repo string) (RevertStats, error) {
 	}
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return stats, fmt.Errorf("pathevents: repo %q must be owner/name", repo)
+		return stats, fmt.Errorf("pathevents: repo %q %w", repo, errNotOwnerName)
 	}
 	api, err := j.connect(ctx, repo)
 	if err != nil {
@@ -204,7 +210,7 @@ func (j *Job) Reverts(ctx context.Context, repo string) (RevertStats, error) {
 		}
 		ref := page.Repository.DefaultBranchRef
 		if ref == nil {
-			return stats, fmt.Errorf("pathevents: %s has no default branch", repo)
+			return stats, fmt.Errorf("pathevents: %s %w", repo, errNoDefaultBranch)
 		}
 		hist := ref.Target.History
 		var events []queries.InsertPathEventParams
@@ -303,7 +309,7 @@ func exclusions(ctx context.Context, api API, owner, name string) (exclude.Rules
 		return exclude.Rules{}, fmt.Errorf("pathevents: read %s/%s exclusions: %w", owner, name, err)
 	}
 	if out.Repository == nil {
-		return exclude.Rules{}, fmt.Errorf("pathevents: repo %s/%s not found", owner, name)
+		return exclude.Rules{}, fmt.Errorf("pathevents: repo %s/%s %w", owner, name, errMissing)
 	}
 	return exclude.Load(out.Repository.Gitattributes.Text, out.Repository.Exemplarignore.Text), nil
 }
@@ -319,7 +325,7 @@ func (j *Job) insert(ctx context.Context, events []queries.InsertPathEventParams
 	if len(events)+len(links) == 0 {
 		return nil
 	}
-	return j.st.InTx(ctx, func(_ pgx.Tx, q *queries.Queries) error {
+	err := j.st.InTx(ctx, func(_ pgx.Tx, q *queries.Queries) error {
 		for _, e := range events {
 			if err := q.InsertPathEvent(ctx, e); err != nil {
 				return fmt.Errorf("pathevents: store %s %s %s: %w", e.Kind, e.Ref, e.Path, err)
@@ -332,6 +338,10 @@ func (j *Job) insert(ctx context.Context, events []queries.InsertPathEventParams
 		}
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("pathevents: insert: %w", err)
+	}
+	return nil
 }
 
 // historyQuery pages the default branch newest first. Each commit carries

@@ -11,6 +11,9 @@ import (
 // MaxExportSummary is the longest export.summary allowed.
 const MaxExportSummary = 200
 
+// ErrInvalidExportSummary marks an export.summary that fails LintExportSummary.
+var ErrInvalidExportSummary = errors.New("invalid export.summary")
+
 var (
 	// A sentence break: terminal punctuation followed by whitespace and more
 	// text. "context.Context" and "e.g" inside a word do not count.
@@ -31,18 +34,18 @@ func LintExportSummary(s string) error {
 	s = strings.TrimSpace(s)
 	switch {
 	case s == "":
-		return errors.New("export.summary is empty")
+		return fmt.Errorf("%w: export.summary is empty", ErrInvalidExportSummary)
 	case utf8.RuneCountInString(s) > MaxExportSummary:
-		return fmt.Errorf("export.summary is %d characters; at most %d", utf8.RuneCountInString(s), MaxExportSummary)
+		return fmt.Errorf("%w: export.summary is %d characters; at most %d", ErrInvalidExportSummary, utf8.RuneCountInString(s), MaxExportSummary)
 	case strings.ContainsAny(s, "\n\r"):
-		return errors.New("export.summary must be one line")
+		return fmt.Errorf("%w: export.summary must be one line", ErrInvalidExportSummary)
 	case sentenceBreakRE.MatchString(abbrevRE.ReplaceAllString(s, "")):
-		return errors.New("export.summary must be one sentence")
+		return fmt.Errorf("%w: export.summary must be one sentence", ErrInvalidExportSummary)
 	case urlRE.MatchString(s):
-		return errors.New("export.summary must not contain a URL")
+		return fmt.Errorf("%w: export.summary must not contain a URL", ErrInvalidExportSummary)
 	}
 	if m := instructionRE.FindString(s); m != "" {
-		return fmt.Errorf("export.summary may state the rule only; %q reads as an instruction to agents", m)
+		return fmt.Errorf("%w: export.summary may state the rule only; %q reads as an instruction to agents", ErrInvalidExportSummary, m)
 	}
 	return nil
 }

@@ -47,7 +47,7 @@ type credentials struct {
 func credentialsPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("user config dir: %w", err)
 	}
 	return filepath.Join(dir, "exemplar", "credentials.json"), nil
 }
@@ -68,12 +68,12 @@ func loadCredentials(ctx context.Context) (credentials, error) {
 		c.API = u
 	}
 	if c.Token == "" || c.API == "" {
-		return c, errors.New("not signed in: run `exemplar login --api https://exemplar.example.com` (or set EXEMPLAR_TOKEN and EXEMPLAR_API_URL)")
+		return c, errNotSignedIn
 	}
 	c.API = strings.TrimSuffix(c.API, "/")
 	if c.Provider == "oidc" && expiresSoon(c.Token) {
 		if c.Refresh == "" || c.TokenEndpoint == "" {
-			return c, errors.New("your sign-in expired: run `exemplar login --oidc` again")
+			return c, errSignInExpired
 		}
 		tok, err := refreshOIDC(ctx, http.DefaultClient, c)
 		if err != nil {
@@ -115,7 +115,7 @@ func refreshOIDC(ctx context.Context, hc *http.Client, c credentials) (tokenResp
 		return tok, err
 	}
 	if tok.IDToken == "" {
-		return tok, fmt.Errorf("no ID token (%s)", tok.Error)
+		return tok, fmt.Errorf("%w (%s)", errNoIDToken, tok.Error)
 	}
 	return tok, nil
 }
@@ -126,13 +126,16 @@ func saveCredentials(c credentials) (string, error) {
 		return "", err
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return "", err
+		return "", fmt.Errorf("create credentials dir: %w", err)
 	}
 	data, err := json.MarshalIndent(c, "", "  ") //nolint:gosec // G117: this is the CLI's own credential cache; the refresh token must be stored, and the file is 0o600
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encode credentials: %w", err)
 	}
-	return p, os.WriteFile(p, data, 0o600)
+	if err := os.WriteFile(p, data, 0o600); err != nil {
+		return "", fmt.Errorf("write credentials: %w", err)
+	}
+	return p, nil
 }
 
 func newLoginCmd() *cobra.Command {
@@ -153,22 +156,22 @@ func newLoginCmd() *cobra.Command {
 				clientID = os.Getenv("EXEMPLAR_OIDC_CLI_CLIENT_ID")
 			}
 			if apiURL == "" || clientID == "" {
-				return errors.New("--api and --client-id (or EXEMPLAR_API_URL and EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID, or EXEMPLAR_OIDC_CLI_CLIENT_ID with --oidc) are required")
+				return fmt.Errorf("--api and --client-id (or EXEMPLAR_API_URL and EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID, or EXEMPLAR_OIDC_CLI_CLIENT_ID with --oidc) %w", errFlagsRequired)
 			}
 			if !strings.HasPrefix(apiURL, "https://") && !strings.HasPrefix(apiURL, "http://127.0.0.1") {
-				return errors.New("--api must be https")
+				return errAPINotHTTPS
 			}
 			creds := credentials{API: strings.TrimSuffix(apiURL, "/")}
 			if useOIDC {
 				if issuer == "" {
-					return errors.New("--oidc needs --oidc-issuer (or EXEMPLAR_OIDC_ISSUER_URL)")
+					return errOIDCNeedsIssuer
 				}
 				d, err := oidc.Discover(ctx, http.DefaultClient, issuer)
 				if err != nil {
-					return err
+					return fmt.Errorf("discover OIDC provider: %w", err)
 				}
 				if d.DeviceEndpoint == "" {
-					return errors.New("the OIDC provider does not offer the device flow (no device_authorization_endpoint)")
+					return errNoDeviceFlow
 				}
 				tok, err := deviceFlowAt(ctx, http.DefaultClient, d.DeviceEndpoint, d.TokenEndpoint,
 					url.Values{"client_id": {clientID}, "scope": {strings.Join(strings.Split(scopes, ","), " ")}}, cmd.ErrOrStderr(), loginPoll)
@@ -176,7 +179,7 @@ func newLoginCmd() *cobra.Command {
 					return err
 				}
 				if tok.IDToken == "" {
-					return errors.New("the OIDC provider returned no ID token (is openid in --scopes?)")
+					return fmt.Errorf("the OIDC provider returned %w (is openid in --scopes?)", errNoIDToken)
 				}
 				creds.Provider, creds.Token, creds.Refresh, creds.ClientID, creds.TokenEndpoint = "oidc", tok.IDToken, tok.RefreshToken, clientID, d.TokenEndpoint
 			} else {
@@ -223,7 +226,7 @@ func deviceFlow(ctx context.Context, c *http.Client, web, clientID string, out i
 		return "", err
 	}
 	if tok.AccessToken == "" {
-		return "", errors.New("token: GitHub returned none")
+		return "", errNoAccessToken
 	}
 	return tok.AccessToken, nil
 }
@@ -244,7 +247,7 @@ func deviceFlowAt(ctx context.Context, c *http.Client, codeURL, tokenURL string,
 		return tokenResponse{}, fmt.Errorf("device code: %w", err)
 	}
 	if code.DeviceCode == "" || code.UserCode == "" {
-		return tokenResponse{}, errors.New("device code: none returned (is device flow enabled for the client?)")
+		return tokenResponse{}, errNoDeviceCode
 	}
 	fmt.Fprintf(out, "Open %s and enter the code %s\n", code.VerificationURI, code.UserCode)
 	if code.VerificationURIComplete != "" {
@@ -259,7 +262,7 @@ func deviceFlowAt(ctx context.Context, c *http.Client, codeURL, tokenURL string,
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
-			return tokenResponse{}, ctx.Err()
+			return tokenResponse{}, fmt.Errorf("wait for sign-in: %w", ctx.Err())
 		case <-time.After(wait):
 		}
 		var tok tokenResponse
@@ -275,35 +278,35 @@ func deviceFlowAt(ctx context.Context, c *http.Client, codeURL, tokenURL string,
 				wait = time.Duration(max(tok.Interval, int(wait/time.Second)+5)) * time.Second
 			}
 		default:
-			return tokenResponse{}, fmt.Errorf("sign-in failed: %s", tok.Error)
+			return tokenResponse{}, fmt.Errorf("%w: %s", errSignInFailed, tok.Error)
 		}
 	}
-	return tokenResponse{}, errors.New("sign-in timed out; run `exemplar login` again")
+	return tokenResponse{}, errSignInTimedOut
 }
 
 func postForm(ctx context.Context, c *http.Client, u string, form url.Values, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
 	if err != nil {
-		return err
+		return fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("post %s: %w", u, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if err != nil {
-		return err
+		return fmt.Errorf("read %s: %w", u, err)
 	}
 	// An OAuth error (authorization_pending, …) comes back as 400 with a
 	// JSON body (RFC 6749 §5.2); GitHub answers 200.
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
-		return fmt.Errorf("%s: %s", u, resp.Status)
+		return fmt.Errorf("%s: %w %s", u, errHTTPStatus, resp.Status)
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("%s: %s", u, resp.Status)
+		return fmt.Errorf("%s: %s: %w", u, resp.Status, err)
 	}
 	return nil
 }
@@ -351,7 +354,7 @@ func newReviewCmd() *cobra.Command {
 			}
 			req := evaluate.Request{Repo: repo, BaseSHA: baseSHA, Diff: diff, Agent: agent}
 			if err := req.Validate(); err != nil {
-				return err
+				return fmt.Errorf("validate request: %w", err)
 			}
 			c := &http.Client{Timeout: 30 * time.Second}
 			var st evaluate.Status
@@ -362,11 +365,11 @@ func newReviewCmd() *cobra.Command {
 			deadline := time.Now().Add(wait)
 			for !st.Final() {
 				if time.Now().After(deadline) {
-					return fmt.Errorf("the review is still running after %s; its id is %s", wait, st.ID)
+					return fmt.Errorf("the review is %w after %s; its id is %s", errStillRunning, wait, st.ID)
 				}
 				select {
 				case <-ctx.Done():
-					return ctx.Err()
+					return fmt.Errorf("wait for review: %w", ctx.Err())
 				case <-time.After(poll):
 				}
 				if err := apiCall(ctx, c, creds, http.MethodGet, "/v1/evaluate/"+st.ID, nil, &st); err != nil {
@@ -375,9 +378,9 @@ func newReviewCmd() *cobra.Command {
 			}
 			switch st.Status {
 			case evaluate.StatusRefused:
-				return errors.New("not reviewed: " + st.Reason)
+				return fmt.Errorf("%w: %s", errNotReviewed, st.Reason)
 			case evaluate.StatusFailed:
-				return errors.New(st.Reason)
+				return fmt.Errorf("%w: %s", errReviewFailed, st.Reason)
 			}
 			res := st.Result
 			if res == nil {
@@ -393,10 +396,10 @@ func newReviewCmd() *cobra.Command {
 				printFindings(cmd.OutOrStdout(), res, st.CostUSD)
 			}
 			if res.Incomplete != "" {
-				return errors.New("the review did not complete: " + res.Incomplete)
+				return fmt.Errorf("the review %w: %s", errIncomplete, res.Incomplete)
 			}
 			if len(res.Findings) > 0 && !exitZero {
-				return fmt.Errorf("%d finding(s)", len(res.Findings))
+				return fmt.Errorf("%d %w", len(res.Findings), errFindings)
 			}
 			return nil
 		},
@@ -431,7 +434,7 @@ func originRepo(ctx context.Context) (string, error) {
 	}
 	m := remoteRE.FindStringSubmatch(u)
 	if m == nil {
-		return "", fmt.Errorf("cannot read owner/name from origin %q; pass --repo", u)
+		return "", fmt.Errorf("%w %q; pass --repo", errOriginRepo, u)
 	}
 	return m[1], nil
 }
@@ -484,36 +487,39 @@ func apiCall(ctx context.Context, c *http.Client, creds credentials, method, pat
 	if in != nil {
 		data, err := json.Marshal(in)
 		if err != nil {
-			return err
+			return fmt.Errorf("encode request: %w", err)
 		}
 		body = bytes.NewReader(data)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, creds.API+path, body)
 	if err != nil {
-		return err
+		return fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+creds.Token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "exemplar-cli/"+version)
 	resp, err := c.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("call exemplar-api: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return err
+		return fmt.Errorf("read exemplar-api response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		var e struct {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(data, &e) == nil && e.Error != "" {
-			return fmt.Errorf("exemplar-api: %s", e.Error)
+			return fmt.Errorf("%w: %s", errAPI, e.Error)
 		}
-		return fmt.Errorf("exemplar-api: %s", resp.Status)
+		return fmt.Errorf("%w: %s", errAPI, resp.Status)
 	}
-	return json.Unmarshal(data, out)
+	if err := json.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("decode exemplar-api response: %w", err)
+	}
+	return nil
 }
 
 func printFindings(w io.Writer, res *evaluate.Result, cost float64) {
@@ -577,8 +583,12 @@ func reviewSARIF(fs []evaluate.Finding) ([]byte, error) {
 		}
 		results = append(results, result{RuleID: f.RuleID, Level: lv, Message: map[string]string{"text": f.Message}, Locations: []location{loc}})
 	}
-	return json.Marshal(map[string]any{
+	data, err := json.Marshal(map[string]any{
 		"$schema": "https://json.schemastore.org/sarif-2.1.0.json", "version": "2.1.0",
 		"runs": []any{map[string]any{"tool": map[string]any{"driver": map[string]any{"name": "Exemplar", "rules": rules}}, "results": results}},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("encode SARIF: %w", err)
+	}
+	return data, nil
 }

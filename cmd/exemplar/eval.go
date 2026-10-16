@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -71,7 +70,7 @@ func newEvalCmd() *cobra.Command {
 			}
 			if workDir == "" {
 				if workDir, err = os.MkdirTemp("", "exemplar-eval-*"); err != nil {
-					return err
+					return fmt.Errorf("create work dir: %w", err)
 				}
 				defer func() { _ = os.RemoveAll(workDir) }()
 			}
@@ -97,19 +96,19 @@ func newEvalCmd() *cobra.Command {
 					return fmt.Errorf("encode eval reports: %w", err)
 				}
 				if err := os.WriteFile(jsonOut, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-					return err
+					return fmt.Errorf("write json report: %w", err)
 				}
 			}
 			md := evalMarkdown(reports, snap.Global.EvalThresholds)
 			if markdownOut != "" {
 				if err := os.WriteFile(markdownOut, []byte(md), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-					return err
+					return fmt.Errorf("write markdown report: %w", err)
 				}
 			}
 			fmt.Fprint(cmd.OutOrStdout(), md)
 			for _, r := range reports {
 				if !r.Pass {
-					return errors.New("one or more rules are below eval_thresholds")
+					return errBelowThresholds
 				}
 			}
 			return nil
@@ -131,7 +130,11 @@ func newEvalCmd() *cobra.Command {
 
 // evalOne evaluates one rule (evalrun.EvaluateRule).
 func evalOne(ctx context.Context, ev *evalrun.Evaluator, snap *config.Snapshot, cfg fs.FS, id string) (evalrun.Report, error) {
-	return evalrun.EvaluateRule(ctx, ev, snap, cfg, id)
+	rep, err := evalrun.EvaluateRule(ctx, ev, snap, cfg, id)
+	if err != nil {
+		return rep, fmt.Errorf("evaluate %s: %w", id, err)
+	}
+	return rep, nil
 }
 
 // selection is the config a check runs on and the rules it covers.
@@ -176,7 +179,7 @@ func selectRules(ctx context.Context, configDir, since string, rules []string) (
 // changedPaths lists paths changed between rev and HEAD in dir.
 func changedPaths(ctx context.Context, dir, rev string) ([]string, error) {
 	if strings.HasPrefix(rev, "-") {
-		return nil, fmt.Errorf("bad revision %q", rev)
+		return nil, fmt.Errorf("%w %q", errBadRevision, rev)
 	}
 	out, err := exec.CommandContext(ctx, "git", "-C", dir, "diff", "--name-only", "--no-renames", rev+"...HEAD", "--").Output()
 	if err != nil {
@@ -204,7 +207,7 @@ func plural(n int, one, many string) string {
 // remoteEval is `exemplar eval --remote`: mode eval on exemplar-api.
 func remoteEval(ctx context.Context, out io.Writer, configDir, since, repo string, rules []string, jsonOut, markdownOut string, wait time.Duration) error {
 	if since == "" {
-		return errors.New("--remote needs --changed-since: the config PR's base")
+		return errRemoteNeedsSince
 	}
 	creds, err := loadCredentials(ctx)
 	if err != nil {
@@ -217,7 +220,7 @@ func remoteEval(ctx context.Context, out io.Writer, configDir, since, repo strin
 		}
 		m := remoteRE.FindStringSubmatch(u)
 		if m == nil {
-			return fmt.Errorf("cannot read owner/name from origin %q; pass --repo", u)
+			return fmt.Errorf("%w %q; pass --repo", errOriginRepo, u)
 		}
 		repo = m[1]
 	}
@@ -231,7 +234,7 @@ func remoteEval(ctx context.Context, out io.Writer, configDir, since, repo strin
 	}
 	req := evaluate.Request{Mode: evaluate.ModeEval, Repo: repo, BaseSHA: base, HeadSHA: head, Rules: rules}
 	if err := req.Validate(); err != nil {
-		return err
+		return fmt.Errorf("validate request: %w", err)
 	}
 	c := &http.Client{Timeout: 30 * time.Second}
 	var st evaluate.Status
@@ -241,11 +244,11 @@ func remoteEval(ctx context.Context, out io.Writer, configDir, since, repo strin
 	deadline := time.Now().Add(wait)
 	for !st.Final() {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("the evaluation is still running after %s; its id is %s", wait, st.ID)
+			return fmt.Errorf("the evaluation is %w after %s; its id is %s", errStillRunning, wait, st.ID)
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("wait for evaluation: %w", ctx.Err())
 		case <-time.After(remotePoll):
 		}
 		if err := apiCall(ctx, c, creds, http.MethodGet, "/v1/evaluate/"+st.ID, nil, &st); err != nil {
@@ -253,10 +256,10 @@ func remoteEval(ctx context.Context, out io.Writer, configDir, since, repo strin
 		}
 	}
 	if st.Status != evaluate.StatusDone {
-		return fmt.Errorf("not evaluated: %s", st.Reason)
+		return fmt.Errorf("%w: %s", errNotEvaluated, st.Reason)
 	}
 	if st.Result == nil || st.Result.Eval == nil {
-		return errors.New("exemplar-api returned no eval result")
+		return errNoEvalResult
 	}
 	ev := st.Result.Eval
 	if jsonOut != "" {
@@ -266,17 +269,17 @@ func remoteEval(ctx context.Context, out io.Writer, configDir, since, repo strin
 			return fmt.Errorf("eval reports: %w", err)
 		}
 		if err := os.WriteFile(jsonOut, append(b.Bytes(), '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-			return err
+			return fmt.Errorf("write json report: %w", err)
 		}
 	}
 	if markdownOut != "" {
 		if err := os.WriteFile(markdownOut, []byte(ev.Markdown), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-			return err
+			return fmt.Errorf("write markdown report: %w", err)
 		}
 	}
 	fmt.Fprint(out, ev.Markdown)
 	if !ev.Pass {
-		return errors.New("one or more rules are below eval_thresholds")
+		return errBelowThresholds
 	}
 	return nil
 }

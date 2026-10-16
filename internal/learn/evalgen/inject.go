@@ -59,8 +59,10 @@ type Parser func(path string, src []byte) error
 // worse than none. tree-sitter grammars widen this later.
 var DefaultParsers = map[string]Parser{
 	".go": func(p string, src []byte) error {
-		_, err := parser.ParseFile(token.NewFileSet(), p, src, parser.AllErrors)
-		return err
+		if _, err := parser.ParseFile(token.NewFileSet(), p, src, parser.AllErrors); err != nil {
+			return fmt.Errorf("parse go file: %w", err)
+		}
+		return nil
 	},
 }
 
@@ -92,7 +94,7 @@ func (in *Injector) Inject(ctx context.Context, rule Rule, base Case, t InjectTa
 	}
 	src, err := in.Files.FileAt(ctx, t.Repo, t.SHA, t.Path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read file: %w", err)
 	}
 	if bytes.IndexByte(src, 0) >= 0 {
 		return nil, reject("%s is binary", t.Path)
@@ -118,7 +120,7 @@ func (in *Injector) Inject(ctx context.Context, rule Rule, base Case, t InjectTa
 
 	edit, err := in.Model.ProposeViolation(ctx, rule, t.Path, numbered.String())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("propose violation: %w", err)
 	}
 	if edit.StartLine < 1 || edit.EndLine < edit.StartLine || edit.EndLine > shown {
 		return nil, reject("edit range %d-%d outside the %d lines shown", edit.StartLine, edit.EndLine, shown)
@@ -217,15 +219,15 @@ func unifiedDiff(file string, lines []string, start, end int, repl []string) str
 func checkApplies(ctx context.Context, file string, src []byte, patch string) error {
 	dir, err := os.MkdirTemp("", "exemplar-evalgen-*")
 	if err != nil {
-		return err
+		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	full := filepath.Join(dir, filepath.FromSlash(file))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		return err
+		return fmt.Errorf("create dir: %w", err)
 	}
 	if err := os.WriteFile(full, src, 0o600); err != nil {
-		return err
+		return fmt.Errorf("write file: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

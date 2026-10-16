@@ -33,6 +33,16 @@ import (
 	"github.com/koblas/exemplar/internal/search/bench"
 )
 
+var (
+	// errRequired marks a missing flag or environment setting.
+	errRequired            = errors.New("required")
+	errAppPartial          = errors.New("must be set together")
+	errBadIncrementalDepth = errors.New("bad --incremental-depths entry")
+	errSearchTokenTooShort = errors.New("EXEMPLAR_SEARCH_TOKEN must be set to at least 32 bytes")
+	errCtagsMissing        = errors.New("--require-ctags: universal-ctags is not on PATH")
+	errShutdownDeadline    = errors.New("background work did not stop within the shutdown deadline")
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: exemplar-search serve|bench [flags]")
@@ -69,10 +79,10 @@ func runBench(args []string) error {
 	fs.StringVar(&out, "out", "", "write the JSON report here")
 	fs.StringVar(&md, "markdown", "", "write a Markdown summary here")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	if cfg.RepoURL == "" || cfg.WorkDir == "" {
-		return errors.New("--repo and --work-dir are required")
+		return fmt.Errorf("--repo and --work-dir are %w", errRequired)
 	}
 	cfg.Token = os.Getenv("EXEMPLAR_GH_TOKEN")
 	if sparse != "" {
@@ -81,14 +91,14 @@ func runBench(args []string) error {
 	for d := range strings.SplitSeq(depths, ",") {
 		n, err := strconv.Atoi(strings.TrimSpace(d))
 		if err != nil || n < 1 {
-			return fmt.Errorf("bad --incremental-depths entry %q", d)
+			return fmt.Errorf("%w %q", errBadIncrementalDepth, d)
 		}
 		cfg.IncrementalDepths = append(cfg.IncrementalDepths, n)
 	}
 	if queriesFile != "" {
 		data, err := os.ReadFile(queriesFile)
 		if err != nil {
-			return err
+			return fmt.Errorf("read queries: %w", err)
 		}
 		for q := range strings.SplitSeq(string(data), "\n") {
 			if q = strings.TrimSpace(q); q != "" && !strings.HasPrefix(q, "#") {
@@ -101,21 +111,23 @@ func runBench(args []string) error {
 	defer stop()
 	report, err := bench.Run(ctx, cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("run bench: %w", err)
 	}
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal report: %w", err)
 	}
 	if out != "" {
 		if err := os.WriteFile(out, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-			return err
+			return fmt.Errorf("write report: %w", err)
 		}
 	} else {
 		fmt.Println(string(data))
 	}
 	if md != "" {
-		return os.WriteFile(md, []byte(report.Markdown()), 0o644) //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
+		if err := os.WriteFile(md, []byte(report.Markdown()), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
+			return fmt.Errorf("write markdown summary: %w", err)
+		}
 	}
 	return nil
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -40,14 +39,17 @@ func (f *precheckFlags) register(cmd *cobra.Command) {
 func (f *precheckFlags) client() (*github.Client, string, error) {
 	token := os.Getenv(f.tokEnv)
 	if token == "" {
-		return nil, "", fmt.Errorf("$%s is empty: this check reads the target repos", f.tokEnv)
+		return nil, "", fmt.Errorf("$%s %w: this check reads the target repos", f.tokEnv, errEmptyToken)
 	}
 	opts := []github.ClientOptionsFunc{github.WithAuthToken(token)}
 	if f.apiURL != "" {
 		opts = append(opts, github.WithURLs(&f.apiURL, &f.apiURL))
 	}
 	c, err := github.NewClient(opts...)
-	return c, token, err
+	if err != nil {
+		return nil, "", fmt.Errorf("github client: %w", err)
+	}
+	return c, token, nil
 }
 
 func (f *precheckFlags) write(cmd *cobra.Command, reports any, md string) error {
@@ -57,12 +59,12 @@ func (f *precheckFlags) write(cmd *cobra.Command, reports any, md string) error 
 			return fmt.Errorf("encode reports: %w", err)
 		}
 		if err := os.WriteFile(f.jsonOut, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-			return err
+			return fmt.Errorf("write json report: %w", err)
 		}
 	}
 	if f.markdownOut != "" {
 		if err := os.WriteFile(f.markdownOut, []byte(md), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-			return err
+			return fmt.Errorf("write markdown report: %w", err)
 		}
 	}
 	fmt.Fprint(cmd.OutOrStdout(), md)
@@ -136,7 +138,7 @@ func newVolumeCmd() *cobra.Command {
 			}
 			if workDir == "" {
 				if workDir, err = os.MkdirTemp("", "exemplar-volume-*"); err != nil {
-					return err
+					return fmt.Errorf("create work dir: %w", err)
 				}
 				defer func() { _ = os.RemoveAll(workDir) }()
 			}
@@ -149,7 +151,7 @@ func newVolumeCmd() *cobra.Command {
 				r, _ := findRule(sel.head, id)
 				rep, err := precheck.Volume(ctx, ghPRs{client}, trial, sel.head, sel.eligible, r, cfg)
 				if err != nil {
-					return err
+					return fmt.Errorf("estimate volume of %s: %w", id, err)
 				}
 				reports = append(reports, rep)
 			}
@@ -197,11 +199,11 @@ func newLinterOverlapCmd() *cobra.Command {
 			for _, id := range ids {
 				cases, err := evalrun.Cases(os.DirFS(f.configDir), sel.head.Evals[id])
 				if err != nil {
-					return err
+					return fmt.Errorf("load eval cases for %s: %w", id, err)
 				}
 				rep, err := precheck.LinterOverlap(ctx, ghAnnotations{client}, sel.head, sel.eligible, id, cases)
 				if err != nil {
-					return err
+					return fmt.Errorf("check linter overlap for %s: %w", id, err)
 				}
 				failed = failed || !rep.Pass
 				reports = append(reports, rep)
@@ -210,7 +212,7 @@ func newLinterOverlapCmd() *cobra.Command {
 				return err
 			}
 			if failed {
-				return errors.New("a repo's linters already flag one or more positive cases")
+				return errLinterOverlap
 			}
 			return nil
 		},
@@ -222,13 +224,21 @@ func newLinterOverlapCmd() *cobra.Command {
 type ghPRs struct{ c *github.Client }
 
 func (g ghPRs) MergedPRs(ctx context.Context, repo string, since time.Time, limit int) ([]gh.PullRequest, [][]string, error) {
-	return gh.MergedPRs(ctx, g.c, repo, since, limit)
+	prs, files, err := gh.MergedPRs(ctx, g.c, repo, since, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list merged PRs in %s: %w", repo, err)
+	}
+	return prs, files, nil
 }
 
 type ghAnnotations struct{ c *github.Client }
 
 func (g ghAnnotations) Annotations(ctx context.Context, repo, sha string, checks []string) ([]gh.Annotation, error) {
-	return gh.Annotations(ctx, g.c, repo, sha, checks)
+	anns, err := gh.Annotations(ctx, g.c, repo, sha, checks)
+	if err != nil {
+		return nil, fmt.Errorf("list annotations in %s@%s: %w", repo, sha, err)
+	}
+	return anns, nil
 }
 
 func volumeMarkdown(reports []precheck.VolumeReport, cfg precheck.VolumeConfig) string {

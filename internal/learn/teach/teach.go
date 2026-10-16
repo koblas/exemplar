@@ -89,7 +89,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Proposal, err
 	}
 	rows, err := r.Store.TeachSignals(ctx, Window)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load teach signals: %w", err)
 	}
 	rules := map[string]config.Rule{}
 	for _, rule := range snap.Rules {
@@ -199,20 +199,24 @@ func (r Runner) make(ctx context.Context, rule config.Rule, p *Proposal) error {
 	} else {
 		issue, err := r.Repo.CreateIssue(ctx, fmt.Sprintf("Exemplar: owners, please review %s (%s)", rule.ID, p.Class), r.issueBody(rule, *p), []string{Label})
 		if err != nil {
-			return err
+			return fmt.Errorf("create issue: %w", err)
 		}
 		p.Action, p.URL = "issue", issue.URL
 	}
-	_, err := r.Store.InsertTeachProposal(ctx, queries.InsertTeachProposalParams{
+	if _, err := r.Store.InsertTeachProposal(ctx, queries.InsertTeachProposalParams{
 		RuleID: rule.ID, RuleVersion: rule.VersionSHA, TeachClass: p.Class,
 		EvidenceFindings: ids, ConfigPrUrl: &p.URL, State: state,
-	})
-	return err
+	}); err != nil {
+		return fmt.Errorf("insert teach proposal: %w", err)
+	}
+	return nil
 }
 
 var (
 	flowPatterns  = regexp.MustCompile(`(?m)^file_patterns:[ \t]*\[(.*)\][ \t]*(#.*)?$`)
 	blockPatterns = regexp.MustCompile(`(?m)^file_patterns:[ \t]*(#.*)?\n((?:[ \t]+-[^\n]*\n?)+)`)
+
+	errNoFilePatterns = errors.New("no single top-level file_patterns list to extend")
 )
 
 // excluded adds an exclusion to a rule file's file_patterns, as a flow
@@ -240,17 +244,17 @@ func excluded(content []byte, pattern string) ([]byte, error) {
 		out = append(out, line...)
 		return append(out, content[m[5]:]...), nil
 	}
-	return nil, errors.New("no single top-level file_patterns list to extend")
+	return nil, errNoFilePatterns
 }
 
 func (r Runner) scopePR(ctx context.Context, rule config.Rule, p Proposal) (string, error) {
 	base, sha, err := r.Repo.DefaultBranch(ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("get default branch: %w", err)
 	}
 	content, err := r.Repo.GetFile(ctx, base, rule.Path)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("get file: %w", err)
 	}
 	next, err := excluded(content, p.Exclude)
 	if err != nil {
@@ -258,13 +262,17 @@ func (r Runner) scopePR(ctx context.Context, rule config.Rule, p Proposal) (stri
 	}
 	branch := fmt.Sprintf("exemplar/teach/%s/scope/%s", rule.ID, rule.VersionSHA[:min(12, len(rule.VersionSHA))])
 	if err := r.Repo.EnsureBranch(ctx, branch, sha); err != nil {
-		return "", err
+		return "", fmt.Errorf("ensure branch: %w", err)
 	}
 	title := fmt.Sprintf("Narrow %s: exclude %s (teach-the-bot)", rule.ID, strings.TrimPrefix(p.Exclude, "!"))
 	if err := r.Repo.PutFile(ctx, branch, rule.Path, next, title); err != nil {
-		return "", err
+		return "", fmt.Errorf("put file: %w", err)
 	}
-	return r.Repo.OpenDraftPR(ctx, branch, base, title, r.prBody(rule, p))
+	url, err := r.Repo.OpenDraftPR(ctx, branch, base, title, r.prBody(rule, p))
+	if err != nil {
+		return "", fmt.Errorf("open draft PR: %w", err)
+	}
+	return url, nil
 }
 
 func (r Runner) links(p Proposal) string {

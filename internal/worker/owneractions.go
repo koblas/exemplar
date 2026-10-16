@@ -2,7 +2,7 @@ package worker
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/riverqueue/river"
@@ -26,7 +26,7 @@ type OwnerActionWorker struct {
 // NewOwnerActionWorker validates its inputs.
 func NewOwnerActionWorker(r owneract.Runner, snapshot func(context.Context) (*config.Snapshot, error), log *slog.Logger) (*OwnerActionWorker, error) {
 	if r.Store == nil || r.Repo == nil || r.Member == nil || snapshot == nil {
-		return nil, errors.New("worker: owner actions need a store, the config repo, team membership and the config")
+		return nil, fmt.Errorf("%w: owner actions need a store, the config repo, team membership and the config", errMissingDependency)
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -46,9 +46,12 @@ func (w *OwnerActionWorker) Work(ctx context.Context, job *river.Job[store.Owner
 	if err != nil {
 		if job.Attempt >= job.MaxAttempts {
 			w.log.Error("owner action failed", "id", job.Args.ID, "err", err)
-			return w.runner.Fail(context.WithoutCancel(ctx), job.Args.ID, err)
+			if ferr := w.runner.Fail(context.WithoutCancel(ctx), job.Args.ID, err); ferr != nil {
+				return fmt.Errorf("record owner action %d failed: %w", job.Args.ID, ferr)
+			}
+			return nil
 		}
-		return err
+		return fmt.Errorf("run owner action %d: %w", job.Args.ID, err)
 	}
 	w.log.Info("owner action", "id", job.Args.ID, "status", out.Status, "result", out.Result, "url", out.URL)
 	return nil

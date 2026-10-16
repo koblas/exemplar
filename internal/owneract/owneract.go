@@ -105,7 +105,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot, id int64) (Outco
 	}
 	a, err := r.Store.GetOwnerAction(ctx, id)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get owner action %d: %w", id, err)
 	}
 	if a.Status != "queued" {
 		return Outcome{Status: a.Status, Result: "already finished"}, nil
@@ -142,7 +142,11 @@ func (r Runner) finish(ctx context.Context, id int64, o Outcome) error {
 	if o.URL != "" {
 		p.PrUrl = &o.URL
 	}
-	return r.Store.FinishOwnerAction(ctx, p)
+	if err := r.Store.FinishOwnerAction(ctx, p); err != nil {
+		return fmt.Errorf("finish owner action %d: %w", id, err)
+	}
+
+	return nil
 }
 
 // allowed reports whether actor is one of owners (an @user or a member of
@@ -154,7 +158,7 @@ func (r Runner) allowed(ctx context.Context, actor string, owners ...string) (bo
 		case strings.Contains(o, "/"):
 			ok, err := r.Member(ctx, o, actor)
 			if err != nil {
-				return false, err
+				return false, fmt.Errorf("check membership of %s: %w", o, err)
 			}
 			if ok {
 				return true, nil
@@ -166,6 +170,8 @@ func (r Runner) allowed(ctx context.Context, actor string, owners ...string) (bo
 	return false, nil
 }
 
+var errStatusLine = errors.New("expected one top-level status line")
+
 var statusRE = regexp.MustCompile(`(?m)^status:[ \t]*["']?(candidate|shadow|active|killed)["']?[ \t]*(#.*)?$`)
 
 // withStatus rewrites a rule file's top-level status value, keeping the
@@ -173,7 +179,7 @@ var statusRE = regexp.MustCompile(`(?m)^status:[ \t]*["']?(candidate|shadow|acti
 func withStatus(content []byte, to string) ([]byte, string, error) {
 	locs := statusRE.FindAllSubmatchIndex(content, -1)
 	if len(locs) != 1 {
-		return nil, "", fmt.Errorf("expected one top-level status line, found %d", len(locs))
+		return nil, "", fmt.Errorf("%w, found %d", errStatusLine, len(locs))
 	}
 	from := string(content[locs[0][2]:locs[0][3]])
 	out := append([]byte{}, content[:locs[0][2]]...)
@@ -226,7 +232,7 @@ func (r Runner) candidate(ctx context.Context, a queries.OwnerAction) (Outcome, 
 		return Outcome{}, refused{"no candidate " + a.Target}
 	}
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get candidate %d owner: %w", id, err)
 	}
 	if ok, err := r.allowed(ctx, a.Actor, c.Owner); err != nil {
 		return Outcome{}, err
@@ -239,7 +245,7 @@ func (r Runner) candidate(ctx context.Context, a queries.OwnerAction) (Outcome, 
 	reason := fmt.Sprintf("%s (killed by @%s in the web UI)", a.Reason, a.Actor)
 	n, err := r.Store.KillCandidate(ctx, queries.KillCandidateParams{ID: id, KillReason: &reason})
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("kill candidate %d: %w", id, err)
 	}
 	if n == 0 {
 		return Outcome{}, refused{fmt.Sprintf("candidate %d is %s, not open", id, c.Status)}
@@ -299,21 +305,21 @@ var slugRE = regexp.MustCompile(`[^a-z0-9]+`)
 func (r Runner) change(ctx context.Context, a queries.OwnerAction, path string, edit func([]byte) ([]byte, error), title string) (Outcome, error) {
 	repo, err := r.Repo(ctx)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("open config repo: %w", err)
 	}
 	branch := fmt.Sprintf("exemplar/owner/%s/%s/%d", strings.ReplaceAll(a.Action, "_", "-"), strings.Trim(slugRE.ReplaceAllString(strings.ToLower(a.Target), "-"), "-"), a.ID)
 	if url, found, err := repo.FindPR(ctx, branch); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("find PR for %s: %w", branch, err)
 	} else if found {
 		return Outcome{Status: StatusDone, Result: "the PR is open", URL: url}, nil
 	}
 	base, sha, err := repo.DefaultBranch(ctx)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get default branch: %w", err)
 	}
 	content, err := repo.GetFile(ctx, base, path)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get %s: %w", path, err)
 	}
 	next, err := edit(content)
 	if err != nil {
@@ -323,10 +329,10 @@ func (r Runner) change(ctx context.Context, a queries.OwnerAction, path string, 
 		return Outcome{}, refused{fmt.Sprintf("%s: %v", path, err)}
 	}
 	if err := repo.EnsureBranch(ctx, branch, sha); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("ensure branch %s: %w", branch, err)
 	}
 	if err := repo.PutFile(ctx, branch, path, next, title); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("put %s: %w", path, err)
 	}
 	body := fmt.Sprintf("Requested by @%s in the Exemplar web UI (owner action %d).\n", a.Actor, a.ID)
 	if strings.TrimSpace(a.Reason) != "" {
@@ -334,7 +340,7 @@ func (r Runner) change(ctx context.Context, a queries.OwnerAction, path string, 
 	}
 	url, number, err := repo.OpenPR(ctx, branch, base, title, body)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("open PR for %s: %w", branch, err)
 	}
 	if err := repo.MergePR(ctx, number, title); err != nil {
 		r.Log.Warn("owner action PR opened but not merged", "action", a.ID, "url", url, "err", err)
@@ -354,7 +360,7 @@ func (r Runner) propose(ctx context.Context, snap *config.Snapshot, a queries.Ow
 		return Outcome{}, refused{"no playground run " + a.Target}
 	}
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get playground run %d: %w", id, err)
 	}
 	if !strings.EqualFold(run.Actor, a.Actor) {
 		return Outcome{}, refused{"only the person who ran the try can save it"}
@@ -394,32 +400,32 @@ func (r Runner) propose(ctx context.Context, snap *config.Snapshot, a queries.Ow
 	}
 	repo, err := r.Repo(ctx)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("open config repo: %w", err)
 	}
 	branch := fmt.Sprintf("exemplar/owner/propose/%s/%d", strings.Trim(slugRE.ReplaceAllString(rule.ID, "-"), "-"), a.ID)
 	if url, found, err := repo.FindPR(ctx, branch); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("find PR for %s: %w", branch, err)
 	} else if found {
 		return Outcome{Status: StatusDone, Result: "the draft PR is open", URL: url}, nil
 	}
 	base, sha, err := repo.DefaultBranch(ctx)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get default branch: %w", err)
 	}
 	if existing != nil {
 		cur, err := repo.GetFile(ctx, base, path)
 		if err != nil {
-			return Outcome{}, err
+			return Outcome{}, fmt.Errorf("get %s: %w", path, err)
 		}
 		if bytes.Equal(cur, content) {
 			return Outcome{}, refused{"the draft is the same as " + path}
 		}
 	}
 	if err := repo.EnsureBranch(ctx, branch, sha); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("ensure branch %s: %w", branch, err)
 	}
 	if err := repo.PutFile(ctx, branch, path, content, title); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("put %s: %w", path, err)
 	}
 	body := fmt.Sprintf("Requested by @%s in the Exemplar web UI (owner action %d), from playground run %d on %s#%d.\n",
 		a.Actor, a.ID, run.ID, run.Repo, run.PrNumber)
@@ -429,7 +435,7 @@ func (r Runner) propose(ctx context.Context, snap *config.Snapshot, a queries.Ow
 	body += "\nIt needs eval cases (`evals/" + rule.ID + "/cases.yaml`) and the owners' review before it can merge.\n"
 	url, err := repo.OpenDraftPR(ctx, branch, base, title, body)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("open draft PR for %s: %w", branch, err)
 	}
 	return Outcome{Status: StatusDone, Result: "draft PR opened", URL: url}, nil
 }

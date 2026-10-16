@@ -21,7 +21,7 @@ type RepoWriter struct {
 func NewRepoWriter(c *github.Client, repo string) (*RepoWriter, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	return &RepoWriter{gh: c, owner: owner, repo: name}, nil
 }
@@ -50,7 +50,7 @@ func (w *RepoWriter) GetFile(ctx context.Context, ref, path string) ([]byte, boo
 		return nil, false, restErr(err, path+"@"+ref)
 	}
 	if fc == nil {
-		return nil, false, fmt.Errorf("gh: %s is not a file", path)
+		return nil, false, fmt.Errorf("%w: %s", ErrNotAFile, path)
 	}
 	s, err := fc.GetContent()
 	if err != nil {
@@ -83,7 +83,7 @@ func (w *RepoWriter) PutFile(ctx context.Context, branch, path string, content [
 	case resp != nil && resp.StatusCode == http.StatusNotFound:
 		_, _, err = w.gh.Repositories.CreateFile(ctx, w.owner, w.repo, path, opts)
 	case err == nil:
-		err = errors.New("path is a directory")
+		err = ErrNotAFile
 	}
 	if err != nil {
 		return fmt.Errorf("gh: write %s on %s: %w", path, branch, err)

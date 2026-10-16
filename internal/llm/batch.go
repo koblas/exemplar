@@ -319,7 +319,7 @@ func (g *Gateway) batchResults(w http.ResponseWriter, r *http.Request) {
 			total.CacheWriteTokens += res.Usage.CacheWriteTokens
 		}
 		if _, err := w.Write(append(res.Raw, '\n')); err != nil {
-			return err
+			return fmt.Errorf("write response: %w", err)
 		}
 		if flusher != nil && succeeded%500 == 0 {
 			flusher.Flush()

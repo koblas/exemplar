@@ -45,6 +45,8 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
+var errRequired = errors.New("required")
+
 // shutdownTimeout must stay below the pod's termination grace period.
 const shutdownTimeout = 25 * time.Second
 
@@ -74,7 +76,7 @@ func run() error {
 	}
 	gw, err := llm.NewGateway(cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("gateway: %w", err)
 	}
 
 	var ready atomic.Bool
@@ -121,14 +123,17 @@ func run() error {
 	log.Info("shutting down")
 	sctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	return srv.Shutdown(sctx)
+	if err := srv.Shutdown(sctx); err != nil {
+		return fmt.Errorf("shut down: %w", err)
+	}
+	return nil
 }
 
 func loadConfig(ctx context.Context) (llm.Config, *store.Store, error) {
 	var cfg llm.Config
 	dir := os.Getenv("EXEMPLAR_CONFIG_DIR")
 	if dir == "" {
-		return cfg, nil, errors.New("EXEMPLAR_CONFIG_DIR is required")
+		return cfg, nil, fmt.Errorf("EXEMPLAR_CONFIG_DIR is %w", errRequired)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "global.yaml")) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
@@ -136,14 +141,14 @@ func loadConfig(ctx context.Context) (llm.Config, *store.Store, error) {
 	}
 	var global schema.GlobalConfig
 	if err := schema.Decode(schema.DocGlobal, data, &global); err != nil {
-		return cfg, nil, err
+		return cfg, nil, fmt.Errorf("decode global.yaml: %w", err)
 	}
 	token := os.Getenv("EXEMPLAR_GATEWAY_TOKEN")
 	if token == "" {
-		return cfg, nil, errors.New("EXEMPLAR_GATEWAY_TOKEN is required")
+		return cfg, nil, fmt.Errorf("EXEMPLAR_GATEWAY_TOKEN is %w", errRequired)
 	}
 	if err := llm.ValidateProviders(global.Providers); err != nil {
-		return cfg, nil, err
+		return cfg, nil, fmt.Errorf("validate providers: %w", err)
 	}
 	// Build exactly the providers global.yaml routes to; a missing
 	// credential for any of them stops start-up.
@@ -151,7 +156,7 @@ func loadConfig(ctx context.Context) (llm.Config, *store.Store, error) {
 	for _, name := range llm.ConfiguredProviders(global.Providers) {
 		p, err := llm.NewProvider(ctx, name, llm.EnvSettings())
 		if err != nil {
-			return cfg, nil, err
+			return cfg, nil, fmt.Errorf("provider %s: %w", name, err)
 		}
 		clients[name] = p
 	}
@@ -173,7 +178,7 @@ func loadConfig(ctx context.Context) (llm.Config, *store.Store, error) {
 	if url := os.Getenv("EXEMPLAR_DATABASE_URL"); url != "" {
 		st, err = store.Open(ctx, url)
 		if err != nil {
-			return cfg, nil, err
+			return cfg, nil, fmt.Errorf("open store: %w", err)
 		}
 		cfg.Recorder = store.CallRecorder{Store: st}
 		cfg.Batches = store.BatchStore{Store: st}

@@ -36,7 +36,7 @@ func newTryCmd() *cobra.Command {
 			ctx := cmd.Context()
 			ruleYAML, err := os.ReadFile(args[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("read rule file: %w", err)
 			}
 			target, err := playground.ParseTarget(args[1])
 			if err != nil {
@@ -44,11 +44,11 @@ func newTryCmd() *cobra.Command {
 			}
 			snap, ruleID, err := playground.RuleFileSnapshot(os.DirFS(configDir), ruleYAML, configDir)
 			if err != nil {
-				return err
+				return fmt.Errorf("load rule file: %w", err)
 			}
 			token := os.Getenv(tokenEnv)
 			if token == "" {
-				return fmt.Errorf("$%s is empty: try needs your own GitHub token to check that you can read %s", tokenEnv, target.Repo)
+				return fmt.Errorf("$%s %w: try needs your own GitHub token to check that you can read %s", tokenEnv, errEmptyToken, target.Repo)
 			}
 			opts := []github.ClientOptionsFunc{github.WithAuthToken(token)}
 			if apiURL != "" {
@@ -56,7 +56,7 @@ func newTryCmd() *cobra.Command {
 			}
 			client, err := github.NewClient(opts...)
 			if err != nil {
-				return err
+				return fmt.Errorf("github client: %w", err)
 			}
 			me, _, err := client.Users.Get(ctx, "")
 			if err != nil {
@@ -72,7 +72,7 @@ func newTryCmd() *cobra.Command {
 			}
 			if workDir == "" {
 				if workDir, err = os.MkdirTemp("", "exemplar-try-*"); err != nil {
-					return err
+					return fmt.Errorf("create work dir: %w", err)
 				}
 				defer func() { _ = os.RemoveAll(workDir) }()
 			}
@@ -82,7 +82,7 @@ func newTryCmd() *cobra.Command {
 			}
 			out, err := r.Try(ctx, playground.Request{Actor: me.GetLogin(), Snapshot: snap, RuleIDs: []string{ruleID}, Target: target})
 			if err != nil {
-				return err
+				return fmt.Errorf("try rule: %w", err)
 			}
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(out)
@@ -92,7 +92,7 @@ func newTryCmd() *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout())
 			}
 			if out.Denied {
-				return errors.New("not run")
+				return errTryDenied
 			}
 			return nil
 		},
@@ -123,11 +123,15 @@ func (u *userGitHub) CanRead(ctx context.Context, _, repo string) (bool, error) 
 	if errors.As(err, &er) && er.Response != nil && (er.Response.StatusCode == http.StatusNotFound || er.Response.StatusCode == http.StatusForbidden) {
 		return false, nil
 	}
-	return false, err
+	return false, fmt.Errorf("get repo %s: %w", repo, err)
 }
 
 func (u *userGitHub) PullRequest(ctx context.Context, repo string, n int) (gh.PullRequest, error) {
-	return gh.GetPullRequest(ctx, u.c, repo, n)
+	pr, err := gh.GetPullRequest(ctx, u.c, repo, n)
+	if err != nil {
+		return pr, fmt.Errorf("get %s#%d: %w", repo, n, err)
+	}
+	return pr, nil
 }
 
 func (u *userGitHub) CloneToken(context.Context, string) (string, error) { return u.token, nil }

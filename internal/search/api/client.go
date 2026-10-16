@@ -15,6 +15,12 @@ import (
 	"github.com/koblas/exemplar/internal/search/mirror"
 )
 
+// Configuration errors from NewClient.
+var (
+	errBadURL  = errors.New("api: bad exemplar-search URL")
+	errNoToken = errors.New("api: token is required")
+)
+
 // Client calls exemplar-search.
 type Client struct {
 	base  string
@@ -27,10 +33,10 @@ type Client struct {
 func NewClient(base, token string, hc *http.Client) (*Client, error) {
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("api: bad exemplar-search URL %q", base)
+		return nil, fmt.Errorf("%w %q", errBadURL, base)
 	}
 	if token == "" {
-		return nil, errors.New("api: token is required")
+		return nil, errNoToken
 	}
 	if hc == nil {
 		hc = &http.Client{Timeout: 30 * time.Second}
@@ -70,11 +76,11 @@ func (e *Error) Unwrap() error {
 func (c *Client) call(ctx context.Context, route string, in, out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {
-		return err
+		return fmt.Errorf("exemplar-search %s: encode request: %w", route, err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+route, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("exemplar-search %s: %w", route, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.token)

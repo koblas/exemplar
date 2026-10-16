@@ -37,7 +37,7 @@ type EvaluateWorker struct {
 // NewEvaluateWorker validates cfg; it needs a store.
 func NewEvaluateWorker(cfg Config) (*EvaluateWorker, error) {
 	if cfg.Store == nil {
-		return nil, errors.New("worker: evaluations need a store")
+		return nil, fmt.Errorf("%w: evaluations need a store", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -73,10 +73,10 @@ func (w *EvaluateWorker) Evaluate(ctx context.Context, id uuid.UUID) (string, er
 	q := w.cfg.Store.Queries
 	row, err := q.StartEvaluation(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", river.JobCancel(errors.New("worker: evaluation already finished or gone"))
+		return "", river.JobCancel(fmt.Errorf("worker: evaluation already finished or %w", errGone))
 	}
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: start evaluation: %w", err)
 	}
 	refuse := func(reason string) (string, error) {
 		return evaluate.StatusRefused, w.finish(ctx, id, evaluate.StatusRefused, reason, nil, 0)
@@ -101,15 +101,15 @@ func (w *EvaluateWorker) Evaluate(ctx context.Context, id uuid.UUID) (string, er
 		return refuse("Exemplar's app is not installed on " + row.Repo)
 	}
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: repo installation: %w", err)
 	}
 	token, err := w.cfg.GitHub.CloneToken(ctx, inst, row.Repo)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: clone token: %w", err)
 	}
 	dir, err := os.MkdirTemp(w.cfg.WorkDir, "evaluate-")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: create workdir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	ws, err := engine.Checkout(ctx, filepath.Join(dir, "worktree"), engine.CheckoutOptions{
@@ -130,11 +130,11 @@ func (w *EvaluateWorker) Evaluate(ctx context.Context, id uuid.UUID) (string, er
 		return refuse(err.Error())
 	}
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: prepare review: %w", err)
 	}
 	res, err := w.cfg.Engine.Review(ctx, p, engine.Options{Caller: row.Caller})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: review: %w", err)
 	}
 	out, cost := Result(res)
 	return evaluate.StatusDone, w.finish(ctx, id, evaluate.StatusDone, "", &out, cost)
@@ -174,23 +174,29 @@ func (w *EvaluateWorker) finish(ctx context.Context, id uuid.UUID, status, reaso
 	if res != nil {
 		var err error
 		if data, err = json.Marshal(res); err != nil {
-			return err
+			return fmt.Errorf("worker: encode result: %w", err)
 		}
 	}
 	var r *string
 	if reason != "" {
 		r = &reason
 	}
-	return w.cfg.Store.FinishEvaluation(ctx, queries.FinishEvaluationParams{ID: id, Status: status, Reason: r, Result: data, CostUsd: cost})
+	if err := w.cfg.Store.FinishEvaluation(ctx, queries.FinishEvaluationParams{ID: id, Status: status, Reason: r, Result: data, CostUsd: cost}); err != nil {
+		return fmt.Errorf("worker: finish evaluation: %w", err)
+	}
+	return nil
 }
 
 // installation finds a repo's installation from its webhook deliveries.
 func (w *EvaluateWorker) installation(ctx context.Context, repo string) (int64, error) {
 	inst, err := w.cfg.Store.RepoInstallationID(ctx, &repo)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && inst == 0) {
-		return 0, fmt.Errorf("exemplar's app is not installed on %s", repo)
+		return 0, fmt.Errorf("exemplar's app is %w on %s", errNotInstalled, repo)
 	}
-	return inst, err
+	if err != nil {
+		return 0, fmt.Errorf("worker: repo installation: %w", err)
+	}
+	return inst, nil
 }
 
 // eval is mode eval: the rules a config PR changes, on their
@@ -207,11 +213,11 @@ func (w *EvaluateWorker) eval(ctx context.Context, id uuid.UUID, row queries.Sta
 	}
 	token, err := w.cfg.GitHub.CloneToken(ctx, inst, row.Repo)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: clone token: %w", err)
 	}
 	dir, err := os.MkdirTemp(w.cfg.WorkDir, "eval-")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: create workdir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	ws, err := engine.Checkout(ctx, filepath.Join(dir, "config"), engine.CheckoutOptions{
@@ -226,7 +232,7 @@ func (w *EvaluateWorker) eval(ctx context.Context, id uuid.UUID, row queries.Sta
 	}
 	changed, err := ws.ChangedSince(ctx, row.BaseSha)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: changed files: %w", err)
 	}
 	ids := append(evalrun.ChangedRules(head, changed), row.Rules...)
 	slices.Sort(ids)
@@ -259,7 +265,7 @@ func (w *EvaluateWorker) eval(ctx context.Context, id uuid.UUID, row queries.Sta
 	}
 	raw, err := json.Marshal(reports)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: encode reports: %w", err)
 	}
 	md := evalrun.Markdown(reports, head.Global.EvalThresholds)
 	if len(ids) == 0 {

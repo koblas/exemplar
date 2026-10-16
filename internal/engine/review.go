@@ -213,7 +213,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 	}
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
-		return nil, err // superseded or shut down: the job retries or is cancelled
+		return nil, fmt.Errorf("engine: review: %w", err) // superseded or shut down: the job retries or is cancelled
 	}
 
 	// Deferred rules are recorded and keep coverage below 100%.

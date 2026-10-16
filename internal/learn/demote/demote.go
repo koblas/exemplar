@@ -207,6 +207,8 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Decision, []O
 	return decisions, outs, errors.Join(errs...)
 }
 
+var errStatusLine = errors.New("expected one top-level `status: active` line")
+
 var statusLine = regexp.MustCompile(`(?m)^status:[ \t]*["']?active["']?[ \t]*(#.*)?$`)
 
 // shadowed rewrites a rule file's status from active to shadow, keeping
@@ -214,7 +216,7 @@ var statusLine = regexp.MustCompile(`(?m)^status:[ \t]*["']?active["']?[ \t]*(#.
 func shadowed(content []byte) ([]byte, error) {
 	locs := statusLine.FindAllIndex(content, -1)
 	if len(locs) != 1 {
-		return nil, fmt.Errorf("expected one top-level `status: active` line, found %d", len(locs))
+		return nil, fmt.Errorf("%w, found %d", errStatusLine, len(locs))
 	}
 	out := append([]byte{}, content[:locs[0][0]]...)
 	out = append(out, "status: shadow"...)
@@ -229,32 +231,32 @@ func (r Runner) demote(ctx context.Context, rule config.Rule, d Decision) (Outco
 	// version) can be demoted again.
 	branch := fmt.Sprintf("exemplar/demote/%s/%s", rule.ID, rule.VersionSHA[:min(12, len(rule.VersionSHA))])
 	if url, found, err := r.Repo.FindPR(ctx, branch); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("find PR: %w", err)
 	} else if found {
 		return Outcome{Decision: d, Action: "skipped", URL: url, Reason: "a demotion PR for this version exists"}, nil
 	}
 	base, sha, err := r.Repo.DefaultBranch(ctx)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get default branch: %w", err)
 	}
 	content, err := r.Repo.GetFile(ctx, base, rule.Path)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get file: %w", err)
 	}
 	next, err := shadowed(content)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("%s: %w", rule.Path, err)
 	}
 	if err := r.Repo.EnsureBranch(ctx, branch, sha); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("ensure branch: %w", err)
 	}
 	msg := fmt.Sprintf("Demote %s to shadow (spec §9.4)", rule.ID)
 	if err := r.Repo.PutFile(ctx, branch, rule.Path, next, msg); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("put file: %w", err)
 	}
 	url, number, err := r.Repo.OpenPR(ctx, branch, base, msg, prBody(rule, d, r.Now()))
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("open PR: %w", err)
 	}
 	if err := r.Repo.MergePR(ctx, number, msg); err != nil {
 		// Protection that needs a review: the PR waits for a human.
@@ -301,13 +303,13 @@ func (r Runner) flag(ctx context.Context, rule config.Rule, d Decision) (Outcome
 	title := fmt.Sprintf("Exemplar flag: %s (%s)", rule.ID, rule.VersionSHA[:min(12, len(rule.VersionSHA))])
 	issue, found, err := r.Repo.FindIssue(ctx, FlagLabel, title)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("find issue: %w", err)
 	}
 	if !found {
 		deadline := r.Now().AddDate(0, 0, days)
 		issue, err := r.Repo.CreateIssue(ctx, title, flagBody(rule, d, deadline), []string{FlagLabel})
 		if err != nil {
-			return Outcome{}, err
+			return Outcome{}, fmt.Errorf("create issue: %w", err)
 		}
 		return Outcome{Decision: d, Action: "flagged", URL: issue.URL}, nil
 	}
@@ -316,7 +318,7 @@ func (r Runner) flag(ctx context.Context, rule config.Rule, d Decision) (Outcome
 	}
 	responded, err := r.Repo.HumanActivity(ctx, issue.Number, issue.CreatedAt)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("check human activity: %w", err)
 	}
 	switch {
 	case responded:

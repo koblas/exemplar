@@ -43,7 +43,7 @@ func newCalibrateCmd() *cobra.Command {
 			}
 			runVerifier, runCategorizer := stage != "categorizer", stage != "verifier"
 			if stage != "verifier" && stage != "categorizer" && stage != "all" {
-				return fmt.Errorf("--stage %q: want verifier, categorizer or all", stage)
+				return fmt.Errorf("--stage %q %w: want verifier, categorizer or all", stage, errInvalidFlag)
 			}
 			var md strings.Builder
 			if runVerifier && since != "" && !verifierInputsChanged(sel.base, sel.head) {
@@ -52,7 +52,7 @@ func newCalibrateCmd() *cobra.Command {
 			}
 			if runCategorizer && sel.head.Global.Providers.Categorizer == nil {
 				if stage == "categorizer" {
-					return errors.New("global.yaml has no providers.categorizer to calibrate")
+					return errNoCategorizer
 				}
 				md.WriteString("### Stage 2 categorizer calibration\n\nNo providers.categorizer in global.yaml; not run.\n")
 				runCategorizer = false
@@ -71,12 +71,12 @@ func newCalibrateCmd() *cobra.Command {
 			if runVerifier && dbURL != "" {
 				st, err := store.Open(ctx, dbURL)
 				if err != nil {
-					return err
+					return fmt.Errorf("open store: %w", err)
 				}
 				defer st.Close()
 				stored, err := calibrate.StoredLabels(ctx, st, dbLimit)
 				if err != nil {
-					return err
+					return fmt.Errorf("load stored labels: %w", err)
 				}
 				labels = append(labels, stored...)
 			}
@@ -90,7 +90,7 @@ func newCalibrateCmd() *cobra.Command {
 			}
 			if workDir == "" {
 				if workDir, err = os.MkdirTemp("", "exemplar-calibrate-*"); err != nil {
-					return err
+					return fmt.Errorf("create work dir: %w", err)
 				}
 				defer func() { _ = os.RemoveAll(workDir) }()
 			}
@@ -100,12 +100,12 @@ func newCalibrateCmd() *cobra.Command {
 			}
 			var (
 				out      calibrationReports
-				failures []string
+				failures []error
 			)
 			if runVerifier {
 				rep, err := r.Verifier(ctx, labels, sel.head.Global.EvalThresholds.Verifier)
 				if err != nil {
-					return err
+					return fmt.Errorf("calibrate verifier: %w", err)
 				}
 				out.Verifier = &rep
 				if md.Len() > 0 {
@@ -113,13 +113,13 @@ func newCalibrateCmd() *cobra.Command {
 				}
 				md.WriteString(calibrationMarkdown(rep, sel.head))
 				if !rep.Pass {
-					failures = append(failures, "verifier calibration failed: "+strings.Join(rep.Reasons, "; "))
+					failures = append(failures, fmt.Errorf("verifier %w: %s", errCalibrationFailed, strings.Join(rep.Reasons, "; ")))
 				}
 			}
 			if runCategorizer {
 				rep, err := r.Categorizer(ctx, calibrate.SeedPRLabels(sel.head), sel.head.Global.EvalThresholds.Categorizer)
 				if err != nil {
-					return err
+					return fmt.Errorf("calibrate categorizer: %w", err)
 				}
 				out.Categorizer = &rep
 				if md.Len() > 0 {
@@ -127,7 +127,7 @@ func newCalibrateCmd() *cobra.Command {
 				}
 				md.WriteString(categorizerMarkdown(rep, sel.head))
 				if !rep.Pass {
-					failures = append(failures, "categorizer calibration failed: "+strings.Join(rep.Reasons, "; "))
+					failures = append(failures, fmt.Errorf("categorizer %w: %s", errCalibrationFailed, strings.Join(rep.Reasons, "; ")))
 				}
 			}
 			if jsonOut != "" {
@@ -136,7 +136,7 @@ func newCalibrateCmd() *cobra.Command {
 					return fmt.Errorf("encode calibration reports: %w", err)
 				}
 				if err := os.WriteFile(jsonOut, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-					return err
+					return fmt.Errorf("write json report: %w", err)
 				}
 			}
 			if err := writeOut(markdownOut, md.String()); err != nil {
@@ -144,7 +144,7 @@ func newCalibrateCmd() *cobra.Command {
 			}
 			fmt.Fprint(cmd.OutOrStdout(), md.String())
 			if len(failures) > 0 {
-				return errors.New(strings.Join(failures, "; "))
+				return errors.Join(failures...)
 			}
 			return nil
 		},
@@ -191,7 +191,10 @@ func writeOut(path, s string) error {
 	if path == "" {
 		return nil
 	}
-	return os.WriteFile(path, []byte(s), 0o644) //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
+	if err := os.WriteFile(path, []byte(s), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
 }
 
 // categorizerInputsChanged reports whether anything the auto-approve

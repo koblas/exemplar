@@ -20,6 +20,9 @@ var (
 	ErrDenylisted       = errors.New("repo is on the platform eligibility denylist")
 )
 
+// ErrShadowedRule is returned when a repo rule reuses a global rule id.
+var ErrShadowedRule = errors.New("repo rule shadows a global rule")
+
 // Effective is the configuration one review runs with.
 type Effective struct {
 	ConfigVersion string
@@ -80,7 +83,7 @@ func (s *Snapshot) Effective(repo string, repoRules []Rule) (*Effective, error) 
 			continue
 		}
 		if seen[r.ID] {
-			return nil, fmt.Errorf("repo rule %s (%s) shadows a global rule with the same id", r.ID, r.Path)
+			return nil, fmt.Errorf("%w: repo rule %s (%s) shadows a global rule with the same id", ErrShadowedRule, r.ID, r.Path)
 		}
 		e.Rules = append(e.Rules, r)
 		seen[r.ID] = true

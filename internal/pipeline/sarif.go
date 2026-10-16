@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -134,7 +135,11 @@ func BuildSARIF(fs []engine.Finding) ([]byte, error) {
 		})
 	}
 	slices.SortStableFunc(run.Tool.Driver.Rules, func(a, b sarifRule) int { return strings.Compare(a.ID, b.ID) })
-	return json.Marshal(sarifLog{Schema: "https://json.schemastore.org/sarif-2.1.0.json", Version: "2.1.0", Runs: []sarifRun{run}})
+	out, err := json.Marshal(sarifLog{Schema: "https://json.schemastore.org/sarif-2.1.0.json", Version: "2.1.0", Runs: []sarifRun{run}})
+	if err != nil {
+		return nil, fmt.Errorf("encode sarif: %w", err)
+	}
+	return out, nil
 }
 
 // UploadSARIF uploads this head's Security findings. With none, it still
@@ -149,8 +154,11 @@ func UploadSARIF(ctx context.Context, st *store.Store, poster *gh.Poster, p *eng
 			return false, nil
 		}
 		had, err := st.PRHadSecurityFindings(ctx, queries.PRHadSecurityFindingsParams{Repo: p.PR.Repo, PrNumber: int32(p.PR.Number)})
-		if err != nil || !had {
-			return false, err
+		if err != nil {
+			return false, fmt.Errorf("check earlier security findings: %w", err)
+		}
+		if !had {
+			return false, nil
 		}
 	}
 	log, err := BuildSARIF(fs)
@@ -159,12 +167,12 @@ func UploadSARIF(ctx context.Context, st *store.Store, poster *gh.Poster, p *eng
 	}
 	pr, err := gh.ParsePR(p.PR.Repo, p.PR.Number, p.PR.HeadSHA)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("parse pr: %w", err)
 	}
 	if _, err := poster.UploadSARIF(ctx, pr, log); errors.Is(err, gh.ErrCodeScanningUnavailable) {
 		return false, nil
 	} else if err != nil {
-		return false, err
+		return false, fmt.Errorf("upload sarif: %w", err)
 	}
 	return true, nil
 }

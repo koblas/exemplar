@@ -108,7 +108,7 @@ func Prepare(ctx context.Context, ws *Workspace, snap *config.Snapshot, pr PRInf
 			errors.Is(err, config.ErrRepoDisabled) || errors.Is(err, config.ErrDisabledGlobally) {
 			return nil, fmt.Errorf("%w: %w", ErrIneligible, err)
 		}
-		return nil, err
+		return nil, fmt.Errorf("engine: effective config: %w", err)
 	}
 	if pr.Draft && !eff.RepoConfig.ReviewDrafts {
 		return nil, fmt.Errorf("%w: draft PR and review_drafts is off", ErrIneligible)

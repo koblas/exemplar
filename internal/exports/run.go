@@ -94,7 +94,7 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 	}
 	eff, err := snap.Effective(repo, nil)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("effective config: %w", err)
 	}
 	files := Render(Exportable(eff.Rules), rc.Exports.Targets)
 	o := Outcome{Repo: repo, Files: len(files)}
@@ -108,7 +108,7 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 	}
 	base, sha, err := w.DefaultBranch(ctx)
 	if err != nil {
-		return o, err
+		return o, fmt.Errorf("default branch: %w", err)
 	}
 	type change struct {
 		f        File
@@ -120,19 +120,19 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 	for _, f := range files {
 		cur, exists, err := w.GetFile(ctx, base, f.Path)
 		if err != nil {
-			return o, err
+			return o, fmt.Errorf("get %s: %w", f.Path, err)
 		}
 		curBlock := Current(string(cur))
 		prev, err := r.Store.GetExport(ctx, queries.GetExportParams{Repo: repo, Path: f.Path})
 		if err != nil {
-			return o, err
+			return o, fmt.Errorf("get export %s: %w", f.Path, err)
 		}
 		// A block that is neither the one proposed nor the one it replaced
 		// was edited by hand: leave the file until that is resolved.
 		if len(prev) == 1 && curBlock != "" && Hash(curBlock) != prev[0].ContentHash && Hash(curBlock) != prev[0].BaseHash {
 			o.Edited = append(o.Edited, f.Path)
 			if err := r.Store.SetExportState(ctx, queries.SetExportStateParams{Repo: repo, Path: f.Path, State: "edited"}); err != nil {
-				return o, err
+				return o, fmt.Errorf("mark %s edited: %w", f.Path, err)
 			}
 			continue
 		}
@@ -140,7 +140,7 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 			// The default branch matches this config's rendering.
 			if len(prev) == 1 {
 				if err := r.Store.MarkExportCurrent(ctx, queries.MarkExportCurrentParams{Repo: repo, Path: f.Path, CurrentSha: snap.Version}); err != nil {
-					return o, err
+					return o, fmt.Errorf("mark %s current: %w", f.Path, err)
 				}
 			}
 			continue
@@ -154,7 +154,7 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 	}
 	pr, node, found, err := w.OpenPRFor(ctx, Branch)
 	if err != nil {
-		return o, err
+		return o, fmt.Errorf("find open PR: %w", err)
 	}
 	// The open PR already carries this rendering: leave it alone rather
 	// than force-push the same content every run.
@@ -165,18 +165,18 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 	// One branch and PR per repo, rebuilt from the default branch each
 	// time, so it always holds exactly the current rendering.
 	if err := w.ResetBranch(ctx, Branch, sha); err != nil {
-		return o, err
+		return o, fmt.Errorf("reset branch: %w", err)
 	}
 	for _, c := range changes {
 		if err := w.PutFile(ctx, Branch, c.f.Path, c.content, "Update Exemplar rules in "+c.f.Path); err != nil {
-			return o, err
+			return o, fmt.Errorf("put %s: %w", c.f.Path, err)
 		}
 		o.Changed = append(o.Changed, c.f.Path)
 	}
 	o.Action = "updated"
 	if !found {
 		if pr, node, err = w.OpenPR(ctx, Branch, base, "Update coding-agent instructions from Exemplar rules", prBody(snap, o.Changed, o.Edited)); err != nil {
-			return o, err
+			return o, fmt.Errorf("open PR: %w", err)
 		}
 		o.Action = "pr"
 	}
@@ -196,7 +196,7 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 			Repo: repo, Path: c.f.Path, Target: c.f.Target,
 			ContentHash: Hash(c.f.Block), BaseHash: hashOrEmpty(c.base), ConfigSha: snap.Version, PrUrl: &o.URL, State: "proposed", AutoMerged: auto,
 		}); err != nil {
-			return o, err
+			return o, fmt.Errorf("upsert export %s: %w", c.f.Path, err)
 		}
 	}
 	return o, nil

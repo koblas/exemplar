@@ -37,14 +37,14 @@ func runServe(args []string) error {
 	reload := fs.Duration("config-reload", time.Minute, "how often to re-read --config")
 	drain := fs.Duration("drain", 5*time.Second, "time between failing readiness and closing the listener")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	if *root == "" || *indexRoot == "" || *configDir == "" {
-		return errors.New("--root, --index-root and --config are required")
+		return fmt.Errorf("--root, --index-root and --config are %w", errRequired)
 	}
 	token := os.Getenv("EXEMPLAR_SEARCH_TOKEN")
 	if len(token) < 32 {
-		return errors.New("EXEMPLAR_SEARCH_TOKEN must be set to at least 32 bytes")
+		return errSearchTokenTooShort
 	}
 	if !strings.HasSuffix(*gitURL, "/") {
 		*gitURL += "/"
@@ -58,14 +58,14 @@ func runServe(args []string) error {
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-search")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	// Fail at startup on an invalid config; later reloads keep the last good one.
 	first, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config snapshot: %w", err)
 	}
 	var snap atomic.Pointer[config.Snapshot]
 	snap.Store(first)
@@ -74,19 +74,19 @@ func runServe(args []string) error {
 		Root: *root, URL: func(repo string) string { return *gitURL + repo + ".git" }, Credentials: creds,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("create mirror manager: %w", err)
 	}
 	scope := func() []string { return mirror.InScope(snap.Load()) }
 	ctags := index.FindCTags()
 	if ctags == "" && *requireCTags {
-		return errors.New("--require-ctags: universal-ctags is not on PATH")
+		return errCtagsMissing
 	}
 	if ctags == "" {
 		log.Warn("universal-ctags not found; indexing without symbols")
 	}
 	ix, err := index.New(index.Config{Root: *indexRoot, Mirrors: m, CTags: ctags, RequireCTags: *requireCTags, Logger: log})
 	if err != nil {
-		return err
+		return fmt.Errorf("create indexer: %w", err)
 	}
 	defer ix.Close()
 	sched := mirror.NewScheduler(m, scope, *debounce, *backstop, log)
@@ -102,7 +102,7 @@ func runServe(args []string) error {
 		srv.WithIndex(ix)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("create search api server: %w", err)
 	}
 	hs := &http.Server{
 		Addr: *addr, Handler: srv.Handler(),
@@ -147,9 +147,12 @@ func runServe(args []string) error {
 	select {
 	case <-done:
 	case <-sctx.Done():
-		return errors.New("background work did not stop within the shutdown deadline")
+		return errShutdownDeadline
 	}
-	return herr
+	if herr != nil {
+		return fmt.Errorf("shut down http server: %w", herr)
+	}
+	return nil
 }
 
 // reloadConfig re-reads exemplar-config so scope and eligibility changes
@@ -183,7 +186,7 @@ func credentialsFromEnv() (mirror.Credentials, error) {
 		return nil, nil //nolint:nilnil // nil Credentials means anonymous fetches, as documented above
 	}
 	if appID == 0 || installation == 0 || keyFile == "" || cfgRepo == "" {
-		return nil, errors.New("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO must be set together")
+		return nil, fmt.Errorf("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO %w", errAppPartial)
 	}
 	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
@@ -191,7 +194,7 @@ func credentialsFromEnv() (mirror.Credentials, error) {
 	}
 	app, err := gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: cfgRepo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create github app: %w", err)
 	}
 	return func(ctx context.Context, repo string) (string, string, error) {
 		return app.ContextFetch(ctx, installation, repo)

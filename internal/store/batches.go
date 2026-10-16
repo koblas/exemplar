@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -24,10 +25,13 @@ func (b BatchStore) SaveBatch(ctx context.Context, r llm.BatchRecord) error {
 	if r.Repo != "" {
 		repo = &r.Repo
 	}
-	return b.Store.InsertModelBatch(ctx, queries.InsertModelBatchParams{
+	if err := b.Store.InsertModelBatch(ctx, queries.InsertModelBatchParams{
 		BatchID: r.ID, Provider: r.Provider, Model: r.Model, Stage: r.Stage, Caller: r.Caller,
 		Repo: repo, DataClasses: r.DataClasses, RequestCount: int32(r.Requests),
-	})
+	}); err != nil {
+		return fmt.Errorf("store: insert model batch: %w", err)
+	}
+	return nil
 }
 
 // LookupBatch implements llm.BatchStore.
@@ -37,7 +41,7 @@ func (b BatchStore) LookupBatch(ctx context.Context, id string) (llm.BatchRecord
 		return llm.BatchRecord{}, false, nil
 	}
 	if err != nil {
-		return llm.BatchRecord{}, false, err
+		return llm.BatchRecord{}, false, fmt.Errorf("store: get model batch: %w", err)
 	}
 	rec := llm.BatchRecord{
 		ID: row.BatchID, Provider: row.Provider, Model: row.Model, Stage: row.Stage, Caller: row.Caller,
@@ -52,5 +56,8 @@ func (b BatchStore) LookupBatch(ctx context.Context, id string) (llm.BatchRecord
 // ClaimAccounting implements llm.BatchStore.
 func (b BatchStore) ClaimAccounting(ctx context.Context, id string) (bool, error) {
 	n, err := b.Store.ClaimBatchAccounting(ctx, id)
-	return n == 1, err
+	if err != nil {
+		return false, fmt.Errorf("store: claim batch accounting: %w", err)
+	}
+	return n == 1, nil
 }
