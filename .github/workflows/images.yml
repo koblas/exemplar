@@ -11,9 +11,9 @@ name: images
 # pushed digest and the kustomize images entry that pins it to the step
 # summary (see deploy/README.md, "What an installation supplies").
 #
-# Needs the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets (a Docker Hub
-# access token with read/write scope on koblas/exemplar). Pull requests never
-# push; ci.yml's images job already checks that both images build.
+# Signs in as the koblas Docker Hub user with the DOCKERHUB_PAT repository
+# secret (a personal access token with read/write on koblas/exemplar). Pull
+# requests never push; ci.yml's images job already checks that both build.
 #
 # Tags:
 #   sha-<short>          every push (learning-sha-<short> for learning)
@@ -50,8 +50,8 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: koblas
+          password: ${{ secrets.DOCKERHUB_PAT }}
       - id: meta
         uses: docker/metadata-action@v5
         with:
