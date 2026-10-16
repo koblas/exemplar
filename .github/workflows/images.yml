@@ -1,0 +1,100 @@
+name: images
+
+# Builds both deploy images and pushes them to Docker Hub (koblas/exemplar):
+# on every push to main, on each v* tag, and by hand. There is no paths
+# filter: GitHub applies one to tag pushes too, which would skip releases,
+# and the services image takes in nearly the whole tree anyway; the layer
+# cache makes an unchanged image cheap to rebuild.
+#
+# The Go services image takes the plain tags; the learning-plane image
+# shares the repository under a "learning-" prefix. Each job writes the
+# pushed digest and the kustomize images entry that pins it to the step
+# summary (see deploy/README.md, "What an installation supplies").
+#
+# Needs the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets (a Docker Hub
+# access token with read/write scope on koblas/exemplar). Pull requests never
+# push; ci.yml's images job already checks that both images build.
+#
+# Tags:
+#   sha-<short>          every push (learning-sha-<short> for learning)
+#   main                 the tip of main (learning-main)
+#   <version>, <x.y>     v* tags, without the "v" (learning-<version>, ...)
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: koblas/exemplar
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: exemplar, dockerfile: deploy/docker/Dockerfile, prefix: ""}
+          - {name: exemplar-learning, dockerfile: deploy/docker/learning.Dockerfile, prefix: "learning-"}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=false
+            prefix=${{ matrix.prefix }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          # The services image is amd64 only (the ast-grep release binary).
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: Summarize the pushed digest
+        env:
+          NAME: ${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### ${NAME}"
+            echo
+            echo "Digest: \`${DIGEST}\`"
+            echo
+            echo "Tags:"
+            echo '```'
+            echo "${TAGS}"
+            echo '```'
+            echo "Kustomize pin:"
+            echo '```yaml'
+            echo "  - name: registry.example.invalid/koblas/${NAME}"
+            echo "    newName: docker.io/${IMAGE}"
+            echo "    digest: ${DIGEST}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

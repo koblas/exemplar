@@ -114,8 +114,8 @@ jobs:
       - run: uv run --frozen pytest
       - run: ./scripts/gen-contracts.sh --check
 
-  # The deploy images build (nothing is pushed; publishing is the release
-  # pipeline's), and the manifests are rendered and schema-checked.
+  # The deploy images build (nothing is pushed; images.yml publishes them
+  # from main and v* tags), and the manifests are rendered and schema-checked.
   images:
     runs-on: ubuntu-latest
     steps:

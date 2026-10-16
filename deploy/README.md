@@ -67,15 +67,15 @@ The `exemplar-config` checkout comes from a git-sync v4.7.1 sidecar with a read-
 
 ## What an installation supplies
 
-**Images.** The release pipeline builds both images and pins them in an overlay. Match the names the base renders (the base already rewrote `exemplar` to its placeholder registry):
+**Images.** `.github/workflows/images.yml` pushes both images to Docker Hub as `koblas/exemplar` on every push to main and each `v*` tag: the services image under `sha-<short>`, `main` and `<version>`, the learning image under the same tags with a `learning-` prefix. Its run summary prints each digest and the entry below. Pin them in an overlay, matching the names the base renders (the base already rewrote `exemplar` to its placeholder registry):
 
 ```yaml
 images:
   - name: registry.example.invalid/koblas/exemplar
-    newName: <registry>/exemplar
+    newName: docker.io/koblas/exemplar
     digest: sha256:<digest it built>
   - name: registry.example.invalid/koblas/exemplar-learning
-    newName: <registry>/exemplar-learning
+    newName: docker.io/koblas/exemplar
     digest: sha256:<digest it built>
 ```
 
