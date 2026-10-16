@@ -24,7 +24,7 @@ func BranchRules(ctx context.Context, c *github.Client, repo, branch string) (ga
 	var br gates.BranchRules
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || branch == "" {
-		return br, fmt.Errorf("gh: branch rules: repo %q must be owner/name and branch non-empty", repo)
+		return br, fmt.Errorf("%w: branch rules need a repo and branch, got %q", ErrInvalidRepo, repo)
 	}
 	addChecks := func(cs ...string) {
 		for _, ctxName := range cs {

@@ -24,7 +24,7 @@ type ConfigRepo struct {
 func NewConfigRepo(c *github.Client, fullName string) (*ConfigRepo, error) {
 	owner, repo, ok := strings.Cut(fullName, "/")
 	if !ok || owner == "" || repo == "" {
-		return nil, fmt.Errorf("gh: config repo %q must be owner/name", fullName)
+		return nil, fmt.Errorf("%w: config repo %q", ErrInvalidRepo, fullName)
 	}
 	return &ConfigRepo{gh: c, owner: owner, repo: repo}, nil
 }
@@ -121,7 +121,7 @@ func (r *ConfigRepo) GetFile(ctx context.Context, ref, path string) ([]byte, err
 		return nil, restErr(err, path+"@"+ref)
 	}
 	if fc == nil {
-		return nil, fmt.Errorf("gh: %s is not a file", path)
+		return nil, fmt.Errorf("%w: %s", ErrNotAFile, path)
 	}
 	s, err := fc.GetContent()
 	if err != nil {

@@ -44,6 +44,15 @@ type PR struct {
 	Paths []string
 }
 
+var (
+	// ErrConfig reports a Collector built without its dependencies.
+	ErrConfig = errors.New("mergesafety: store and query are required")
+	// ErrBadRepo reports a repo name that is not owner/name.
+	ErrBadRepo = errors.New("mergesafety: repo must be owner/name")
+	// ErrPRNotFound reports a pull request the query could not find.
+	ErrPRNotFound = errors.New("mergesafety: pull request not found")
+)
+
 // Collector measures merge-safety facts.
 type Collector struct {
 	st    *store.Store
@@ -54,7 +63,7 @@ type Collector struct {
 // New returns a Collector. now defaults to time.Now.
 func New(st *store.Store, q Query, now func() time.Time) (*Collector, error) {
 	if st == nil || q == nil {
-		return nil, errors.New("mergesafety: store and query are required")
+		return nil, ErrConfig
 	}
 	if now == nil {
 		now = time.Now
@@ -68,7 +77,7 @@ func (c *Collector) Collect(ctx context.Context, pr PR, sensitive []string) (gat
 	in := gates.MergeSafetyInput{Paths: make([]gates.PathFacts, len(pr.Paths)), NoTests: gates.NoTests(pr.Paths)}
 	owner, name, ok := strings.Cut(pr.Repo, "/")
 	if !ok {
-		return in, fmt.Errorf("mergesafety: repo %q must be owner/name", pr.Repo)
+		return in, fmt.Errorf("%w: %q", ErrBadRepo, pr.Repo)
 	}
 	byPath := map[string]*gates.PathFacts{}
 	for i, p := range pr.Paths {
@@ -122,7 +131,7 @@ func (c *Collector) Collect(ctx context.Context, pr PR, sensitive []string) (gat
 		return in, fmt.Errorf("mergesafety: force pushes: %w", err)
 	}
 	if out.Repository.PullRequest == nil {
-		return in, fmt.Errorf("mergesafety: %s#%d not found", pr.Repo, pr.Number)
+		return in, fmt.Errorf("%w: %s#%d", ErrPRNotFound, pr.Repo, pr.Number)
 	}
 	in.ForcePush = out.Repository.PullRequest.TimelineItems.TotalCount > 0
 

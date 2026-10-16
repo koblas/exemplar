@@ -23,7 +23,7 @@ type Review struct {
 func Reviews(ctx context.Context, c *github.Client, repo string, number int) ([]Review, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return nil, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	var out []Review
 	opts := &github.ListOptions{PerPage: 100}
@@ -50,7 +50,7 @@ func Reviews(ctx context.Context, c *github.Client, repo string, number int) ([]
 func TeamMember(ctx context.Context, c *github.Client, team, login string) (bool, error) {
 	org, slug, ok := strings.Cut(strings.TrimPrefix(team, "@"), "/")
 	if !ok || org == "" || slug == "" {
-		return false, fmt.Errorf("gh: team %q must be @org/slug", team)
+		return false, fmt.Errorf("%w: %q", errInvalidTeam, team)
 	}
 	m, _, err := c.Teams.GetTeamMembershipBySlug(ctx, org, slug, login)
 	if err != nil {

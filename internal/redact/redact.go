@@ -8,6 +8,7 @@ package redact
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -45,7 +46,7 @@ func New() (*Scanner, error) {
 	silenceOnce.Do(func() { logging.Logger = zerolog.Nop() })
 	det, err := detect.NewDetectorDefaultConfig()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redact: build detector: %w", err)
 	}
 	return &Scanner{det: det}, nil
 }

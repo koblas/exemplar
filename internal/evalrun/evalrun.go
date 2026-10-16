@@ -49,6 +49,15 @@ type Case struct {
 	Expect    []schema.Expectation
 }
 
+var (
+	// ErrInvalidCase is an eval case whose ref or patch cannot be used.
+	ErrInvalidCase = errors.New("evalrun: invalid case")
+	// ErrNoEligibility is an Evaluator without its eligibility check.
+	ErrNoEligibility = errors.New("evalrun: an eligibility check is required")
+	// ErrUnsupportedRule is a rule this package cannot evaluate.
+	ErrUnsupportedRule = errors.New("evalrun: unsupported rule")
+)
+
 // Cases resolves a rule's eval cases: refs are split, patch files are read
 // from evals/<rule>/ in cfg, and Paths default to the expected paths.
 func Cases(cfg fs.FS, ec schema.EvalCases) ([]Case, error) {
@@ -56,13 +65,13 @@ func Cases(cfg fs.FS, ec schema.EvalCases) ([]Case, error) {
 	for _, c := range ec.Cases {
 		repo, sha, ok := strings.Cut(c.Ref, "@")
 		if !ok {
-			return nil, fmt.Errorf("evalrun: case %q: bad ref %q", c.Name, c.Ref)
+			return nil, fmt.Errorf("%w: case %q: bad ref %q", ErrInvalidCase, c.Name, c.Ref)
 		}
 		rc := Case{Name: c.Name, Repo: repo, SHA: sha, Synthetic: c.Synthetic, Paths: slices.Clone(c.Paths), Expect: c.Expect}
 		if c.Patch != "" {
 			p := path.Join("evals", ec.Rule, c.Patch)
 			if !strings.HasPrefix(p, path.Join("evals", ec.Rule)+"/") {
-				return nil, fmt.Errorf("evalrun: case %q: patch %q escapes evals/%s", c.Name, c.Patch, ec.Rule)
+				return nil, fmt.Errorf("%w: case %q: patch %q escapes evals/%s", ErrInvalidCase, c.Name, c.Patch, ec.Rule)
 			}
 			data, err := fs.ReadFile(cfg, p)
 			if err != nil {
@@ -174,7 +183,7 @@ type Report struct {
 func (e *Evaluator) Rule(ctx context.Context, rule config.Rule, cases []Case) (Report, error) {
 	rep := Report{Rule: rule.ID, Kind: rule.Kind}
 	if e.Eligible == nil {
-		return rep, errors.New("evalrun: an eligibility check is required")
+		return rep, ErrNoEligibility
 	}
 	for i, c := range cases {
 		o := Outcome{Case: c.Name, Synthetic: c.Synthetic, Expected: len(c.Expect) > 0}
@@ -265,7 +274,7 @@ func (e *Evaluator) runCase(ctx context.Context, rule config.Rule, c Case, dir s
 	switch rule.Kind {
 	case schema.KindCompiled:
 		if rule.Matcher == nil {
-			return nil, 0, errors.New("compiled rule has no matcher")
+			return nil, 0, fmt.Errorf("%w: compiled rule has no matcher", ErrUnsupportedRule)
 		}
 		paths := make([]string, 0, len(files))
 		for p := range files {
@@ -274,7 +283,7 @@ func (e *Evaluator) runCase(ctx context.Context, rule config.Rule, c Case, dir s
 		slices.Sort(paths)
 		ms, err := e.Matcher.Run(ctx, filepath.Join(dir, "files"), rule.Matcher.Engine, rule.Matcher.Rule, paths)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, fmt.Errorf("run matcher: %w", err)
 		}
 		out := make([]span, len(ms))
 		for i, m := range ms {
@@ -284,18 +293,18 @@ func (e *Evaluator) runCase(ctx context.Context, rule config.Rule, c Case, dir s
 	case schema.KindExemplar, schema.KindBugClass:
 		return e.review(ctx, rule, c, files, dir)
 	}
-	return nil, 0, fmt.Errorf("rule kind %s is not evaluated here", rule.Kind)
+	return nil, 0, fmt.Errorf("%w: rule kind %s is not evaluated here", ErrUnsupportedRule, rule.Kind)
 }
 
 // review runs the exemplar lane and verifier on a PR that adds files.
 func (e *Evaluator) review(ctx context.Context, rule config.Rule, c Case, files map[string]string, dir string) ([]span, float64, error) {
 	repo, err := synth.Build(ctx, filepath.Join(dir, "repo"), map[string]string{}, files, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("build case repo: %w", err)
 	}
 	ws, err := engine.Checkout(ctx, filepath.Join(dir, "wt"), engine.CheckoutOptions{CloneURL: repo.Dir, BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA})
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("checkout: %w", err)
 	}
 	pr := engine.PRInfo{Repo: c.Repo, Title: "eval: " + c.Name, BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA}
 	p, err := engine.Prepare(ctx, ws, e.Snapshot, pr, e.Scanner)
@@ -303,7 +312,7 @@ func (e *Evaluator) review(ctx context.Context, rule config.Rule, c Case, files 
 		return nil, 0, unavailable{"repo is not eligible"}
 	}
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("prepare: %w", err)
 	}
 	p.Scoped = slices.DeleteFunc(p.Scoped, func(s engine.ScopedRule) bool { return s.Rule.ID != rule.ID })
 	p.Deferred, p.Secrets = nil, nil
@@ -325,7 +334,7 @@ func (e *Evaluator) review(ctx context.Context, rule config.Rule, c Case, files 
 	}
 	res, err := e.Engine.Review(ctx, p, engine.Options{Caller: "eval"})
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("review: %w", err)
 	}
 	cost := 0.0
 	for _, r := range res.Runs {
@@ -366,10 +375,10 @@ func (e *Evaluator) materialize(ctx context.Context, c Case, dir string) (map[st
 		}
 		full := filepath.Join(dir, filepath.FromSlash(p))
 		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create case dir: %w", err)
 		}
 		if err := os.WriteFile(full, data, 0o600); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("write case file: %w", err)
 		}
 		files[p] = string(data)
 	}
@@ -379,7 +388,7 @@ func (e *Evaluator) materialize(ctx context.Context, c Case, dir string) (map[st
 	if c.Patch != "" {
 		pf := filepath.Join(filepath.Dir(dir), "case.patch")
 		if err := os.WriteFile(pf, []byte(c.Patch), 0o600); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("write case patch: %w", err)
 		}
 		env := append(gitexec.Env(""), "GIT_CEILING_DIRECTORIES="+filepath.Dir(dir))
 		if _, err := gitexec.Run(ctx, dir, env, "apply", "--", pf); err != nil {
@@ -388,7 +397,7 @@ func (e *Evaluator) materialize(ctx context.Context, c Case, dir string) (map[st
 		for p := range files {
 			data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p)))
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("read patched file: %w", err)
 			}
 			files[p] = string(data)
 		}

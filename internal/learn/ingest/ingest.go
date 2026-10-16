@@ -69,10 +69,17 @@ type Job struct {
 	teams   map[string][]string // "org/slug" -> member logins (lowercase)
 }
 
+var (
+	errConfig       = errors.New("ingest: invalid config")
+	errNotOwnerName = errors.New("must be owner/name")
+	errRepoNotFound = errors.New("not found")
+	errNoDatabaseID = errors.New("has no database id")
+)
+
 // New returns a Job.
 func New(cfg Config, q Query, st *store.Store, elig Eligibility, sc *redact.Scanner, p *Pseudonymizer) (*Job, error) {
 	if q == nil || st == nil || elig == nil || sc == nil || p == nil {
-		return nil, errors.New("ingest: query, store, eligibility, scanner and pseudonymizer are required")
+		return nil, fmt.Errorf("%w: query, store, eligibility, scanner and pseudonymizer are required", errConfig)
 	}
 	if cfg.PageSize <= 0 || cfg.PageSize > 100 {
 		cfg.PageSize = 25
@@ -105,7 +112,7 @@ func (j *Job) Run(ctx context.Context, repo string) (Stats, error) {
 	}
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return stats, fmt.Errorf("ingest: repo %q must be owner/name", repo)
+		return stats, fmt.Errorf("ingest: repo %q %w", repo, errNotOwnerName)
 	}
 	files, err := j.repoFiles(ctx, owner, name)
 	if err != nil {
@@ -341,7 +348,7 @@ func (j *Job) teamMembers(ctx context.Context, team string) ([]string, error) {
 }
 
 func (j *Job) save(ctx context.Context, repo string, cursor *string, w writes) error {
-	return j.st.InTx(ctx, func(_ pgx.Tx, q *queries.Queries) error {
+	err := j.st.InTx(ctx, func(_ pgx.Tx, q *queries.Queries) error {
 		for _, c := range w.comments {
 			if err := q.UpsertIngestedComment(ctx, c); err != nil {
 				return fmt.Errorf("ingest: store comment %d: %w", c.ID, err)
@@ -361,6 +368,10 @@ func (j *Job) save(ctx context.Context, repo string, cursor *string, w writes) e
 			Repo: repo, Cursor: cursor, PrsSeen: int32(w.prsSeen), Kept: int32(len(w.comments)), Filtered: int32(w.filtered),
 		})
 	})
+	if err != nil {
+		return fmt.Errorf("ingest: save %s: %w", repo, err)
+	}
+	return nil
 }
 
 func (j *Job) repoFiles(ctx context.Context, owner, name string) (repoFiles, error) {
@@ -371,7 +382,7 @@ func (j *Job) repoFiles(ctx context.Context, owner, name string) (repoFiles, err
 		return repoFiles{}, fmt.Errorf("ingest: read %s/%s exclusions: %w", owner, name, err)
 	}
 	if out.Repository == nil {
-		return repoFiles{}, fmt.Errorf("ingest: repo %s/%s not found", owner, name)
+		return repoFiles{}, fmt.Errorf("ingest: repo %s/%s %w", owner, name, errRepoNotFound)
 	}
 	return *out.Repository, nil
 }
@@ -385,10 +396,14 @@ func login(a Author) string {
 
 func (c reviewComment) id() (int64, error) {
 	if c.FullDatabaseID != "" {
-		return strconv.ParseInt(c.FullDatabaseID, 10, 64)
+		id, err := strconv.ParseInt(c.FullDatabaseID, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("comment %s database id: %w", c.URL, err)
+		}
+		return id, nil
 	}
 	if c.DatabaseID == 0 {
-		return 0, fmt.Errorf("comment %s has no database id", c.URL)
+		return 0, fmt.Errorf("comment %s %w", c.URL, errNoDatabaseID)
 	}
 	return c.DatabaseID, nil
 }

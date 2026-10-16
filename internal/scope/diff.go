@@ -60,6 +60,7 @@ type Diff struct {
 var (
 	ErrDuplicatePath = errors.New("duplicate path in diff")
 	ErrMalformedHunk = errors.New("malformed hunk")
+	ErrNoPath        = errors.New("file with no path")
 )
 
 // Parse reads a unified git diff, such as `git diff` output or a pull request
@@ -77,7 +78,7 @@ func Parse(r io.Reader) (*Diff, error) {
 	for _, pf := range parsed {
 		f := convertFile(pf)
 		if f.Path == "" {
-			return nil, errors.New("parse diff: file with no path")
+			return nil, fmt.Errorf("parse diff: %w", ErrNoPath)
 		}
 		if _, dup := d.byPath[f.Path]; dup {
 			return nil, fmt.Errorf("parse diff: %w: %s", ErrDuplicatePath, f.Path)

@@ -103,6 +103,15 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
+var (
+	// errRequired marks a missing flag or environment setting.
+	errRequired           = errors.New("required")
+	errSandboxUnavailable = errors.New("the sandbox (Linux unshare and prlimit) is unavailable; model-written rules are not run without it (--require-sandbox=false only for local runs)")
+	errEngineNotInstalled = errors.New("not installed: compile needs both engines")
+	errIngestFailed       = errors.New("ingest failed")
+	errRevertScanFailed   = errors.New("revert scan failed")
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: exemplar-learn ingest|path-events|extract|evals|compile|propose|demote|expiry|digest|teach|export [flags]")
@@ -149,38 +158,38 @@ func runExtract(args []string) error {
 	perBatch := fs.Int("requests-per-batch", 10_000, "requests per Message Batch (3 comments each)")
 	model := fs.String("model", "claude-sonnet-5-5", "pinned extractor model (spec §8.2)")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-learn")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL is required")
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	if err := st.Migrate(ctx); err != nil {
-		return err
+		return fmt.Errorf("migrate store: %w", err)
 	}
 	sc, err := redact.New()
 	if err != nil {
-		return err
+		return fmt.Errorf("create redaction scanner: %w", err)
 	}
 	d, err := extract.New(extract.Config{
 		GatewayURL: os.Getenv("EXEMPLAR_GATEWAY_URL"), GatewayToken: os.Getenv("EXEMPLAR_GATEWAY_TOKEN"),
 		Model: *model, RequestsPerBatch: *perBatch, Logger: log,
 	}, st, sc)
 	if err != nil {
-		return err
+		return fmt.Errorf("create extract driver: %w", err)
 	}
 
 	for {
@@ -205,11 +214,11 @@ func runExtract(args []string) error {
 func pass(ctx context.Context, d *extract.Driver) error {
 	collected, err := d.Collect(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("collect extractions: %w", err)
 	}
 	submitted, err := d.Submit(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("submit extractions: %w", err)
 	}
 	printJSON(map[string]any{"collected": collected, "submitted": submitted})
 	return nil

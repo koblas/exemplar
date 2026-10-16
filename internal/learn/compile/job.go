@@ -63,16 +63,16 @@ type Job struct {
 // New returns a Job.
 func New(cfg Config, st *store.Store, m Model, eng Engine, files FileSource, sc *redact.Scanner) (*Job, error) {
 	if st == nil || m == nil || eng == nil || files == nil || sc == nil {
-		return nil, errors.New("compile: store, model, engine, files and scanner are required")
+		return nil, fmt.Errorf("%w: store, model, engine, files and scanner are required", errConfig)
 	}
 	if cfg.Scratch == "" {
-		return nil, errors.New("compile: scratch directory is required")
+		return nil, fmt.Errorf("%w: scratch directory is required", errConfig)
 	}
 	if cfg.Thresholds.MinCases < 1 || cfg.Thresholds.Precision <= 0 || cfg.Thresholds.Recall <= 0 {
-		return nil, errors.New("compile: eval thresholds are required")
+		return nil, fmt.Errorf("%w: eval thresholds are required", errConfig)
 	}
 	if cfg.Eligible == nil {
-		return nil, errors.New("compile: an eligibility check is required")
+		return nil, fmt.Errorf("%w: an eligibility check is required", errConfig)
 	}
 	if cfg.Sandbox == "" {
 		cfg.Sandbox = "none"
@@ -173,7 +173,7 @@ func (j *Job) compileOne(ctx context.Context, c queries.CandidatesNeedingCompile
 	a.RuleBody = &body
 	if err := j.engine.Validate(ctx, p.Engine, body); err != nil {
 		if errors.Is(err, compiled.ErrEngineUnavailable) {
-			return "", err
+			return "", fmt.Errorf("validate rule: %w", err)
 		}
 		a.Status, a.Reason = StatusInvalid, "engine validation: "+err.Error()
 		return j.record(ctx, a)
@@ -181,7 +181,7 @@ func (j *Job) compileOne(ctx context.Context, c queries.CandidatesNeedingCompile
 
 	scratch, err := os.MkdirTemp(j.cfg.Scratch, fmt.Sprintf("candidate-%d-", c.ID))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("create scratch dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(scratch) }()
 	score, err := Evaluate(ctx, j.engine, j.files, scratch, p.Engine, body, cases)

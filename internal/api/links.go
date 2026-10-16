@@ -89,6 +89,13 @@ const (
 	uiTokenCookie = "exemplar_ui" //nolint:gosec // G101: a cookie name, not a credential
 )
 
+var (
+	errNoCode         = errors.New("no code")
+	errTokenExchange  = errors.New("token exchange")
+	errNotUser        = errors.New("not a user account")
+	errUnexpectedHTTP = errors.New("unexpected http status")
+)
+
 // Server serves the links.
 type Server struct{ cfg Config }
 
@@ -96,17 +103,17 @@ type Server struct{ cfg Config }
 func New(cfg Config) (*Server, error) {
 	switch {
 	case cfg.Links == nil || cfg.Lookup == nil || cfg.Enqueue == nil:
-		return nil, errors.New("api: Links, Lookup and Enqueue are required")
+		return nil, fmt.Errorf("%w: Links, Lookup and Enqueue are required", ErrInvalidConfig)
 	case len(cfg.SessionKey) < 32:
-		return nil, errors.New("api: the session key must be at least 32 bytes")
+		return nil, fmt.Errorf("%w: the session key must be at least 32 bytes", ErrInvalidConfig)
 	case cfg.GitHub == nil && cfg.OIDC == nil:
-		return nil, errors.New("api: configure a sign-in source: GitHub (EXEMPLAR_OAUTH2_GITHUB_*) or OIDC (EXEMPLAR_OIDC_*)")
+		return nil, fmt.Errorf("%w: configure a sign-in source: GitHub (EXEMPLAR_OAUTH2_GITHUB_*) or OIDC (EXEMPLAR_OIDC_*)", ErrInvalidConfig)
 	case cfg.GitHub != nil && (cfg.GitHub.ClientID == "" || cfg.GitHub.ClientSecret == ""):
-		return nil, errors.New("api: the GitHub OAuth client id and secret are required")
+		return nil, fmt.Errorf("%w: the GitHub OAuth client id and secret are required", ErrInvalidConfig)
 	case cfg.GitHub != nil && !cfg.GitHub.AllowEveryone && len(cfg.GitHub.AllowedOrgs) == 0:
-		return nil, errors.New("api: GitHub sign-in needs allowed orgs (EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS) or EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE=true")
+		return nil, fmt.Errorf("%w: GitHub sign-in needs allowed orgs (EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS) or EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE=true", ErrInvalidConfig)
 	case !strings.HasPrefix(cfg.PublicURL, "https://") && !strings.HasPrefix(cfg.PublicURL, "http://127.0.0.1"):
-		return nil, errors.New("api: the public URL must be https")
+		return nil, fmt.Errorf("%w: the public URL must be https", ErrInvalidConfig)
 	}
 	cfg.PublicURL = strings.TrimSuffix(cfg.PublicURL, "/")
 	if cfg.GitHubWeb == "" {
@@ -126,13 +133,13 @@ func New(cfg Config) (*Server, error) {
 		cfg.GitHubLink = LinkRequired
 	case LinkRequired, LinkOptional, LinkOff:
 	default:
-		return nil, fmt.Errorf("api: EXEMPLAR_OIDC_GITHUB_LINK must be required, optional or off, not %q", cfg.GitHubLink)
+		return nil, fmt.Errorf("%w: EXEMPLAR_OIDC_GITHUB_LINK must be required, optional or off, not %q", ErrInvalidConfig, cfg.GitHubLink)
 	}
 	if cfg.GitHub != nil && cfg.GitHub.SignInDisabled && (cfg.OIDC == nil || cfg.GitHubLink == LinkOff) {
-		return nil, errors.New("api: GitHub with sign-in off is only for connecting to OIDC sign-ins; turn OIDC and EXEMPLAR_OIDC_GITHUB_LINK on")
+		return nil, fmt.Errorf("%w: GitHub with sign-in off is only for connecting to OIDC sign-ins; turn OIDC and EXEMPLAR_OIDC_GITHUB_LINK on", ErrInvalidConfig)
 	}
 	if cfg.OIDC != nil && cfg.GitHub != nil && cfg.GitHubLink != LinkOff && cfg.Identities == nil {
-		return nil, errors.New("api: connecting GitHub to OIDC sign-ins needs Identities")
+		return nil, fmt.Errorf("%w: connecting GitHub to OIDC sign-ins needs Identities", ErrInvalidConfig)
 	}
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.DiscardHandler)
@@ -419,7 +426,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 // account id.
 func (s *Server) exchange(ctx context.Context, code string) (string, int64, string, error) {
 	if code == "" {
-		return "", 0, "", errors.New("no code")
+		return "", 0, "", errNoCode
 	}
 	form := url.Values{
 		"client_id": {s.cfg.GitHub.ClientID}, "client_secret": {s.cfg.GitHub.ClientSecret}, "code": {code},
@@ -427,7 +434,7 @@ func (s *Server) exchange(ctx context.Context, code string) (string, int64, stri
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.GitHubWeb+"login/oauth/access_token", strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", fmt.Errorf("build token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -439,11 +446,11 @@ func (s *Server) exchange(ctx context.Context, code string) (string, int64, stri
 		return "", 0, "", err
 	}
 	if tok.AccessToken == "" {
-		return "", 0, "", fmt.Errorf("token exchange: %s", tok.Error)
+		return "", 0, "", fmt.Errorf("%w: %s", errTokenExchange, tok.Error)
 	}
 	req, err = http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.GitHubAPI+"user", nil)
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", fmt.Errorf("build user request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -456,7 +463,7 @@ func (s *Server) exchange(ctx context.Context, code string) (string, int64, stri
 		return "", 0, "", err
 	}
 	if u.Login == "" || !strings.EqualFold(u.Type, "User") {
-		return "", 0, "", errors.New("not a user account")
+		return "", 0, "", errNotUser
 	}
 	return u.Login, u.ID, tok.AccessToken, nil
 }
@@ -464,15 +471,18 @@ func (s *Server) exchange(ctx context.Context, code string) (string, int64, stri
 func (s *Server) do(req *http.Request, out any) error {
 	resp, err := s.cfg.HTTP.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s %s: %w", req.Method, req.URL.Path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if err != nil {
-		return err
+		return fmt.Errorf("read %s %s: %w", req.Method, req.URL.Path, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s %s: %s", req.Method, req.URL.Path, resp.Status)
+		return fmt.Errorf("%w: %s %s: %s", errUnexpectedHTTP, req.Method, req.URL.Path, resp.Status)
 	}
-	return json.Unmarshal(body, out)
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("decode %s %s: %w", req.Method, req.URL.Path, err)
+	}
+	return nil
 }

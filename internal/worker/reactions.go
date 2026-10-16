@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -49,7 +50,7 @@ type ReactionsWorker struct {
 // NewReactionsWorker validates cfg; it needs GitHub, Store and Snapshot.
 func NewReactionsWorker(cfg Config) (*ReactionsWorker, error) {
 	if cfg.Store == nil {
-		return nil, errors.New("worker: reactions need a store")
+		return nil, fmt.Errorf("%w: reactions need a store", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -74,7 +75,7 @@ func (w *ReactionsWorker) Run(ctx context.Context) (int, int, error) {
 	}
 	rows, err := w.cfg.Store.PRsToPollReactions(ctx, 24)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("worker: prs to poll: %w", err)
 	}
 	var prs, events int
 	var errs []error
@@ -93,20 +94,23 @@ func (w *ReactionsWorker) Run(ctx context.Context) (int, int, error) {
 // pollReactions records the reactions on one PR's Exemplar comments.
 func pollReactions(ctx context.Context, cfg Config, snap *config.Snapshot, inst int64, repo string, pr int) (int, error) {
 	findings, err := cfg.Store.CommentedFindings(ctx, queries.CommentedFindingsParams{Repo: repo, PrNumber: int32(pr)})
-	if err != nil || len(findings) == 0 {
-		return 0, err
+	if err != nil {
+		return 0, fmt.Errorf("worker: commented findings: %w", err)
+	}
+	if len(findings) == 0 {
+		return 0, nil
 	}
 	reader, err := cfg.GitHub.Reader(ctx, inst, repo)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("worker: reader client: %w", err)
 	}
 	byComment, err := gh.CommentReactions(ctx, reader, repo, pr)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("worker: comment reactions: %w", err)
 	}
 	p, err := gh.GetPullRequest(ctx, reader, repo, pr)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("worker: get pull request: %w", err)
 	}
 	weight := pipeline.ReactionWeight(snap.Global.Feedback)
 	zero := float32(0)
@@ -132,7 +136,11 @@ func pollReactions(ctx context.Context, cfg Config, snap *config.Snapshot, inst 
 			evs = append(evs, pipeline.Event{FindingID: f.ID, Kind: kind, Actor: r.Login, Role: role, Via: pipeline.ViaReaction, Weight: w})
 		}
 	}
-	return pipeline.RecordEvents(ctx, cfg.Store, snap.Global.Feedback, evs)
+	n, err := pipeline.RecordEvents(ctx, cfg.Store, snap.Global.Feedback, evs)
+	if err != nil {
+		return 0, fmt.Errorf("worker: record events: %w", err)
+	}
+	return n, nil
 }
 
 // reactorRole is a reactor's role: the author, the rule's
@@ -146,7 +154,7 @@ func reactorRole(ctx context.Context, cfg Config, snap *config.Snapshot, inst in
 	}
 	took, err := gh.Participated(ctx, reader, repo, pr, login, time.Now(), 0)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("worker: check participation: %w", err)
 	}
 	if took {
 		return pipeline.RoleReviewer, nil

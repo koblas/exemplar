@@ -12,7 +12,6 @@ package calibrate
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -93,7 +92,7 @@ type Runner struct {
 func (r *Runner) Verifier(ctx context.Context, labels []Label, t *schema.VerifierThreshold) (Report, error) {
 	rep := Report{Outcomes: []Outcome{}, Models: []string{}}
 	if t == nil {
-		return rep, errors.New("calibrate: global.yaml has no eval_thresholds.verifier")
+		return rep, fmt.Errorf("%w.verifier", ErrNoThreshold)
 	}
 	for i, l := range labels {
 		o := Outcome{ID: l.ID, Label: l.Label, Source: l.Source}
@@ -104,7 +103,7 @@ func (r *Runner) Verifier(ctx context.Context, labels []Label, t *schema.Verifie
 		}
 		if err != nil {
 			if ctx.Err() != nil {
-				return rep, ctx.Err()
+				return rep, fmt.Errorf("calibrate: %w", ctx.Err())
 			}
 			o.Error = err.Error()
 			rep.Errors++
@@ -150,7 +149,7 @@ func (r *Runner) one(ctx context.Context, l Label, dir string) (string, float64,
 	defer func() { _ = os.RemoveAll(dir) }()
 	cloneURL, base, head, err := replay.Materialize(ctx, l.Fixture, filepath.Join(dir, "source"))
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", fmt.Errorf("materialize fixture: %w", err)
 	}
 	token := ""
 	if l.Fixture.Synthetic == nil && r.CloneToken != nil {
@@ -160,7 +159,7 @@ func (r *Runner) one(ctx context.Context, l Label, dir string) (string, float64,
 	}
 	ws, err := engine.Checkout(ctx, filepath.Join(dir, "wt"), engine.CheckoutOptions{CloneURL: cloneURL, BaseSHA: base, HeadSHA: head, Token: token})
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", fmt.Errorf("checkout: %w", err)
 	}
 	fx := l.Fixture
 	p, err := engine.Prepare(ctx, ws, r.Snapshot, engine.PRInfo{
@@ -168,20 +167,20 @@ func (r *Runner) one(ctx context.Context, l Label, dir string) (string, float64,
 		Author: fx.Author, BaseSHA: base, HeadSHA: head,
 	}, r.Scanner)
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", fmt.Errorf("prepare: %w", err)
 	}
 	if p.Incomplete != "" {
-		return "", 0, "", fmt.Errorf("incomplete: %s", p.Incomplete)
+		return "", 0, "", fmt.Errorf("%w: %s", errIncomplete, p.Incomplete)
 	}
 	vs, runs, err := r.Engine.VerifyOnly(ctx, p, []engine.Candidate{l.Candidate}, "eval")
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", fmt.Errorf("verify: %w", err)
 	}
 	var cost float64
 	for _, run := range runs {
 		cost += run.CostUSD
 		if run.Status != engine.RunOK {
-			return "", cost, "", fmt.Errorf("verifier run %s: %s", run.Status, run.Detail)
+			return "", cost, "", fmt.Errorf("%w %s: %s", errVerifierRun, run.Status, run.Detail)
 		}
 	}
 	return vs[0].Verdict, cost, vs[0].Model, nil

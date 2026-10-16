@@ -71,7 +71,7 @@ func (a *App) Redeliver(ctx context.Context, deliveryID int64) error {
 func (a *App) RepoInstallation(ctx context.Context, repo string) (int64, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return 0, fmt.Errorf("gh: repo %q must be owner/name", repo)
+		return 0, fmt.Errorf("%w: %q", ErrInvalidRepo, repo)
 	}
 	inst, _, err := a.apps.Apps.GetRepositoryInstallation(ctx, owner, name)
 	if err != nil {

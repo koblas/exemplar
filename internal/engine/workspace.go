@@ -18,6 +18,15 @@ import (
 // gitTimeout bounds each git command in a workspace.
 const gitTimeout = 2 * time.Minute
 
+var (
+	// errInvalidGitArg is a commit, clone URL, revision or path that git
+	// cannot be given safely.
+	errInvalidGitArg  = errors.New("engine: invalid")
+	errCommitNotFound = errors.New("not found after fetch")
+	// ErrInvalidPatch is a patch ApplyPatch refuses.
+	ErrInvalidPatch = errors.New("engine: invalid patch")
+)
+
 // Workspace is a worker checkout of one PR: a partial clone with the head
 // commit checked out. The model's tools are confined to Dir.
 type Workspace struct {
@@ -46,14 +55,14 @@ type CheckoutOptions struct {
 func Checkout(ctx context.Context, dir string, opt CheckoutOptions) (*Workspace, error) {
 	for _, sha := range []string{opt.BaseSHA, opt.HeadSHA} {
 		if !isHexSHA(sha) {
-			return nil, fmt.Errorf("engine: invalid commit %q", sha)
+			return nil, fmt.Errorf("%w commit %q", errInvalidGitArg, sha)
 		}
 	}
 	if opt.CloneURL == "" || strings.HasPrefix(opt.CloneURL, "-") {
-		return nil, fmt.Errorf("engine: invalid clone url %q", opt.CloneURL)
+		return nil, fmt.Errorf("%w clone url %q", errInvalidGitArg, opt.CloneURL)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("engine: create workspace: %w", err)
 	}
 	ws := &Workspace{Dir: dir, BaseSHA: opt.BaseSHA, HeadSHA: opt.HeadSHA, env: gitexec.Env(opt.Token)}
 
@@ -72,7 +81,7 @@ func Checkout(ctx context.Context, dir string, opt CheckoutOptions) (*Workspace,
 	}
 	for _, sha := range []string{opt.BaseSHA, opt.HeadSHA} {
 		if _, err := ws.git(ctx, "cat-file", "-e", sha+"^{commit}"); err != nil {
-			return nil, fmt.Errorf("engine: commit %s not found after fetch", sha)
+			return nil, fmt.Errorf("engine: commit %s %w", sha, errCommitNotFound)
 		}
 	}
 	if opt.SparseDirs != nil {
@@ -93,13 +102,17 @@ func (ws *Workspace) Diff(ctx context.Context) (*scope.Diff, error) {
 	if err != nil {
 		return nil, err
 	}
-	return scope.Parse(bytes.NewReader(out))
+	d, err := scope.Parse(bytes.NewReader(out))
+	if err != nil {
+		return nil, fmt.Errorf("engine: parse diff: %w", err)
+	}
+	return d, nil
 }
 
 // Show returns a file's content at rev.
 func (ws *Workspace) Show(ctx context.Context, rev, path string) ([]byte, error) {
 	if strings.HasPrefix(path, "-") || strings.Contains(path, "\x00") {
-		return nil, fmt.Errorf("engine: invalid path %q", path)
+		return nil, fmt.Errorf("%w path %q", errInvalidGitArg, path)
 	}
 	return ws.git(ctx, "show", rev+":"+path)
 }
@@ -110,13 +123,21 @@ func (ws *Workspace) Size(ctx context.Context, rev, path string) (int64, error) 
 	if err != nil {
 		return 0, err
 	}
-	return strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	n, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("engine: parse size of %s: %w", path, err)
+	}
+	return n, nil
 }
 
 func (ws *Workspace) git(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	return gitexec.Run(ctx, ws.Dir, ws.env, args...)
+	out, err := gitexec.Run(ctx, ws.Dir, ws.env, args...)
+	if err != nil {
+		return nil, fmt.Errorf("workspace: %w", err)
+	}
+	return out, nil
 }
 
 func isHexSHA(s string) bool {
@@ -137,7 +158,7 @@ func isHexSHA(s string) bool {
 // it may be gone, which is an error and means a full review.
 func (ws *Workspace) ChangedSince(ctx context.Context, rev string) ([]string, error) {
 	if !isHexSHA(rev) {
-		return nil, fmt.Errorf("engine: invalid revision %q", rev)
+		return nil, fmt.Errorf("%w revision %q", errInvalidGitArg, rev)
 	}
 	if _, err := ws.git(ctx, "cat-file", "-e", rev+"^{commit}"); err != nil {
 		if _, err := ws.git(ctx, "fetch", "-q", "--filter=blob:none", "--depth=1", "origin", rev); err != nil {
@@ -167,19 +188,19 @@ const MaxPatch = 1 << 20
 // paths outside the tree and through symlinks; the commit runs no hooks.
 func (ws *Workspace) ApplyPatch(ctx context.Context, patch []byte) error {
 	if len(patch) == 0 || len(patch) > MaxPatch {
-		return fmt.Errorf("engine: patch must be 1 to %d bytes", MaxPatch)
+		return fmt.Errorf("%w: patch must be 1 to %d bytes", ErrInvalidPatch, MaxPatch)
 	}
 	f, err := os.CreateTemp(filepath.Dir(ws.Dir), "patch-*.diff")
 	if err != nil {
-		return err
+		return fmt.Errorf("engine: create patch file: %w", err)
 	}
 	defer func() { _ = os.Remove(f.Name()) }()
 	if _, err := f.Write(patch); err != nil {
 		_ = f.Close()
-		return err
+		return fmt.Errorf("engine: write patch file: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		return err
+		return fmt.Errorf("engine: close patch file: %w", err)
 	}
 	if _, err := ws.git(ctx, "apply", "--index", "--whitespace=nowarn", f.Name()); err != nil {
 		return fmt.Errorf("engine: the patch does not apply to %s: %w", ws.HeadSHA, err)
@@ -187,7 +208,7 @@ func (ws *Workspace) ApplyPatch(ctx context.Context, patch []byte) error {
 	if out, err := ws.git(ctx, "diff", "--cached", "--name-only"); err != nil {
 		return err
 	} else if len(bytes.TrimSpace(out)) == 0 {
-		return errors.New("engine: the patch changes nothing")
+		return fmt.Errorf("%w: the patch changes nothing", ErrInvalidPatch)
 	}
 	if _, err := ws.git(ctx, "commit", "-q", "--no-verify", "-m", "exemplar review"); err != nil {
 		return err

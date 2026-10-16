@@ -3,7 +3,6 @@ package compile
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -116,7 +115,7 @@ func (g *GatewayModel) Propose(ctx context.Context, r Request) (Proposal, error)
 		return Proposal{}, fmt.Errorf("compile: model call: %w", err)
 	}
 	if msg.StopReason != anthropic.StopReasonEndTurn {
-		return Proposal{}, fmt.Errorf("compile: model stopped with %s", msg.StopReason)
+		return Proposal{}, fmt.Errorf("%w: model stopped with %s", ErrModelAnswer, msg.StopReason)
 	}
 	var text strings.Builder
 	for _, b := range msg.Content {
@@ -128,7 +127,7 @@ func (g *GatewayModel) Propose(ctx context.Context, r Request) (Proposal, error)
 	dec := json.NewDecoder(strings.NewReader(strings.TrimSpace(text.String())))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&p); err != nil {
-		return Proposal{}, errors.New("compile: model answer does not match the output contract")
+		return Proposal{}, fmt.Errorf("%w: does not match the output contract", ErrModelAnswer)
 	}
 	p.Model = msg.Model
 	if httpResp != nil && httpResp.Header.Get(llm.HeaderModel) != "" {

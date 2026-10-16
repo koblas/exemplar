@@ -136,12 +136,14 @@ type citationYAML struct {
 	Comments []string `yaml:"comments,omitempty"`
 }
 
+var errNoTitle = errors.New("propose: candidate has no title or description")
+
 // BuildDraft renders the rule and PR for a candidate and validates the rule
 // against schema/rule.schema.json, so a malformed draft never reaches
 // GitHub.
 func BuildDraft(c Candidate, now time.Time) (*Draft, error) {
 	if strings.TrimSpace(c.Title) == "" || strings.TrimSpace(c.Description) == "" {
-		return nil, errors.New("propose: candidate has no title or description")
+		return nil, errNoTitle
 	}
 	ruleID := RuleID(c.Title, c.ID)
 	category := category(c.Sources)

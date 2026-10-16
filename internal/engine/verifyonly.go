@@ -2,10 +2,14 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/koblas/exemplar/internal/scope"
 )
+
+// ErrRuleOutOfScope is a candidate whose rule does not apply to its file.
+var ErrRuleOutOfScope = errors.New("engine: rule out of scope")
 
 // Candidate is a finding to verify on its own, as calibration does:
 // the claim a generator would have made, without the generator.
@@ -38,7 +42,7 @@ func (e *Engine) VerifyOnly(ctx context.Context, p *Prepared, cands []Candidate,
 			}
 		}
 		if rule == nil {
-			return nil, nil, fmt.Errorf("engine: rule %s is not in scope for %s", c.RuleID, c.Path)
+			return nil, nil, fmt.Errorf("%w: rule %s is not in scope for %s", ErrRuleOutOfScope, c.RuleID, c.Path)
 		}
 		side := scope.Side(c.Side)
 		if side == "" {

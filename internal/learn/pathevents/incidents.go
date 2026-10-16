@@ -41,24 +41,26 @@ type Link struct {
 var (
 	incidentIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`)
 	commitRE     = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+
+	errInvalidIncident = errors.New("invalid incident")
 )
 
 func (inc Incident) validate() error {
 	if !incidentIDRE.MatchString(inc.ID) {
-		return fmt.Errorf("incident id %q must be 1-64 of [A-Za-z0-9._:-]", inc.ID)
+		return fmt.Errorf("%w: id %q must be 1-64 of [A-Za-z0-9._:-]", errInvalidIncident, inc.ID)
 	}
 	if inc.At.IsZero() {
-		return fmt.Errorf("incident %s has no time", inc.ID)
+		return fmt.Errorf("%w: %s has no time", errInvalidIncident, inc.ID)
 	}
 	for _, l := range inc.Links {
 		if strings.Count(l.Repo, "/") != 1 {
-			return fmt.Errorf("incident %s: repo %q must be owner/name", inc.ID, l.Repo)
+			return fmt.Errorf("%w: %s: repo %q must be owner/name", errInvalidIncident, inc.ID, l.Repo)
 		}
 		if (l.PR > 0) == (l.Commit != "") {
-			return fmt.Errorf("incident %s: each link names exactly one of pr or commit", inc.ID)
+			return fmt.Errorf("%w: %s: each link names exactly one of pr or commit", errInvalidIncident, inc.ID)
 		}
 		if l.Commit != "" && !commitRE.MatchString(l.Commit) {
-			return fmt.Errorf("incident %s: bad commit %q", inc.ID, l.Commit)
+			return fmt.Errorf("%w: %s: bad commit %q", errInvalidIncident, inc.ID, l.Commit)
 		}
 	}
 	return nil

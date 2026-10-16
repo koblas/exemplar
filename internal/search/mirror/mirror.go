@@ -42,6 +42,9 @@ var (
 	ErrNoCommit    = errors.New("mirror: commit not in mirror")
 	ErrNoFile      = errors.New("mirror: file not found at commit")
 	ErrBadRequest  = errors.New("mirror: bad request")
+
+	errNoRoot          = errors.New("mirror: root is required")
+	errNoDefaultBranch = errors.New("mirror: remote reports no default branch")
 )
 
 // Credentials returns a read-only token for fetching repo, plus the
@@ -70,7 +73,7 @@ type Manager struct {
 // New returns a Manager, creating Root if needed.
 func New(cfg Config) (*Manager, error) {
 	if cfg.Root == "" {
-		return nil, errors.New("mirror: root is required")
+		return nil, errNoRoot
 	}
 	if err := os.MkdirAll(cfg.Root, 0o750); err != nil {
 		return nil, fmt.Errorf("mirror: root: %w", err)
@@ -130,19 +133,19 @@ func (m *Manager) Fetch(ctx context.Context, repo string) (string, error) {
 	env := gitexec.Env(token)
 	if _, err := os.Stat(filepath.Join(dir, "HEAD")); errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(filepath.Dir(dir), 0o750); err != nil {
-			return "", err
+			return "", fmt.Errorf("mirror: owner dir for %s: %w", repo, err)
 		}
 		// Build in a temp dir and rename, so a half-made mirror never serves.
 		tmp, err := os.MkdirTemp(filepath.Dir(dir), "."+filepath.Base(dir)+"-")
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("mirror: temp dir for %s: %w", repo, err)
 		}
 		defer func() { _ = os.RemoveAll(tmp) }() // after the rename this is a no-op
 		if _, err := gitexec.Run(ctx, tmp, env, "init", "-q", "--bare"); err != nil {
-			return "", err
+			return "", fmt.Errorf("mirror: init %s: %w", repo, err)
 		}
 		if _, err := gitexec.Run(ctx, tmp, env, "remote", "add", "origin", m.cfg.URL(repo)); err != nil {
-			return "", err
+			return "", fmt.Errorf("mirror: add remote for %s: %w", repo, err)
 		}
 		if err := fetch(ctx, tmp, env); err != nil {
 			return "", err
@@ -154,7 +157,7 @@ func (m *Manager) Fetch(ctx context.Context, repo string) (string, error) {
 		return "", err
 	}
 	if _, err := gitexec.Run(ctx, dir, env, "config", "exemplar.visibility", visibility); err != nil {
-		return "", err
+		return "", fmt.Errorf("mirror: record visibility of %s: %w", repo, err)
 	}
 	return m.Snapshot(ctx, repo)
 }
@@ -173,12 +176,14 @@ func fetch(ctx context.Context, dir string, env []string) error {
 		if ref, ok := strings.CutPrefix(line, "ref: "); ok {
 			ref, _, _ = strings.Cut(ref, "\t")
 			if strings.HasPrefix(ref, "refs/heads/") {
-				_, err := gitexec.Run(ctx, dir, env, "symbolic-ref", "HEAD", ref)
-				return err
+				if _, err := gitexec.Run(ctx, dir, env, "symbolic-ref", "HEAD", ref); err != nil {
+					return fmt.Errorf("mirror: set default branch: %w", err)
+				}
+				return nil
 			}
 		}
 	}
-	return errors.New("mirror: remote reports no default branch")
+	return errNoDefaultBranch
 }
 
 // Snapshot returns the default branch's commit in repo's mirror.
@@ -221,7 +226,11 @@ func (m *Manager) mirrored(repo string) (string, error) {
 func (m *Manager) git(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
-	return gitexec.Run(ctx, dir, m.env(), args...)
+	out, err := gitexec.Run(ctx, dir, m.env(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("mirror: %w", err)
+	}
+	return out, nil
 }
 
 // env is the environment for reads: no token and literal pathspecs (Grep

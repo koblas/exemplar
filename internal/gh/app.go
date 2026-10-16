@@ -128,13 +128,21 @@ type App struct {
 	limiters map[int64]*rate.Limiter
 }
 
+var (
+	// ErrInvalidAppConfig is an AppConfig NewApp rejects.
+	ErrInvalidAppConfig = errors.New("gh: invalid app config")
+	// ErrTokenScope is a token request whose flavor and repos do not fit
+	// that flavor's scope rules.
+	ErrTokenScope = errors.New("gh: token scope")
+)
+
 // NewApp returns an App. base is the underlying transport (nil for default).
 func NewApp(cfg AppConfig, base http.RoundTripper) (*App, error) {
 	if cfg.AppID == 0 || len(cfg.PrivateKey) == 0 {
-		return nil, errors.New("gh: app id and private key are required")
+		return nil, fmt.Errorf("%w: app id and private key are required", ErrInvalidAppConfig)
 	}
 	if strings.Count(cfg.ConfigRepo, "/") != 1 {
-		return nil, fmt.Errorf("gh: config repo %q must be owner/name", cfg.ConfigRepo)
+		return nil, fmt.Errorf("%w: config repo %q", ErrInvalidRepo, cfg.ConfigRepo)
 	}
 	if cfg.RequestsPerHour <= 0 {
 		cfg.RequestsPerHour = 5000
@@ -182,37 +190,37 @@ func (a *App) Token(ctx context.Context, installationID int64, f Flavor, repos [
 
 func (a *App) checkScope(f Flavor, repos []string) error {
 	if f.Permissions() == nil {
-		return fmt.Errorf("gh: unknown token flavor %d", int(f))
+		return fmt.Errorf("%w: unknown token flavor %d", ErrTokenScope, int(f))
 	}
 	if len(repos) == 0 {
-		return fmt.Errorf("gh: %s token needs at least one repo", f)
+		return fmt.Errorf("%w: %s token needs at least one repo", ErrTokenScope, f)
 	}
 	owner := ""
 	for _, r := range repos {
 		o, name, ok := strings.Cut(r, "/")
 		if !ok || o == "" || name == "" || strings.Contains(name, "/") {
-			return fmt.Errorf("gh: repo %q must be owner/name", r)
+			return fmt.Errorf("%w: %q", ErrInvalidRepo, r)
 		}
 		if owner != "" && !strings.EqualFold(o, owner) {
-			return errors.New("gh: one token cannot span installation owners")
+			return fmt.Errorf("%w: one token cannot span installation owners", ErrTokenScope)
 		}
 		owner = o
 	}
 	switch f {
 	case FlavorWorker, FlavorPoster, FlavorIngest, FlavorGate, FlavorExport:
 		if len(repos) != 1 {
-			return fmt.Errorf("gh: %s token must cover exactly one repo, got %d", f, len(repos))
+			return fmt.Errorf("%w: %s token must cover exactly one repo, got %d", ErrTokenScope, f, len(repos))
 		}
 		if (f == FlavorIngest || f == FlavorExport) && strings.EqualFold(repos[0], a.cfg.ConfigRepo) {
-			return fmt.Errorf("gh: %s token may not reach the config repo", f)
+			return fmt.Errorf("%w: %s token may not reach the config repo", ErrTokenScope, f)
 		}
 	case FlavorConfigWriter:
 		if len(repos) != 1 || !strings.EqualFold(repos[0], a.cfg.ConfigRepo) {
-			return fmt.Errorf("gh: config-writer token may only name %s", a.cfg.ConfigRepo)
+			return fmt.Errorf("%w: config-writer token may only name %s", ErrTokenScope, a.cfg.ConfigRepo)
 		}
 	case FlavorContext, FlavorSweep:
 		if slices.ContainsFunc(repos, func(r string) bool { return strings.EqualFold(r, a.cfg.ConfigRepo) }) {
-			return fmt.Errorf("gh: %s token may not read the config repo", f)
+			return fmt.Errorf("%w: %s token may not read the config repo", ErrTokenScope, f)
 		}
 	}
 	return nil
@@ -241,7 +249,10 @@ func (a *App) clientWithToken(installationID int64, token string) (*github.Clien
 			status, resource, remaining = resp.StatusCode, resp.Header.Get("X-Ratelimit-Resource"), resp.Header.Get("X-Ratelimit-Remaining")
 		}
 		telemetry.GitHubResponse(req.Context(), installationID, status, resource, remaining)
-		return resp, err
+		if err != nil {
+			return resp, fmt.Errorf("gh: transport: %w", err)
+		}
+		return resp, nil
 	})
 	opts := []github.ClientOptionsFunc{
 		github.WithTransport(github_ratelimit.New(throttled)),
@@ -251,7 +262,11 @@ func (a *App) clientWithToken(installationID int64, token string) (*github.Clien
 	if a.cfg.BaseURL != "" {
 		opts = append(opts, github.WithURLs(&a.cfg.BaseURL, &a.cfg.BaseURL))
 	}
-	return github.NewClient(opts...)
+	c, err := github.NewClient(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("gh: new client: %w", err)
+	}
+	return c, nil
 }
 
 // limiter returns the installation's shared limiter, creating it on first use.

@@ -92,13 +92,13 @@ type Worker struct {
 func New(cfg Config) (*Worker, error) {
 	switch {
 	case cfg.GitHub == nil:
-		return nil, errors.New("worker: GitHub is required")
+		return nil, fmt.Errorf("%w: GitHub is required", errMissingDependency)
 	case cfg.Snapshot == nil:
-		return nil, errors.New("worker: Snapshot is required")
+		return nil, fmt.Errorf("%w: Snapshot is required", errMissingDependency)
 	case cfg.Engine == nil || cfg.Scanner == nil:
-		return nil, errors.New("worker: Engine and Scanner are required")
+		return nil, fmt.Errorf("%w: Engine and Scanner are required", errMissingDependency)
 	case cfg.WorkDir == "":
-		return nil, errors.New("worker: WorkDir is required")
+		return nil, fmt.Errorf("%w: WorkDir is required", errMissingDependency)
 	}
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.DiscardHandler)
@@ -162,7 +162,15 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[store.PRReviewArgs]) e
 	return nil
 }
 
-var errBadJob = errors.New("worker: invalid job")
+var (
+	errBadJob            = errors.New("worker: invalid job")
+	errMissingDependency = errors.New("worker: missing dependency")
+	errPayloadLacks      = errors.New("payload lacks")
+	errGone              = errors.New("gone")
+	errNotInstalled      = errors.New("not installed")
+	errNotStored         = errors.New("not stored")
+	errNoPeriod          = errors.New("has no period")
+)
 
 // deletedFork stands in for the head repo of a PR whose fork was deleted.
 const deletedFork = "(deleted fork)"
@@ -212,11 +220,11 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	}
 	reader, err := w.cfg.GitHub.Reader(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("github reader: %w", err)
 	}
 	pr, err := gh.GetPullRequest(ctx, reader, a.Repo, a.PR)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("get pull request: %w", err)
 	}
 	switch {
 	case pr.State != "open":
@@ -231,14 +239,14 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	}
 	posterClient, err := w.cfg.GitHub.Poster(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("github poster: %w", err)
 	}
 	poster := gh.NewPoster(posterClient)
 
 	// Dismiss approvals on earlier heads before reviewing this one.
 	out := Outcome{}
 	if out.Dismissed, err = poster.DismissApprovals(ctx, target, "New commits were pushed; Exemplar re-reviews before approving again."); err != nil {
-		return out, err
+		return out, fmt.Errorf("dismiss approvals: %w", err)
 	}
 
 	snap, err := w.cfg.Snapshot(ctx)
@@ -247,22 +255,22 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	}
 	commits, err := gh.PRCommitMessages(ctx, reader, a.Repo, a.PR)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("commit messages: %w", err)
 	}
 	token, err := w.cfg.GitHub.CloneToken(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("clone token: %w", err)
 	}
 	dir, err := os.MkdirTemp(w.cfg.WorkDir, "review-")
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("make work dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	ws, err := engine.Checkout(ctx, filepath.Join(dir, "worktree"), engine.CheckoutOptions{
 		CloneURL: w.cfg.CloneURL(a.Repo), BaseSHA: pr.BaseSHA, HeadSHA: pr.HeadSHA, Token: token,
 	})
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("checkout: %w", err)
 	}
 	headRepo := pr.HeadRepo
 	if headRepo == "" {
@@ -284,12 +292,12 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		return out, w.neutralCheck(ctx, poster, target, "Not reviewed", ineligibleText(err))
 	}
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("prepare review: %w", err)
 	}
 
 	rec, err := pipeline.Begin(ctx, w.cfg.Store, p, Caller, a.Attempt, p.Scoped)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("begin review: %w", err)
 	}
 	rec.Links = w.cfg.Links
 	out.ReviewID = rec.ReviewID
@@ -359,7 +367,10 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 				Path: c.Path, Side: c.Side, Start: c.Start, End: c.End, Body: c.Body,
 			})
 		}
-		return out, err
+		if err != nil {
+			return out, fmt.Errorf("pr comments: %w", err)
+		}
+		return out, nil
 	}
 
 	res, err := w.cfg.Engine.Review(ctx, p, opt)
@@ -391,10 +402,13 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 			return out, nil
 		}
 		w.mergePolicy(ctx, reader, opt.TeamMember, poster, target, p, false)
-		return out, poster.CompleteCheck(ctx, target, checkID, gh.CheckResult{
+		if err := poster.CompleteCheck(ctx, target, checkID, gh.CheckResult{
 			Conclusion: "neutral", Title: "Review did not complete", Incomplete: true,
 			Summary: "Exemplar could not complete this review: " + res.Incomplete + ". Nothing was posted; use Re-run to try again.",
-		})
+		}); err != nil {
+			return out, fmt.Errorf("complete incomplete check: %w", err)
+		}
+		return out, nil
 	}
 	if shadow {
 		out.Status = StatusReviewed
@@ -476,7 +490,7 @@ func (w *Worker) linters(c *github.Client, repo string, pr int, sha string, chec
 		for {
 			anns, pending, err := gh.LinterAnnotations(ctx, c, repo, sha, checks)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("linter annotations: %w", err)
 			}
 			if len(pending) == 0 || wait <= 0 {
 				return withAlerts(ctx, c, repo, pr, checks, anns)
@@ -492,7 +506,7 @@ func (w *Worker) linters(c *github.Client, repo string, pr int, sha string, chec
 				// later is a linter_check job (latelinters.go).
 				anns, _, err := gh.LinterAnnotations(ctx, c, repo, sha, checks)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("linter annotations: %w", err)
 				}
 				return withAlerts(ctx, c, repo, pr, checks, anns)
 			case <-poll.C:
@@ -521,13 +535,13 @@ func (w *Worker) recordFixed(ctx context.Context, p *engine.Prepared, closures [
 		applied, err := w.cfg.Store.FindingHasEventKind(ctx, queries.FindingHasEventKindParams{FindingID: o.ID, Kind: pipeline.EventAppliedSuggestion})
 		if err != nil || applied {
 			if err != nil {
-				return 0, err
+				return 0, fmt.Errorf("finding %d event kind: %w", o.ID, err)
 			}
 			continue
 		}
 		d, err := w.cfg.Store.FindingDetail(ctx, o.ID)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("finding %d detail: %w", o.ID, err)
 		}
 		after, err := p.Workspace.Show(ctx, p.PR.HeadSHA, o.Path)
 		if err != nil {
@@ -541,7 +555,11 @@ func (w *Worker) recordFixed(ctx context.Context, p *engine.Prepared, closures [
 			})
 		}
 	}
-	return pipeline.RecordEvents(ctx, w.cfg.Store, p.Effective.Global.Feedback, evs)
+	n, err := pipeline.RecordEvents(ctx, w.cfg.Store, p.Effective.Global.Feedback, evs)
+	if err != nil {
+		return n, fmt.Errorf("record fixed events: %w", err)
+	}
+	return n, nil
 }
 
 // window is lines start-ctx..end+ctx of text (1-based, clamped).
@@ -615,13 +633,15 @@ func (w *Worker) approve(ctx context.Context, reader *github.Client, poster *gh.
 	}
 	now, err := gh.GetPullRequest(ctx, reader, p.PR.Repo, p.PR.Number)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("get pull request: %w", err)
 	}
 	if now.HeadSHA != target.HeadSHA || now.State != "open" {
 		return false, nil
 	}
-	_, _, err = poster.Approve(ctx, target, reviewID, "Exemplar found nothing to flag, and every auto-approve gate passed.")
-	return err == nil, err
+	if _, _, err := poster.Approve(ctx, target, reviewID, "Exemplar found nothing to flag, and every auto-approve gate passed."); err != nil {
+		return false, fmt.Errorf("approve: %w", err)
+	}
+	return true, nil
 }
 
 // mergeSafety scores the PR, or returns nil when it cannot: auto-approval
@@ -669,7 +689,11 @@ func lazyGateFor(g GitHub, installationID int64, repo string) func(context.Conte
 		err  error
 	)
 	return func(ctx context.Context) (*github.Client, error) {
-		once.Do(func() { c, err = g.Gate(ctx, installationID, repo) })
+		once.Do(func() {
+			if c, err = g.Gate(ctx, installationID, repo); err != nil {
+				err = fmt.Errorf("github gate: %w", err)
+			}
+		})
 		return c, err
 	}
 }
@@ -677,9 +701,12 @@ func lazyGateFor(g GitHub, installationID int64, repo string) func(context.Conte
 func (w *Worker) neutralCheck(ctx context.Context, poster *gh.Poster, target gh.PR, title, summary string) error {
 	id, err := poster.StartCheck(ctx, target, "not-reviewed-"+target.HeadSHA)
 	if err != nil {
-		return err
+		return fmt.Errorf("start neutral check: %w", err)
 	}
-	return poster.CompleteCheck(ctx, target, id, gh.CheckResult{Conclusion: "neutral", Title: title, Summary: summary})
+	if err := poster.CompleteCheck(ctx, target, id, gh.CheckResult{Conclusion: "neutral", Title: title, Summary: summary}); err != nil {
+		return fmt.Errorf("complete neutral check: %w", err)
+	}
+	return nil
 }
 
 func ineligibleText(err error) string {

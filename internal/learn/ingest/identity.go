@@ -15,10 +15,12 @@ import (
 // Logins are never stored; ranking counts distinct pseudonyms.
 type Pseudonymizer struct{ key []byte }
 
+var errShortKey = errors.New("ingest: pseudonym key must be at least 32 bytes")
+
 // NewPseudonymizer refuses keys shorter than 32 bytes.
 func NewPseudonymizer(key []byte) (*Pseudonymizer, error) {
 	if len(key) < 32 {
-		return nil, errors.New("ingest: pseudonym key must be at least 32 bytes")
+		return nil, errShortKey
 	}
 	return &Pseudonymizer{key: slices.Clone(key)}, nil
 }

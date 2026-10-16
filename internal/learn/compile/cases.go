@@ -3,7 +3,6 @@ package compile
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -44,7 +43,7 @@ type Expect struct {
 func ParseRef(ref string) (string, string, error) {
 	repo, sha, ok := strings.Cut(ref, "@")
 	if !ok || strings.Count(repo, "/") != 1 || sha == "" {
-		return "", "", fmt.Errorf("compile: bad case ref %q", ref)
+		return "", "", fmt.Errorf("%w %q", ErrBadCaseRef, ref)
 	}
 	return repo, sha, nil
 }
@@ -120,7 +119,7 @@ func Evaluate(ctx context.Context, eng Engine, files FileSource, scratch, engine
 		}
 		matches, err := eng.Run(ctx, dir, engine, rule, paths)
 		if err != nil {
-			return s, err
+			return s, fmt.Errorf("run case %s: %w", c.ID, err)
 		}
 		o := Outcome{Case: c.ID, Kind: c.Kind, Matches: len(matches)}
 		s.Cases++
@@ -173,20 +172,20 @@ func materialize(ctx context.Context, src FileSource, dir string, c Case) ([]str
 		}
 		full := filepath.Join(dir, filepath.FromSlash(p))
 		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create case dir: %w", err)
 		}
 		if err := os.WriteFile(full, data, 0o600); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("write case file: %w", err)
 		}
 		out = append(out, p)
 	}
 	if c.Kind == "injected" {
 		if c.Patch == "" {
-			return nil, errors.New("injected case has no patch")
+			return nil, errInjectedNoPatch
 		}
 		pf := filepath.Join(dir, ".exemplar.patch")
 		if err := os.WriteFile(pf, []byte(c.Patch), 0o600); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("write case patch: %w", err)
 		}
 		// --unsafe-paths is not set, so the patch cannot write outside dir.
 		// The ceiling keeps git from treating an enclosing repo as the target.

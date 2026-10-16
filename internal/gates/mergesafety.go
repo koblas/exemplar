@@ -1,6 +1,7 @@
 package gates
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -41,6 +42,10 @@ var DefaultWeights = map[string]float64{
 	TermSensitive: 0.25, TermNewAuthor: 0.10, TermForcePush: 0.05,
 }
 
+// ErrInvalidWeight is returned by Weights for an unknown term or a weight
+// outside [0, 1].
+var ErrInvalidWeight = errors.New("gates: invalid merge_safety weight")
+
 // Weights returns the effective weights: DefaultWeights overlaid with
 // configured. Unknown terms and weights outside [0, 1] are errors, so a
 // typo cannot drop a penalty.
@@ -49,10 +54,10 @@ func Weights(configured map[string]float64) (map[string]float64, error) {
 	maps.Copy(w, DefaultWeights)
 	for k, v := range configured {
 		if _, ok := DefaultWeights[k]; !ok {
-			return nil, fmt.Errorf("gates: unknown merge_safety weight %q", k)
+			return nil, fmt.Errorf("%w: unknown merge_safety weight %q", ErrInvalidWeight, k)
 		}
 		if v < 0 || v > 1 || math.IsNaN(v) {
-			return nil, fmt.Errorf("gates: merge_safety weight %s = %v outside [0, 1]", k, v)
+			return nil, fmt.Errorf("%w: merge_safety weight %s = %v outside [0, 1]", ErrInvalidWeight, k, v)
 		}
 		w[k] = v
 	}

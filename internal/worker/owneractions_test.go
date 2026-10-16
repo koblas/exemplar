@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/riverqueue/river"
@@ -46,7 +47,7 @@ func TestOwnerActionWorker(t *testing.T) {
 	if err := w.Work(ctx, job(3)); err != nil {
 		t.Fatal(err)
 	}
-	if a, _ := st.GetOwnerAction(ctx, id); a.Status != owneract.StatusFailed || a.Result == nil || *a.Result != "no token" {
+	if a, _ := st.GetOwnerAction(ctx, id); a.Status != owneract.StatusFailed || a.Result == nil || !strings.HasSuffix(*a.Result, "no token") {
 		t.Errorf("after the last attempt = %+v", a)
 	}
 }

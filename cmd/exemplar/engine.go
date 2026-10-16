@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -39,10 +39,16 @@ func (f *modelFlags) harness(allowNone bool) (*engine.Harness, error) {
 	case allowNone:
 		return nil, nil //nolint:nilnil // no harness is a valid answer when allowNone is set, as documented
 	}
-	return nil, errors.New("set --gateway-url and --gateway-token, or --scripted")
+	return nil, errGatewayRequired
 }
 
-func newScanner() (*redact.Scanner, error) { return redact.New() }
+func newScanner() (*redact.Scanner, error) {
+	sc, err := redact.New()
+	if err != nil {
+		return nil, fmt.Errorf("redaction scanner: %w", err)
+	}
+	return sc, nil
+}
 
 func compiledRunner() compiled.Runner {
 	return compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")}

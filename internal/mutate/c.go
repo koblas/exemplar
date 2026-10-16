@@ -2,6 +2,7 @@ package mutate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -27,6 +28,9 @@ import (
 // statement alone on its lines. A mutation is kept only if the result
 // parses cleanly.
 
+// errNoParse reports a source file whose syntax tree has errors.
+var errNoParse = errors.New("does not parse")
+
 var (
 	releaseFns = []string{"free", "fclose", "close", "closedir", "pclose", "munmap", "freeaddrinfo"}
 	lockFns    = map[string]string{
@@ -45,7 +49,7 @@ func C(ctx context.Context, path string, src []byte, perOp int) ([]Mutation, err
 	}
 	defer tree.Close()
 	if tree.RootNode().HasError() {
-		return nil, fmt.Errorf("mutate: %s does not parse", path)
+		return nil, fmt.Errorf("mutate: %s %w", path, errNoParse)
 	}
 	lines := strings.Split(strings.TrimSuffix(string(src), "\n"), "\n")
 	var out []Mutation

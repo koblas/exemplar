@@ -55,7 +55,7 @@ func (s *Store) Close() { s.Pool.Close() }
 func (s *Store) Migrate(ctx context.Context) error {
 	migrations, err := fs.Sub(db.Migrations, "migrations")
 	if err != nil {
-		return err
+		return fmt.Errorf("migrations dir: %w", err)
 	}
 	sqlDB := stdlib.OpenDBFromPool(s.Pool)
 	defer func() { _ = sqlDB.Close() }()
@@ -79,7 +79,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 // InTx runs fn in a transaction, committing only if fn succeeds. Business
 // writes and the next job's insert share the transaction.
 func (s *Store) InTx(ctx context.Context, fn func(pgx.Tx, *queries.Queries) error) error {
-	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+	if err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return fn(tx, s.WithTx(tx))
-	})
+	}); err != nil {
+		return fmt.Errorf("store: transaction: %w", err)
+	}
+	return nil
 }

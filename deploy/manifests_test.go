@@ -355,7 +355,7 @@ func shutdown(t *testing.T, binary string, args []string) time.Duration {
 	}
 	switch binary {
 	case "exemplar-webhook", "exemplar-api":
-		return flag("drain", 5*time.Second) + src("main.go", `WithTimeout\(context\.Background\(\), (\d+)\*time\.Second\)\s+defer cancel\(\)\s+return hs\.Shutdown`)
+		return flag("drain", 5*time.Second) + src("main.go", `WithTimeout\(context\.Background\(\), (\d+)\*time\.Second\)\s+defer cancel\(\)\s+(?:return|if err :=) hs\.Shutdown`)
 	case "exemplar-gateway":
 		return src("main.go", `shutdownTimeout = (\d+) \* time\.Second`)
 	case "exemplar-search":

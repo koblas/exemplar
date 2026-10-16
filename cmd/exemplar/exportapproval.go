@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -32,7 +31,7 @@ func newExportApprovalCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			if since == "" || repo == "" || pr == 0 || headSHA == "" {
-				return errors.New("--changed-since, --repo, --pr and --head-sha are required")
+				return fmt.Errorf("--changed-since, --repo, --pr and --head-sha %w", errFlagsRequired)
 			}
 			sel, err := selectRules(ctx, configDir, since, nil)
 			if err != nil {
@@ -53,30 +52,30 @@ func newExportApprovalCmd() *cobra.Command {
 				}
 				reviews, err := gh.Reviews(ctx, reviewer, repo, pr)
 				if err != nil {
-					return err
+					return fmt.Errorf("list reviews: %w", err)
 				}
 				member := func(ctx context.Context, team, login string) (bool, error) {
 					return gh.TeamMember(ctx, teams, team, login)
 				}
 				if res, err = precheck.CheckExportApproval(ctx, changes, team, author, headSHA, reviews, member); err != nil {
-					return err
+					return fmt.Errorf("check export approval: %w", err)
 				}
 			}
 			md := exportMarkdown(res)
 			if markdownOut != "" {
 				if err := os.WriteFile(markdownOut, []byte(md), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
-					return err
+					return fmt.Errorf("write markdown report: %w", err)
 				}
 			}
 			if jsonOut {
 				if err := json.NewEncoder(cmd.OutOrStdout()).Encode(res); err != nil {
-					return err
+					return fmt.Errorf("encode result: %w", err)
 				}
 			} else {
 				fmt.Fprint(cmd.OutOrStdout(), md)
 			}
 			if !res.Pass {
-				return errors.New(res.Reason)
+				return fmt.Errorf("%w: %s", errExportNotApproved, res.Reason)
 			}
 			return nil
 		},
@@ -99,13 +98,17 @@ func newExportApprovalCmd() *cobra.Command {
 func githubClient(tokenEnv, apiURL string) (*github.Client, error) {
 	token := os.Getenv(tokenEnv)
 	if token == "" {
-		return nil, fmt.Errorf("$%s is empty", tokenEnv)
+		return nil, fmt.Errorf("$%s %w", tokenEnv, errEmptyToken)
 	}
 	opts := []github.ClientOptionsFunc{github.WithAuthToken(token)}
 	if apiURL != "" {
 		opts = append(opts, github.WithURLs(&apiURL, &apiURL))
 	}
-	return github.NewClient(opts...)
+	c, err := github.NewClient(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("github client: %w", err)
+	}
+	return c, nil
 }
 
 func exportMarkdown(res precheck.ExportApproval) string {

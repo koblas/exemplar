@@ -140,25 +140,27 @@ const (
 	maxCategory    = 40
 )
 
+var errInvalidResult = errors.New("invalid result")
+
 // validate checks one result; rejected results only need a sane confidence.
 func (r Result) validate() error {
 	if r.Confidence < 0 || r.Confidence > 1 {
-		return fmt.Errorf("confidence %v out of range", r.Confidence)
+		return fmt.Errorf("%w: confidence %v out of range", errInvalidResult, r.Confidence)
 	}
 	if !r.IsReusable {
 		return nil
 	}
 	switch {
 	case strings.TrimSpace(r.Title) == "" || utf8.RuneCountInString(r.Title) > maxTitle:
-		return errors.New("title empty or too long")
+		return fmt.Errorf("%w: title empty or too long", errInvalidResult)
 	case strings.TrimSpace(r.Description) == "" || utf8.RuneCountInString(r.Description) > maxDescription:
-		return errors.New("description empty or too long")
+		return fmt.Errorf("%w: description empty or too long", errInvalidResult)
 	case utf8.RuneCountInString(r.PreferredApproach) > maxApproach:
-		return errors.New("preferred_approach too long")
+		return fmt.Errorf("%w: preferred_approach too long", errInvalidResult)
 	case utf8.RuneCountInString(r.AppliesToHint) > maxHint:
-		return errors.New("applies_to_hint too long")
+		return fmt.Errorf("%w: applies_to_hint too long", errInvalidResult)
 	case strings.TrimSpace(r.Category) == "" || utf8.RuneCountInString(r.Category) > maxCategory:
-		return errors.New("category empty or too long")
+		return fmt.Errorf("%w: category empty or too long", errInvalidResult)
 	}
 	return nil
 }

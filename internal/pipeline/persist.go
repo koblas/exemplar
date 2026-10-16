@@ -70,7 +70,7 @@ func Begin(ctx context.Context, st *store.Store, p *engine.Prepared, caller stri
 		return nil, fmt.Errorf("create review: %w", err)
 	}
 	if err := q.StartReview(ctx, rv.ID); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start review: %w", err)
 	}
 	// Only the agent's name is kept, for upstream effectiveness;
 	// never the commit messages or labels it was read from.
@@ -124,7 +124,7 @@ func Finish(ctx context.Context, st *store.Store, rec *Record, res *engine.Resul
 			InputTokens: &in, CachedTokens: &cached, OutputTokens: &out, CostUsd: &cost, LatencyMs: &latency,
 			CarriedFrom: carriedFrom,
 		}); err != nil {
-			return err
+			return fmt.Errorf("finish rule run %s: %w", run.RuleID, err)
 		}
 	}
 	var total float64
@@ -166,7 +166,7 @@ func Finish(ctx context.Context, st *store.Store, rec *Record, res *engine.Resul
 		IncompleteReason: strPtr(res.Incomplete), Verdict: &verdict, CostUsd: total,
 		BugLane: res.BugLane != nil && res.BugLane.Run,
 	}); err != nil {
-		return err
+		return fmt.Errorf("finish review: %w", err)
 	}
 	stage1, err := json.Marshal(res.Stage1)
 	if err != nil {
@@ -178,9 +178,12 @@ func Finish(ctx context.Context, st *store.Store, rec *Record, res *engine.Resul
 			return fmt.Errorf("encode stage 2 gate: %w", err)
 		}
 	}
-	return q.UpsertApprovalDecision(ctx, queries.UpsertApprovalDecisionParams{
+	if err := q.UpsertApprovalDecision(ctx, queries.UpsertApprovalDecisionParams{
 		ReviewID: rec.ReviewID, Stage1: stage1, Stage2: stage2, Decision: res.Decision(),
-	})
+	}); err != nil {
+		return fmt.Errorf("record approval decision: %w", err)
+	}
+	return nil
 }
 
 // findingRun returns the index of the run a finding came from.
@@ -199,11 +202,11 @@ func findingRun(res *engine.Result, f *engine.Finding) int {
 func Post(ctx context.Context, st *store.Store, poster *gh.Poster, p *engine.Prepared, rec *Record, res *engine.Result, checkID int64) (*PostOutcome, error) {
 	pr, err := gh.ParsePR(p.PR.Repo, p.PR.Number, p.PR.HeadSHA)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse pr: %w", err)
 	}
 	if checkID == 0 {
 		if checkID, err = poster.StartCheck(ctx, pr, CheckExternalID(rec.ReviewID)); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("start check run: %w", err)
 		}
 	}
 	var comments []gh.Comment
@@ -219,13 +222,13 @@ func Post(ctx context.Context, st *store.Store, poster *gh.Poster, p *engine.Pre
 	summary := checkSummary(p, res)
 	ghID, isNew, err := poster.PostReview(ctx, pr, gh.ReviewPost{ReviewID: rec.ReviewID, Summary: summary, Comments: comments})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("post review: %w", err)
 	}
 	if err := poster.CompleteCheck(ctx, pr, checkID, gh.CheckResult{
 		Conclusion: "neutral", Title: fmt.Sprintf("%d finding(s), coverage %.0f%%", len(comments), res.Coverage*100),
 		Summary: summary, Text: checkText(p, res),
 	}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("complete check run: %w", err)
 	}
 	if st != nil && len(comments) > 0 {
 		if err := mapComments(ctx, st, poster, pr, ghID, rec, res); err != nil {
@@ -241,7 +244,7 @@ func Post(ctx context.Context, st *store.Store, poster *gh.Poster, p *engine.Pre
 func mapComments(ctx context.Context, st *store.Store, poster *gh.Poster, pr gh.PR, ghReviewID int64, rec *Record, res *engine.Result) error {
 	posted, err := poster.ReviewComments(ctx, pr, ghReviewID)
 	if err != nil {
-		return err
+		return fmt.Errorf("list review comments: %w", err)
 	}
 	key := func(path, side string, line int, body string) string {
 		return fmt.Sprintf("%s\x00%s\x00%d\x00%s", path, side, line, body)
@@ -261,7 +264,7 @@ func mapComments(ctx context.Context, st *store.Store, poster *gh.Poster, pr gh.
 			commentID, ids[k] = &q[0], q[1:]
 		}
 		if err := st.MarkFindingPosted(ctx, queries.MarkFindingPostedParams{ID: f.ID, GhCommentID: commentID}); err != nil {
-			return err
+			return fmt.Errorf("mark finding %d posted: %w", f.ID, err)
 		}
 	}
 	return nil

@@ -134,11 +134,13 @@ var (
 	activeLine   = regexp.MustCompile(`(?m)^status:[ \t]*["']?active["']?[ \t]*(#.*)?$`)
 )
 
+var errRewriteMatch = errors.New("expected one matching line")
+
 // rewrite replaces the one line re matches with line.
 func rewrite(content []byte, re *regexp.Regexp, line string) ([]byte, error) {
 	locs := re.FindAllIndex(content, -1)
 	if len(locs) != 1 {
-		return nil, fmt.Errorf("expected one line matching %s, found %d", re, len(locs))
+		return nil, fmt.Errorf("%w: %s, found %d", errRewriteMatch, re, len(locs))
 	}
 	out := append([]byte{}, content[:locs[0][0]]...)
 	out = append(out, line...)
@@ -159,7 +161,7 @@ func (r Runner) handle(ctx context.Context, rule config.Rule, o Outcome, until t
 	branch := fmt.Sprintf("exemplar/expiry/%s/%s/%s", rule.ID, kind, rule.VersionSHA[:min(12, len(rule.VersionSHA))])
 	pr, found, err := r.Repo.PRByBranch(ctx, branch)
 	if err != nil {
-		return o, err
+		return o, fmt.Errorf("find PR by branch: %w", err)
 	}
 	if found {
 		o.URL = pr.URL
@@ -173,7 +175,7 @@ func (r Runner) handle(ctx context.Context, rule config.Rule, o Outcome, until t
 		}
 		responded, err := r.Repo.HumanActivity(ctx, pr.Number, pr.CreatedAt)
 		if err != nil {
-			return o, err
+			return o, fmt.Errorf("check human activity: %w", err)
 		}
 		switch {
 		case responded:
@@ -182,7 +184,7 @@ func (r Runner) handle(ctx context.Context, rule config.Rule, o Outcome, until t
 			o.Action = "waiting"
 		default:
 			if err := r.Repo.MergePR(ctx, pr.Number, "Expired rule "+rule.ID+" moves to shadow (spec §8.10)"); err != nil {
-				return o, err
+				return o, fmt.Errorf("merge PR: %w", err)
 			}
 			o.Action = "demoted"
 		}
@@ -190,11 +192,11 @@ func (r Runner) handle(ctx context.Context, rule config.Rule, o Outcome, until t
 	}
 	base, sha, err := r.Repo.DefaultBranch(ctx)
 	if err != nil {
-		return o, err
+		return o, fmt.Errorf("get default branch: %w", err)
 	}
 	content, err := r.Repo.GetFile(ctx, base, rule.Path)
 	if err != nil {
-		return o, err
+		return o, fmt.Errorf("get file: %w", err)
 	}
 	var next []byte
 	var title string
@@ -209,14 +211,14 @@ func (r Runner) handle(ctx context.Context, rule config.Rule, o Outcome, until t
 		return o, fmt.Errorf("%s: %w", rule.Path, err)
 	}
 	if err := r.Repo.EnsureBranch(ctx, branch, sha); err != nil {
-		return o, err
+		return o, fmt.Errorf("ensure branch: %w", err)
 	}
 	if err := r.Repo.PutFile(ctx, branch, rule.Path, next, title); err != nil {
-		return o, err
+		return o, fmt.Errorf("put file: %w", err)
 	}
 	url, _, err := r.Repo.OpenPR(ctx, branch, base, title, body(rule, o, until, afterDays, r.Now()))
 	if err != nil {
-		return o, err
+		return o, fmt.Errorf("open PR: %w", err)
 	}
 	o.Action, o.URL = "proposed", url
 	return o, nil

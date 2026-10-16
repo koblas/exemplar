@@ -47,11 +47,11 @@ func (ix *Index) view(ctx context.Context, repo string) (view, func(), error) {
 	}
 	sha, err := ix.cfg.Mirrors.Snapshot(ctx, repo)
 	if err != nil {
-		return view{}, func() {}, err
+		return view{}, func() {}, fmt.Errorf("index: snapshot: %w", err)
 	}
 	rules, err := ix.cfg.Mirrors.Exclusions(ctx, repo, sha)
 	if err != nil {
-		return view{}, func() {}, err
+		return view{}, func() {}, fmt.Errorf("index: exclusions: %w", err)
 	}
 	return view{commit: sha, rules: rules}, func() {}, nil
 }
@@ -160,11 +160,14 @@ func (ix *Index) grepLines(ctx context.Context, repo, commit string, q lineQuery
 	default:
 		raw, cut, err = ix.cfg.Mirrors.Grep(ctx, repo, commit, q.pattern, "", 2*q.limit)
 	}
+	if err != nil {
+		return nil, false, fmt.Errorf("index: grep: %w", err)
+	}
 	out := make([]Match, len(raw))
 	for i, m := range raw {
 		out[i] = Match(m)
 	}
-	return out, cut, err
+	return out, cut, nil
 }
 
 // DependentsResult is dependents(path, depth).
@@ -187,7 +190,7 @@ type DependentsResult struct {
 func (ix *Index) Dependents(ctx context.Context, repo, file string, depth int, includeRoots []string) (DependentsResult, error) {
 	repo = strings.ToLower(repo)
 	if err := mirror.CleanPath(file); err != nil {
-		return DependentsResult{}, err
+		return DependentsResult{}, fmt.Errorf("index: path: %w", err)
 	}
 	depth = min(max(depth, 1), MaxDependentsDep)
 	v, done, err := ix.view(ctx, repo)
@@ -289,7 +292,7 @@ func (ix *Index) FindReferences(ctx context.Context, repo string, q RefQuery) (R
 	}
 	if q.DefinedIn != "" {
 		if err := mirror.CleanPath(q.DefinedIn); err != nil {
-			return RefResult{}, err
+			return RefResult{}, fmt.Errorf("index: defined_in: %w", err)
 		}
 	}
 	v, done, err := ix.view(ctx, repo)

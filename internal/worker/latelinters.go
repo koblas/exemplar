@@ -39,7 +39,7 @@ type LinterCheckWorker struct {
 // Engine.
 func NewLinterCheckWorker(cfg Config) (*LinterCheckWorker, error) {
 	if cfg.Store == nil {
-		return nil, errors.New("worker: linter checks need a store")
+		return nil, fmt.Errorf("%w: linter checks need a store", errMissingDependency)
 	}
 	w, err := New(cfg)
 	if err != nil {
@@ -91,28 +91,28 @@ func (w *LinterCheckWorker) Check(ctx context.Context, a store.LinterCheckArgs) 
 		return LinterCheckOutcome{Ignored: "not a configured linter"}, nil
 	}
 	if open, err := w.cfg.Store.ReviewJobOpen(ctx, a.Repo, a.PR, a.HeadSHA); err != nil {
-		return LinterCheckOutcome{}, err
+		return LinterCheckOutcome{}, fmt.Errorf("worker: review job open: %w", err)
 	} else if open {
 		return LinterCheckOutcome{}, errReviewRunning
 	}
 	rows, err := w.cfg.Store.PostedFindingsAtHead(ctx, queries.PostedFindingsAtHeadParams{Repo: a.Repo, PrNumber: int32(a.PR), HeadSha: a.HeadSHA})
 	if err != nil {
-		return LinterCheckOutcome{}, err
+		return LinterCheckOutcome{}, fmt.Errorf("worker: posted findings: %w", err)
 	}
 	if len(rows) == 0 {
 		return LinterCheckOutcome{Ignored: "nothing posted on this head"}, nil
 	}
 	target, err := gh.ParsePR(a.Repo, a.PR, a.HeadSHA)
 	if err != nil {
-		return LinterCheckOutcome{}, river.JobCancel(err)
+		return LinterCheckOutcome{}, river.JobCancel(fmt.Errorf("worker: parse pr: %w", err))
 	}
 	c, err := w.cfg.GitHub.Poster(ctx, a.InstallationID, a.Repo)
 	if err != nil {
-		return LinterCheckOutcome{}, err
+		return LinterCheckOutcome{}, fmt.Errorf("worker: poster client: %w", err)
 	}
 	anns, pending, err := gh.LinterAnnotations(ctx, c, a.Repo, a.HeadSHA, []string{a.Check})
 	if err != nil {
-		return LinterCheckOutcome{}, err
+		return LinterCheckOutcome{}, fmt.Errorf("worker: linter annotations: %w", err)
 	}
 	if len(pending) > 0 {
 		// Re-run since this event: its own completion comes later.
@@ -128,7 +128,7 @@ func (w *LinterCheckWorker) Check(ctx context.Context, a store.LinterCheckArgs) 
 	meta := engine.CallMeta{Caller: Caller, Repo: a.Repo}
 	alerts, err := gh.CodeScanningAnnotations(ctx, c, a.Repo, a.PR, []string{a.Check})
 	if err != nil {
-		return LinterCheckOutcome{}, err
+		return LinterCheckOutcome{}, fmt.Errorf("worker: code scanning annotations: %w", err)
 	}
 	dups, trace := w.cfg.Engine.LinterDuplicates(ctx, meta, snap.Rules, fs, linterAnnotations(append(anns, alerts...)))
 	out := LinterCheckOutcome{Compared: len(rows)}

@@ -94,9 +94,9 @@ func decodeBugViolations(text string) ([]bugViolation, error) {
 		plain[i] = v.Violation
 		switch {
 		case strings.TrimSpace(v.Trigger) == "" || utf8.RuneCountInString(v.Trigger) > maxTriggerLen:
-			return nil, fmt.Errorf("violation %d has no concrete trigger, or one over %d characters", i, maxTriggerLen)
+			return nil, fmt.Errorf("%w: violation %d has no concrete trigger, or one over %d characters", errInvalidAnswer, i, maxTriggerLen)
 		case strings.TrimSpace(v.Impact) == "" || utf8.RuneCountInString(v.Impact) > maxTriggerLen:
-			return nil, fmt.Errorf("violation %d has no impact, or one over %d characters", i, maxTriggerLen)
+			return nil, fmt.Errorf("%w: violation %d has no impact, or one over %d characters", errInvalidAnswer, i, maxTriggerLen)
 		}
 	}
 	if err := validateViolations(plain); err != nil {

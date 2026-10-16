@@ -84,6 +84,10 @@ func (c *Checker) put(m map[string]entry, k, v string) {
 // ErrRefused is a token GitHub does not accept, or not a user's.
 var ErrRefused = errors.New("ghuser: token refused")
 
+// ErrUnexpectedStatus is a GitHub response status that is neither success
+// nor a refusal.
+var ErrUnexpectedStatus = errors.New("ghuser: unexpected status")
+
 // Login is the token's GitHub user, which must be a user account.
 func (c *Checker) Login(ctx context.Context, token string) (string, error) {
 	k := key(token)
@@ -101,7 +105,7 @@ func (c *Checker) Login(ctx context.Context, token string) (string, error) {
 	case code == http.StatusUnauthorized || code == http.StatusForbidden:
 		return "", ErrRefused
 	case code != http.StatusOK:
-		return "", fmt.Errorf("ghuser: GET /user: %d", code)
+		return "", fmt.Errorf("%w: GET /user: %d", ErrUnexpectedStatus, code)
 	case u.Login == "" || !strings.EqualFold(u.Type, "User"):
 		return "", ErrRefused
 	}
@@ -130,7 +134,7 @@ func (c *Checker) CanRead(ctx context.Context, token, repo string) (bool, error)
 		return false, err
 	case code == http.StatusNotFound || code == http.StatusForbidden:
 	case code != http.StatusOK:
-		return false, fmt.Errorf("ghuser: GET /repos/%s: %d", repo, code)
+		return false, fmt.Errorf("%w: GET /repos/%s: %d", ErrUnexpectedStatus, repo, code)
 	default:
 		ok = out.Permissions.Pull
 	}
@@ -147,23 +151,26 @@ func (c *Checker) CanRead(ctx context.Context, token, repo string) (bool, error)
 func (c *Checker) call(ctx context.Context, token, path string, out any) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.API+path, nil)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("ghuser: build request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("ghuser: GET /%s: %w", path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("ghuser: read /%s: %w", path, err)
 	}
 	if resp.StatusCode != http.StatusOK || out == nil {
 		return resp.StatusCode, nil
 	}
-	return resp.StatusCode, json.Unmarshal(body, out)
+	if err := json.Unmarshal(body, out); err != nil {
+		return resp.StatusCode, fmt.Errorf("ghuser: decode /%s: %w", path, err)
+	}
+	return resp.StatusCode, nil
 }
 
 // InOrgs reports whether login is a member of any of orgs, asked with
@@ -188,7 +195,7 @@ func (c *Checker) InOrgs(ctx context.Context, token, login string, orgs []string
 			in = true
 		case http.StatusNotFound, http.StatusFound, http.StatusForbidden:
 		default:
-			return false, fmt.Errorf("ghuser: GET /orgs/%s/members: %d", org, code)
+			return false, fmt.Errorf("%w: GET /orgs/%s/members: %d", ErrUnexpectedStatus, org, code)
 		}
 		if in {
 			break

@@ -65,6 +65,16 @@ func LanguageFor(ext string) (Language, bool) {
 // ErrInvalidRule is a rule that fails the checks in code.
 var ErrInvalidRule = errors.New("compile: invalid rule")
 
+var (
+	// ErrBadCaseRef is a case ref that is not owner/name@sha.
+	ErrBadCaseRef = errors.New("compile: bad case ref")
+	// ErrModelAnswer is a model reply that cannot be used as a Proposal.
+	ErrModelAnswer = errors.New("compile: unusable model answer")
+
+	errConfig          = errors.New("compile: invalid config")
+	errInjectedNoPatch = errors.New("injected case has no patch")
+)
+
 func invalid(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalidRule, fmt.Sprintf(format, args...))
 }

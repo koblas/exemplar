@@ -27,10 +27,10 @@ func newValidateCmd() *cobra.Command {
 				for _, p := range probs {
 					fmt.Fprintln(cmd.ErrOrStderr(), p.Error())
 				}
-				return fmt.Errorf("%d problem(s) in %s", len(probs), dir)
+				return fmt.Errorf("%d %w in %s", len(probs), errConfigProblems, dir)
 			}
 			if err != nil {
-				return err
+				return fmt.Errorf("load config: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "ok: %d rules, %d repos, %d eval sets, %d adversarial cases, %d verifier labels, %d categorizer labels\n",
 				len(s.Rules), len(s.Repos), len(s.Evals), len(s.Adversarial), len(s.VerifierLabels), len(s.CategorizerLabels))

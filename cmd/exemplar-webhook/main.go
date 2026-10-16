@@ -34,6 +34,8 @@ import (
 	"github.com/koblas/exemplar/internal/webhook"
 )
 
+var errEnvRequired = errors.New("EXEMPLAR_DATABASE_URL and EXEMPLAR_WEBHOOK_SECRET_FILE are required")
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -47,11 +49,11 @@ func run(args []string) error {
 	path := fs.String("path", "/webhook", "webhook path")
 	drain := fs.Duration("drain", 5*time.Second, "how long readiness reports false before stopping")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse flags: %w", err)
 	}
 	dbURL, secretFile := os.Getenv("EXEMPLAR_DATABASE_URL"), os.Getenv("EXEMPLAR_WEBHOOK_SECRET_FILE")
 	if dbURL == "" || secretFile == "" {
-		return errors.New("EXEMPLAR_DATABASE_URL and EXEMPLAR_WEBHOOK_SECRET_FILE are required")
+		return errEnvRequired
 	}
 	secret, err := os.ReadFile(secretFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
@@ -63,17 +65,17 @@ func run(args []string) error {
 	defer stop()
 	log, shutdown, err := telemetry.Setup(ctx, "exemplar-webhook")
 	if err != nil {
-		return err
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer st.Close()
 	if err := st.Migrate(ctx); err != nil {
-		return err
+		return fmt.Errorf("migrate store: %w", err)
 	}
 	// An insert-only River client: no queues, no workers.
 	client, err := river.NewClient[pgx.Tx](riverpgxv5.New(st.Pool), &river.Config{Logger: log})
@@ -82,7 +84,7 @@ func run(args []string) error {
 	}
 	h, err := webhook.New(secret, st, webhook.RiverEnqueuer{Client: client}, log)
 	if err != nil {
-		return err
+		return fmt.Errorf("webhook handler: %w", err)
 	}
 
 	var draining atomic.Bool
@@ -126,5 +128,8 @@ func run(args []string) error {
 	time.Sleep(*drain)
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return hs.Shutdown(sctx)
+	if err := hs.Shutdown(sctx); err != nil {
+		return fmt.Errorf("shut down: %w", err)
+	}
+	return nil
 }

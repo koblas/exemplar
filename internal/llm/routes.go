@@ -24,6 +24,14 @@ const (
 	TierHigh     = "high"
 )
 
+var (
+	errNoCategorizer = errors.New("llm: no categorizer configured")
+	errUnknownStage  = errors.New("unknown stage")
+	errUnknownTier   = errors.New("unknown tier")
+	errNoModel       = errors.New("has no model")
+	errNoProviders   = errors.New("has no providers")
+)
+
 // Route is one provider and model in a stage's failover order.
 type Route struct {
 	Provider string
@@ -43,7 +51,7 @@ func Routes(p schema.Providers, stage, tier string) ([]Route, error) {
 		entries = p.Light
 	case StageCategorizerA, StageCategorizerB:
 		if p.Categorizer == nil {
-			return nil, errors.New("llm: no categorizer configured")
+			return nil, errNoCategorizer
 		}
 		if stage == StageCategorizerA {
 			entries = []schema.ProviderModel{p.Categorizer.A}
@@ -51,19 +59,19 @@ func Routes(p schema.Providers, stage, tier string) ([]Route, error) {
 			entries = []schema.ProviderModel{p.Categorizer.B}
 		}
 	default:
-		return nil, fmt.Errorf("llm: unknown stage %q", stage)
+		return nil, fmt.Errorf("llm: %w %q", errUnknownStage, stage)
 	}
 	if tier == "" {
 		tier = TierStandard
 	}
 	if tier != TierStandard && tier != TierHigh {
-		return nil, fmt.Errorf("llm: unknown tier %q", tier)
+		return nil, fmt.Errorf("llm: %w %q", errUnknownTier, tier)
 	}
 	routes := make([]Route, 0, len(entries))
 	for _, e := range entries {
 		spec, ok := registry[e.Provider]
 		if !ok {
-			return nil, fmt.Errorf("llm: provider %q is not approved (approved: %v)", e.Provider, Registered())
+			return nil, fmt.Errorf("llm: provider %q is %w (approved: %v)", e.Provider, errNotApproved, Registered())
 		}
 		model := e.Model
 		if stage == StageGenerator && e.Standard != "" {
@@ -73,7 +81,7 @@ func Routes(p schema.Providers, stage, tier string) ([]Route, error) {
 			}
 		}
 		if model == "" {
-			return nil, fmt.Errorf("llm: provider %q has no model for stage %s tier %s", e.Provider, stage, tier)
+			return nil, fmt.Errorf("llm: provider %q %w for stage %s tier %s", e.Provider, errNoModel, stage, tier)
 		}
 		if err := spec.ValidateModel(model); err != nil {
 			return nil, fmt.Errorf("llm: provider %s cannot serve %q: %w", e.Provider, model, err)
@@ -81,7 +89,7 @@ func Routes(p schema.Providers, stage, tier string) ([]Route, error) {
 		routes = append(routes, Route{Provider: e.Provider, Model: model})
 	}
 	if len(routes) == 0 {
-		return nil, fmt.Errorf("llm: stage %s has no providers", stage)
+		return nil, fmt.Errorf("llm: stage %s %w", stage, errNoProviders)
 	}
 	return routes, nil
 }
