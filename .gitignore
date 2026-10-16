@@ -18,3 +18,6 @@ __pycache__/
 # go build ./cmd/<binary> outputs at the root
 /exemplar
 /exemplar-*
+
+# make outputs (binaries, replay, rendered manifests)
+/out/

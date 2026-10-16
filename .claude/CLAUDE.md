@@ -39,6 +39,9 @@ application unless requested. Update this guidance as the service takes shape.
   tests fail rather than skip; if cgo builds fail with `NIX_BUILD_TOP: unbound variable`,
   set `NIX_ENFORCE_PURITY=0`.
 - Once a Go module exists, follow its Go version and existing build/CI commands.
+- The root `Makefile` (and `learning/Makefile`) wraps the CI commands; `make help`
+  lists targets. `make check` is the quick gate, `make ci` mirrors ci.yml. Keep the
+  Makefiles and `.github/workflows/ci.yml` in step when either changes.
 - Default Go checks: `go test ./...`, `go test -race ./...`, `go vet ./...`, and
   `go build ./...`. Start with the touched package's tests, then broaden as needed.
 - Use `golangci-lint run` once a Go module exists; follow repository lint configuration.

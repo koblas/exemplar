@@ -11,6 +11,8 @@ uv run exemplar-learning check       # needs EXEMPLAR_DATABASE_URL
 scripts/gen-contracts.sh             # regenerate contracts after a schema/ change
 ```
 
+The `Makefile` here wraps these (`make help`); `make check` runs what the CI python job runs.
+
 The models in `src/exemplar_learning/contracts` are generated from `../schema` with datamodel-code-generator. Don't edit them by hand: CI runs `scripts/gen-contracts.sh --check` and fails on drift.
 
 ## Jobs
