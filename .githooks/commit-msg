@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Rejects commit messages that are not Conventional Commits. Enable with
+# `make hooks` (git config core.hooksPath .githooks); skip once with --no-verify.
+exec "$(git rev-parse --show-toplevel)/.github/scripts/commitlint.sh" --file "$1"

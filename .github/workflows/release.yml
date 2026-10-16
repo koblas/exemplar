@@ -1,16 +1,36 @@
 name: release
 
-# The exemplar CLI, built when a maintainer pushes a v* tag.
+# The exemplar CLI for a release tag. release-please.yml calls this once its
+# release PR is merged; a v* tag pushed by hand (a fallback, see
+# CONTRIBUTING.md) or a manual run with a tag does the same.
 # Each platform builds natively: the CLI embeds the tree-sitter grammars
 # (cgo), so it cannot be cross-compiled from one runner. Archives and
-# SHA256SUMS go to the tag's GitHub release.
+# SHA256SUMS go to the tag's GitHub release, which release-please has
+# usually created already with the changelog entry as its notes.
 
 on:
   push:
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to build, such as v0.2.0
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to (re)build, such as v0.2.0
+        type: string
+        required: true
 
 permissions:
   contents: read
+
+env:
+  # A called workflow sees the caller's ref (main), so the tag comes from
+  # the input there and from the pushed ref otherwise.
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
@@ -20,17 +40,19 @@ jobs:
           - {runner: ubuntu-latest, os: linux, arch: amd64}
           - {runner: ubuntu-24.04-arm, os: linux, arch: arm64}
           - {runner: macos-latest, os: darwin, arch: arm64}
-          - {runner: macos-13, os: darwin, arch: amd64}
+          - {runner: macos-15-intel, os: darwin, arch: amd64}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Build
         env:
           CGO_ENABLED: "1"
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ env.TAG }}
         run: |
           go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o dist/exemplar ./cmd/exemplar
           ./dist/exemplar --version
@@ -49,11 +71,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - name: Publish the release
+      # Attach to the release release-please made, keeping its notes; create
+      # one only for a tag pushed by hand.
+      - name: Publish the release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           sha256sum exemplar_*.tar.gz > SHA256SUMS
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "exemplar $TAG" \
-            --notes "The exemplar CLI. Verify with: sha256sum -c SHA256SUMS --ignore-missing" exemplar_*.tar.gz SHA256SUMS
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber exemplar_*.tar.gz SHA256SUMS
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "exemplar $TAG" \
+              --notes "The exemplar CLI. Verify with: sha256sum -c SHA256SUMS --ignore-missing" exemplar_*.tar.gz SHA256SUMS
+          fi

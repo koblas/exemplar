@@ -118,7 +118,7 @@ py-check: ## Everything the CI python job runs
 .PHONY: images
 images: ## Build the service and learning images (nothing is pushed)
 	@command -v docker >/dev/null || { echo "docker is required (not provided by devenv)" >&2; exit 1; }
-	docker build -f deploy/docker/Dockerfile -t exemplar:dev .
+	docker build -f deploy/docker/Dockerfile --build-arg VERSION=$(VERSION) -t exemplar:dev .
 	docker build -f deploy/docker/learning.Dockerfile -t exemplar-learning:dev .
 
 # "both" is the default build plus the ingress component, and "postgres" the
@@ -144,6 +144,19 @@ manifests: ## Render each Kustomize build and the example overlay to out/ and sc
 deploy-test: ## Check every build's manifests against the code (go test ./deploy)
 	go test ./deploy
 
+##@ Commits and releases
+
+# CI checks the pull request's commits (base..head).
+COMMIT_RANGE ?= origin/main..HEAD
+
+.PHONY: commitlint
+commitlint: ## Check commit subjects are Conventional Commits (COMMIT_RANGE=origin/main..HEAD)
+	.github/scripts/commitlint.sh $(COMMIT_RANGE)
+
+.PHONY: hooks
+hooks: ## Use .githooks (commit-msg lint) in this clone
+	git config core.hooksPath .githooks
+
 ##@ Aggregates
 
 .PHONY: check
@@ -152,7 +165,7 @@ check: build vet lint fmt-check test ## Quick local gate: build, vet, lint, form
 .PHONY: ci
 ci: export EXEMPLAR_REQUIRE_DB = 1
 ci: export EXEMPLAR_REQUIRE_ENGINES = 1
-ci: build vet test test-race lint sqlc-check vuln fuzz adversarial py-check ## What ci.yml runs, minus images/manifests (DB and engine tests must not skip)
+ci: build vet test test-race lint sqlc-check vuln fuzz adversarial py-check commitlint ## What ci.yml runs, minus images/manifests (DB and engine tests must not skip)
 
 .PHONY: clean
 clean: ## Remove out/

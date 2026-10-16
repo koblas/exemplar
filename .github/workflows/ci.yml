@@ -49,6 +49,18 @@ jobs:
       - name: sqlc output is up to date
         run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 diff -f db/sqlc.yaml
 
+  # release-please builds CHANGELOG.md and the next version from these
+  # subjects, so every commit a pull request brings to main must parse.
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Commit subjects are Conventional Commits
+        run: make commitlint COMMIT_RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
   lint:
     runs-on: ubuntu-latest
     steps:
