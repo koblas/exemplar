@@ -11,8 +11,8 @@ import (
 	"github.com/koblas/exemplar/internal/schema"
 )
 
-// ExportTeam must approve every change to an export: block (spec §8.9,
-// §10.2), in addition to the rule owner.
+// ExportTeam must approve every change to an export: block,
+// in addition to the rule owner.
 const ExportTeam = "@platform/devex"
 
 // ExportChange is a rule whose export: block differs between base and head.

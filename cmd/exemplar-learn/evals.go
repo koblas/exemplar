@@ -17,7 +17,7 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
-// runEvals generates eval cases for new candidates (spec §8.8): positives
+// runEvals generates eval cases for new candidates: positives
 // and negatives from history, plus injected violations unless --no-inject.
 func runEvals(args []string) error {
 	fs := flag.NewFlagSet("evals", flag.ContinueOnError)

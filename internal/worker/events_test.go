@@ -65,7 +65,7 @@ func TestRouteEvent(t *testing.T) {
 		*r.Supersede != (Supersede{Repo: "acme/app", PR: 7}) {
 		t.Errorf("closed = %+v", r)
 	}
-	// Another check completing is a late-CI linter check (spec §6.10).
+	// Another check completing is a late-CI linter check.
 	if r, err := RouteEvent("check_run", []byte(checkRun("completed", "", "golangci-lint"))); err != nil || len(r.Reviews) != 0 ||
 		len(r.LinterChecks) != 1 || r.LinterChecks[0] != (store.LinterCheckArgs{InstallationID: 42, Repo: "acme/app", PR: 7, HeadSHA: "abc", Check: "golangci-lint"}) {
 		t.Errorf("linter completed = %+v, %v", r, err)

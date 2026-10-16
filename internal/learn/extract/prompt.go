@@ -1,8 +1,8 @@
-// Package extract is the learning plane's extraction driver (spec §8.2):
+// Package extract is the learning plane's extraction driver:
 // it turns mined review comments into candidate constraints with Message
 // Batches through exemplar-gateway, three comments per request.
 //
-// Extraction is idempotent, not deterministic (PRD FR-L2.4): every comment's
+// Extraction is idempotent, not deterministic: every comment's
 // input_hash keys a result cache, so rerunning over the same comments never
 // costs a second model call and never creates duplicates. A request that
 // fails returns its comments to pending; after repeated failures they stop
@@ -24,10 +24,10 @@ import (
 // version re-extracts instead of reusing old results.
 const Version = "extract-v1"
 
-// CommentsPerRequest is fixed by spec §8.2.
+// CommentsPerRequest is the fixed number of comments in each request.
 const CommentsPerRequest = 3
 
-// InputHash is the cache key for one comment (spec §8.2):
+// InputHash is the cache key for one comment:
 // sha256(extractor_version | model | body | diff_hunk). Fields are
 // length-prefixed so different splits of the same bytes never collide.
 func InputHash(version, model, body, hunk string) string {
@@ -160,9 +160,8 @@ func (r Result) validate() error {
 	return nil
 }
 
-// RevertVersion is the prompt version for revert seeds (spec §8.1, PRD
-// FR-L1.7). It is versioned separately so changing one prompt never
-// invalidates the other's cache.
+// RevertVersion is the prompt version for revert seeds. It is versioned
+// separately so changing one prompt never invalidates the other's cache.
 const RevertVersion = "extract-revert-v1"
 
 const revertSystemPrompt = `You read changes that were reverted after they merged and decide which ones show a reusable constraint: a rule that, had a reviewer applied it, would have stopped the change, such as "database migrations must be backward compatible" or "outbound RPCs need a timeout".

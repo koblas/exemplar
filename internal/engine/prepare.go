@@ -27,8 +27,8 @@ type PRInfo struct {
 	BaseSHA string
 	HeadSHA string
 
-	// Facts for Stage 1's policy checks, from GitHub. Each left empty is
-	// unknown, and Stage 1 fails closed on it.
+	// Facts for the deterministic auto-approve policy checks, from
+	// GitHub. Each left empty is unknown, and the gates fail closed on it.
 	//
 	// AuthorType is the author's GitHub account type ("User", "Bot").
 	AuthorType string
@@ -37,11 +37,11 @@ type PRInfo struct {
 	HeadRepo string
 	// CommitMessages are the PR's commit messages (Co-authored-by trailers).
 	CommitMessages []string
-	// Labels are the PR's labels (agent marks, spec §10.4).
+	// Labels are the PR's labels (agent marks).
 	Labels []string
 }
 
-// Exclusion is a path that is not reviewed, with the reason (FR-H2).
+// Exclusion is a path that is not reviewed, with the reason.
 type Exclusion struct {
 	Path   string
 	Reason string
@@ -78,11 +78,11 @@ type Prepared struct {
 	search *searchPin
 
 	// CodeOwners is the base commit's CODEOWNERS (empty when it has none),
-	// for Stage 2's owner lookup.
+	// for the auto-approve owner lookup.
 	CodeOwners codeowners.File
 
 	// Incomplete is set when an input could not be redacted; such a run
-	// sends nothing to a model and posts nothing (spec §6.15).
+	// sends nothing to a model and posts nothing.
 	Incomplete string
 }
 
@@ -91,7 +91,8 @@ var ErrIneligible = errors.New("engine: not eligible for review")
 
 const maxFileBytes = 1 << 20
 
-// Prepare runs spec §6.3 steps 1–6 for one PR.
+// Prepare runs eligibility, exclusions, secret redaction and scoping for
+// one PR.
 func Prepare(ctx context.Context, ws *Workspace, snap *config.Snapshot, pr PRInfo, scanner *redact.Scanner) (*Prepared, error) {
 	base, err := config.GitFS(ctx, ws.Dir, ws.BaseSHA, append([]string{config.RepoRulesDir, ".gitattributes", ".exemplarignore", ".gitleaksignore"}, codeowners.Locations...)...)
 	if err != nil {
@@ -112,7 +113,7 @@ func Prepare(ctx context.Context, ws *Workspace, snap *config.Snapshot, pr PRInf
 	if pr.Draft && !eff.RepoConfig.ReviewDrafts {
 		return nil, fmt.Errorf("%w: draft PR and review_drafts is off", ErrIneligible)
 	}
-	// FR-H5: fork PRs only when the repo opts in. An unknown head repo
+	// Fork PRs only when the repo opts in. An unknown head repo
 	// (replays) is not treated as a fork; the worker sets it from GitHub.
 	if pr.HeadRepo != "" && !strings.EqualFold(pr.HeadRepo, pr.Repo) && (eff.RepoConfig.Forks == nil || !eff.RepoConfig.Forks.Review) {
 		return nil, fmt.Errorf("%w: fork PR and forks.review is off", ErrIneligible)
@@ -205,7 +206,7 @@ func (p *Prepared) scope() {
 		case schema.KindCompiled:
 			p.Scoped = append(p.Scoped, ScopedRule{Rule: r, Lane: LaneCompiled, Files: files})
 		case schema.KindBugClass:
-			// Lane 3 arrives in Phase 4.
+			// Bug classes run in the bug lane (bugClasses), not here.
 		}
 	}
 	// No precision history exists yet, so the cap orders by rule id.

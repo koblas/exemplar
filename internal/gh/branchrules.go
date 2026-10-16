@@ -13,8 +13,8 @@ import (
 	"github.com/koblas/exemplar/internal/gates"
 )
 
-// BranchRules reads the merge requirements on repo's branch for Stage 2's
-// branch-rules lookup (spec §6.13), combining classic branch protection
+// BranchRules reads the merge requirements on repo's branch for the
+// auto-approve branch-rules lookup, combining classic branch protection
 // with every active ruleset that applies (GitHub enforces all of them, so
 // the strictest value of each wins). It needs a FlavorGate token:
 // Administration read for classic protection. An unprotected branch is

@@ -1,7 +1,7 @@
 // Package gh is Exemplar's GitHub layer: App authentication, installation
 // tokens down-scoped per holder, rate-limited clients, and posting.
 //
-// Spec §5: each holder gets its own token flavor, minted for the fewest
+// Each holder gets its own token flavor, minted for the fewest
 // repos and permissions it needs. Agent workers never receive a write token.
 package gh
 
@@ -23,7 +23,7 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
-// Flavor is a token holder from the spec §5 table.
+// Flavor is a token holder; each gets its own down-scoped token.
 type Flavor int
 
 // Token flavors.
@@ -43,11 +43,12 @@ const (
 	// org's team membership.
 	FlavorIngest
 	// FlavorGate is for the auto-approve gates: read one repo's branch
-	// protection (Administration read) and rulesets for Stage 2, and the
-	// org's team membership (Members read) for Stage 1's allowed_authors.
+	// protection (Administration read) and rulesets for the branch-rules lookup,
+	// and the org's team membership (Members read) for the author policy's
+	// allowed_authors.
 	// It reads no code.
 	FlavorGate
-	// FlavorExport is the exports app's (spec §5 `exemplar-exports`): write
+	// FlavorExport is the exports app's (`exemplar-exports`): write
 	// the generated instruction files of one opted-in repo and open its PR.
 	// It never reads PR content and never reaches exemplar-config.
 	FlavorExport
@@ -89,7 +90,7 @@ func (f Flavor) Permissions() *github.InstallationPermissions {
 	case FlavorPoster:
 		return &github.InstallationPermissions{PullRequests: write, Checks: write, SecurityEvents: write}
 	case FlavorConfigWriter:
-		// Issues: flag issues and owner digests in exemplar-config (spec §9.4).
+		// Issues: flag issues and owner digests in exemplar-config.
 		return &github.InstallationPermissions{Contents: write, PullRequests: write, Issues: write}
 	case FlavorIngest:
 		return &github.InstallationPermissions{Contents: read, PullRequests: read, Members: read}
@@ -113,7 +114,7 @@ type AppConfig struct {
 	// BaseURL overrides https://api.github.com/ (tests, GHES).
 	BaseURL string
 	// RequestsPerHour is the per-installation REST budget: 15000 on
-	// Enterprise Cloud, at least 5000 elsewhere (spec §5). Defaults to 5000.
+	// Enterprise Cloud, at least 5000 elsewhere. Defaults to 5000.
 	RequestsPerHour int
 }
 

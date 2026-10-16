@@ -393,7 +393,7 @@ type UIRulesRow struct {
 	PosW     float64
 }
 
-// The Phase 6 web UI (spec §12.8). Repo-specific rows carry their repo so
+// The web UI. Repo-specific rows carry their repo so
 // the handler can show only those the viewer can read.
 // Each rule's latest version (by its latest run) with @days of outcomes.
 func (q *Queries) UIRules(ctx context.Context, days int32) ([]UIRulesRow, error) {

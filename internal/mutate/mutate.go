@@ -1,5 +1,5 @@
-// Package mutate generates bug-class recall cases by mutation (spec §8.8,
-// FR-X6): deterministic operators applied to clean code produce one small
+// Package mutate generates bug-class recall cases by mutation:
+// deterministic operators applied to clean code produce one small
 // bug each, with no model involved. Each mutation is a set of line edits
 // with the lines where the bug class should then report a finding.
 //
@@ -34,7 +34,7 @@ const (
 	NilDeref      = "bug.nil-deref"
 )
 
-// MaxChanged bounds a mutation's changed lines (spec §8.8: ≤ 15).
+// MaxChanged bounds a mutation's changed lines.
 const MaxChanged = 15
 
 // Mutation is one bug introduced into one file.

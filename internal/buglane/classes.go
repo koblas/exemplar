@@ -1,4 +1,4 @@
-// Package buglane defines Lane 3, the bug lane (spec §6.7): the allowlist
+// Package buglane defines the bug lane: the allowlist
 // of bug classes and their prompts, and the risk gate that decides when the
 // lane runs. The engine runs one agent per enabled class.
 package buglane
@@ -11,7 +11,7 @@ type Class struct {
 	ID string
 	// Version changes whenever the guidance changes, like a rule's SHA.
 	Version string
-	// LooksFor is the class's one-line scope, as in the spec.
+	// LooksFor is the class's one-line scope.
 	LooksFor string
 	// Guidance is the class-specific part of the agent's task.
 	Guidance string

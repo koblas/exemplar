@@ -1,5 +1,5 @@
 -- +goose Up
--- Interdiff scoping (spec §6.2): a rule whose scoped files did not change
+-- Interdiff scoping: a rule whose scoped files did not change
 -- since the last complete review is carried forward, not re-run. The
 -- carried rule run points at the run that actually did the work (always
 -- the original, never another carried run), whose findings stay on it.

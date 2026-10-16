@@ -1,5 +1,5 @@
 // Package syntax counts parse errors in source files with tree-sitter, so
-// code can check that a model's edit still parses (spec §6.11 fix
+// code can check that a model's edit still parses (fix
 // validation). Errors counts both ERROR nodes and MISSING nodes, the
 // zero-width tokens tree-sitter inserts to recover from an unclosed paren
 // or a dropped semicolon.

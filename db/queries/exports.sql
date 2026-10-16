@@ -25,7 +25,7 @@ FROM export_drift WHERE versions_behind >= $1 ORDER BY versions_behind DESC, rep
 -- name: UpstreamRuleStats :many
 -- Per exported rule over the last @days days: violations and in-scope
 -- PRs whose agent received the export, the rest, and in exporting repos
--- before and after the export landed (spec §10.4).
+-- before and after the export landed.
 SELECT rule_id,
   count(*) FILTER (WHERE received)::int AS received_prs,
   coalesce(sum(violations) FILTER (WHERE received), 0)::int AS received_violations,

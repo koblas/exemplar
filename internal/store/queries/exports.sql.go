@@ -213,7 +213,7 @@ type UpstreamRuleStatsRow struct {
 
 // Per exported rule over the last @days days: violations and in-scope
 // PRs whose agent received the export, the rest, and in exporting repos
-// before and after the export landed (spec §10.4).
+// before and after the export landed.
 func (q *Queries) UpstreamRuleStats(ctx context.Context, days int32) ([]UpstreamRuleStatsRow, error) {
 	rows, err := q.db.Query(ctx, upstreamRuleStats, days)
 	if err != nil {

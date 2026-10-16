@@ -3,7 +3,7 @@ package ingest
 import "time"
 
 // prQuery pages a repo's closed and merged PRs. reviewThreads.comments
-// (first: 1) is the thread root (FR-L1.1). Thread and file lists are capped
+// (first: 1) is the thread root. Thread and file lists are capped
 // at 100 per PR; PRs beyond that are counted as truncated.
 const prQuery = `query($owner: String!, $name: String!, $first: Int!, $after: String) {
   rateLimit { cost remaining resetAt }

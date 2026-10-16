@@ -16,7 +16,7 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
-// runTeach is the nightly teach-the-bot fast path (spec §8.7, §9.3):
+// runTeach is the nightly teach-the-bot fast path:
 // recurring reasons become draft scope PRs or owner review issues.
 // --dry-run prints the proposals and writes nothing.
 func runTeach(args []string) error {

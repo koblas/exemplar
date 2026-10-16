@@ -30,7 +30,7 @@ type DigestAdjudicationQueueRow struct {
 }
 
 // Findings an author marked wrong or disagreed with (their latest signal)
-// and no owner has adjudicated (spec §9.4).
+// and no owner has adjudicated.
 func (q *Queries) DigestAdjudicationQueue(ctx context.Context) ([]DigestAdjudicationQueueRow, error) {
 	rows, err := q.db.Query(ctx, digestAdjudicationQueue)
 	if err != nil {
@@ -83,7 +83,7 @@ type DigestAutoApprovedRow struct {
 }
 
 // PRs auto-approved in the window whose touched paths a team owns in
-// CODEOWNERS (FR-A5), from the Stage 2 trace.
+// CODEOWNERS, from the approval_decisions.stage2 trace.
 func (q *Queries) DigestAutoApproved(ctx context.Context, arg DigestAutoApprovedParams) ([]DigestAutoApprovedRow, error) {
 	rows, err := q.db.Query(ctx, digestAutoApproved, arg.Owner, arg.Days)
 	if err != nil {
@@ -172,7 +172,7 @@ type DigestRuleStatsRow struct {
 	PosW     float64
 }
 
-// Owner digests (FR-B5, PRD §17.8): the same views the dashboards and
+// Owner digests: the same views the dashboards and
 // auto-demotion read.
 func (q *Queries) DigestRuleStats(ctx context.Context, days int32) ([]DigestRuleStatsRow, error) {
 	rows, err := q.db.Query(ctx, digestRuleStats, days)

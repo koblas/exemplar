@@ -10,7 +10,7 @@ import (
 	"github.com/koblas/exemplar/internal/scope"
 )
 
-// fingerprinter computes stable finding identities (spec §6.2):
+// fingerprinter computes stable finding identities:
 //
 //	sha256(rule_id | path | normalized code at anchor ±2 lines | k)
 //
@@ -66,7 +66,7 @@ func (fp *fingerprinter) next(ctx context.Context, ruleID string, a scope.Anchor
 
 // identify returns a new occurrence's fingerprint, the normalized code it
 // was computed from and its ordinal k, which re-anchoring after a rebase
-// searches for (FR-C4).
+// searches for.
 func (fp *fingerprinter) identify(ctx context.Context, ruleID string, a scope.Anchor) (id, code string, k int) {
 	code = fp.normalizedCode(ctx, a)
 	base := ruleID + "|" + a.Path + "|" + code

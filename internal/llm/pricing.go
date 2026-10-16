@@ -9,7 +9,7 @@ type Price struct {
 }
 
 // prices is the cost table, keyed by provider then model. Cost is
-// informational (spec §6.14), but it feeds the soft ceiling, so unknown
+// informational, but it feeds the soft ceiling, so unknown
 // prices are reported, never guessed.
 //
 // Claude API rates are from Anthropic's published model table as cached on

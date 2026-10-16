@@ -1,7 +1,7 @@
--- Learning plane: mined comments and their extractions (spec §4.3, §8.1–8.2).
--- Ingest (Phase 1, needs GitHub access) fills mined_comments; the extraction
+-- Learning plane: mined comments and their extractions.
+-- Ingest (needs GitHub access) fills mined_comments; the extraction
 -- driver moves each comment pending -> in_batch -> accepted | rejected, or
--- error after repeated failures. Nothing is dropped silently (FR-L2.4).
+-- error after repeated failures. Nothing is dropped silently.
 
 -- +goose Up
 CREATE TABLE mined_comments (
@@ -10,14 +10,14 @@ CREATE TABLE mined_comments (
   pr_number        int  NOT NULL,
   path             text NOT NULL,
   ext              text NOT NULL,
-  reviewer_pid     text NOT NULL,                     -- HMAC pseudonyms (§13.1)
+  reviewer_pid     text NOT NULL,                     -- HMAC pseudonyms
   author_pid       text NOT NULL,
   created_at       timestamptz NOT NULL,
   comment_url      text NOT NULL,
-  body             text,                              -- purged when uncited (§13.1)
+  body             text,                              -- purged when uncited
   diff_hunk        text,
   doc_urls         text[] NOT NULL DEFAULT '{}',
-  input_hash       text,                              -- extraction cache key (§8.2)
+  input_hash       text,                              -- extraction cache key
   is_thread_root   boolean NOT NULL DEFAULT true,
   thread_resolved  boolean NOT NULL DEFAULT false,
   source           text NOT NULL DEFAULT 'human' CHECK (source IN ('human', 'accepted_bot_finding', 'revert_seed')),
@@ -40,7 +40,7 @@ CREATE TABLE extractions (
   confidence         real NOT NULL,
   extractor_model    text NOT NULL,
   extractor_version  text NOT NULL,
-  embedding          halfvec(1024)                    -- filled by the embed job (§8.3)
+  embedding          halfvec(1024)                    -- filled by the embed job
 );
 CREATE INDEX extractions_embedding_idx ON extractions USING hnsw (embedding halfvec_cosine_ops);
 

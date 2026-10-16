@@ -1,5 +1,5 @@
 -- name: ProposableCandidates :many
--- Highest-scoring candidates not yet proposed (spec §8.7).
+-- Highest-scoring candidates not yet proposed.
 SELECT id, ext, title, description, cluster_size, distinct_reviewers, score, score_detail, owner
 FROM candidates
 WHERE status = 'new'

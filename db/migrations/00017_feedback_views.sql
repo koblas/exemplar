@@ -1,11 +1,11 @@
--- Feedback roll-ups (spec §9.1 precedence, §9.2 definitions, §12.6 views).
+-- Feedback roll-ups: signal precedence, eFP definitions and dashboard views.
 -- The dashboards, the owner digest and auto-demotion all read these, so
 -- they can never disagree about a rule's acceptance.
 
 -- +goose Up
 
 -- +goose StatementBegin
--- effective_events applies §9.1 precedence:
+-- effective_events applies signal precedence:
 --   * observers (weight 0, audit only) are dropped;
 --   * each actor's latest signal on a finding supersedes their earlier ones
 --     (Wrong, then Fixed, is Fixed), whether they gave it or it was
@@ -36,8 +36,8 @@ SELECT * FROM e WHERE kind IN ('resolved', 'ignored')
 -- +goose StatementBegin
 -- finding_outcomes is one row per production finding someone saw (posted,
 -- later resolved or outdated) or that a reviewer had already raised
--- (human_duplicate, §9.2). Late linter duplicates (minimized) count
--- against neither precision nor feedback (§6.10) and are left out.
+-- (human_duplicate). Late linter duplicates (minimized) count
+-- against neither precision nor feedback and are left out.
 -- An adjudication decides the finding: uphold accepts it and is the eFP
 -- positive, overturn rejects it and is the negative, each at its weight.
 CREATE VIEW finding_outcomes AS
@@ -53,7 +53,7 @@ SELECT f.id, f.rule_id, f.lane, f.repo, f.created_at,
        coalesce(bool_or(e.kind = 'ignored'), false)::boolean                                   AS ignored,
        coalesce(bool_or(e.kind = 'fb_handled'), false)::boolean                                AS handled,
        coalesce(bool_or(e.kind = 'human_agreed'), false)::boolean                              AS human_agreed,
-       -- eFP inputs (§9.2): reactions are outside eFP.
+       -- eFP inputs: reactions are outside eFP.
        coalesce(max(e.weight) FILTER (WHERE e.kind IN ('fb_wrong', 'fb_not_important', 'fb_disagree', 'adjudicated_overturn')), 0)::real AS neg_w,
        coalesce(max(e.weight) FILTER (WHERE e.kind IN ('applied_suggestion', 'fb_fixed', 'fixed', 'human_agreed', 'adjudicated_uphold')), 0)::real AS pos_w,
        count(DISTINCT e.actor) FILTER (WHERE e.role <> 'author'

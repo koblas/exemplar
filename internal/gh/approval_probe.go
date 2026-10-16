@@ -18,9 +18,9 @@ type MergeState struct {
 	MergeStateStatus string `json:"merge_state_status"`
 }
 
-// ApprovalProbe is the T-0.3 result for one sandbox PR: whether a native
-// APPROVE from the review app counts toward the base branch's required
-// approvals. Repos where it does not use merge_policy_check mode (§6.13).
+// ApprovalProbe is the approval probe's result for one sandbox PR: whether a
+// native APPROVE from the review app counts toward the base branch's required
+// approvals. Repos where it does not use merge_policy_check mode.
 type ApprovalProbe struct {
 	Repo      string     `json:"repo"`
 	PR        int        `json:"pr"`
@@ -35,10 +35,10 @@ type ApprovalProbe struct {
 // the app's approval cannot be measured.
 var ErrAlreadyApproved = errors.New("gh: probe PR is already approved; use a PR with no approvals")
 
-// ProbeApproval runs T-0.3 on a sandbox PR. It submits an APPROVE review,
-// waits up to wait for GitHub to recompute the review decision, then
-// dismisses the approval so the sandbox PR is left as it was. Never run it
-// on a production repo.
+// ProbeApproval runs the approval probe on a sandbox PR. It submits an APPROVE
+// review, waits up to wait for GitHub to recompute the review decision, then
+// dismisses the approval so the sandbox PR is left as it was. Never run it on
+// a production repo.
 func (p *Poster) ProbeApproval(ctx context.Context, pr PR, wait time.Duration) (res ApprovalProbe, err error) {
 	res = ApprovalProbe{Repo: pr.Owner + "/" + pr.Repo, PR: pr.Number}
 	before, err := p.mergeState(ctx, pr)

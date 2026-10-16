@@ -1,4 +1,4 @@
--- Eval generation (spec §8.8). Ingest records where each mined comment
+-- Eval generation. Ingest records where each mined comment
 -- points (the commit it was left on and its line range) and the PRs it saw,
 -- so cases can reference code as repo@sha:path#Lstart-Lend without copying
 -- it. Generated cases are kept per candidate because a candidate's title,

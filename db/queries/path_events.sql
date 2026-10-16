@@ -14,7 +14,7 @@ ON CONFLICT DO NOTHING;
 SELECT files FROM mined_prs WHERE repo = $1 AND pr_number = $2;
 
 -- name: UpsertRevertSeed :exec
--- A revert seed (spec §8.1): a reverted PR's unreviewed hunks in one file,
+-- A revert seed: a reverted PR's unreviewed hunks in one file,
 -- with the revert reason as the body. Re-seeding leaves the row alone.
 INSERT INTO mined_comments (id, repo, pr_number, path, ext, reviewer_pid, author_pid, created_at, comment_url,
                             body, diff_hunk, doc_urls, is_thread_root, thread_resolved, source,
@@ -24,7 +24,7 @@ VALUES (@id, @repo, @pr_number, @path, @ext, @reviewer_pid, @author_pid, @create
 ON CONFLICT (id) DO NOTHING;
 
 -- name: PathEventsForPath :many
--- A path's incidents and reverts, newest first (path_history, spec §6.4).
+-- A path's incidents and reverts, newest first (path_history).
 SELECT kind, ref, at FROM path_events
 WHERE repo = @repo AND path = @path
 ORDER BY at DESC, kind, ref

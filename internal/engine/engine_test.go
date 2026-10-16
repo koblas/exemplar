@@ -115,7 +115,8 @@ func setup(t *testing.T, title, body string) env {
 func newEngine(e env, script Script) (*Engine, *ScriptedTransport) {
 	tr := &ScriptedTransport{Script: script}
 	h := NewHarness(HarnessConfig{GatewayURL: "http://scripted.invalid", GatewayToken: "t", HTTPClient: &http.Client{Transport: tr}})
-	// ast-grep is not installed in tests: Lane 1 runs report degraded_skip.
+	// ast-grep is not installed in tests: compiled-rule runs report
+	// degraded_skip.
 	return New(h, e.scanner, compiled.Runner{ASTGrep: "ast-grep-not-installed"}), tr
 }
 
@@ -552,8 +553,8 @@ func TestPreparedCheckOwners(t *testing.T) {
 }
 
 func TestReviewStage2(t *testing.T) {
-	// Stage 2 runs only after Stage 1, which cannot pass until its
-	// remaining checks exist; first check that, then stand in a pass.
+	// The approval checks run only after the deterministic gates pass;
+	// first check that they do not here, then stand in a pass.
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	eng, tr := newEngine(e, Script{Generator: contextViolation(""), Quote: func(path string, line int) string { return headLineNoT(e.prep, path, line) }})
 	res, err := eng.Review(t.Context(), e.prep, Options{ReviewID: 7, Caller: "eval"})
@@ -806,7 +807,7 @@ func TestReviewBugLane(t *testing.T) {
 	t.Run("shed first", func(t *testing.T) {
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
 		critical(e)
-		e.prep.Effective.Global.Concurrency.AgentsPerReview = 1 // Lane 2 finishes before any class starts
+		e.prep.Effective.Global.Concurrency.AgentsPerReview = 1 // rule agents finish before any class starts
 		s := bugScript(e, nilDeref)
 		s.Budget = llm.BudgetWarn
 		eng, _ := newEngine(e, s)
@@ -1043,7 +1044,8 @@ func TestReviewCarry(t *testing.T) {
 		t.Errorf("stale version carried: %d generator calls", generatorCalls(tr))
 	}
 
-	// An auto-approve candidate gets a full review: Stage 1 needs every
+	// An auto-approve candidate gets a full review: the deterministic
+	// gates need every
 	// lane to have run.
 	res, tr = review(true, carry)
 	if slices.ContainsFunc(res.Runs, func(r RunResult) bool { return r.Carried }) || generatorCalls(tr) < 4 {
@@ -1074,7 +1076,7 @@ func TestReviewRepoShadow(t *testing.T) {
 	}
 }
 
-// Phase 4: a bug class may post on critical paths; elsewhere it stays in
+// A bug class may post on critical paths; elsewhere it stays in
 // shadow.
 func TestBugLanePostsOnCriticalPaths(t *testing.T) {
 	nilDeref := fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d,

@@ -1,5 +1,5 @@
-// Package exports renders rule exports into coding-agent instruction files
-// (spec §10.2, PRD FR-S6): each opted-in repo's active rules with
+// Package exports renders rule exports into coding-agent instruction files:
+// each opted-in repo's active rules with
 // export.agents get their one-line export.summary, grouped by directory,
 // between BEGIN/END exemplar markers in the targets the repo chose.
 // Anything outside the markers is the team's and is never touched.
@@ -27,7 +27,7 @@ const (
 	Cursor   = "cursor"
 )
 
-// Size budgets per file (spec §10.2): Copilot reads 4,000 characters of
+// Size budgets per file: Copilot reads 4,000 characters of
 // instructions for code review.
 const (
 	CopilotBudget = 3000

@@ -28,7 +28,7 @@ const reactionsQuery = `query($owner: String!, $name: String!, $number: Int!, $a
 }`
 
 // CommentReactions returns the reactions on the first comment of each of
-// repo#number's review threads, by comment id (spec §9.1: one GraphQL
+// repo#number's review threads, by comment id (one GraphQL
 // query per PR, paged by threads).
 func CommentReactions(ctx context.Context, c *github.Client, repo string, number int) (map[int64][]Reaction, error) {
 	owner, name, ok := strings.Cut(repo, "/")

@@ -13,7 +13,7 @@ import (
 )
 
 // OwnerActionWorker runs owner_action jobs: the web UI's shadow, kill,
-// candidate-kill and kill-switch requests (spec §12.8), with the
+// candidate-kill and kill-switch requests, with the
 // config-writer token, which only this job uses in the worker.
 type OwnerActionWorker struct {
 	river.WorkerDefaults[store.OwnerActionArgs]

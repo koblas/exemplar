@@ -30,7 +30,7 @@ type CandidatesNeedingCompileRow struct {
 }
 
 // Candidates with eval cases and no scored attempt in the last 90 days
-// (spec §8.6: every candidate, and quarterly again), with at most 3
+// (every candidate, and quarterly again), with at most 3
 // attempts of any kind in that window so a hopeless one stops retrying.
 func (q *Queries) CandidatesNeedingCompile(ctx context.Context, limit int32) ([]CandidatesNeedingCompileRow, error) {
 	rows, err := q.db.Query(ctx, candidatesNeedingCompile, limit)

@@ -31,7 +31,7 @@ func Annotations(ctx context.Context, c *github.Client, repo, sha string, checks
 	return out, err
 }
 
-// LinterAnnotations is Annotations for linter dedupe (spec §6.10): it reads
+// LinterAnnotations is Annotations for linter dedupe: it reads
 // only completed runs, and pending names the configured checks that have
 // no completed run on sha yet (not started, queued or in progress).
 func LinterAnnotations(ctx context.Context, c *github.Client, repo, sha string, checks []string) (anns []Annotation, pending []string, err error) {

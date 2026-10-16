@@ -1,4 +1,4 @@
-// Command exemplar-search serves repository context (spec §6.4).
+// Command exemplar-search serves repository context.
 //
 //	exemplar-search serve --config DIR --root /mnt/ssd/mirrors --index-root /mnt/ssd/index [--addr :8080]
 //	exemplar-search bench --repo <url> --work-dir /mnt/ssd/bench --out report.json --markdown report.md
@@ -15,7 +15,7 @@
 // EXEMPLAR_GH_PRIVATE_KEY_FILE (EXEMPLAR_GH_API_URL for GHES), with
 // EXEMPLAR_CONFIG_REPO naming the repo those tokens may never read.
 //
-// bench sizes a node (acceptance test T-0.4).
+// bench sizes a node: clone, index and query times on a large monorepo.
 package main
 
 import (

@@ -1,4 +1,4 @@
--- Verifier calibration labels (spec §4.3, §6.8, §8.8; PRD FR-X9): findings
+-- Verifier calibration labels: findings
 -- an author marked Wrong or Fixed, and the monthly human-labeled sample.
 
 -- +goose Up

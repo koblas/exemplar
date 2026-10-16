@@ -1,7 +1,6 @@
-# Default-deny with an explicit list per binary (spec §13 "Default-deny
-# NetworkPolicy"). Plain NetworkPolicy matches addresses, not host names:
+# Default-deny with an explicit list per binary. Plain NetworkPolicy matches addresses, not host names:
 # "HTTPS out" below is any address on 443 outside private ranges. The
-# per-host lists the spec names (GitHub only, providers only, Jira) need an
+# per-host lists (GitHub only, providers only, Jira) need an
 # FQDN-aware CNI policy (e.g. Cilium toFQDNs) layered on top; see
 # deploy/README.md. Postgres is outside the cluster, reached on 5432.
 apiVersion: networking.k8s.io/v1

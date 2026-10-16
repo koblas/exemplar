@@ -13,7 +13,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Feedback events (spec §9.1) recorded by code, with no human action in
+// Feedback events recorded by code, with no human action in
 // Exemplar's UI: a finding withheld because a reviewer already raised it
 // (human_agreed), and a posted suggestion the author committed
 // (applied_suggestion).
@@ -36,11 +36,11 @@ const (
 	ViaLink         = "link"
 )
 
-// defaultRoleWeights are spec §9.2's: author 1, reviewer 2, owner 4, and
-// observers count for nothing.
+// defaultRoleWeights are the default role weights: author 1, reviewer 2, owner
+// 4, and observers count for nothing.
 var defaultRoleWeights = map[string]float64{RoleAuthor: 1, RoleReviewer: 2, RoleOwner: 4, RoleObserver: 0}
 
-// DefaultReactionWeight is a reaction's weight (spec §9.2) when
+// DefaultReactionWeight is a reaction's weight when
 // feedback.reaction_weight is unset.
 const DefaultReactionWeight = 0.5
 
@@ -70,7 +70,7 @@ type Event struct {
 	Actor     string
 	Role      string
 	Via       string
-	// Weight overrides the role's weight (reactions, spec §9.2).
+	// Weight overrides the role's weight (reactions).
 	Weight *float32
 	// ReasonText is the free text a person gave with the signal.
 	ReasonText string
@@ -113,8 +113,8 @@ func RecordEvents(ctx context.Context, st *store.Store, cfg *schema.FeedbackConf
 	return n, errors.Join(errs...)
 }
 
-// routeLabel feeds people's judgments to verifier calibration (spec §9.3
-// "Wrong goes to the verifier"): a wrong is a "wrong" label, an author's
+// routeLabel feeds people's judgments to verifier calibration: a wrong
+// is a "wrong" label, an author's
 // as an author signal and anyone else's as a human review; an owner's
 // adjudication is a human review either way, and replaces author signals.
 func routeLabel(ctx context.Context, st *store.Store, ev Event) error {
@@ -149,7 +149,7 @@ func nonEmpty(s string) *string {
 }
 
 // humanAgreedEvents are the human_agreed events of a persisted review's
-// human duplicates (spec §9.1): the reviewer whose comment raised the
+// human duplicates: the reviewer whose comment raised the
 // finding first agreed with it.
 func humanAgreedEvents(res *engine.Result) []Event {
 	var out []Event
@@ -176,7 +176,7 @@ const suggestionWindow = 50
 
 // AppliedSuggestions returns the open findings, posted with a valid
 // suggestion on an earlier head, whose suggested text is now in the file
-// at the anchor (spec §6.11 acceptance tracking): exactly at the anchored
+// at the anchor (suggestion acceptance tracking): exactly at the anchored
 // start line, or, for a non-trivial suggestion, exactly once within 50
 // lines of it.
 func AppliedSuggestions(ctx context.Context, p *engine.Prepared, open []OpenFinding) []OpenFinding {

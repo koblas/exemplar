@@ -1,4 +1,4 @@
-// Package api is exemplar-search's internal HTTP/JSON API (spec §6.4.1)
+// Package api is exemplar-search's internal HTTP/JSON API
 // and its client. It serves the mirror (snapshot, read_file at a commit,
 // git log for path_history, fetch requests relayed from push webhooks) and
 // the zoekt index (search_text, find_definition; git grep in degraded
@@ -6,7 +6,7 @@
 //
 // Every call names the PR's repo (pr_repo) and the repo to read. The
 // server allows only the PR's own repo and its context.extra_repos in the
-// same visibility tier, and refuses denylisted repos (spec §6.4.4, §13.1).
+// same visibility tier, and refuses denylisted repos.
 // Callers authenticate with a shared bearer token; NetworkPolicy limits
 // who can connect at all.
 package api
@@ -161,8 +161,8 @@ type Target struct {
 }
 
 // SnapshotResponse carries a repo's current default-branch commit, and
-// whether search for it is in degraded mode (spec §6.4.4: a review that
-// pins this snapshot skips bug.contract).
+// whether search for it is in degraded mode (a review that pins
+// this snapshot skips bug.contract).
 type SnapshotResponse struct {
 	SnapshotSHA string `json:"snapshot_sha"`
 	Degraded    bool   `json:"degraded"`
@@ -244,7 +244,7 @@ type SearchTextRequest struct {
 	Pattern    string `json:"pattern"`
 	PathFilter string `json:"path_filter,omitempty"`
 	Lang       string `json:"lang,omitempty"`
-	// Snapshot is the review's pinned snapshot_sha (spec §6.4.1), if any.
+	// Snapshot is the review's pinned snapshot_sha, if any.
 	Snapshot string `json:"snapshot,omitempty"`
 }
 

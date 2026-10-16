@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Markdown renders the report for docs/ and the Phase 0 review.
+// Markdown renders the report as a Markdown document.
 func (r *Report) Markdown() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Monorepo benchmark (T-0.4)\n\n")

@@ -5,7 +5,7 @@ import (
 	"math"
 )
 
-// Stage 2 low-risk categorization (spec §6.13): provider A and provider B
+// Auto-approve low-risk categorization: provider A and provider B
 // independently categorize the PR; code combines their answers.
 
 // Risk levels a categorizer returns.
@@ -15,7 +15,7 @@ const (
 	RiskHigh   = "high"
 )
 
-// DefaultMinReviewConfidence is the Stage 2 bar (spec §6.13). A repo's
+// DefaultMinReviewConfidence is the review_confidence bar. A repo's
 // auto_approve.min_review_confidence can only raise it.
 const DefaultMinReviewConfidence = 0.8
 
@@ -49,7 +49,8 @@ type Stage2Categorization struct {
 
 // ReviewConfidence combines the two sides: min(p_low_A, p_low_B) when both
 // answered low, else 0. It is also 0 when either side failed or both came
-// from the same model family, since Stage 2 needs two independent judgments.
+// from the same model family, since auto-approve needs two independent
+// judgments.
 func ReviewConfidence(a, b Categorization) Stage2Categorization {
 	s := Stage2Categorization{A: a, B: b}
 	switch {

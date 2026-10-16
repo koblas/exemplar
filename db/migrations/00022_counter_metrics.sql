@@ -1,4 +1,4 @@
--- Counter-metrics (spec §12.5, PRD §13.1): which merged PRs were later
+-- Counter-metrics: which merged PRs were later
 -- reverted or named in an incident, so auto-approved and human-approved
 -- merges can be compared. Only refs are stored, as in path_events.
 

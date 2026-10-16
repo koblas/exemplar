@@ -15,11 +15,11 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Reactions (spec §9.1): 👍 and 👎 on Exemplar's comments are secondary
+// Reactions: 👍 and 👎 on Exemplar's comments are secondary
 // signals, polled every 30 minutes for PRs with recent reviews, and once
 // more when a PR merges. A 👎 rejects for acceptance at weight 0.5 but is
-// outside eFP; a 👍 is reported and counts for nothing (§9.2). The bot's
-// own reactions are excluded (FR-T4). A reaction removed later stays
+// outside eFP; a 👍 is reported and counts for nothing. The bot's
+// own reactions are excluded. A reaction removed later stays
 // recorded.
 
 // ReactionsEvery is how often reactions are polled.
@@ -133,7 +133,7 @@ func pollReactions(ctx context.Context, cfg Config, snap *config.Snapshot, inst 
 	return pipeline.RecordEvents(ctx, cfg.Store, snap.Global.Feedback, evs)
 }
 
-// reactorRole is a reactor's role (spec §9.1): the author, the rule's
+// reactorRole is a reactor's role: the author, the rule's
 // owner, someone who took part in the PR, or else an observer.
 func reactorRole(ctx context.Context, cfg Config, snap *config.Snapshot, inst int64, reader *github.Client, repo string, pr int, author, ruleID, login string) (string, error) {
 	if strings.EqualFold(login, author) {

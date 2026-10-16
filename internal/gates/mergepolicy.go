@@ -9,7 +9,7 @@ import (
 	"github.com/koblas/exemplar/internal/codeowners"
 )
 
-// merge_policy_check mode (spec §6.13): the repo requires the
+// merge_policy_check mode: the repo requires the
 // exemplar/merge-policy check instead of counting Exemplar's APPROVE.
 // The check passes when every auto-approve gate passed on the head, or
 // when people approved it the way a code-owner review requirement would

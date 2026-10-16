@@ -16,7 +16,7 @@ import (
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
-// runDemote is nightly auto-demotion (spec §9.4): rules whose recent
+// runDemote is nightly auto-demotion: rules whose recent
 // feedback crosses both bars are moved to shadow by a config PR the bot
 // opens and merges. --dry-run prints the decisions and writes nothing.
 func runDemote(args []string) error {

@@ -13,7 +13,7 @@ import (
 	"github.com/koblas/exemplar/internal/scope"
 )
 
-// Lane 3, the bug lane (spec §6.7).
+// The bug lane: one agent per enabled bug class, hunting novel logic bugs.
 
 const bugSystemPrompt = `You look for one class of bug in one pull request. The class and what to look for are given in the <bug_class> block. Report only bugs of that class that the change introduces or exposes.
 
@@ -109,8 +109,8 @@ const (
 func (e *Engine) runBug(ctx context.Context, p *Prepared, c buglane.Class, meta CallMeta) agentRun {
 	ar := agentRun{run: RunResult{RuleID: c.ID, RuleVersion: c.Version, Lane: LaneBug, ScopedFiles: p.Files}}
 	if c.NeedsReferences {
-		// The spec skips this class whenever search cannot answer
-		// find_references fully (§6.4.4); a skip blocks auto-approve.
+		// This class is skipped whenever search cannot answer
+		// find_references fully; a skip blocks auto-approve.
 		if ok, why := p.searchUsable(); !ok {
 			ar.run.Status, ar.run.Detail = RunDegradedSkip, why
 			return ar
@@ -160,7 +160,7 @@ func (e *Engine) runBug(ctx context.Context, p *Prepared, c buglane.Class, meta 
 	return ar
 }
 
-// bugGate applies the bug lane's risk gate (spec §6.7) to a prepared PR.
+// bugGate applies the bug lane's risk gate to a prepared PR.
 func (p *Prepared) bugGate(opt Options, candidate bool) buglane.Gate {
 	in := buglane.GateInput{Files: p.Files, AutoApproveCandidate: candidate}
 	for _, path := range p.Files {

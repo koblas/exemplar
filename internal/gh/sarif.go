@@ -19,7 +19,7 @@ import (
 // not enabled.
 var ErrCodeScanningUnavailable = errors.New("gh: code scanning is not available for this repository")
 
-// UploadSARIF uploads a SARIF 2.1.0 log for the PR's head (spec §6.12),
+// UploadSARIF uploads a SARIF 2.1.0 log for the PR's head,
 // gzipped and base64-encoded, on the PR's ref so the alerts show on the
 // pull request. It returns the upload id.
 func (p *Poster) UploadSARIF(ctx context.Context, pr PR, sarif []byte) (string, error) {
@@ -51,7 +51,7 @@ const maxAlertPages = 10
 
 // CodeScanningAnnotations returns a PR's open code-scanning alerts from
 // the tools named in tools (case-insensitive), as annotations for linter
-// dedupe (spec §6.10): Check is the tool's name, Title the rule id. Code
+// dedupe: Check is the tool's name, Title the rule id. Code
 // scanning analyzes a PR on refs/pull/<n>/merge. A repo without code
 // scanning has no alerts (ErrCodeScanningUnavailable is not returned).
 func CodeScanningAnnotations(ctx context.Context, c *github.Client, repo string, number int, tools []string) ([]Annotation, error) {

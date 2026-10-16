@@ -1,4 +1,4 @@
-// Package owneract carries out the web UI's owner actions (spec §12.8).
+// Package owneract carries out the web UI's owner actions.
 // exemplar-api records each request with its signed-in actor; a worker
 // job runs it here: it checks the actor may take the action, then edits
 // exemplar-config through a PR (git stays the source of truth) and

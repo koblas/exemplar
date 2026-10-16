@@ -1,10 +1,10 @@
--- Ranking output (spec §8.5): candidates built from the latest cluster run.
+-- Ranking output: candidates built from the latest cluster run.
 -- Candidates persist across cluster runs: each run's clusters are matched to
 -- existing candidates by overlap of their source comments.
 
 -- +goose Up
 
--- Incidents and reverts by path (spec §4.3, §8.1), filled by ingest; also
+-- Incidents and reverts by path, filled by ingest; also
 -- backs path_history and merge_safety_score later.
 CREATE TABLE path_events (
   repo text NOT NULL,

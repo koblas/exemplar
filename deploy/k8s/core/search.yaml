@@ -1,6 +1,6 @@
-# exemplar-search: the system's only git mirror and zoekt index (spec §6.4).
+# exemplar-search: the system's only git mirror and zoekt index.
 # Two independent replicas, each with its own local SSD volume, mirror and
-# index; no shared state, so either serves any request (spec §6.4 "Deployment").
+# index; no shared state, so either serves any request.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -116,7 +116,7 @@ spec:
             httpGet: {path: /readyz, port: http}
             periodSeconds: 10
           # zoekt keeps hot shards in page cache: memory is the index's
-          # working set. Final sizing comes from the benchmark (spec §6.4).
+          # working set. Final sizing comes from the benchmark.
           resources:
             requests: {cpu: "2", memory: 8Gi}
             limits: {cpu: "4", memory: 32Gi}
@@ -143,8 +143,8 @@ spec:
             defaultMode: 0400
         - name: tmp
           emptyDir: {sizeLimit: 2Gi}
-  # Rebuildable from GitHub (spec §3), so local SSD with no backup. Size at
-  # 3–4x the repos' checked-out source (spec §6.4); the overlay sets it from
+  # Rebuildable from GitHub, so local SSD with no backup. Size at
+  # 3–4x the repos' checked-out source; the overlay sets it from
   # the benchmark.
   volumeClaimTemplates:
     - metadata:

@@ -5,7 +5,7 @@
 // disagree on field names.
 package schema
 
-// Rule kinds (spec §4.3 rules.kind).
+// Rule kinds (rules.kind).
 const (
 	KindExemplar = "exemplar"
 	KindCompiled = "compiled"
@@ -58,11 +58,11 @@ type Rule struct {
 	Eval              string    `json:"eval,omitempty"`
 	// LinterMap maps a linter check run name (repo config linters) to the
 	// linter rule ids that report the same issue as this rule, for linter
-	// dedupe (spec §6.10).
+	// dedupe.
 	LinterMap map[string][]string `json:"linter_map,omitempty"`
 }
 
-// Matcher is the deterministic matcher of a compiled (Lane 1) rule.
+// Matcher is the deterministic matcher of a compiled rule.
 type Matcher struct {
 	Engine string `json:"engine"`
 	Rule   string `json:"rule"`
@@ -96,7 +96,7 @@ type GlobalConfig struct {
 	Verifier         VerifierConfig `json:"verifier"`
 	CommentBudget    CommentBudget  `json:"comment_budget"`
 	// LinterWait is how long a review waits for the repo's linters to
-	// report before posting (spec §6.10); nil means DefaultLinterWait.
+	// report before posting; nil means DefaultLinterWait.
 	LinterWait     *int            `json:"linter_wait_seconds,omitempty"`
 	BugLane        *GlobalBugLane  `json:"bug_lane,omitempty"`
 	Baseline       Baseline        `json:"baseline"`
@@ -117,12 +117,12 @@ func (g GlobalConfig) LinterWaitSeconds() int {
 }
 
 // Budgets holds per-run cost limits. Cost is informational; the soft
-// ceiling only stops runaway reviews (spec §6.14).
+// ceiling only stops runaway reviews.
 type Budgets struct {
 	SoftCeilingUSD float64 `json:"soft_ceiling_usd"`
 }
 
-// Degrade configures degraded operation (spec §6.15).
+// Degrade configures degraded operation.
 type Degrade struct {
 	StageTimeoutSeconds int `json:"stage_timeout_seconds"`
 }
@@ -155,13 +155,14 @@ type ProviderModel struct {
 	High     string `json:"high,omitempty"`
 }
 
-// Categorizer is the Stage 2 pair of independent providers.
+// Categorizer is the auto-approve risk categorizer's pair of independent
+// providers.
 type Categorizer struct {
 	A ProviderModel `json:"a"`
 	B ProviderModel `json:"b"`
 }
 
-// MergeSafety holds the deterministic Stage 2 score weights.
+// MergeSafety holds the deterministic merge_safety_score weights.
 type MergeSafety struct {
 	Weights map[string]float64 `json:"weights"`
 }
@@ -178,7 +179,7 @@ type CommentBudget struct {
 	PerFile int `json:"per_file"`
 }
 
-// GlobalBugLane configures Lane 3 defaults.
+// GlobalBugLane configures bug lane defaults.
 type GlobalBugLane struct {
 	MinChangedLines int                    `json:"min_changed_lines"`
 	ImportanceMin   float64                `json:"importance_min"`
@@ -189,12 +190,11 @@ type GlobalBugLane struct {
 type BugLaneFlag struct {
 	Enabled bool `json:"enabled"`
 	// PostOnCriticalPaths lets the class post findings in a repo's
-	// bug_lane.critical_paths (spec §16 Phase 4: shadow, then commenting
-	// on critical paths). Elsewhere, and by default, it stays in shadow.
+	// bug_lane.critical_paths. Elsewhere, and by default, it stays in shadow.
 	PostOnCriticalPaths bool `json:"post_on_critical_paths,omitempty"`
 }
 
-// Baseline configures the sampled baseline reviewer (FR-X8).
+// Baseline configures the sampled baseline reviewer.
 type Baseline struct {
 	SampleRate float64  `json:"sample_rate"`
 	Strata     []string `json:"strata,omitempty"`
@@ -209,14 +209,14 @@ type EvalThresholds struct {
 	Categorizer *CategorizerThreshold `json:"categorizer,omitempty"`
 }
 
-// VerifierThreshold is the FR-X9 calibration bar.
+// VerifierThreshold is the verifier calibration bar.
 type VerifierThreshold struct {
 	KnownWrongRefutedMin float64 `json:"known_wrong_refuted_min"`
 	KnownTrueRefutedMax  float64 `json:"known_true_refuted_max"`
 }
 
-// CategorizerThreshold is the Stage 2 categorizer calibration bar: at most
-// KnownRiskyApprovedMax of labeled risky PRs may reach
+// CategorizerThreshold is the auto-approve risk categorizer calibration
+// bar: at most KnownRiskyApprovedMax of labeled risky PRs may reach
 // MinReviewConfidence, and at least KnownSafeApprovedMin of safe ones must.
 type CategorizerThreshold struct {
 	KnownRiskyApprovedMax float64 `json:"known_risky_approved_max"`
@@ -224,7 +224,7 @@ type CategorizerThreshold struct {
 	MinReviewConfidence   float64 `json:"min_review_confidence,omitempty"`
 }
 
-// FeedbackConfig configures feedback weighting and demotion (Phase 3).
+// FeedbackConfig configures feedback weighting and demotion.
 type FeedbackConfig struct {
 	EFPBar            float64            `json:"efp_bar"`
 	RoleWeights       map[string]float64 `json:"role_weights"`
@@ -244,7 +244,7 @@ type Expiry struct {
 type RepoConfig struct {
 	Enabled      bool `json:"enabled"`
 	ReviewDrafts bool `json:"review_drafts,omitempty"`
-	// Shadow reviews the repo without writing to its PRs (spec §6.9).
+	// Shadow reviews the repo without writing to its PRs.
 	Shadow              bool             `json:"shadow,omitempty"`
 	Forks               *Forks           `json:"forks,omitempty"`
 	SensitivePaths      []string         `json:"sensitive_paths,omitempty"`
@@ -257,12 +257,12 @@ type RepoConfig struct {
 	ApprovalMode        string           `json:"approval_mode,omitempty"`
 }
 
-// Forks controls fork PR review (FR-H5).
+// Forks controls fork PR review.
 type Forks struct {
 	Review bool `json:"review"`
 }
 
-// RepoBugLane narrows Lane 3 for a repo.
+// RepoBugLane narrows the bug lane for a repo.
 type RepoBugLane struct {
 	CriticalPaths []string `json:"critical_paths,omitempty"`
 }
@@ -280,7 +280,7 @@ type RepoContext struct {
 	DependentsDepth int      `json:"dependents_depth,omitempty"`
 }
 
-// RepoAutoApprove holds per-repo auto-approve settings (Phase 5).
+// RepoAutoApprove holds per-repo auto-approve settings.
 type RepoAutoApprove struct {
 	Enabled             bool        `json:"enabled"`
 	Paths               []string    `json:"paths,omitempty"`
@@ -325,7 +325,7 @@ type Expectation struct {
 }
 
 // Eligibility is exemplar-config/platform/eligibility.yaml (CODEOWNERS:
-// Security). Denylisted repos are never sent to a model provider (FR-H1).
+// Security). Denylisted repos are never sent to a model provider.
 type Eligibility struct {
 	Denylist []DenylistEntry `json:"denylist"`
 }
@@ -337,7 +337,7 @@ type DenylistEntry struct {
 }
 
 // Retention is exemplar-config/platform/retention.yaml (CODEOWNERS:
-// Security). Periods are in days (FR-H7).
+// Security). Periods are in days.
 type Retention struct {
 	ApprovalDecisionsDays int `json:"approval_decisions_days"`
 	FindingsDays          int `json:"findings_days"`

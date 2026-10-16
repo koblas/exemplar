@@ -18,7 +18,7 @@ import (
 	"github.com/koblas/exemplar/internal/redact"
 )
 
-// Tool limits (spec §6.5).
+// Tool limits.
 const (
 	maxReadLines   = 400
 	maxGrepMatches = 200
@@ -28,7 +28,7 @@ const (
 )
 
 // ToolCall is one logged tool invocation. Coverage is computed from this
-// log, never from anything the model says (FR-T3).
+// log, never from anything the model says.
 type ToolCall struct {
 	Name string
 	Path string
@@ -65,7 +65,7 @@ func newToolbox(p *Prepared, s *redact.Scanner, h PathHistory) *toolbox {
 	return &toolbox{ws: p.Workspace, hunks: p.Hunks, scanner: s, history: h, repo: p.PR.Repo, baseSHA: p.PR.BaseSHA}
 }
 
-// PathHistory answers the path_history context tool (spec §6.4):
+// PathHistory answers the path_history context tool:
 // incidents, reverts and recent commits for a path as of the PR's base.
 // internal/pathhistory implements it.
 type PathHistory interface {
@@ -188,7 +188,7 @@ func (t *toolbox) run(ctx context.Context, name string, input json.RawMessage) (
 		t.usedContext = true
 		t.mu.Unlock()
 	}
-	// Every context snippet is scanned like the diff (spec §6.3 step 4).
+	// Every context snippet is scanned like the diff.
 	red, _, rerr := t.scanner.Redact(out)
 	if rerr != nil {
 		return "", errors.New("content withheld: it contains a secret that could not be redacted")

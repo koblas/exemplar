@@ -13,7 +13,7 @@ import (
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
-// Closing earlier findings on a new head (spec §6.2).
+// Closing earlier findings on a new head.
 
 // Closure reasons.
 const (

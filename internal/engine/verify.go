@@ -32,8 +32,8 @@ type verifyRun struct {
 	ok  bool
 }
 
-// verify runs the verification stage over model-lane candidates (spec
-// §6.8). It only ever narrows what humans see: candidates it does not
+// verify runs the verification stage over model-lane candidates.
+// It only ever narrows what humans see: candidates it does not
 // confirm with resolvable evidence are dropped, and a failed verifier call
 // drops its candidates rather than posting them unverified.
 func (e *Engine) verify(ctx context.Context, p *Prepared, findings []*Finding, genFamily map[*Finding]string, meta CallMeta) []verifyRun {

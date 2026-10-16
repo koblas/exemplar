@@ -3,7 +3,7 @@
 //
 // Everything here is deterministic and model-free: anchors proposed by a model
 // are only ever accepted if GitHub would accept them as review comment
-// positions (spec §6.3, §6.9).
+// positions.
 package scope
 
 import (

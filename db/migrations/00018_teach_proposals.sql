@@ -1,4 +1,4 @@
--- Teach-the-bot proposals (spec §4, §8.7): one per rule version and class,
+-- Teach-the-bot proposals: one per rule version and class,
 -- so a recurring signal is proposed once.
 
 -- +goose Up

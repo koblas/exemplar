@@ -1,5 +1,5 @@
-// Package calibrate replays labeled findings through the verifier (spec
-// §6.8, PRD FR-X9): the verifier must refute at least known_wrong_refuted_min
+// Package calibrate replays labeled findings through the verifier:
+// the verifier must refute at least known_wrong_refuted_min
 // of known-wrong findings and at most known_true_refuted_max of known-true
 // ones (global.yaml eval_thresholds.verifier). It runs nightly and on every
 // change to the verifier's prompt, model or provider.

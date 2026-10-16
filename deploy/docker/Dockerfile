@@ -1,8 +1,8 @@
 # The Go services image: every cmd/ binary, plus the engines and tools they
 # run (git for checkouts and mirrors, universal-ctags for exemplar-search
-# symbols, ast-grep and Semgrep for Lane 1 and compile attempts, clang-format
+# symbols, ast-grep and Semgrep for compiled rules and compile attempts, clang-format
 # for fix validation, unshare and prlimit for the compile sandbox). One image, one Deployment or
-# StatefulSet per binary (spec §2.2). Build from the repository root:
+# StatefulSet per binary. Build from the repository root:
 #
 #   docker build -f deploy/docker/Dockerfile -t exemplar .
 #

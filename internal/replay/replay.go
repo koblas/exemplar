@@ -1,8 +1,7 @@
-// Package replay reruns the review pipeline over recorded PRs (spec §16.1:
-// "the most valuable test asset"). It drives the same engine as production
-// with caller=eval, stores results when a database is configured, can post
-// to a sandbox PR (T-0.1), runs the baseline reviewer in shadow (T-0.2),
-// and compares findings with what humans said.
+// Package replay reruns the review pipeline over recorded PRs. It drives
+// the same engine as production with caller=eval, stores results when a
+// database is configured, can post to a sandbox PR, runs the baseline
+// reviewer in shadow, and compares findings with what humans said.
 package replay
 
 import (
@@ -68,7 +67,7 @@ type Runner struct {
 	// Store, when set, persists reviews, rule runs, findings and gate traces.
 	Store *store.Store
 	// PosterFor, when set, returns a poster for a fixture repo; posted
-	// findings then go to the fixture's real PR (T-0.1).
+	// findings then go to the fixture's real PR.
 	PosterFor func(ctx context.Context, repo string) (*gh.Poster, error)
 	// Baseline also runs the baseline reviewer in shadow.
 	Baseline bool
@@ -85,7 +84,7 @@ type Outcome struct {
 	Coverage   float64  `json:"coverage"`
 	Verdict    string   `json:"verdict"`
 	Stage1     []string `json:"stage1_reasons"`
-	// Stage2 is set only when Stage 1 passed.
+	// Stage2 is set only when the deterministic gates passed.
 	Stage2     []string           `json:"stage2_reasons,omitempty"`
 	Decision   string             `json:"decision"`
 	Runs       []RunSummary       `json:"runs"`

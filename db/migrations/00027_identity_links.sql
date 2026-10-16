@@ -1,4 +1,4 @@
--- GitHub accounts connected to OIDC sign-ins (spec §12.8): after an OIDC
+-- GitHub accounts connected to OIDC sign-ins: after an OIDC
 -- sign-in the person connects GitHub once, so Exemplar can compare them
 -- with GitHub logins and teams (feedback roles, rule-owner checks). Repo
 -- access still comes from their OIDC groups. One GitHub account belongs

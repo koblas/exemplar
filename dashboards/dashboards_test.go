@@ -1,6 +1,6 @@
 // Package dashboards checks the Grafana boards: valid JSON, unique ids, the
 // provisioned datasource, and every panel's SQL runs against a migrated
-// database and selects no finding text or code (spec §12.7).
+// database and selects no finding text or code.
 package dashboards
 
 import (

@@ -1,4 +1,4 @@
--- Export drift (spec §10.2): how far each repo's generated instruction
+-- Export drift: how far each repo's generated instruction
 -- files are behind the config. export_runs records each config SHA the
 -- export job first saw, so "versions behind" counts the config versions
 -- exported since a file last matched its rendering.

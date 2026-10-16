@@ -1,4 +1,4 @@
--- Retention (spec §13.1, FR-H7): each query handles one batch of at most
+-- Retention: each query handles one batch of at most
 -- @batch rows older than @cutoff, so a large backlog never holds a long
 -- lock; the job repeats until a batch comes back short.
 
@@ -14,7 +14,7 @@ DELETE FROM model_calls WHERE id IN (SELECT m.id FROM model_calls m WHERE m.at <
 
 -- name: DeleteExpiredFindings :execrows
 -- Calibration labels and feedback events name a finding and go with it
--- (spec §13.1 retains findings and feedback events together).
+-- (findings and feedback events are retained together).
 WITH doomed AS (SELECT f.id FROM findings f WHERE f.created_at < @cutoff LIMIT @batch),
      labels AS (DELETE FROM verifier_labels WHERE finding_id IN (SELECT id FROM doomed)),
      events AS (DELETE FROM feedback_events WHERE finding_id IN (SELECT id FROM doomed))

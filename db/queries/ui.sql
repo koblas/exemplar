@@ -1,4 +1,4 @@
--- The Phase 6 web UI (spec §12.8). Repo-specific rows carry their repo so
+-- The web UI. Repo-specific rows carry their repo so
 -- the handler can show only those the viewer can read.
 
 -- name: UIRules :many

@@ -570,7 +570,7 @@ func TestReviewShadowRepo(t *testing.T) {
 	if state != "shadow" || reason != "repo_shadow" {
 		t.Errorf("finding = %s %s", state, reason)
 	}
-	// The PR's agent, from its label, for upstream effectiveness (§10.4).
+	// The PR's agent, from its label, for upstream effectiveness.
 	var agent string
 	var reads []string
 	if err := st.Pool.QueryRow(t.Context(), `SELECT agent, agent_reads FROM reviews WHERE caller = 'production'`).Scan(&agent, &reads); err != nil {
@@ -644,7 +644,7 @@ func TestReviewHumanDuplicate(t *testing.T) {
 }
 
 // An open code-scanning alert from a configured tool is a linter
-// duplicate too (spec §6.10), with no check-run annotation at all.
+// duplicate too, with no check-run annotation at all.
 func TestReviewCodeScanningDuplicate(t *testing.T) {
 	e := setup(t, repo)
 	snap := exampleSnapshot(t)

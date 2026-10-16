@@ -1,4 +1,4 @@
-# GitHub posts here (spec §13 IN-1). Host, class and TLS secret are set by
+# GitHub posts webhooks here. Host, class and TLS secret are set by
 # the overlay; restrict it to GitHub's hook CIDRs (api.github.com/meta).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -22,7 +22,7 @@ spec:
                 name: exemplar-webhook
                 port: {name: http}
 ---
-# People open feedback links here (spec §13 IN-2). The overlay sets host,
+# People open feedback links here. The overlay sets host,
 # class and TLS, and puts org SSO in front (an IdP-aware proxy or ingress
 # auth annotations) for the whole host.
 apiVersion: networking.k8s.io/v1
