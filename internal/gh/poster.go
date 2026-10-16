@@ -65,7 +65,7 @@ func Marker(reviewID int64, headSHA string) string {
 // PostReview submits one COMMENT review carrying every comment. If a review
 // with this review's marker already exists on the head (a retried job), it
 // returns that review's id and posted=false instead of posting again.
-func (p *Poster) PostReview(ctx context.Context, pr PR, rv ReviewPost) (ghReviewID int64, posted bool, err error) {
+func (p *Poster) PostReview(ctx context.Context, pr PR, rv ReviewPost) (int64, bool, error) {
 	marker := Marker(rv.ReviewID, pr.HeadSHA)
 	existing, err := p.findReview(ctx, pr, marker)
 	if err != nil {
@@ -76,23 +76,23 @@ func (p *Poster) PostReview(ctx context.Context, pr PR, rv ReviewPost) (ghReview
 	}
 
 	req := &github.PullRequestReviewRequest{
-		CommitID: github.Ptr(pr.HeadSHA),
-		Body:     github.Ptr(strings.TrimSpace(rv.Summary) + "\n\n" + marker),
-		Event:    github.Ptr("COMMENT"),
+		CommitID: new(pr.HeadSHA),
+		Body:     new(strings.TrimSpace(rv.Summary) + "\n\n" + marker),
+		Event:    new("COMMENT"),
 	}
 	for _, c := range rv.Comments {
 		if c.StartLine < 1 || c.EndLine < c.StartLine {
 			return 0, false, fmt.Errorf("gh: invalid comment range %s:%d-%d", c.Path, c.StartLine, c.EndLine)
 		}
 		dc := &github.DraftReviewComment{
-			Path: github.Ptr(c.Path),
-			Body: github.Ptr(c.Body),
-			Side: github.Ptr(c.Side),
-			Line: github.Ptr(c.EndLine),
+			Path: new(c.Path),
+			Body: new(c.Body),
+			Side: new(c.Side),
+			Line: new(c.EndLine),
 		}
 		if c.StartLine != c.EndLine {
-			dc.StartLine = github.Ptr(c.StartLine)
-			dc.StartSide = github.Ptr(c.Side)
+			dc.StartLine = new(c.StartLine)
+			dc.StartSide = new(c.Side)
 		}
 		req.Comments = append(req.Comments, dc)
 	}
@@ -134,8 +134,8 @@ func (p *Poster) StartCheck(ctx context.Context, pr PR, externalID string) (int6
 	run, _, err := p.gh.Checks.CreateCheckRun(ctx, pr.Owner, pr.Repo, github.CreateCheckRunOptions{
 		Name:       CheckName,
 		HeadSHA:    pr.HeadSHA,
-		ExternalID: github.Ptr(externalID),
-		Status:     github.Ptr("in_progress"),
+		ExternalID: new(externalID),
+		Status:     new("in_progress"),
 		StartedAt:  &github.Timestamp{Time: time.Now()},
 	})
 	if err != nil {
@@ -163,13 +163,13 @@ func (p *Poster) CompleteCheck(ctx context.Context, pr PR, checkRunID int64, res
 	}
 	opts := github.UpdateCheckRunOptions{
 		Name:        CheckName,
-		Status:      github.Ptr("completed"),
-		Conclusion:  github.Ptr(res.Conclusion),
+		Status:      new("completed"),
+		Conclusion:  new(res.Conclusion),
 		CompletedAt: &github.Timestamp{Time: time.Now()},
 		Output: &github.CheckRunOutput{
-			Title:   github.Ptr(res.Title),
-			Summary: github.Ptr(res.Summary),
-			Text:    github.Ptr(res.Text),
+			Title:   new(res.Title),
+			Summary: new(res.Summary),
+			Text:    new(res.Text),
 		},
 	}
 	if res.Incomplete {
@@ -199,13 +199,13 @@ func (p *Poster) SetMergePolicy(ctx context.Context, pr PR, pass bool, title, su
 	opts := github.CreateCheckRunOptions{
 		Name:    MergePolicyCheckName,
 		HeadSHA: pr.HeadSHA,
-		Output:  &github.CheckRunOutput{Title: github.Ptr(title), Summary: github.Ptr(summary)},
+		Output:  &github.CheckRunOutput{Title: new(title), Summary: new(summary)},
 	}
 	if pass {
-		opts.Status, opts.Conclusion = github.Ptr("completed"), github.Ptr("success")
+		opts.Status, opts.Conclusion = new("completed"), new("success")
 		opts.CompletedAt = &github.Timestamp{Time: time.Now()}
 	} else {
-		opts.Status = github.Ptr("in_progress")
+		opts.Status = new("in_progress")
 		opts.StartedAt = &github.Timestamp{Time: time.Now()}
 	}
 	if _, _, err := p.gh.Checks.CreateCheckRun(ctx, pr.Owner, pr.Repo, opts); err != nil {
@@ -231,9 +231,9 @@ func (p *Poster) Approve(ctx context.Context, pr PR, reviewID int64, summary str
 		return existing, false, err
 	}
 	review, _, err := p.gh.PullRequests.CreateReview(ctx, pr.Owner, pr.Repo, pr.Number, &github.PullRequestReviewRequest{
-		CommitID: github.Ptr(pr.HeadSHA),
-		Body:     github.Ptr(strings.TrimSpace(summary) + "\n\n" + marker),
-		Event:    github.Ptr("APPROVE"),
+		CommitID: new(pr.HeadSHA),
+		Body:     new(strings.TrimSpace(summary) + "\n\n" + marker),
+		Event:    new("APPROVE"),
 	})
 	if err != nil {
 		return 0, false, fmt.Errorf("gh: approve %s/%s#%d: %w", pr.Owner, pr.Repo, pr.Number, err)
@@ -261,7 +261,7 @@ func (p *Poster) DismissApprovals(ctx context.Context, pr PR, message string) (i
 				continue
 			}
 			if _, _, err := p.gh.PullRequests.DismissReview(ctx, pr.Owner, pr.Repo, pr.Number, r.GetID(),
-				&github.PullRequestReviewDismissalRequest{Message: github.Ptr(message)}); err != nil {
+				&github.PullRequestReviewDismissalRequest{Message: new(message)}); err != nil {
 				return n, fmt.Errorf("gh: dismiss review %d on %s/%s#%d: %w", r.GetID(), pr.Owner, pr.Repo, pr.Number, err)
 			}
 			n++

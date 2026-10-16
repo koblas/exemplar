@@ -224,7 +224,7 @@ func checkApplies(ctx context.Context, file string, src []byte, patch string) er
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(full, src, 0o644); err != nil {
+	if err := os.WriteFile(full, src, 0o600); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)

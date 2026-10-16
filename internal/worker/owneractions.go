@@ -17,6 +17,7 @@ import (
 // config-writer token, which only this job uses in the worker.
 type OwnerActionWorker struct {
 	river.WorkerDefaults[store.OwnerActionArgs]
+
 	runner   owneract.Runner
 	snapshot func(context.Context) (*config.Snapshot, error)
 	log      *slog.Logger

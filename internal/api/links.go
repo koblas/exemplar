@@ -86,7 +86,7 @@ const (
 const (
 	sessionCookie = "exemplar_session"
 	stateCookie   = "exemplar_oauth"
-	uiTokenCookie = "exemplar_ui"
+	uiTokenCookie = "exemplar_ui" //nolint:gosec // G101: a cookie name, not a credential
 )
 
 // Server serves the links.
@@ -209,8 +209,12 @@ func (s *Server) login(r *http.Request) string {
 }
 
 func (s *Server) setCookie(w http.ResponseWriter, name, value, path string, ttl time.Duration) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: path, MaxAge: int(ttl.Seconds()),
-		HttpOnly: true, Secure: strings.HasPrefix(s.cfg.PublicURL, "https://"), SameSite: http.SameSiteLaxMode})
+	// Secure follows PublicURL so plain-http local development still works;
+	// HttpOnly and SameSite=Lax are always set.
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is on whenever PublicURL is https (see above)
+		Name: name, Value: value, Path: path, MaxAge: int(ttl.Seconds()),
+		HttpOnly: true, Secure: strings.HasPrefix(s.cfg.PublicURL, "https://"), SameSite: http.SameSiteLaxMode,
+	})
 }
 
 var page = template.Must(template.New("page").Parse(`<!doctype html>
@@ -283,8 +287,10 @@ func (s *Server) confirm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?return="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 		return
 	}
-	s.render(w, http.StatusOK, view{Heading: "Feedback: " + label(reason), Label: label(reason), Finding: f, PRLink: s.prLink(f),
-		Form: true, Sig: sig, Token: s.mac("form", login, strconv.FormatInt(id, 10), reason)})
+	s.render(w, http.StatusOK, view{
+		Heading: "Feedback: " + label(reason), Label: label(reason), Finding: f, PRLink: s.prLink(f),
+		Form: true, Sig: sig, Token: s.mac("form", login, strconv.FormatInt(id, 10), reason),
+	})
 }
 
 func (s *Server) record(w http.ResponseWriter, r *http.Request) {
@@ -311,8 +317,10 @@ func (s *Server) record(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusServiceUnavailable, view{Heading: "Not recorded", Message: "Something went wrong on our side. Please try again in a minute."})
 		return
 	}
-	s.render(w, http.StatusOK, view{Heading: "Recorded: " + label(reason), Finding: f, PRLink: s.prLink(f),
-		Message: "Thanks. Rule owners see feedback in their weekly digest."})
+	s.render(w, http.StatusOK, view{
+		Heading: "Recorded: " + label(reason), Finding: f, PRLink: s.prLink(f),
+		Message: "Thanks. Rule owners see feedback in their weekly digest.",
+	})
 }
 
 // start sends the person to GitHub to sign in, remembering where to return.
@@ -403,7 +411,8 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		fail("Sign-in could not be completed. Try again.")
 		return
 	}
-	http.Redirect(w, r, string(retb), http.StatusFound)
+	// retb is from the HMAC-checked state and passed validReturn: a same-origin /f/ or /ui/ path.
+	http.Redirect(w, r, string(retb), http.StatusFound) //nolint:gosec // G710: validReturn allows only local paths
 }
 
 // exchange trades the OAuth code for a user token and reads the login and
@@ -412,8 +421,10 @@ func (s *Server) exchange(ctx context.Context, code string) (string, int64, stri
 	if code == "" {
 		return "", 0, "", errors.New("no code")
 	}
-	form := url.Values{"client_id": {s.cfg.GitHub.ClientID}, "client_secret": {s.cfg.GitHub.ClientSecret}, "code": {code},
-		"redirect_uri": {s.cfg.PublicURL + "/oauth/callback"}}
+	form := url.Values{
+		"client_id": {s.cfg.GitHub.ClientID}, "client_secret": {s.cfg.GitHub.ClientSecret}, "code": {code},
+		"redirect_uri": {s.cfg.PublicURL + "/oauth/callback"},
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.GitHubWeb+"login/oauth/access_token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", 0, "", err

@@ -180,12 +180,12 @@ func credentialsFromEnv() (mirror.Credentials, error) {
 	installation, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_INSTALLATION_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
 	if appID == 0 && installation == 0 && keyFile == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil Credentials means anonymous fetches, as documented above
 	}
 	if appID == 0 || installation == 0 || keyFile == "" || cfgRepo == "" {
 		return nil, errors.New("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO must be set together")
 	}
-	key, err := os.ReadFile(keyFile)
+	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return nil, fmt.Errorf("read private key: %w", err)
 	}

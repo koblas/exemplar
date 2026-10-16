@@ -36,12 +36,15 @@ func Reads(agent string) []string {
 // markers name an agent by a substring of a co-author trailer, a bot
 // login or a label, checked in order.
 var markers = []struct{ sub, agent string }{
-	{"anthropic.com", "claude_code"}, {"claude", "claude_code"},
+	{"anthropic.com", "claude_code"},
+	{"claude", "claude_code"},
 	{"copilot", "copilot"},
 	{"cursor", "cursor"},
-	{"codex", "codex"}, {"openai.com", "codex"},
+	{"codex", "codex"},
+	{"openai.com", "codex"},
 	{"devin", "devin"},
-	{"gemini", "gemini"}, {"jules", "gemini"},
+	{"gemini", "gemini"},
+	{"jules", "gemini"},
 }
 
 var trailer = regexp.MustCompile(`(?im)^co-authored-by:\s*(.+)$`)

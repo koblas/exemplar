@@ -102,7 +102,7 @@ type AgentResult struct {
 }
 
 // Run executes the agent loop: the model calls tools until it answers.
-func (h *Harness) Run(ctx context.Context, spec AgentSpec) (res AgentResult) {
+func (h *Harness) Run(ctx context.Context, spec AgentSpec) (res AgentResult) { //nolint:nonamedreturns // the deferred func stamps Latency on every return
 	start := time.Now()
 	res = AgentResult{Status: RunOK}
 	defer func() { res.Latency = time.Since(start) }()
@@ -187,6 +187,8 @@ func (h *Harness) Run(ctx context.Context, spec AgentSpec) (res AgentResult) {
 			res.Status, res.Detail = RunSchemaError, "answer truncated at max_tokens"
 		case anthropic.StopReasonRefusal:
 			res.Status, res.Detail = RunError, "model declined the request"
+		case anthropic.StopReasonPauseTurn, anthropic.StopReasonModelContextWindowExceeded:
+			res.Status, res.Detail = RunError, "unexpected stop reason "+string(msg.StopReason)
 		default:
 			res.Status, res.Detail = RunError, "unexpected stop reason "+string(msg.StopReason)
 		}
@@ -255,8 +257,7 @@ func (r *AgentResult) readHeaders(h http.Header) {
 var ErrProvidersUnavailable = errors.New("engine: every provider for the stage is unavailable")
 
 func gatewayErrorDetail(err error) string {
-	var apiErr *anthropic.Error
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*anthropic.Error](err); ok {
 		if apiErr.StatusCode == http.StatusServiceUnavailable {
 			return ErrProvidersUnavailable.Error()
 		}

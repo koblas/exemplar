@@ -241,7 +241,7 @@ func (j *Job) comment(repo string, pr pullRequest, resolved bool, c reviewCommen
 	body, _, err1 := j.scanner.Redact(c.Body)
 	hunk, _, err2 := j.scanner.Redact(c.DiffHunk)
 	if err1 != nil || err2 != nil {
-		return p, DropSecret, nil
+		return p, DropSecret, nil //nolint:nilerr // a secret that cannot be redacted drops the comment; it is an outcome, not a failure
 	}
 	id, err := c.id()
 	if err != nil {

@@ -21,8 +21,9 @@ import (
 
 // Store is a pool plus typed queries.
 type Store struct {
-	Pool *pgxpool.Pool
 	*queries.Queries
+
+	Pool *pgxpool.Pool
 }
 
 // Open connects to Postgres and verifies the connection.

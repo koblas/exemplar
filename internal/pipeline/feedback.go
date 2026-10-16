@@ -89,7 +89,11 @@ func RecordEvents(ctx context.Context, st *store.Store, cfg *schema.FeedbackConf
 	for _, ev := range evs {
 		var evidence []byte
 		if ev.Evidence != nil {
-			evidence, _ = json.Marshal(ev.Evidence)
+			var err error
+			if evidence, err = json.Marshal(ev.Evidence); err != nil {
+				errs = append(errs, fmt.Errorf("feedback event %s on finding %d: evidence: %w", ev.Kind, ev.FindingID, err))
+				continue
+			}
 		}
 		weight := RoleWeight(cfg, ev.Role)
 		if ev.Weight != nil {
@@ -118,7 +122,8 @@ func RecordEvents(ctx context.Context, st *store.Store, cfg *schema.FeedbackConf
 // as an author signal and anyone else's as a human review; an owner's
 // adjudication is a human review either way, and replaces author signals.
 func routeLabel(ctx context.Context, st *store.Store, ev Event) error {
-	label, source := "", "human_review"
+	var label string
+	source := "human_review"
 	switch ev.Kind {
 	case "fb_wrong":
 		label = "wrong"

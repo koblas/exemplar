@@ -90,7 +90,7 @@ func secretFile(env string) ([]byte, error) {
 	if p == "" {
 		return nil, fmt.Errorf("%s is required", env)
 	}
-	b, err := os.ReadFile(p)
+	b, err := os.ReadFile(p) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", env, err)
 	}
@@ -208,8 +208,10 @@ func run(args []string) error {
 			var id uuid.UUID
 			err := st.InTx(ctx, func(tx pgx.Tx, q *queries.Queries) error {
 				var err error
-				p := queries.CreateEvaluationParams{Repo: r.Repo, BaseSha: r.BaseSHA, RequestedBy: login, Caller: caller, Agent: r.Agent,
-					Mode: evaluate.ModeReview, Rules: []string{}}
+				p := queries.CreateEvaluationParams{
+					Repo: r.Repo, BaseSha: r.BaseSHA, RequestedBy: login, Caller: caller, Agent: r.Agent,
+					Mode: evaluate.ModeReview, Rules: []string{},
+				}
 				if r.Mode == evaluate.ModeEval {
 					p.Mode, p.HeadSha, p.Rules = evaluate.ModeEval, &r.HeadSHA, append(p.Rules, r.Rules...)
 				} else {
@@ -258,7 +260,8 @@ func run(args []string) error {
 
 	formKey := hmac.New(sha256.New, sessionKey)
 	formKey.Write([]byte("ui-forms"))
-	ui, err := web.New(web.Config{Store: st, SignOut: srv.SignOut,
+	ui, err := web.New(web.Config{
+		Store: st, SignOut: srv.SignOut,
 		Session: func(r *http.Request) (string, web.Access, bool) {
 			login, access, ok := srv.UISession(r)
 			return login, web.Access(access), ok
@@ -321,9 +324,11 @@ func run(args []string) error {
 		}
 		w.WriteHeader(http.StatusOK)
 	})
-	hs := &http.Server{Addr: *addr, Handler: http.TimeoutHandler(mux, 20*time.Second, "timeout"),
+	hs := &http.Server{
+		Addr: *addr, Handler: http.TimeoutHandler(mux, 20*time.Second, "timeout"),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 25 * time.Second,
-		IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+		IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10,
+	}
 	errc := make(chan error, 1)
 	go func() {
 		log.Info("exemplar-api serving", "addr", *addr)
@@ -363,9 +368,11 @@ func githubFromEnv() (*api.GitHubAuth, string, string, error) {
 	if err != nil {
 		return nil, "", "", err
 	}
-	gh := &api.GitHubAuth{ClientID: id, ClientSecret: string(secret), AllowEveryone: os.Getenv("EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE") == "true",
-		SignInDisabled: os.Getenv("EXEMPLAR_OAUTH2_GITHUB_SIGN_IN") == "false"}
-	for _, o := range strings.Split(os.Getenv("EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS"), ",") {
+	gh := &api.GitHubAuth{
+		ClientID: id, ClientSecret: string(secret), AllowEveryone: os.Getenv("EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE") == "true",
+		SignInDisabled: os.Getenv("EXEMPLAR_OAUTH2_GITHUB_SIGN_IN") == "false",
+	}
+	for o := range strings.SplitSeq(os.Getenv("EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS"), ",") {
 		if o = strings.TrimSpace(o); o != "" {
 			gh.AllowedOrgs = append(gh.AllowedOrgs, o)
 		}

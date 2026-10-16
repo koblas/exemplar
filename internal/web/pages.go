@@ -69,7 +69,8 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 </form>
 <p class="muted">Outcomes over the last {{.Window}} days. Effective FP is weighted (spec §9.2).</p>
 <table><thead><tr><th>Rule</th><th>Status</th><th>Severity</th><th>Category</th><th>Owner</th><th>Posted</th><th>Acceptance</th><th>Effective FP</th><th></th></tr></thead><tbody>
-{{range .Rules}}<tr><td><a href="/ui/rules/{{.RuleID}}"><code>{{.RuleID}}</code></a>{{if ne .Scope "global"}} <span class="muted">({{.Scope}})</span>{{end}}{{if .Exported}} <span class="muted">exported</span>{{end}}</td>
+{{range .Rules}}<tr><td><a href="/ui/rules/{{.RuleID}}"><code>{{.RuleID}}</code></a>{{if ne .Scope "global"}} <span class="muted">({{.Scope}})</span>{{end}}{{if .Exported}} ` +
+	`<span class="muted">exported</span>{{end}}</td>
 <td>{{.Status}}</td><td>{{.Severity}}</td><td>{{.Category}}</td><td>{{.Owner}}</td><td class="n">{{.Posted}}</td><td class="n">{{.Acceptance}}</td><td class="n">{{.EFP}}</td><td>{{.Health}}</td></tr>
 {{else}}<tr><td colspan="9" class="muted">No rules match.</td></tr>{{end}}
 </tbody></table>
@@ -81,19 +82,23 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 {{if eq .Rule.Scope "global"}}<p><a href="/ui/playground?rule={{.Rule.RuleID}}">Try a change to this rule in the playground</a></p>{{end}}
 {{if and (eq .Rule.Scope "global") (ne .Rule.Status "killed")}}<details><summary>Owner actions</summary>
 <p class="muted">Each opens an exemplar-config PR in your name and merges it where branch protection allows. Only the rule's owners and the platform team can.</p>
-{{if eq .Rule.Status "active"}}<form method="post" action="/ui/actions"><input type="hidden" name="action" value="shadow_rule"><input type="hidden" name="target" value="{{.Rule.RuleID}}"><input type="hidden" name="t" value="{{.ShadowToken}}">
+{{if eq .Rule.Status "active"}}<form method="post" action="/ui/actions"><input type="hidden" name="action" value="shadow_rule">` +
+	`<input type="hidden" name="target" value="{{.Rule.RuleID}}"><input type="hidden" name="t" value="{{.ShadowToken}}">
 <label>Why (optional) <input name="reason" maxlength="1000"></label> <button type="submit">Move to shadow</button></form>{{end}}
-<form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_rule"><input type="hidden" name="target" value="{{.Rule.RuleID}}"><input type="hidden" name="t" value="{{.KillToken}}">
+<form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_rule"><input type="hidden" name="target" value="{{.Rule.RuleID}}">` +
+	`<input type="hidden" name="t" value="{{.KillToken}}">
 <label>Why <input name="reason" maxlength="1000" required></label> <button type="submit">Kill</button></form>
 </details>{{end}}
 <h2>By week</h2>
 <table><thead><tr><th>Week</th><th>Posted</th><th>Accepted</th><th>Rejected</th><th>Ignored</th><th>Acceptance</th></tr></thead><tbody>
-{{range .Weeks}}<tr><td>{{day .Week}}</td><td class="n">{{.Posted}}</td><td class="n">{{.Accepted}}</td><td class="n">{{.Rejected}}</td><td class="n">{{.Ignored}}</td><td class="n">{{ratio .Acceptance}}</td></tr>
+{{range .Weeks}}<tr><td>{{day .Week}}</td><td class="n">{{.Posted}}</td><td class="n">{{.Accepted}}</td><td class="n">{{.Rejected}}</td><td class="n">{{.Ignored}}</td>` +
+	`<td class="n">{{ratio .Acceptance}}</td></tr>
 {{else}}<tr><td colspan="6" class="muted">No weeks yet.</td></tr>{{end}}
 </tbody></table>
 <h2>Recent findings</h2>
 <table><thead><tr><th>Finding</th><th>PR</th><th>Where</th><th>State</th><th>Outcome</th><th>Posted</th></tr></thead><tbody>
-{{range .Findings}}<tr><td><a href="/ui/findings/{{.ID}}">{{.ID}}</a></td><td><a href="{{.PR}}">{{.Repo}}#{{.PrNumber}}</a></td><td><code>{{.Path}}:{{.StartLine}}</code></td><td>{{.State}}</td><td>{{.Outcome}}</td><td>{{day .CreatedAt}}</td></tr>
+{{range .Findings}}<tr><td><a href="/ui/findings/{{.ID}}">{{.ID}}</a></td><td><a href="{{.PR}}">{{.Repo}}#{{.PrNumber}}</a></td><td><code>{{.Path}}:{{.StartLine}}</code></td>` +
+	`<td>{{.State}}</td><td>{{.Outcome}}</td><td>{{day .CreatedAt}}</td></tr>
 {{else}}<tr><td colspan="6" class="muted">None you can see.</td></tr>{{end}}
 </tbody></table>
 {{if .Hidden}}<p class="muted">{{.Hidden}} more in repos you cannot read.</p>{{end}}
@@ -119,9 +124,11 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 {{define "candidates"}}{{template "head" .}}
 <p class="muted">Open candidates by score, with the repos you can read among those their source comments came from.</p>
 <table><thead><tr><th>Score</th><th>Candidate</th><th>Cluster</th><th>Reviewers</th><th>Owner</th><th>Status</th><th>Repos</th><th></th></tr></thead><tbody>
-{{range .Body}}<tr><td class="n">{{printf "%.2f" .Score}}</td><td><strong>{{.Title}}</strong><br><span class="muted">{{.Description}}</span>{{if .ConfigPrUrl}}<br><a href="{{.ConfigPrUrl}}">Config PR</a>{{end}}</td>
+{{range .Body}}<tr><td class="n">{{printf "%.2f" .Score}}</td><td><strong>{{.Title}}</strong><br><span class="muted">{{.Description}}</span>{{if .ConfigPrUrl}}<br>` +
+	`<a href="{{.ConfigPrUrl}}">Config PR</a>{{end}}</td>
 <td class="n">{{.ClusterSize}}</td><td class="n">{{.DistinctReviewers}}</td><td>{{.Owner}}</td><td>{{.Status}}</td><td>{{range $i, $r := .Visible}}{{if $i}}, {{end}}{{$r}}{{end}}</td>
-<td><form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_candidate"><input type="hidden" name="target" value="{{.ID}}"><input type="hidden" name="t" value="{{.Token}}">
+<td><form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_candidate"><input type="hidden" name="target" value="{{.ID}}">` +
+	`<input type="hidden" name="t" value="{{.Token}}">
 <input name="reason" maxlength="1000" required placeholder="why"> <button type="submit">Kill</button></form></td></tr>
 {{else}}<tr><td colspan="8" class="muted">No open candidates you can see.</td></tr>{{end}}
 </tbody></table>
@@ -130,12 +137,15 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 {{define "audit"}}{{template "head" .}}{{with .Body}}
 <p class="muted">The latest 500 production decisions, in repos you can read. Each links to its PR.</p>
 {{if .Repos}}<details><summary>Kill switches</summary>
-<p class="muted">Turns auto-approve off for a repo through an exemplar-config PR in your name, merged where branch protection allows. The platform team and the repo's approvable owners can. Turning it back on is a reviewed config PR.</p>
-<table><tbody>{{range .Repos}}<tr><td>{{.Repo}}</td><td><form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_switch"><input type="hidden" name="target" value="{{.Repo}}"><input type="hidden" name="t" value="{{.Token}}">
+<p class="muted">Turns auto-approve off for a repo through an exemplar-config PR in your name, merged where branch protection allows. The platform team and the repo's ` +
+	`approvable owners can. Turning it back on is a reviewed config PR.</p>
+<table><tbody>{{range .Repos}}<tr><td>{{.Repo}}</td><td><form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_switch">` +
+	`<input type="hidden" name="target" value="{{.Repo}}"><input type="hidden" name="t" value="{{.Token}}">
 <input name="reason" maxlength="1000" placeholder="why (optional)"> <button type="submit">Turn auto-approve off</button></form></td></tr>{{end}}</tbody></table>
 </details>{{end}}
 <table><thead><tr><th>When</th><th>PR</th><th>Head</th><th>Decision</th><th>Stage 1 reasons</th><th>Stage 2</th></tr></thead><tbody>
-{{range .Decisions}}<tr><td>{{when .At}}</td><td><a href="{{.PR}}">{{.Repo}}#{{.PrNumber}}</a></td><td><code>{{short .HeadSha}}</code></td><td>{{.Decision}}</td><td>{{.Stage1Reasons}}</td><td>{{.Stage2}}</td></tr>
+{{range .Decisions}}<tr><td>{{when .At}}</td><td><a href="{{.PR}}">{{.Repo}}#{{.PrNumber}}</a></td><td><code>{{short .HeadSha}}</code></td><td>{{.Decision}}</td>` +
+	`<td>{{.Stage1Reasons}}</td><td>{{.Stage2}}</td></tr>
 {{else}}<tr><td colspan="6" class="muted">No decisions you can see.</td></tr>{{end}}
 </tbody></table>
 {{end}}{{template "foot"}}{{end}}
@@ -143,7 +153,8 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 {{define "actions"}}{{template "head" .}}
 <p class="muted">Your last 50 owner actions. Each runs in a worker job, which checks you may take it; reload to see the outcome.</p>
 <table><thead><tr><th>Requested</th><th>Action</th><th>Target</th><th>Reason</th><th>Status</th><th>Result</th><th>PR</th></tr></thead><tbody>
-{{range .Body}}<tr><td>{{when .CreatedAt}}</td><td>{{.Action}}</td><td><code>{{.Target}}</code></td><td>{{.Reason}}</td><td>{{.Status}}</td><td>{{if .Result}}{{.Result}}{{end}}</td><td>{{if .PrUrl}}<a href="{{.PrUrl}}">PR</a>{{end}}</td></tr>
+{{range .Body}}<tr><td>{{when .CreatedAt}}</td><td>{{.Action}}</td><td><code>{{.Target}}</code></td><td>{{.Reason}}</td><td>{{.Status}}</td>` +
+	`<td>{{if .Result}}{{.Result}}{{end}}</td><td>{{if .PrUrl}}<a href="{{.PrUrl}}">PR</a>{{end}}</td></tr>
 {{else}}<tr><td colspan="7" class="muted">No actions yet.</td></tr>{{end}}
 </tbody></table>
 {{template "foot"}}{{end}}
@@ -162,7 +173,8 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 {{end}}{{template "foot"}}{{end}}
 
 {{define "playground"}}{{template "head" .}}{{with .Body}}
-<p class="muted">Run a draft rule alone on a PR you can read. It runs every lane step a review would (scoping, the agent, the verifier) and posts nothing on the PR. Start from an existing rule on its page, or paste a rule file.</p>
+<p class="muted">Run a draft rule alone on a PR you can read. It runs every lane step a review would (scoping, the agent, the verifier) and posts nothing on the PR. Start ` +
+	`from an existing rule on its page, or paste a rule file.</p>
 {{if .Error}}<p class="notice">{{.Error}}</p>{{end}}
 <form method="post" action="/ui/playground"><input type="hidden" name="t" value="{{.Token}}">
 <p><label>PR <input name="pr" value="{{.PR}}" placeholder="org/repo#123" size="40" required></label></p>
@@ -170,7 +182,8 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 <p><button type="submit">Run</button></p></form>
 <h2>Your recent runs</h2>
 <table><thead><tr><th>Run</th><th>Rule</th><th>PR</th><th>Status</th><th>Cost</th><th>When</th></tr></thead><tbody>
-{{range .Runs}}<tr><td><a href="/ui/playground/{{.ID}}">{{.ID}}</a></td><td><code>{{.RuleID}}</code></td><td>{{.Repo}}#{{.PrNumber}}</td><td>{{.Status}}</td><td class="n">{{usd .CostUsd}}</td><td>{{when .CreatedAt}}</td></tr>
+{{range .Runs}}<tr><td><a href="/ui/playground/{{.ID}}">{{.ID}}</a></td><td><code>{{.RuleID}}</code></td><td>{{.Repo}}#{{.PrNumber}}</td><td>{{.Status}}</td>` +
+	`<td class="n">{{usd .CostUsd}}</td><td>{{when .CreatedAt}}</td></tr>
 {{else}}<tr><td colspan="6" class="muted">No runs yet.</td></tr>{{end}}
 </tbody></table>
 {{end}}{{template "foot"}}{{end}}
@@ -186,7 +199,8 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 {{else}}<tr><td colspan="3" class="muted">The rule found nothing on this PR.</td></tr>{{end}}
 </tbody></table>{{end}}{{end}}
 <p><a href="/ui/playground?from={{.Run.ID}}">Edit and run again</a></p>
-{{if eq .Run.Status "done"}}<form method="post" action="/ui/actions"><input type="hidden" name="action" value="propose_rule"><input type="hidden" name="target" value="{{.Run.ID}}"><input type="hidden" name="t" value="{{.SaveToken}}">
+{{if eq .Run.Status "done"}}<form method="post" action="/ui/actions"><input type="hidden" name="action" value="propose_rule">` +
+	`<input type="hidden" name="target" value="{{.Run.ID}}"><input type="hidden" name="t" value="{{.SaveToken}}">
 <label>Why (optional) <input name="reason" maxlength="1000"></label> <button type="submit">Save as a draft config PR</button>
 <span class="muted">A new rule becomes a candidate; a change to an existing rule needs its owners.</span></form>{{end}}
 <h2>Rule</h2><pre>{{.Run.RuleYaml}}</pre>

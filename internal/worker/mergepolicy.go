@@ -62,6 +62,7 @@ func reportMergePolicy(ctx context.Context, reader *github.Client, member gates.
 // exemplar/merge-policy is decided again for its head.
 type MergePolicyWorker struct {
 	river.WorkerDefaults[store.MergePolicyArgs]
+
 	cfg Config
 }
 
@@ -152,7 +153,8 @@ func (w *MergePolicyWorker) Handle(ctx context.Context, a store.MergePolicyArgs)
 		return gh.TeamMember(ctx, c, team, login)
 	}
 	pass, err := reportMergePolicy(ctx, reader, member, gh.NewPoster(posterClient), target, mergePolicyInput{
-		repo: a.Repo, author: pr.Author, number: a.PR, touched: touched, owners: owners, gatesPassed: passed})
+		repo: a.Repo, author: pr.Author, number: a.PR, touched: touched, owners: owners, gatesPassed: passed,
+	})
 	return pass, "", err
 }
 

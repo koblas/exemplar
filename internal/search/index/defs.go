@@ -54,7 +54,7 @@ type DefResult struct {
 var nameRE = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*((\.|::|#|/)[A-Za-z_$][A-Za-z0-9_$]*)*$`)
 
 // splitName returns the searched base name and its qualifier segments.
-func splitName(name string) (base string, qual []string, err error) {
+func splitName(name string) (string, []string, error) {
 	if len(name) > mirror.MaxPattern || !nameRE.MatchString(name) {
 		return "", nil, fmt.Errorf("%w: %q is not an identifier or qualified name", mirror.ErrBadRequest, name)
 	}
@@ -84,7 +84,7 @@ func (ix *Index) FindDefinition(ctx context.Context, repo string, q DefQuery) (D
 	var (
 		defs  []Definition
 		res   = DefResult{Definitions: []Definition{}}
-		rules interface{ Reason(string) string }
+		rules interface{ Reason(path string) string }
 	)
 	g := ix.acquire(repo)
 	switch {
@@ -143,8 +143,10 @@ func (ix *Index) symbolDefs(ctx context.Context, g *generation, base, lang strin
 		for _, lm := range f.LineMatches {
 			for _, frag := range lm.LineFragments {
 				if s := frag.SymbolInfo; s != nil && s.Sym == base {
-					defs = append(defs, Definition{Path: f.FileName, Line: lm.LineNumber,
-						Text: strings.TrimRight(string(lm.Line), "\r\n"), Kind: s.Kind, Parent: s.Parent})
+					defs = append(defs, Definition{
+						Path: f.FileName, Line: lm.LineNumber,
+						Text: strings.TrimRight(string(lm.Line), "\r\n"), Kind: s.Kind, Parent: s.Parent,
+					})
 					break
 				}
 			}

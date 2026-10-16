@@ -38,8 +38,8 @@ func request(body, sig, event, delivery string) *http.Request {
 	if sig != "" {
 		r.Header.Set("X-Hub-Signature-256", sig)
 	}
-	r.Header.Set("X-GitHub-Event", event)
-	r.Header.Set("X-GitHub-Delivery", delivery)
+	r.Header.Set("X-Github-Event", event)
+	r.Header.Set("X-Github-Delivery", delivery)
 	return r
 }
 

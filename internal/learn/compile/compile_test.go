@@ -45,7 +45,8 @@ func TestNormalize(t *testing.T) {
 		t.Errorf("normalized = %v", doc)
 	}
 
-	semgrep := "rules:\n  - id: x\n    languages: [go]\n    message: m\n    severity: ERROR\n    mode: taint\n    pattern-sources: [{pattern: os.Getenv(...)}]\n    pattern-sinks: [{pattern: exec.Command(...)}]\n"
+	semgrep := "rules:\n  - id: x\n    languages: [go]\n    message: m\n    severity: ERROR\n    mode: taint\n" +
+		"    pattern-sources: [{pattern: os.Getenv(...)}]\n    pattern-sinks: [{pattern: exec.Command(...)}]\n"
 	if body, err := Normalize(EngineSemgrep, semgrep, "r-c1", "No env in exec", goLang); err != nil || !strings.Contains(body, "r-c1") || !strings.Contains(body, "WARNING") {
 		t.Errorf("semgrep = %q, %v", body, err)
 	}
@@ -191,7 +192,10 @@ func newJob(t *testing.T, s *store.Store, m Model, e Engine) *Job {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j, err := New(Config{Thresholds: Thresholds{MinCases: 3, Precision: 0.7, Recall: 0.6}, Scratch: t.TempDir(), Sandbox: "test-sandbox", Eligible: func(r string) bool { return r != "acme/denied" }}, s, m, e, files, sc)
+	j, err := New(Config{
+		Thresholds: Thresholds{MinCases: 3, Precision: 0.7, Recall: 0.6}, Scratch: t.TempDir(),
+		Sandbox: "test-sandbox", Eligible: func(r string) bool { return r != "acme/denied" },
+	}, s, m, e, files, sc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +268,7 @@ func TestCompileAccepted(t *testing.T) {
 		t.Errorf("rule body = %v", a.rule)
 	}
 	var metrics struct {
-		Outcomes []Outcome
+		Outcomes []Outcome `json:"outcomes"`
 	}
 	_ = json.Unmarshal(a.metrics, &metrics)
 	if len(metrics.Outcomes) != 4 {
@@ -356,7 +360,9 @@ func TestCompileSkipsIneligibleRepos(t *testing.T) {
 	if len(as) != 1 || as[0].cases != 0 || as[0].status != StatusRejected {
 		t.Errorf("attempts = %+v; cases in a denylisted repo must not be read", as)
 	}
-	var metrics struct{ Outcomes []Outcome }
+	var metrics struct {
+		Outcomes []Outcome `json:"outcomes"`
+	}
 	_ = json.Unmarshal(as[0].metrics, &metrics)
 	if len(metrics.Outcomes) != 0 {
 		t.Errorf("outcomes = %+v; denylisted cases were attempted", metrics.Outcomes)

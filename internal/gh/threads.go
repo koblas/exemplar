@@ -193,7 +193,7 @@ func PRComments(ctx context.Context, c *github.Client, repo string, number int) 
 		return nil, fmt.Errorf("gh: repo %q must be owner/name", repo)
 	}
 	var out []ReviewComment
-	opts := &github.PullRequestListCommentsOptions{ListOptions: github.ListOptions{PerPage: 100}}
+	opts := &github.PullRequestListCommentsOptions{PerPage: 100}
 	for range maxReviewCommentPages {
 		cs, resp, err := c.PullRequests.ListComments(ctx, owner, name, number, opts)
 		if err != nil {

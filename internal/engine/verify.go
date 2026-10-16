@@ -100,7 +100,7 @@ func (e *Engine) verifyBatch(ctx context.Context, p *Prepared, batch []*Finding,
 		f.VerifyImportance = &imp
 		f.VerifyModel = res.Model
 		f.VerifySameFamily = res.Family != "" && res.Family == genFamily[f]
-		f.VerifyEvidenceRaw, _ = json.Marshal(v.Evidence)
+		f.VerifyEvidenceRaw, _ = json.Marshal(v.Evidence) //nolint:errchkjson // []evidence holds only strings and ints, so Marshal cannot fail
 		switch v.Verdict {
 		case VerdictConfirmed:
 			f.VerifyVerdict = VerdictConfirmed

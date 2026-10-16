@@ -19,8 +19,10 @@ func TestRouteAlertDismissal(t *testing.T) {
 			"most_recent_instance": {"ref": %q, "location": {"path": "config.go", "start_line": 3}}}}`, action, tool, ref)
 	}
 	r, err := RouteEvent("code_scanning_alert", []byte(payload("closed_by_user", "Exemplar", "refs/pull/7/head")))
-	want := store.AlertDismissalArgs{InstallationID: 42, Repo: "acme/app", PR: 7, Alert: 3, RuleID: "possible-secret-in-diff", Path: "config.go",
-		StartLine: 3, Reason: "false positive", Comment: "test fixture", Actor: "sec"}
+	want := store.AlertDismissalArgs{
+		InstallationID: 42, Repo: "acme/app", PR: 7, Alert: 3, RuleID: "possible-secret-in-diff", Path: "config.go",
+		StartLine: 3, Reason: "false positive", Comment: "test fixture", Actor: "sec",
+	}
 	if err != nil || len(r.AlertDismissals) != 1 || r.AlertDismissals[0] != want {
 		t.Fatalf("route = %+v, %v", r, err)
 	}
@@ -61,8 +63,10 @@ func TestSARIFAndDismissal(t *testing.T) {
 		t.Fatal(err)
 	}
 	dismiss := func(actor, reason string, line int) (CommandOutcome, error) {
-		return dw.Handle(t.Context(), store.AlertDismissalArgs{InstallationID: inst, Repo: repo, PR: prNum, Alert: 3,
-			RuleID: "possible-secret-in-diff", Path: "config.go", StartLine: line, Reason: reason, Comment: "a fixture", Actor: actor})
+		return dw.Handle(t.Context(), store.AlertDismissalArgs{
+			InstallationID: inst, Repo: repo, PR: prNum, Alert: 3,
+			RuleID: "possible-secret-in-diff", Path: "config.go", StartLine: line, Reason: reason, Comment: "a fixture", Actor: actor,
+		})
 	}
 	if o, err := dismiss("alice", "false positive", 3); err != nil || o.Recorded != "fb_wrong" || o.Role != "author" {
 		t.Errorf("author = %+v, %v", o, err)

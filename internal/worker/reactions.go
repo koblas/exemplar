@@ -42,6 +42,7 @@ func (ReactionsArgs) InsertOpts() river.InsertOpts {
 // ReactionsWorker polls reactions.
 type ReactionsWorker struct {
 	river.WorkerDefaults[ReactionsArgs]
+
 	cfg Config
 }
 
@@ -66,7 +67,7 @@ func (w *ReactionsWorker) Work(ctx context.Context, _ *river.Job[ReactionsArgs])
 
 // Run polls every PR reviewed in the last 24 hours. One PR's failure does
 // not stop the rest.
-func (w *ReactionsWorker) Run(ctx context.Context) (prs, events int, err error) {
+func (w *ReactionsWorker) Run(ctx context.Context) (int, int, error) {
 	snap, err := w.cfg.Snapshot(ctx)
 	if err != nil {
 		return 0, 0, err
@@ -75,6 +76,7 @@ func (w *ReactionsWorker) Run(ctx context.Context) (prs, events int, err error) 
 	if err != nil {
 		return 0, 0, err
 	}
+	var prs, events int
 	var errs []error
 	for _, r := range rows {
 		n, err := pollReactions(ctx, w.cfg, snap, r.InstallationID, r.Repo, int(r.PrNumber))

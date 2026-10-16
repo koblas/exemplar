@@ -120,8 +120,11 @@ func TestReviewCommand(t *testing.T) {
 				return
 			}
 			_ = json.NewEncoder(w).Encode(evaluate.Status{ID: "e1", Status: evaluate.StatusDone, CostUSD: 0.12, Result: &evaluate.Result{
-				Rules: 4, Coverage: 1, Findings: []evaluate.Finding{{RuleID: "propagate-context", Severity: "important", Path: "a.go", StartLine: 3, EndLine: 3,
-					Message: "Pass ctx.", Suggestion: "func A(ctx context.Context) {}"}}}})
+				Rules: 4, Coverage: 1, Findings: []evaluate.Finding{{
+					RuleID: "propagate-context", Severity: "important", Path: "a.go", StartLine: 3, EndLine: 3,
+					Message: "Pass ctx.", Suggestion: "func A(ctx context.Context) {}",
+				}},
+			}})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -194,7 +197,13 @@ func TestReviewCommand(t *testing.T) {
 
 func TestLoginOIDC(t *testing.T) {
 	jwt := func(exp time.Time) string {
-		enc := func(v any) string { b, _ := json.Marshal(v); return base64.RawURLEncoding.EncodeToString(b) }
+		enc := func(v any) string {
+			b, err := json.Marshal(v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return base64.RawURLEncoding.EncodeToString(b)
+		}
 		return enc(map[string]string{"alg": "RS256"}) + "." + enc(map[string]any{"sub": "u1", "exp": exp.Unix()}) + ".sig"
 	}
 	polls, refreshed := 0, 0
@@ -203,8 +212,10 @@ func TestLoginOIDC(t *testing.T) {
 		_ = r.ParseForm()
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
-			_ = json.NewEncoder(w).Encode(map[string]string{"issuer": idp.URL, "authorization_endpoint": idp.URL + "/a", "token_endpoint": idp.URL + "/token",
-				"jwks_uri": idp.URL + "/jwks", "device_authorization_endpoint": idp.URL + "/device"})
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"issuer": idp.URL, "authorization_endpoint": idp.URL + "/a", "token_endpoint": idp.URL + "/token",
+				"jwks_uri": idp.URL + "/jwks", "device_authorization_endpoint": idp.URL + "/device",
+			})
 		case "/device":
 			if r.Form.Get("client_id") != "cli" || !strings.Contains(r.Form.Get("scope"), "offline_access") {
 				t.Errorf("device form = %v", r.Form)
@@ -243,11 +254,11 @@ func TestLoginOIDC(t *testing.T) {
 		t.Fatalf("login = %q %q %v (polls %d)", out, errOut, err, polls)
 	}
 	// The stored ID token has expired: loading refreshes and saves it.
-	c, err := loadCredentials()
+	c, err := loadCredentials(t.Context())
 	if err != nil || c.Provider != "oidc" || refreshed != 1 || c.Refresh != "r2" || expiresSoon(c.Token) {
 		t.Fatalf("credentials = %+v, %v (refreshed %d)", c, err, refreshed)
 	}
-	if c, err := loadCredentials(); err != nil || refreshed != 1 || c.Refresh != "r2" {
+	if c, err := loadCredentials(t.Context()); err != nil || refreshed != 1 || c.Refresh != "r2" {
 		t.Errorf("a fresh token was refreshed again: %+v %v", c, err)
 	}
 	if _, _, err := runCLI(t, "login", "--oidc", "--api", "https://exemplar.example", "--oidc-issuer", ""); err == nil {

@@ -1,28 +1,347 @@
 version: "2"
 
 linters:
-  default: standard
-  enable:
-    - bodyclose
-    - errorlint
-    - gocritic
-    - misspell
-    - noctx
-    - revive
-    - unconvert
+  default: all
+  disable:
+    - cyclop
+    - depguard
+    - dupl
+    - exhaustruct
+    # 2.13 renamed this linter, same as wsl -> wsl_v5 below. `default: all`
+    # auto-enables the new name, so both have to be listed.
+    - exhaustruct_v5
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst # over-aggressive
+    - gocyclo # gocognit covers complexity
+    - godoclint
+    - godox
+    - gomodguard # deprecated
+    - ireturn
+    - mnd
+    - nestif
+    - nlreturn
+    - noinlineerr # inline error handling is the house style
+    - paralleltest
+    - protogetter
+    - tagliatelle
+    # White-box tests are the convention here: tests construct unexported
+    # types and call unexported helpers in nearly every package.
+    - testpackage
+    - varnamelen
+    - wsl
+    - wsl_v5
   settings:
-    errcheck:
-      # Writes to CLI output and hashes are not actionable failures.
-      exclude-functions:
-        - fmt.Fprint
-        - fmt.Fprintf
-        - fmt.Fprintln
+    # Length and nesting are the linter's job, not a reviewer's: a function past these
+    # limits is split before it is reviewed. Tests are excluded below (a table test is long).
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+    gocognit:
+      min-complexity: 30
+    gocritic:
+      disabled-checks:
+        - commentFormatting
+    gosec:
+      excludes:
+        # The search and engine planes shell out to git, zoekt and ctags by
+        # design; arguments are built from validated config, not user input.
+        - G204
+        # int -> int32 for Postgres columns and counters bounded far below
+        # the limit; flagging every conversion buries real findings.
+        - G115
+    lll:
+      line-length: 200
+    nolintlint:
+      # A suppression says why, so a reviewer can tell a judgement from a
+      # silenced finding.
+      require-explanation: true
+      require-specific: true
+    funcorder:
+      struct-method: false
+    wrapcheck:
+      extra-ignore-sigs:
+        # Returns the error from the caller-supplied fn verbatim; that fn wraps.
+        - singleflight.Group).Do(
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - funlen
+          - gocognit
+          - wrapcheck
+          - err113
+          - gosec
+        path: _test\.go
+      # The CLIs write their output to stdout; printing is their job.
+      - linters:
+          - forbidigo
+        path: ^cmd/
+      - linters:
+          - lll
+        source: "^//go:generate "
+      # Frozen when wrapcheck and err113 were enabled (2026-10-16): these files
+      # return unwrapped or ad-hoc errors. A ratchet: fix a file and delete its
+      # line; never add one. New files must comply.
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-api/main\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-gateway/main\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/compile\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/demote\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/digest\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/evals\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/expiry\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/export\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/ingest\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/main\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/pathevents\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/propose\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-learn/teach\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-search/main\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-search/serve\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-webhook/main\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar-worker/main\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/adversarial\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/calibrate\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/engine\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/eval\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/exportapproval\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/mutations\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/prechecks\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/replay\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/review\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/sandbox\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/try\.go$' }
+      - { linters: [wrapcheck, err113], path: '^cmd/exemplar/validate\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/adversarial/adversarial\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/api/evaluate\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/api/links\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/api/signin\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/auth0/auth0\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/calibrate/categorizer\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/calibrate/verifier\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/compiled/compiled\.go$' }
+      - { linters: [err113], path: '^internal/config/effective\.go$' }
+      - { linters: [err113], path: '^internal/config/exportlint\.go$' }
+      - { linters: [err113], path: '^internal/config/gitfs\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/config/snapshot\.go$' }
+      - { linters: [err113], path: '^internal/engine/agents\.go$' }
+      - { linters: [err113], path: '^internal/engine/buglane\.go$' }
+      - { linters: [err113], path: '^internal/engine/categorize\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/engine/harness\.go$' }
+      - { linters: [wrapcheck], path: '^internal/engine/prepare\.go$' }
+      - { linters: [wrapcheck], path: '^internal/engine/review\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/engine/scripted\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/engine/tools\.go$' }
+      - { linters: [err113], path: '^internal/engine/verifyonly\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/engine/workspace\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/evalrun/evalrun\.go$' }
+      - { linters: [err113], path: '^internal/evaluate/evaluate\.go$' }
+      - { linters: [wrapcheck], path: '^internal/exports/run\.go$' }
+      - { linters: [err113], path: '^internal/feedbacklink/feedbacklink\.go$' }
+      - { linters: [err113], path: '^internal/gates/mergesafety\.go$' }
+      - { linters: [err113], path: '^internal/gh/access\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/gh/app\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/gh/approval_probe\.go$' }
+      - { linters: [err113], path: '^internal/gh/branchrules\.go$' }
+      - { linters: [err113], path: '^internal/gh/checks\.go$' }
+      - { linters: [err113], path: '^internal/gh/commits\.go$' }
+      - { linters: [err113], path: '^internal/gh/configrepo\.go$' }
+      - { linters: [err113], path: '^internal/gh/deliveries\.go$' }
+      - { linters: [err113], path: '^internal/gh/graphql\.go$' }
+      - { linters: [err113], path: '^internal/gh/participation\.go$' }
+      - { linters: [err113], path: '^internal/gh/poster\.go$' }
+      - { linters: [err113], path: '^internal/gh/reactions\.go$' }
+      - { linters: [err113], path: '^internal/gh/repowriter\.go$' }
+      - { linters: [err113], path: '^internal/gh/reviews\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/gh/sarif\.go$' }
+      - { linters: [err113], path: '^internal/gh/threads\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/ghuser/ghuser\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/compile/cases\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/compile/job\.go$' }
+      - { linters: [err113], path: '^internal/learn/compile/model\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/demote/demote\.go$' }
+      - { linters: [wrapcheck], path: '^internal/learn/digest/digest\.go$' }
+      - { linters: [wrapcheck], path: '^internal/learn/evalgen/generate\.go$' }
+      - { linters: [wrapcheck], path: '^internal/learn/evalgen/inject\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/evalgen/model\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/expiry/expiry\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/extract/driver\.go$' }
+      - { linters: [err113], path: '^internal/learn/extract/prompt\.go$' }
+      - { linters: [err113], path: '^internal/learn/ingest/identity\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/ingest/ingest\.go$' }
+      - { linters: [err113], path: '^internal/learn/pathevents/incidents\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/pathevents/reverts\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/pathevents/seeds\.go$' }
+      - { linters: [err113], path: '^internal/learn/propose/draft\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/propose/propose\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/learn/teach/teach\.go$' }
+      - { linters: [wrapcheck], path: '^internal/llm/batch\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/llm/bedrock\.go$' }
+      - { linters: [err113], path: '^internal/llm/claude\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/llm/gateway\.go$' }
+      - { linters: [err113], path: '^internal/llm/providers\.go$' }
+      - { linters: [err113], path: '^internal/llm/routes\.go$' }
+      - { linters: [err113], path: '^internal/mergesafety/collect\.go$' }
+      - { linters: [err113], path: '^internal/mutate/c\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/oidc/oidc\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/owneract/owneract\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/pathhistory/history\.go$' }
+      - { linters: [wrapcheck], path: '^internal/pipeline/persist\.go$' }
+      - { linters: [wrapcheck], path: '^internal/pipeline/sarif\.go$' }
+      - { linters: [wrapcheck], path: '^internal/playground/configpr\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/playground/draft\.go$' }
+      - { linters: [wrapcheck], path: '^internal/playground/try\.go$' }
+      - { linters: [wrapcheck], path: '^internal/precheck/precheck\.go$' }
+      - { linters: [wrapcheck], path: '^internal/redact/redact\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/replay/replay\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/replay/worker\.go$' }
+      - { linters: [err113], path: '^internal/schema/validate\.go$' }
+      - { linters: [err113], path: '^internal/scope/diff\.go$' }
+      - { linters: [err113], path: '^internal/scope/patterns\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/search/api/client\.go$' }
+      - { linters: [err113], path: '^internal/search/api/server\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/search/bench/bench\.go$' }
+      - { linters: [wrapcheck], path: '^internal/search/index/defs\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/search/index/index\.go$' }
+      - { linters: [wrapcheck], path: '^internal/search/index/refs\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/search/mirror/mirror\.go$' }
+      - { linters: [wrapcheck], path: '^internal/store/batches\.go$' }
+      - { linters: [wrapcheck], path: '^internal/store/jobs\.go$' }
+      - { linters: [wrapcheck], path: '^internal/store/recorder\.go$' }
+      - { linters: [wrapcheck], path: '^internal/store/store\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/svcauth/svcauth\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/syntax/syntax\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/synth/synth\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/telemetry/telemetry\.go$' }
+      - { linters: [wrapcheck], path: '^internal/web/playground\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/web/web\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/webhook/webhook\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/alerts\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/commands\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/evaluate\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/events\.go$' }
+      - { linters: [wrapcheck], path: '^internal/worker/github\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/latelinters\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/links\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/maintain\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/mergepolicy\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/owneractions\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/playground\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/reactions\.go$' }
+      - { linters: [err113], path: '^internal/worker/retention\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/signals\.go$' }
+      - { linters: [err113], path: '^internal/worker/stats\.go$' }
+      - { linters: [wrapcheck, err113], path: '^internal/worker/worker\.go$' }
+      # Over budget when the limits were set (2026-10-16). A ratchet: split one
+      # and delete its line; never add one.
+      - { linters: [funlen], path: '^cmd/exemplar/adversarial\.go$', text: 'Function ''newAdversarialCmd'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar/calibrate\.go$', text: 'Function ''newCalibrateCmd'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar/eval\.go$', text: 'Function ''newEvalCmd'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar/eval\.go$', text: 'Function ''remoteEval'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar/mutations\.go$', text: 'Function ''runMutations'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar/replay\.go$', text: 'Function ''newReplayCmd'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar/review\.go$', text: 'Function ''newReviewCmd'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar/try\.go$', text: 'Function ''newTryCmd'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar-api/main\.go$', text: 'Function ''run'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar-learn/compile\.go$', text: 'Function ''runCompile'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar-learn/ingest\.go$', text: 'Function ''runIngest'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar-learn/pathevents\.go$', text: 'Function ''runPathEvents'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar-search/serve\.go$', text: 'Function ''runServe'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar-webhook/main\.go$', text: 'Function ''run'' ' }
+      - { linters: [funlen], path: '^cmd/exemplar-worker/main\.go$', text: 'Function ''runServe'' ' }
+      - { linters: [funlen], path: '^internal/config/snapshot\.go$', text: 'Function ''LoadSnapshot'' ' }
+      - { linters: [funlen], path: '^internal/config/snapshot\.go$', text: 'Function ''crossCheck'' ' }
+      - { linters: [funlen], path: '^internal/engine/harness\.go$', text: 'Function ''Run'' ' }
+      - { linters: [funlen], path: '^internal/engine/prepare\.go$', text: 'Function ''Prepare'' ' }
+      - { linters: [funlen], path: '^internal/engine/review\.go$', text: 'Function ''Review'' ' }
+      - { linters: [funlen], path: '^internal/engine/review\.go$', text: 'Function ''assemble'' ' }
+      - { linters: [funlen], path: '^internal/engine/scripted\.go$', text: 'Function ''RoundTrip'' ' }
+      - { linters: [funlen], path: '^internal/exports/run\.go$', text: 'Function ''repo'' ' }
+      - { linters: [funlen], path: '^internal/learn/compile/job\.go$', text: 'Function ''compileOne'' ' }
+      - { linters: [funlen], path: '^internal/learn/digest/digest\.go$', text: 'Function ''Run'' ' }
+      - { linters: [funlen], path: '^internal/learn/digest/digest\.go$', text: 'Function ''body'' ' }
+      - { linters: [funlen], path: '^internal/learn/evalgen/generate\.go$', text: 'Function ''one'' ' }
+      - { linters: [funlen], path: '^internal/learn/expiry/expiry\.go$', text: 'Function ''handle'' ' }
+      - { linters: [funlen], path: '^internal/learn/extract/driver\.go$', text: 'Function ''collectBatch'' ' }
+      - { linters: [funlen], path: '^internal/learn/pathevents/reverts\.go$', text: 'Function ''Reverts'' ' }
+      - { linters: [funlen], path: '^internal/learn/pathevents/seeds\.go$', text: 'Function ''seed'' ' }
+      - { linters: [funlen], path: '^internal/learn/propose/draft\.go$', text: 'Function ''body'' ' }
+      - { linters: [funlen], path: '^internal/learn/propose/propose\.go$', text: 'Function ''Run'' ' }
+      - { linters: [funlen], path: '^internal/llm/batch\.go$', text: 'Function ''createBatch'' ' }
+      - { linters: [funlen], path: '^internal/llm/gateway\.go$', text: 'Function ''ServeHTTP'' ' }
+      - { linters: [funlen], path: '^internal/mutate/c\.go$', text: 'Function ''C'' ' }
+      - { linters: [funlen], path: '^internal/mutate/mutate\.go$', text: 'Function ''Go'' ' }
+      - { linters: [funlen], path: '^internal/owneract/owneract\.go$', text: 'Function ''propose'' ' }
+      - { linters: [funlen], path: '^internal/pipeline/persist\.go$', text: 'Function ''Finish'' ' }
+      - { linters: [funlen], path: '^internal/precheck/precheck\.go$', text: 'Function ''Volume'' ' }
+      - { linters: [funlen], path: '^internal/replay/replay\.go$', text: 'Function ''Run'' ' }
+      - { linters: [funlen], path: '^internal/search/bench/bench\.go$', text: 'Function ''queryLatency'' ' }
+      - { linters: [funlen], path: '^internal/search/index/index\.go$', text: 'Function ''Build'' ' }
+      - { linters: [funlen], path: '^internal/worker/commands\.go$', text: 'Function ''Handle'' ' }
+      - { linters: [funlen], path: '^internal/worker/events\.go$', text: 'Function ''RouteEvent'' ' }
+      - { linters: [funlen], path: '^internal/worker/events\.go$', text: 'Function ''Work'' ' }
+      - { linters: [funlen], path: '^internal/worker/latelinters\.go$', text: 'Function ''Check'' ' }
+      - { linters: [funlen], path: '^internal/worker/worker\.go$', text: 'Function ''Review'' ' }
+      - { linters: [gocognit], path: '^cmd/exemplar-api/main\.go$', text: 'func `run` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar-learn/ingest\.go$', text: 'func `runIngest` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar-learn/pathevents\.go$', text: 'func `runPathEvents` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar-worker/main\.go$', text: 'func `runServe` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar/adversarial\.go$', text: 'func `newAdversarialCmd` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar/calibrate\.go$', text: 'func `newCalibrateCmd` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar/eval\.go$', text: 'func `newEvalCmd` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar/mutations\.go$', text: 'func `runMutations` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar/replay\.go$', text: 'func `newReplayCmd` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar/review\.go$', text: 'func `newLoginCmd` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar/review\.go$', text: 'func `newReviewCmd` ' }
+      - { linters: [gocognit], path: '^cmd/exemplar/try\.go$', text: 'func `newTryCmd` ' }
+      - { linters: [gocognit], path: '^internal/config/snapshot\.go$', text: 'func `\(\*Snapshot\)\.crossCheck` ' }
+      - { linters: [gocognit], path: '^internal/engine/harness\.go$', text: 'func `\(\*Harness\)\.Run` ' }
+      - { linters: [gocognit], path: '^internal/engine/review\.go$', text: 'func `\(\*Engine\)\.Review` ' }
+      - { linters: [gocognit], path: '^internal/engine/review\.go$', text: 'func `\(\*Engine\)\.assemble` ' }
+      - { linters: [gocognit], path: '^internal/engine/scripted\.go$', text: 'func `\(\*ScriptedTransport\)\.RoundTrip` ' }
+      - { linters: [gocognit], path: '^internal/exports/run\.go$', text: 'func `\(Runner\)\.repo` ' }
+      - { linters: [gocognit], path: '^internal/gh/branchrules\.go$', text: 'func `BranchRules` ' }
+      - { linters: [gocognit], path: '^internal/gh/participation\.go$', text: 'func `Participated` ' }
+      - { linters: [gocognit], path: '^internal/learn/digest/digest\.go$', text: 'func `\(Runner\)\.body` ' }
+      - { linters: [gocognit], path: '^internal/learn/evalgen/generate\.go$', text: 'func `\(\*Generator\)\.one` ' }
+      - { linters: [gocognit], path: '^internal/learn/extract/driver\.go$', text: 'func `\(\*Driver\)\.collectBatch` ' }
+      - { linters: [gocognit], path: '^internal/learn/pathevents/reverts\.go$', text: 'func `\(\*Job\)\.Reverts` ' }
+      - { linters: [gocognit], path: '^internal/learn/pathevents/seeds\.go$', text: 'func `\(\*Job\)\.seed` ' }
+      - { linters: [gocognit], path: '^internal/learn/propose/draft\.go$', text: 'func `body` ' }
+      - { linters: [gocognit], path: '^internal/mutate/c\.go$', text: 'func `C` ' }
+      - { linters: [gocognit], path: '^internal/mutate/mutate\.go$', text: 'func `Go` ' }
+      - { linters: [gocognit], path: '^internal/playground/reply\.go$', text: 'func `Format` ' }
+      - { linters: [gocognit], path: '^internal/precheck/precheck\.go$', text: 'func `Volume` ' }
+      - { linters: [gocognit], path: '^internal/search/index/refs\.go$', text: 'func `\(\*Index\)\.dependents` ' }
+      - { linters: [gocognit], path: '^internal/worker/events\.go$', text: 'func `RouteEvent` ' }
+      - { linters: [gocognit], path: '^internal/worker/events\.go$', text: 'func `\(\*EventWorker\)\.Work` ' }
+      - { linters: [gocognit], path: '^internal/worker/worker\.go$', text: 'func `\(\*Worker\)\.Review` ' }
+      - { linters: [maintidx], path: '^cmd/exemplar-api/main\.go$', text: 'Function name: run,' }
+      - { linters: [maintidx], path: '^cmd/exemplar-worker/main\.go$', text: 'Function name: runServe,' }
+      - { linters: [maintidx], path: '^internal/config/snapshot\.go$', text: 'Function name: crossCheck,' }
+      - { linters: [maintidx], path: '^internal/engine/review\.go$', text: 'Function name: Review,' }
+      - { linters: [maintidx], path: '^internal/mutate/c\.go$', text: 'Function name: C,' }
+      - { linters: [maintidx], path: '^internal/web/web_test\.go$', text: 'Function name: TestUI,' }
+      - { linters: [maintidx], path: '^internal/worker/events\.go$', text: 'Function name: RouteEvent,' }
+      - { linters: [maintidx], path: '^internal/worker/worker\.go$', text: 'Function name: Review,' }
+      - { linters: [maintidx], path: '^internal/worker/worker_test\.go$', text: 'Function name: serve,' }
 
 formatters:
   enable:
+    - gci
     - gofmt
-    - goimports
+    - gofumpt
   settings:
-    goimports:
-      local-prefixes:
-        - github.com/koblas/exemplar
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule
+  exclusions:
+    generated: lax

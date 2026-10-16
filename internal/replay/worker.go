@@ -17,6 +17,7 @@ import (
 // worker runs replay jobs from the River queue.
 type worker struct {
 	river.WorkerDefaults[store.ReviewArgs]
+
 	runner   *Runner
 	fixtures map[string]schema.Fixture
 

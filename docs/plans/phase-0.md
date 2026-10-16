@@ -2179,3 +2179,31 @@ Spec §13 IN-1 and IN-2. The user asked for inbound to support a Cloudflare Tunn
   - OrbStack's `kubectl kustomize` renders `base` (53 resources), `direct` (50) and both (57).
   - kubeconform v0.7.0 `-strict` for 1.33 found all valid.
   - Not checked: an actual tunnel or cluster.
+
+### Lint: the strict golangci-lint setup (2026-10-16)
+
+The user asked for the lint configuration to match their usual setup (`default: all` with a short disable list, as in their other Go repos). The old config was `default: standard` plus seven linters and reported nothing; the strict one reported 2,124 findings here.
+- **Config (`.golangci.yml`):**
+  - `default: all`, with the usual disables, plus `testpackage` (white-box tests are the convention here).
+  - Settings: funlen 80 lines / 50 statements, gocognit 30, lll 200, and nolintlint requiring a specific linter and a reason on every suppression.
+  - The four exclusion presets replace the old `errcheck.exclude-functions`.
+  - gosec G204 (subprocesses: git, zoekt, ctags by design) and G115 (int conversions) are excluded with reasons, and gosec is excluded in tests.
+  - forbidigo is excluded under `cmd/`, where printing is the job.
+  - Formatters: gci (`standard, default, localmodule`, which replaces goimports' local prefix), gofmt and gofumpt.
+- **Auto-fixed:** gofumpt (88 files), modernize, usestdlibvars, canonicalheader, perfsprint and intrange.
+- **Fixed by hand (363 findings):** about 284 were fixed and 78 suppressed, each with `//nolint:<linter> // why`. Notable:
+  - `loadCredentials` in `cmd/exemplar` and `adversarial.compromisedScript` now take the caller's ctx instead of `context.Background()`.
+  - JSON marshal errors that were dropped now return or log. In `pipeline/feedback.go`, an event whose evidence fails to marshal is skipped and joined into the error, where before it was inserted with nil evidence.
+  - Structs that are encoded have json tags equal to the field names, so the wire format is unchanged.
+  - Scratch and temp files are written 0o600.
+  - The HTTP-facing gosec findings were checked: the cookie attributes, both open-redirect paths (`validReturn`, and a fixed path with a parsed id) and `safeIcon`. None was a bug, and each is suppressed with the check named.
+  - `oidc.ErrDenied` is renamed `DeniedError` (errname).
+- **Ratchet (tier 3):**
+  - wrapcheck and err113 (about 1,070 findings) are frozen per file: 149 files.
+  - funlen, gocognit and maintidx are frozen per function: 48, 34 and 9 functions.
+  - Each is one line in the exclusions. Fixing one means deleting its line; nothing is added. New files and functions must comply.
+  - wrapcheck, err113, funlen, gocognit and gosec stay off in `_test.go`.
+- **Checked:**
+  - `golangci-lint run` reports 0 issues, also with `--uniq-by-line=false`, and `golangci-lint fmt --diff` is clean.
+  - `go build` and `go vet` pass.
+  - `go test -race ./...` passes, and the Postgres tests ran in containers. `TestRealSemgrep` passes only with `/usr/bin` on PATH: semgrep needs macOS `security` for CA certs. It fails the same way on `main`.

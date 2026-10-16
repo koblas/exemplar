@@ -15,9 +15,9 @@ import (
 	"github.com/koblas/exemplar/internal/store/storetest"
 )
 
-func newReview(t *testing.T, q *queries.Queries, caller string) queries.Review {
+func newReview(ctx context.Context, t *testing.T, q *queries.Queries, caller string) queries.Review {
 	t.Helper()
-	r, err := q.CreateReview(t.Context(), queries.CreateReviewParams{
+	r, err := q.CreateReview(ctx, queries.CreateReviewParams{
 		Repo: "acme/app", PrNumber: 7, HeadSha: "head1", BaseSha: "base1",
 		ConfigVersion: "cfg1", Caller: caller, Attempt: 1,
 	})
@@ -31,12 +31,12 @@ func TestReviewAndRunIdempotency(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
 
-	r1 := newReview(t, s.Queries, "production")
-	r2 := newReview(t, s.Queries, "production")
+	r1 := newReview(t.Context(), t, s.Queries, "production")
+	r2 := newReview(t.Context(), t, s.Queries, "production")
 	if r1.ID != r2.ID {
 		t.Fatalf("CreateReview not idempotent: %d vs %d", r1.ID, r2.ID)
 	}
-	if other := newReview(t, s.Queries, "playground"); other.ID == r1.ID {
+	if other := newReview(t.Context(), t, s.Queries, "playground"); other.ID == r1.ID {
 		t.Fatal("playground review collided with production review")
 	}
 
@@ -75,8 +75,8 @@ func TestFindingIdentity(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
 
-	prod := newReview(t, s.Queries, "production")
-	play := newReview(t, s.Queries, "playground")
+	prod := newReview(t.Context(), t, s.Queries, "production")
+	play := newReview(t.Context(), t, s.Queries, "playground")
 	prodRun, _ := s.UpsertRuleRun(ctx, queries.UpsertRuleRunParams{ReviewID: prod.ID, RuleID: "r", RuleVersion: "v", Lane: "exemplar", ScopedFiles: []string{}})
 	playRun, _ := s.UpsertRuleRun(ctx, queries.UpsertRuleRunParams{ReviewID: play.ID, RuleID: "r", RuleVersion: "v", Lane: "exemplar", ScopedFiles: []string{}})
 
@@ -106,7 +106,7 @@ func TestTransactionalUniqueEnqueue(t *testing.T) {
 	// A failed transaction leaves neither the review nor the job behind.
 	errRollback := errors.New("rollback")
 	err = s.InTx(ctx, func(tx pgx.Tx, q *queries.Queries) error {
-		r := newReview(t, q, "eval")
+		r := newReview(ctx, t, q, "eval")
 		if _, err := client.InsertTx(ctx, tx, store.ReviewArgs{ReviewID: r.ID}, nil); err != nil {
 			return err
 		}
@@ -141,7 +141,7 @@ func countJobs(ctx context.Context, t *testing.T, s *store.Store) int {
 func TestModelCallSpend(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	r := newReview(t, s.Queries, "eval")
+	r := newReview(t.Context(), t, s.Queries, "eval")
 	for _, c := range []float64{0.25, 0.5} {
 		cost := c
 		if err := s.InsertModelCall(ctx, queries.InsertModelCallParams{

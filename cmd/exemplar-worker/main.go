@@ -177,7 +177,7 @@ func runServe(args []string) error {
 	// Feedback links (spec §6.12) need exemplar-api's URL and the key it
 	// verifies with; without them comments name the slash commands only.
 	if apiURL, keyFile := os.Getenv("EXEMPLAR_API_URL"), os.Getenv("EXEMPLAR_LINK_KEY_FILE"); apiURL != "" || keyFile != "" {
-		key, err := os.ReadFile(keyFile)
+		key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 		if err != nil {
 			return fmt.Errorf("EXEMPLAR_API_URL and EXEMPLAR_LINK_KEY_FILE go together: %w", err)
 		}
@@ -226,7 +226,8 @@ func runServe(args []string) error {
 	// scoped to the config repo.
 	cfgRepo := os.Getenv("EXEMPLAR_CONFIG_REPO")
 	cfgInstallation := func(ctx context.Context) (int64, error) { return app.RepoInstallation(ctx, cfgRepo) }
-	ownerActions, err := worker.NewOwnerActionWorker(owneract.Runner{Store: st, PlatformTeam: *platformTeam,
+	ownerActions, err := worker.NewOwnerActionWorker(owneract.Runner{
+		Store: st, PlatformTeam: *platformTeam,
 		Repo: func(ctx context.Context) (owneract.Repo, error) {
 			inst, err := cfgInstallation(ctx)
 			if err != nil {
@@ -333,8 +334,10 @@ func runServe(args []string) error {
 		}
 		w.WriteHeader(http.StatusOK)
 	})
-	hs := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
-		WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	hs := &http.Server{
+		Addr: *addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
+		WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second,
+	}
 
 	// Jobs run on their own context so a signal lets them finish (Stop)
 	// before they are cancelled (StopAndCancel).
@@ -343,8 +346,7 @@ func runServe(args []string) error {
 	}
 	workCtx, cancelWork := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() { defer wg.Done(); reloadConfig(workCtx, *configDir, *reload, &snap, log) }()
+	wg.Go(func() { ; reloadConfig(workCtx, *configDir, *reload, &snap, log) })
 	errc := make(chan error, 1)
 	go func() {
 		log.Info("exemplar-worker serving", "addr", *addr, "concurrency", *concurrency)
@@ -448,7 +450,7 @@ func appFromEnv() (*gh.App, error) {
 	if appID == 0 || keyFile == "" || cfgRepo == "" {
 		return nil, errors.New("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are required")
 	}
-	key, err := os.ReadFile(keyFile)
+	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return nil, fmt.Errorf("read private key: %w", err)
 	}

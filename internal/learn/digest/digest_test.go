@@ -3,6 +3,7 @@ package digest
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,13 +21,12 @@ type fakeRepo struct {
 }
 
 func (f *fakeRepo) FindIssue(_ context.Context, _, title string) (gh.ConfigItem, bool, error) {
-	for _, t := range f.titles {
-		if t == title {
-			return gh.ConfigItem{URL: "u"}, true, nil
-		}
+	if slices.Contains(f.titles, title) {
+		return gh.ConfigItem{URL: "u"}, true, nil
 	}
 	return gh.ConfigItem{}, false, nil
 }
+
 func (f *fakeRepo) CreateIssue(_ context.Context, title, body string, _ []string) (gh.ConfigItem, error) {
 	f.titles, f.bodies = append(f.titles, title), append(f.bodies, body)
 	return gh.ConfigItem{URL: "https://github.com/acme/exemplar-config/issues/9"}, nil
@@ -74,7 +74,7 @@ func TestDigest(t *testing.T) {
 	}
 
 	rule := func(id, owner, reviewBy string) config.Rule {
-		return config.Rule{Rule: schema.Rule{ID: id, Status: schema.StatusActive, Owner: owner, ReviewBy: reviewBy}, Scope: "global", VersionSHA: "v"}
+		return config.Rule{ID: id, Status: schema.StatusActive, Owner: owner, ReviewBy: reviewBy, Scope: "global", VersionSHA: "v"}
 	}
 	snap := &config.Snapshot{Rules: []config.Rule{
 		rule("fetch-in-loop", "@platform/backend", "2027-01-01"), rule("prefer-arena", "@platform/backend", "2026-09-01"),
@@ -205,7 +205,7 @@ func TestUpstreamRewrite(t *testing.T) {
 	}
 
 	exported := func(id string) config.Rule {
-		return config.Rule{Rule: schema.Rule{ID: id, Status: schema.StatusActive, Owner: "@platform/backend", Export: &schema.Export{Agents: true, Summary: "s"}}, Scope: "global", VersionSHA: "v"}
+		return config.Rule{ID: id, Status: schema.StatusActive, Owner: "@platform/backend", Export: &schema.Export{Agents: true, Summary: "s"}, Scope: "global", VersionSHA: "v"}
 	}
 	snap := &config.Snapshot{Rules: []config.Rule{exported("no-raw-sql"), exported("prefer-arena")}}
 	repo := &fakeRepo{}

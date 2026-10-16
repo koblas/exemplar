@@ -55,12 +55,12 @@ func TestHookDeliveriesAndRedeliver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var guids []string
+	guids := make([]string, 0, len(ds))
 	for _, d := range ds {
 		guids = append(guids, d.GUID)
 	}
 	// Two pages, stopping at the first delivery older than the cutoff.
-	if !slices.Equal(guids, []string{"g2", "g1", "g0"}) || ds[0].StatusCode != 502 || ds[0].ID != 3 {
+	if !slices.Equal(guids, []string{"g2", "g1", "g0"}) || ds[0].StatusCode != http.StatusBadGateway || ds[0].ID != 3 {
 		t.Fatalf("deliveries = %+v", ds)
 	}
 	if err := app.Redeliver(t.Context(), 3); err != nil || !slices.Equal(redeliver, []string{"/app/hook/deliveries/3/attempts"}) {

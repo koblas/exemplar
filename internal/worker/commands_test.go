@@ -41,8 +41,10 @@ func TestRouteFeedbackCommand(t *testing.T) {
 			action, replyTo, body, userType)
 	}
 	r, err := RouteEvent("pull_request_review_comment", []byte(payload("created", "/exemplar wrong not a bug", 1000, "User")))
-	want := store.FeedbackCommandArgs{InstallationID: 42, Repo: "acme/app", PR: 7, CommentID: 55, ThreadRoot: 1000, Actor: "dana", ActorType: "User",
-		At: time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC), Command: "wrong", Reason: "not a bug"}
+	want := store.FeedbackCommandArgs{
+		InstallationID: 42, Repo: "acme/app", PR: 7, CommentID: 55, ThreadRoot: 1000, Actor: "dana", ActorType: "User",
+		At: time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC), Command: "wrong", Reason: "not a bug",
+	}
 	if err != nil || len(r.FeedbackCommands) != 1 || r.FeedbackCommands[0] != want {
 		t.Fatalf("route = %+v, %v", r, err)
 	}
@@ -73,8 +75,10 @@ func TestFeedbackCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := func(id int64, actor, command, reason string) store.FeedbackCommandArgs {
-		return store.FeedbackCommandArgs{InstallationID: inst, Repo: repo, PR: prNum, CommentID: id, ThreadRoot: root,
-			Actor: actor, ActorType: "User", At: at, Command: command, Reason: reason}
+		return store.FeedbackCommandArgs{
+			InstallationID: inst, Repo: repo, PR: prNum, CommentID: id, ThreadRoot: root,
+			Actor: actor, ActorType: "User", At: at, Command: command, Reason: reason,
+		}
 	}
 	tests := []struct {
 		name             string

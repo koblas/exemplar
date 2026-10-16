@@ -169,7 +169,7 @@ func fetch(ctx context.Context, dir string, env []string) error {
 	if err != nil {
 		return fmt.Errorf("mirror: default branch: %w", err)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if ref, ok := strings.CutPrefix(line, "ref: "); ok {
 			ref, _, _ = strings.Cut(ref, "\t")
 			if strings.HasPrefix(ref, "refs/heads/") {
@@ -332,7 +332,7 @@ func (m *Manager) Log(ctx context.Context, repo, commit, p string, n int) ([]Com
 		return nil, err
 	}
 	commits := []Commit{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		parts := strings.SplitN(line, "\x1f", 3)
 		if len(parts) != 3 {
 			continue

@@ -12,7 +12,8 @@ import (
 )
 
 // Golden output shape from `ast-grep scan --json=stream`.
-const astgrepOut = `{"text":"db.Query(\"SELECT \" + id, x)","range":{"byteOffset":{"start":10,"end":40},"start":{"line":11,"column":1},"end":{"line":12,"column":4}},"file":"internal/store/users.go","lines":"...","language":"Go","ruleId":"no-raw-sql-concat","severity":"error","message":"Build SQL with placeholders"}
+const astgrepOut = `{"text":"db.Query(\"SELECT \" + id, x)","range":{"byteOffset":{"start":10,"end":40},"start":{"line":11,"column":1},"end":{"line":12,"column":4}},` +
+	`"file":"internal/store/users.go","lines":"...","language":"Go","ruleId":"no-raw-sql-concat","severity":"error","message":"Build SQL with placeholders"}
 {"text":"x","range":{"start":{"line":0,"column":0},"end":{"line":0,"column":1}},"file":"vendor/other.go","message":"m"}
 `
 
@@ -45,10 +46,10 @@ func TestRunnerUnavailable(t *testing.T) {
 
 // fakeEngine writes an executable script that records its arguments and
 // prints out, exiting with code.
-func fakeEngine(t *testing.T, name, out string, code int) (bin, argsFile string) {
+func fakeEngine(t *testing.T, name, out string, code int) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
-	bin, argsFile = filepath.Join(dir, name), filepath.Join(dir, "args")
+	bin, argsFile := filepath.Join(dir, name), filepath.Join(dir, "args")
 	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\ncat <<'EOF_OUT'\n%s\nEOF_OUT\nexit %d\n", argsFile, out, code)
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -56,7 +57,8 @@ func fakeEngine(t *testing.T, name, out string, code int) (bin, argsFile string)
 	return bin, argsFile
 }
 
-const semgrepOut = `{"results":[{"path":"svc/a.go","start":{"line":4},"end":{"line":5},"extra":{"message":"Use placeholders"}},{"path":"other/b.go","start":{"line":1},"end":{"line":1},"extra":{"message":"x"}}],"errors":[]}`
+const semgrepOut = `{"results":[{"path":"svc/a.go","start":{"line":4},"end":{"line":5},"extra":{"message":"Use placeholders"}},` +
+	`{"path":"other/b.go","start":{"line":1},"end":{"line":1},"extra":{"message":"x"}}],"errors":[]}`
 
 func TestSemgrep(t *testing.T) {
 	bin, argsFile := fakeEngine(t, "semgrep", semgrepOut, 1) // 1 = findings

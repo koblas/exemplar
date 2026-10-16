@@ -63,7 +63,7 @@ type EvalConfig struct {
 	GitHubLink string
 	// Get returns an evaluation and who requested it (ErrNotFound).
 	Get func(ctx context.Context, id string) (evaluate.Status, string, error)
-	// Spent is what login's evaluations since since cost, and how many ran.
+	// Spent is what login's evaluations since cost, and how many ran.
 	Spent func(ctx context.Context, login string, since time.Time) (float64, int, error)
 	// DailyUSD and DailyRuns bound one caller's evaluations per UTC day.
 	DailyUSD  float64
@@ -122,14 +122,16 @@ func jsonError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	// The status is written; a failed write to the client has nowhere to go.
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errchkjson // see above
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+	// The status is written; a failed write to the client has nowhere to go.
+	_ = json.NewEncoder(w).Encode(v) //nolint:errchkjson // see above
 }
 
 // identity is a request's caller.
@@ -216,8 +218,7 @@ func (e *Evaluations) create(w http.ResponseWriter, r *http.Request) {
 	var req evaluate.Request
 	body := http.MaxBytesReader(w, r.Body, evaluate.MaxDiff+64<<10)
 	if err := json.NewDecoder(body).Decode(&req); err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			jsonError(w, http.StatusRequestEntityTooLarge, "the diff is over 1 MiB")
 			return
 		}

@@ -32,9 +32,9 @@ func (p *Poster) UploadSARIF(ctx context.Context, pr PR, sarif []byte) (string, 
 		return "", err
 	}
 	id, _, err := p.gh.CodeScanning.UploadSarif(ctx, pr.Owner, pr.Repo, &github.SarifAnalysis{
-		CommitSHA: github.Ptr(pr.HeadSHA),
-		Ref:       github.Ptr(fmt.Sprintf("refs/pull/%d/head", pr.Number)),
-		Sarif:     github.Ptr(base64.StdEncoding.EncodeToString(buf.Bytes())),
+		CommitSHA: new(pr.HeadSHA),
+		Ref:       new(fmt.Sprintf("refs/pull/%d/head", pr.Number)),
+		Sarif:     new(base64.StdEncoding.EncodeToString(buf.Bytes())),
 	})
 	var er *github.ErrorResponse
 	if errors.As(err, &er) && er.Response != nil && (er.Response.StatusCode == http.StatusForbidden || er.Response.StatusCode == http.StatusNotFound) {

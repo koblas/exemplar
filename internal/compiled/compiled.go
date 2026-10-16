@@ -50,7 +50,7 @@ type Runner struct {
 // namespace with no interfaces (unshare) and address-space and CPU-time
 // limits (prlimit). ok is false when either tool is missing or the OS is
 // not Linux.
-func SandboxCommand(memBytes int64, cpuSeconds int) (cmd []string, ok bool) {
+func SandboxCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
 	if runtime.GOOS != "linux" {
 		return nil, false
 	}
@@ -59,8 +59,10 @@ func SandboxCommand(memBytes int64, cpuSeconds int) (cmd []string, ok bool) {
 			return nil, false
 		}
 	}
-	return []string{"unshare", "--net", "--map-root-user", "--",
-		"prlimit", fmt.Sprintf("--as=%d", memBytes), fmt.Sprintf("--cpu=%d", cpuSeconds), "--"}, true
+	return []string{
+		"unshare", "--net", "--map-root-user", "--",
+		"prlimit", fmt.Sprintf("--as=%d", memBytes), fmt.Sprintf("--cpu=%d", cpuSeconds), "--",
+	}, true
 }
 
 // Run executes one rule body with the named engine over files in dir.
@@ -76,8 +78,10 @@ func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []s
 		return ParseASTGrep(out, files)
 	case "semgrep":
 		out, err := r.runEngine(ctx, dir, r.semgrep(), ruleBody, func(rule string) []string {
-			return append([]string{"scan", "--config", rule, "--json", "--metrics=off", "--disable-version-check",
-				"--no-git-ignore", "--quiet", "--"}, files...)
+			return append([]string{
+				"scan", "--config", rule, "--json", "--metrics=off", "--disable-version-check",
+				"--no-git-ignore", "--quiet", "--",
+			}, files...)
 		})
 		if err != nil {
 			return nil, err
@@ -149,8 +153,10 @@ func (r Runner) runEngine(ctx context.Context, dir, bin, ruleBody string, args f
 	argv := append(append(slices.Clone(r.Sandbox), bin), args(ruleFile.Name())...)
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir(),
-		"SEMGREP_SEND_METRICS=off", "SEMGREP_ENABLE_VERSION_CHECK=0"}
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir(),
+		"SEMGREP_SEND_METRICS=off", "SEMGREP_ENABLE_VERSION_CHECK=0",
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

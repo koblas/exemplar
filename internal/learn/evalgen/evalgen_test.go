@@ -54,7 +54,8 @@ func TestNegativesAndSpotChecks(t *testing.T) {
 		t.Fatalf("paths = %v", cases[0].Paths)
 	}
 
-	all := []Case{{Kind: KindPositive}}
+	all := make([]Case, 0, 12)
+	all = append(all, Case{Kind: KindPositive})
 	for range 11 {
 		all = append(all, Case{Kind: KindInjected})
 	}

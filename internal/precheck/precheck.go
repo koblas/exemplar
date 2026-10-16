@@ -91,8 +91,10 @@ func LinterOverlap(ctx context.Context, src AnnotationSource, snap *config.Snaps
 		for _, a := range anns {
 			for _, e := range c.Expect {
 				if len(e.Lines) == 2 && a.Path == e.Path && a.Start <= e.Lines[1] && a.End >= e.Lines[0] {
-					rep.Overlaps = append(rep.Overlaps, Overlap{Case: c.Name, Repo: c.Repo, Linter: a.Check, Rule: a.Title,
-						Path: a.Path, Start: a.Start, End: a.End})
+					rep.Overlaps = append(rep.Overlaps, Overlap{
+						Case: c.Name, Repo: c.Repo, Linter: a.Check, Rule: a.Title,
+						Path: a.Path, Start: a.Start, End: a.End,
+					})
 					break
 				}
 			}

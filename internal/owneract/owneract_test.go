@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ type fakeRepo struct {
 }
 
 func (f *fakeRepo) DefaultBranch(context.Context) (string, string, error) { return "main", "sha1", nil }
+
 func (f *fakeRepo) FindPR(_ context.Context, branch string) (string, bool, error) {
 	for _, p := range f.prs {
 		if strings.HasSuffix(p, branch) {
@@ -34,6 +36,7 @@ func (f *fakeRepo) FindPR(_ context.Context, branch string) (string, bool, error
 	}
 	return "", false, nil
 }
+
 func (f *fakeRepo) GetFile(_ context.Context, _, path string) ([]byte, error) {
 	c, ok := f.files[path]
 	if !ok {
@@ -41,14 +44,17 @@ func (f *fakeRepo) GetFile(_ context.Context, _, path string) ([]byte, error) {
 	}
 	return []byte(c), nil
 }
+
 func (f *fakeRepo) EnsureBranch(_ context.Context, branch, _ string) error {
 	f.branches[branch] = map[string]string{}
 	return nil
 }
+
 func (f *fakeRepo) PutFile(_ context.Context, branch, path string, content []byte, _ string) error {
 	f.branches[branch][path] = string(content)
 	return nil
 }
+
 func (f *fakeRepo) OpenPR(_ context.Context, branch, _, _, body string) (string, int, error) {
 	if !strings.Contains(body, "Requested by @") {
 		panic("PR body does not record the actor")
@@ -56,6 +62,7 @@ func (f *fakeRepo) OpenPR(_ context.Context, branch, _, _, body string) (string,
 	f.prs = append(f.prs, "https://github.com/acme/exemplar-config/pull/"+branch)
 	return f.prs[len(f.prs)-1], len(f.prs), nil
 }
+
 func (f *fakeRepo) OpenDraftPR(_ context.Context, branch, _, _, body string) (string, error) {
 	if !strings.Contains(body, "Requested by @") {
 		panic("PR body does not record the actor")
@@ -84,23 +91,23 @@ func TestRun(t *testing.T) {
 	}}
 	members := map[string][]string{"@acme/sec": {"dana"}, "@acme/app": {"erin"}, "@platform/devex": {"pat"}}
 	memberErr := false
-	r := Runner{Store: st, Repo: func(context.Context) (Repo, error) { return repo, nil }, PlatformTeam: "@platform/devex",
+	r := Runner{
+		Store: st, Repo: func(context.Context) (Repo, error) { return repo, nil }, PlatformTeam: "@platform/devex",
 		Member: func(_ context.Context, team, login string) (bool, error) {
 			if memberErr {
 				return false, errors.New("GitHub is down")
 			}
-			for _, m := range members[team] {
-				if m == login {
-					return true, nil
-				}
+			if slices.Contains(members[team], login) {
+				return true, nil
 			}
 			return false, nil
-		}}
+		},
+	}
 	snap := &config.Snapshot{
 		Rules: []config.Rule{
-			{Rule: schema.Rule{ID: "no-raw-sql", Status: schema.StatusActive, Owner: "@acme/sec"}, Scope: "global", Path: "rules/security/no-raw-sql.yaml"},
-			{Rule: schema.Rule{ID: "old", Status: schema.StatusShadow, Owner: "@acme/sec"}, Scope: "global", Path: "rules/old.yaml"},
-			{Rule: schema.Rule{ID: "local", Status: schema.StatusActive, Owner: "@acme/app"}, Scope: "acme/app", Path: ".exemplar/rules/local.yaml"},
+			{ID: "no-raw-sql", Status: schema.StatusActive, Owner: "@acme/sec", Scope: "global", Path: "rules/security/no-raw-sql.yaml"},
+			{ID: "old", Status: schema.StatusShadow, Owner: "@acme/sec", Scope: "global", Path: "rules/old.yaml"},
+			{ID: "local", Status: schema.StatusActive, Owner: "@acme/app", Scope: "acme/app", Path: ".exemplar/rules/local.yaml"},
 		},
 		Repos: map[string]schema.RepoConfig{
 			"acme/app": {Enabled: true, AutoApprove: &schema.RepoAutoApprove{Enabled: true, ApprovableOwners: []string{"@acme/app"}}},
@@ -152,7 +159,7 @@ func TestRun(t *testing.T) {
 	check("already shadow", act(ShadowRule, "old", "dana", ""), StatusRefused, "already shadow")
 	check("platform kills", act(KillRule, "old", "pat", "obsolete"), StatusDone, "merged")
 	repo.files["rules/cand.yaml"] = "id: cand\nstatus: candidate\n"
-	snap.Rules = append(snap.Rules, config.Rule{Rule: schema.Rule{ID: "cand", Status: "candidate", Owner: "@acme/sec"}, Scope: "global", Path: "rules/cand.yaml"})
+	snap.Rules = append(snap.Rules, config.Rule{ID: "cand", Status: "candidate", Owner: "@acme/sec", Scope: "global", Path: "rules/cand.yaml"})
 	check("shadow needs active", act(ShadowRule, "cand", "dana", ""), StatusRefused, "not active")
 	check("repo rule", act(KillRule, "local", "pat", ""), StatusRefused, "repo's own rules")
 	check("unknown rule", act(KillRule, "nope", "pat", ""), StatusRefused, "no global rule")
@@ -168,7 +175,7 @@ func TestRun(t *testing.T) {
 	check("candidate again", act(KillCandidate, itoa(cand), "dana", "x"), StatusRefused, "not open")
 
 	repo.mergeErr = errors.New("review required")
-	row = check("approvable owner kills auto-approve", act(KillSwitch, "acme/app", "erin", "incident"), StatusDone, "waits for a review")
+	check("approvable owner kills auto-approve", act(KillSwitch, "acme/app", "erin", "incident"), StatusDone, "waits for a review")
 	for b, files := range repo.branches {
 		if strings.Contains(b, "kill-switch") {
 			got = files["repos/acme/app.yaml"]
@@ -209,12 +216,16 @@ func TestPropose(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo := &fakeRepo{branches: map[string]map[string]string{}, files: map[string]string{"rules/security/no-raw-sql-concat.yaml": string(example)}}
-	r := Runner{Store: st, Repo: func(context.Context) (Repo, error) { return repo, nil }, PlatformTeam: "@platform/devex",
+	r := Runner{
+		Store: st, Repo: func(context.Context) (Repo, error) { return repo, nil }, PlatformTeam: "@platform/devex",
 		Member: func(_ context.Context, team, login string) (bool, error) {
 			return team == "@security/appsec" && login == "sam", nil
-		}}
-	snap := &config.Snapshot{Rules: []config.Rule{{Rule: schema.Rule{ID: "no-raw-sql-concat", Owner: "@security/appsec"}, Scope: "global",
-		Path: "rules/security/no-raw-sql-concat.yaml"}}}
+		},
+	}
+	snap := &config.Snapshot{Rules: []config.Rule{{
+		ID: "no-raw-sql-concat", Owner: "@security/appsec", Scope: "global",
+		Path: "rules/security/no-raw-sql-concat.yaml",
+	}}}
 	try := func(actor, yaml string) int64 {
 		t.Helper()
 		id, err := st.CreatePlaygroundRun(ctx, queries.CreatePlaygroundRunParams{Actor: actor, Repo: "acme/app", PrNumber: 4, RuleID: "x", RuleYaml: yaml})

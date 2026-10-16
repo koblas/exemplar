@@ -70,30 +70,46 @@ func TestFeedbackOutcomes(t *testing.T) {
 		id   int64
 		want *want // nil: not in finding_outcomes
 	}{
-		{"the author's latest signal wins", finding("production", "posted", "",
-			ev{"fb_wrong", "alice", "author", 1, 1}, ev{"fb_fixed", "alice", "author", 1, 5}),
-			&want{seen: true, accepted: true, pos: 1}},
-		{"different actors both count", finding("production", "posted", "",
-			ev{"fb_wrong", "rev", "reviewer", 2, 1}, ev{"fb_fixed", "alice", "author", 1, 2}),
-			&want{seen: true, accepted: true, rejected: true, neg: 2, pos: 1, nonAuthorNeg: 1}},
-		{"observers count for nothing", finding("production", "posted", "",
-			ev{"fb_wrong", "zed", "observer", 0, 1}),
-			&want{seen: true}},
-		{"an uphold decides", finding("production", "posted", "",
-			ev{"fb_wrong", "alice", "author", 1, 1}, ev{"adjudicated_uphold", "olga", "owner", 4, 9}),
-			&want{seen: true, accepted: true, pos: 4}},
-		{"the latest adjudication decides", finding("production", "posted", "",
-			ev{"fb_fixed", "alice", "author", 1, 1}, ev{"adjudicated_uphold", "olga", "owner", 4, 2}, ev{"adjudicated_overturn", "olga", "owner", 4, 3}),
-			&want{seen: true, rejected: true, overturned: true, neg: 4}},
-		{"a reviewer's agreement on a withheld duplicate", finding("production", "dropped", "human_duplicate",
-			ev{"human_agreed", "dana", "reviewer", 2, 0}),
-			&want{humanAgreed: true, pos: 2}},
-		{"an applied suggestion on an outdated finding", finding("production", "outdated", "",
-			ev{"applied_suggestion", "alice", "author", 1, 30}),
-			&want{seen: true, accepted: true, pos: 1}},
-		{"thread resolution is kept beside a later judgment", finding("production", "resolved", "",
-			ev{"resolved", "alice", "author", 1, 1}, ev{"fb_not_important", "alice", "author", 1, 2}),
-			&want{seen: true, rejected: true, neg: 1}},
+		{
+			"the author's latest signal wins", finding("production", "posted", "",
+				ev{"fb_wrong", "alice", "author", 1, 1}, ev{"fb_fixed", "alice", "author", 1, 5}),
+			&want{seen: true, accepted: true, pos: 1},
+		},
+		{
+			"different actors both count", finding("production", "posted", "",
+				ev{"fb_wrong", "rev", "reviewer", 2, 1}, ev{"fb_fixed", "alice", "author", 1, 2}),
+			&want{seen: true, accepted: true, rejected: true, neg: 2, pos: 1, nonAuthorNeg: 1},
+		},
+		{
+			"observers count for nothing", finding("production", "posted", "",
+				ev{"fb_wrong", "zed", "observer", 0, 1}),
+			&want{seen: true},
+		},
+		{
+			"an uphold decides", finding("production", "posted", "",
+				ev{"fb_wrong", "alice", "author", 1, 1}, ev{"adjudicated_uphold", "olga", "owner", 4, 9}),
+			&want{seen: true, accepted: true, pos: 4},
+		},
+		{
+			"the latest adjudication decides", finding("production", "posted", "",
+				ev{"fb_fixed", "alice", "author", 1, 1}, ev{"adjudicated_uphold", "olga", "owner", 4, 2}, ev{"adjudicated_overturn", "olga", "owner", 4, 3}),
+			&want{seen: true, rejected: true, overturned: true, neg: 4},
+		},
+		{
+			"a reviewer's agreement on a withheld duplicate", finding("production", "dropped", "human_duplicate",
+				ev{"human_agreed", "dana", "reviewer", 2, 0}),
+			&want{humanAgreed: true, pos: 2},
+		},
+		{
+			"an applied suggestion on an outdated finding", finding("production", "outdated", "",
+				ev{"applied_suggestion", "alice", "author", 1, 30}),
+			&want{seen: true, accepted: true, pos: 1},
+		},
+		{
+			"thread resolution is kept beside a later judgment", finding("production", "resolved", "",
+				ev{"resolved", "alice", "author", 1, 1}, ev{"fb_not_important", "alice", "author", 1, 2}),
+			&want{seen: true, rejected: true, neg: 1},
+		},
 		{"a late linter duplicate is left out", finding("production", "minimized", "linter_duplicate", ev{"fb_wrong", "alice", "author", 1, 1}), nil},
 		{"an eval run is left out", finding("eval", "posted", ""), nil},
 		{"a shadow finding is left out", finding("production", "shadow", ""), nil},
@@ -109,8 +125,10 @@ func TestFeedbackOutcomes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tt.name, err)
 		}
-		got := want{seen: o.Seen, accepted: o.Accepted, rejected: o.Rejected, humanAgreed: o.HumanAgreed, overturned: o.OwnerOverturned,
-			neg: o.NegW, pos: o.PosW, nonAuthorNeg: o.NonAuthorNegatives}
+		got := want{
+			seen: o.Seen, accepted: o.Accepted, rejected: o.Rejected, humanAgreed: o.HumanAgreed, overturned: o.OwnerOverturned,
+			neg: o.NegW, pos: o.PosW, nonAuthorNeg: o.NonAuthorNegatives,
+		}
 		if got != *tt.want {
 			t.Errorf("%s = %+v, want %+v", tt.name, got, *tt.want)
 		}

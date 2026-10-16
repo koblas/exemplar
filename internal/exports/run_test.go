@@ -2,6 +2,7 @@ package exports
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 
@@ -27,6 +28,7 @@ type fakeWriter struct {
 func (f *fakeWriter) DefaultBranch(context.Context) (string, string, error) {
 	return "main", "sha1", nil
 }
+
 func (f *fakeWriter) GetFile(_ context.Context, ref, path string) ([]byte, bool, error) {
 	if ref != "main" {
 		panic("read off the default branch: " + ref)
@@ -34,6 +36,7 @@ func (f *fakeWriter) GetFile(_ context.Context, ref, path string) ([]byte, bool,
 	s, ok := f.main[path]
 	return []byte(s), ok, nil
 }
+
 func (f *fakeWriter) ResetBranch(_ context.Context, branch, sha string) error {
 	if branch != Branch || sha != "sha1" {
 		panic("reset " + branch + " " + sha)
@@ -42,6 +45,7 @@ func (f *fakeWriter) ResetBranch(_ context.Context, branch, sha string) error {
 	f.branch = map[string]string{}
 	return nil
 }
+
 func (f *fakeWriter) PutFile(_ context.Context, branch, path string, content []byte, _ string) error {
 	if branch != Branch {
 		panic("write to " + branch)
@@ -49,9 +53,11 @@ func (f *fakeWriter) PutFile(_ context.Context, branch, path string, content []b
 	f.branch[path] = string(content)
 	return nil
 }
+
 func (f *fakeWriter) OpenPRFor(context.Context, string) (gh.ConfigItem, string, bool, error) {
 	return gh.ConfigItem{URL: "https://github.com/acme/app/pull/7"}, "node", f.prOpen, nil
 }
+
 func (f *fakeWriter) OpenPR(_ context.Context, branch, base, _, body string) (gh.ConfigItem, string, error) {
 	if branch != Branch || base != "main" {
 		panic("PR " + branch + " into " + base)
@@ -65,16 +71,15 @@ func (f *fakeWriter) EnableAutoMerge(context.Context, string) error { f.autos++;
 
 // merge lands the export PR.
 func (f *fakeWriter) merge() {
-	for p, c := range f.branch {
-		f.main[p] = c
-	}
+	maps.Copy(f.main, f.branch)
 	f.prOpen = false
 }
 
 func TestRun(t *testing.T) {
 	st := storetest.New(t)
 	ctx := t.Context()
-	snap := &config.Snapshot{Version: "cfg1", Global: schema.GlobalConfig{Enabled: true},
+	snap := &config.Snapshot{
+		Version: "cfg1", Global: schema.GlobalConfig{Enabled: true},
 		Repos: map[string]schema.RepoConfig{
 			"acme/app":   {Enabled: true, Exports: &schema.RepoExports{Targets: []string{AgentsMD}, AutoMergeGenerated: true}},
 			"acme/quiet": {Enabled: true}, // no exports
@@ -198,9 +203,10 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunDryRun(t *testing.T) {
-	snap := &config.Snapshot{Global: schema.GlobalConfig{Enabled: true},
-		Repos: map[string]schema.RepoConfig{"acme/app": {Enabled: true, Exports: &schema.RepoExports{Targets: []string{AgentsMD, Copilot}}}},
-		Rules: []config.Rule{rule("no-raw-sql", "blocking", "Use placeholders.", "**/*.go"), rule("x", "blocking", "", "**/*.go")},
+	snap := &config.Snapshot{
+		Global: schema.GlobalConfig{Enabled: true},
+		Repos:  map[string]schema.RepoConfig{"acme/app": {Enabled: true, Exports: &schema.RepoExports{Targets: []string{AgentsMD, Copilot}}}},
+		Rules:  []config.Rule{rule("no-raw-sql", "blocking", "Use placeholders.", "**/*.go"), rule("x", "blocking", "", "**/*.go")},
 	}
 	outs, err := Runner{}.Run(t.Context(), snap)
 	if err != nil || len(outs) != 1 || outs[0].Action != "dry_run" || outs[0].Files != 2 {

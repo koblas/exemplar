@@ -128,7 +128,11 @@ func (f *fakeGitHub) query(_ context.Context, q string, vars map[string]any, out
 		if f.limited {
 			return gh.ErrRateLimited
 		}
-		f.sinces = append(f.sinces, vars["since"].(string))
+		since, ok := vars["since"].(string)
+		if !ok {
+			return fmt.Errorf("since = %v, want a string", vars["since"])
+		}
+		f.sinces = append(f.sinces, since)
 		after := ""
 		if a, ok := vars["after"].(*string); ok && a != nil {
 			after = *a
@@ -164,7 +168,10 @@ func (f *fakeGitHub) query(_ context.Context, q string, vars map[string]any, out
 	default:
 		f.t.Fatalf("unexpected query")
 	}
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
 	return json.Unmarshal(b, out)
 }
 
@@ -231,7 +238,8 @@ func events(t *testing.T, st *store.Store) []event {
 func TestReverts(t *testing.T) {
 	st := storetest.New(t)
 	revertPR := mergedPR(9, `Revert "Add cache"`, "Reverts acme/app#7", "m9", "svc/cache.go", "svc/cache_test.go")
-	f := &fakeGitHub{t: t,
+	f := &fakeGitHub{
+		t: t,
 		pages: map[string]historyPage{
 			"": history("p2",
 				commit("m9", "Merge pull request #9 from acme/revert-7", revertPR),
@@ -329,7 +337,9 @@ func TestIncidents(t *testing.T) {
 	at := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	incs := []Incident{
 		{ID: "INC-1", At: at, Links: []Link{
-			{Repo: "acme/app", PR: 7}, {Repo: "acme/app", PR: 8}, {Repo: "acme/app", Commit: "3f2c1a9"},
+			{Repo: "acme/app", PR: 7},
+			{Repo: "acme/app", PR: 8},
+			{Repo: "acme/app", Commit: "3f2c1a9"},
 			{Repo: "acme/app", PR: 99},            // unknown
 			{Repo: "acme/denied", PR: 1},          // ineligible
 			{Repo: "acme/app", Commit: "deadbee"}, // unknown commit

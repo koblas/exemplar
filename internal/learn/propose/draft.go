@@ -301,7 +301,8 @@ func citation(sources []Source) *citationYAML {
 
 func body(c Candidate, ruleID, owner string) string {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "Exemplar mined this constraint from review history and proposes it as rule `%s`, in **shadow**: it will run on PRs and be measured, but post nothing until you set `status: active`.\n\n", ruleID)
+	fmt.Fprintf(&b, "Exemplar mined this constraint from review history and proposes it as rule `%s`, in **shadow**: "+
+		"it will run on PRs and be measured, but post nothing until you set `status: active`.\n\n", ruleID)
 	fmt.Fprintf(&b, "> **%s**\n>\n> %s\n\n", strings.TrimSpace(c.Title), strings.ReplaceAll(strings.TrimSpace(c.Description), "\n", "\n> "))
 
 	b.WriteString("| | |\n|---|---|\n")
@@ -364,7 +365,8 @@ func body(c Candidate, ruleID, owner string) string {
 				spot = append(spot, "`"+e.ID+"` ("+e.Name+")")
 			}
 		}
-		fmt.Fprintf(&b, "\n### Eval cases\n\n`evals/%s/cases.yaml`: %d from source comments (expect a finding), %d from approved PRs with no such comment (expect none), %d injected violations.\n", ruleID, counts["positive"], counts["negative"], counts["injected"])
+		fmt.Fprintf(&b, "\n### Eval cases\n\n`evals/%s/cases.yaml`: %d from source comments (expect a finding), "+
+			"%d from approved PRs with no such comment (expect none), %d injected violations.\n", ruleID, counts["positive"], counts["negative"], counts["injected"])
 		if len(spot) > 0 {
 			b.WriteString("\nSpot-check these synthetic cases (spec §8.8):\n")
 			for _, s := range spot {
@@ -416,7 +418,7 @@ type evalExpectYAML struct {
 // schema/eval-cases.schema.json.
 func evalFiles(ruleID string, cases []EvalCase) (map[string][]byte, error) {
 	if len(cases) == 0 {
-		return nil, nil
+		return map[string][]byte{}, nil
 	}
 	dir := "evals/" + ruleID + "/"
 	files := map[string][]byte{}
@@ -452,7 +454,8 @@ func evalFiles(ruleID string, cases []EvalCase) (map[string][]byte, error) {
 // are not measured and the bar shown is eval_thresholds.
 func writeCompiled(b *bytes.Buffer, cc *Compiled) {
 	fmt.Fprintf(b, "\n### Compiled to %s\n\n", cc.Engine)
-	b.WriteString("Exemplar compiled this rule to a deterministic matcher, so it runs as Lane 1: no model call per PR. The rule file above is `kind: compiled`; drop `matcher` and set `kind: exemplar` to keep the model-based rule instead.\n\n")
+	b.WriteString("Exemplar compiled this rule to a deterministic matcher, so it runs as Lane 1: no model call per PR. " +
+		"The rule file above is `kind: compiled`; drop `matcher` and set `kind: exemplar` to keep the model-based rule instead.\n\n")
 	exemplar, bar := "not measured yet", "eval_thresholds"
 	if cc.Baseline == "exemplar" {
 		exemplar, bar = "", "the exemplar's scores"

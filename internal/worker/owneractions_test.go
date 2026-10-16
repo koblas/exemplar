@@ -21,8 +21,9 @@ import (
 func TestOwnerActionWorker(t *testing.T) {
 	st := storetest.New(t)
 	ctx := t.Context()
-	snap := &config.Snapshot{Rules: []config.Rule{{Rule: schema.Rule{ID: "r", Status: schema.StatusActive, Owner: "@acme/sec"}, Scope: "global", Path: "rules/r.yaml"}}}
-	w, err := NewOwnerActionWorker(owneract.Runner{Store: st, PlatformTeam: "@platform/devex",
+	snap := &config.Snapshot{Rules: []config.Rule{{ID: "r", Status: schema.StatusActive, Owner: "@acme/sec", Scope: "global", Path: "rules/r.yaml"}}}
+	w, err := NewOwnerActionWorker(owneract.Runner{
+		Store: st, PlatformTeam: "@platform/devex",
 		Repo:   func(context.Context) (owneract.Repo, error) { return nil, errors.New("no token") },
 		Member: func(context.Context, string, string) (bool, error) { return true, nil },
 	}, func(context.Context) (*config.Snapshot, error) { return snap, nil }, nil)

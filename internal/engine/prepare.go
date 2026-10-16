@@ -43,8 +43,8 @@ type PRInfo struct {
 
 // Exclusion is a path that is not reviewed, with the reason (FR-H2).
 type Exclusion struct {
-	Path   string
-	Reason string
+	Path   string `json:"Path"`
+	Reason string `json:"Reason"`
 }
 
 // ScopedRule is a rule with the files it covers in this review.
@@ -139,7 +139,7 @@ func Prepare(ctx context.Context, ws *Workspace, snap *config.Snapshot, pr PRInf
 		redacted, matches, err := scanner.Redact(raw.String())
 		if err != nil {
 			p.Incomplete = "could not redact a secret in " + f.Path
-			return p, nil
+			return p, nil //nolint:nilerr // a redaction failure is reported as an incomplete review, not an error
 		}
 		p.Hunks[f.Path] = redacted
 		p.Files = append(p.Files, f.Path)
@@ -256,7 +256,7 @@ func hunkLineMap(text string) map[int]lineLoc {
 	return out
 }
 
-func parseHunkHeader(h string) (oldStart, newStart int) {
+func parseHunkHeader(h string) (int, int) {
 	// "@@ -a,b +c,d @@ ..."
 	fields := strings.Fields(h)
 	if len(fields) < 3 {
@@ -286,7 +286,7 @@ func secretFinding(path string, loc lineLoc, gitleaksRule string) Finding {
 
 func parseGitleaksIgnore(text string) map[string]bool {
 	out := map[string]bool{}
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" && !strings.HasPrefix(line, "#") {
 			out[line] = true
@@ -296,8 +296,9 @@ func parseGitleaksIgnore(text string) map[string]bool {
 }
 
 func fileText(fsys interface {
-	ReadFile(string) ([]byte, error)
-}, name string) string {
+	ReadFile(name string) ([]byte, error)
+}, name string,
+) string {
 	data, err := fsys.ReadFile(name)
 	if err != nil {
 		return ""

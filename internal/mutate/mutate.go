@@ -90,7 +90,7 @@ func (m Mutation) Changed() int {
 // group of edits with 3 lines of context.
 func (m Mutation) Diff(lines []string) string {
 	const ctx = 3
-	var edited []int
+	edited := make([]int, 0, len(m.Edits))
 	for l := range m.Edits {
 		edited = append(edited, l)
 	}
@@ -170,8 +170,10 @@ func Go(path string, src []byte, perOp int) ([]Mutation, error) {
 					// Remove `if err != nil { … }` after err is assigned.
 					if i > 0 && st.Init == nil && st.Else == nil && isNilCompare(st.Cond, token.NEQ, "err") && assigns(n.List[i-1], "err") {
 						prev := n.List[i-1]
-						keep(Mutation{Class: ErrorHandling, Op: "drop-err-check", Edits: deleteLines(line(st.Pos()), line(st.End())),
-							Expect: [2]int{line(prev.Pos()), line(prev.End())}})
+						keep(Mutation{
+							Class: ErrorHandling, Op: "drop-err-check", Edits: deleteLines(line(st.Pos()), line(st.End())),
+							Expect: [2]int{line(prev.Pos()), line(prev.End())},
+						})
 					}
 					// Remove a `if x == nil { return … }` guard.
 					if st.Init == nil && st.Else == nil && len(st.Body.List) == 1 && i+1 < len(n.List) {
@@ -190,8 +192,10 @@ func Go(path string, src []byte, perOp int) ([]Mutation, error) {
 							for k := i - 1; k >= 0; k-- {
 								if assigns(n.List[k], id.Name) {
 									acq := n.List[k]
-									keep(Mutation{Class: ResourceLeak, Op: "drop-defer-close", Edits: deleteLines(line(st.Pos()), line(st.End())),
-										Expect: [2]int{line(acq.Pos()), line(acq.End())}})
+									keep(Mutation{
+										Class: ResourceLeak, Op: "drop-defer-close", Edits: deleteLines(line(st.Pos()), line(st.End())),
+										Expect: [2]int{line(acq.Pos()), line(acq.End())},
+									})
 									break
 								}
 							}
@@ -241,8 +245,10 @@ func Go(path string, src []byte, perOp int) ([]Mutation, error) {
 						l := lines[p.Line-1]
 						if p.Column-1 < len(l) && l[p.Column-1] == '<' {
 							mutated := l[:p.Column-1] + "<=" + l[p.Column:]
-							keep(Mutation{Class: OffByOne, Op: "lt-to-le", Edits: map[int]*string{p.Line: &mutated},
-								Expect: [2]int{p.Line, p.Line}})
+							keep(Mutation{
+								Class: OffByOne, Op: "lt-to-le", Edits: map[int]*string{p.Line: &mutated},
+								Expect: [2]int{p.Line, p.Line},
+							})
 						}
 					}
 				}

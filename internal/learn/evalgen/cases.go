@@ -12,6 +12,7 @@ package evalgen
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -68,10 +69,7 @@ func Positives(sources []PositiveSource) []Case {
 		if !shaRE.MatchString(s.CommitSHA) || s.StartLine < 1 {
 			continue
 		}
-		end := s.EndLine
-		if end < s.StartLine {
-			end = s.StartLine
-		}
+		end := max(s.EndLine, s.StartLine)
 		key := fmt.Sprintf("%s@%s:%s#%d-%d", s.Repo, s.CommitSHA, s.Path, s.StartLine, end)
 		if seen[key] {
 			continue
@@ -125,7 +123,7 @@ func Negatives(prs []NegativePR, scope Matcher, limit int) ([]Case, map[string]I
 		if len(inScope) == 0 {
 			continue
 		}
-		id := "n-" + slug(p.Repo) + "-" + fmt.Sprint(p.PR)
+		id := "n-" + slug(p.Repo) + "-" + strconv.Itoa(p.PR)
 		out = append(out, Case{
 			ID:     id,
 			Kind:   KindNegative,

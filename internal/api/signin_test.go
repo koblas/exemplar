@@ -15,6 +15,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -45,8 +46,10 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 		case "/.well-known/openid-configuration":
 			_ = json.NewEncoder(w).Encode(map[string]string{"issuer": b, "authorization_endpoint": b + "/authorize", "token_endpoint": b + "/token", "jwks_uri": b + "/jwks"})
 		case "/jwks":
-			_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{"kty": "RSA", "kid": "k", "alg": "RS256",
-				"n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
+				"kty": "RSA", "kid": "k", "alg": "RS256",
+				"n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
+			}}})
 		case "/token":
 			_ = r.ParseForm()
 			if r.Form.Get("code") != "good" || oidc.Challenge(r.Form.Get("code_verifier")) != p.challenge {
@@ -76,11 +79,11 @@ func (m *memIdentities) GitHubLink(_ context.Context, issuer, subject string) (s
 
 func (m *memIdentities) LinkGitHub(_ context.Context, issuer, subject, _ string, id int64, login string) error {
 	for k, l := range m.links {
-		if l[1] == fmt.Sprint(id) && k != issuer+" "+subject {
+		if l[1] == strconv.FormatInt(id, 10) && k != issuer+" "+subject {
 			return ErrLinkedElsewhere
 		}
 	}
-	m.links[issuer+" "+subject] = [2]string{login, fmt.Sprint(id)}
+	m.links[issuer+" "+subject] = [2]string{login, strconv.FormatInt(id, 10)}
 	return nil
 }
 
@@ -108,8 +111,10 @@ func oidcServer(t *testing.T, idp *fakeIDP, github bool) (*Server, *httptest.Ser
 
 func oidcServerWith(t *testing.T, idp *fakeIDP, github bool, gh *httptest.Server, mut func(*Config)) (*Server, *httptest.Server, *http.Client) {
 	t.Helper()
-	prov, err := oidc.New(t.Context(), oidc.Config{IssuerURL: idp.srv.URL, ClientID: "web", ClientSecret: "shh", EmailDomains: []string{"acme.example"},
-		GroupRepos: map[string][]string{"eng": {"acme/*"}}, IgnoreUserInfo: true, SignInText: "Okta", IconURL: "https://cdn.example/okta.svg", HTTP: idp.srv.Client()})
+	prov, err := oidc.New(t.Context(), oidc.Config{
+		IssuerURL: idp.srv.URL, ClientID: "web", ClientSecret: "shh", EmailDomains: []string{"acme.example"},
+		GroupRepos: map[string][]string{"eng": {"acme/*"}}, IgnoreUserInfo: true, SignInText: "Okta", IconURL: "https://cdn.example/okta.svg", HTTP: idp.srv.Client(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,11 +125,13 @@ func oidcServerWith(t *testing.T, idp *fakeIDP, github bool, gh *httptest.Server
 	mux := http.NewServeMux()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	cfg := Config{Links: links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: srv.URL, OIDC: prov,
+	cfg := Config{
+		Links: links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: srv.URL, OIDC: prov,
 		Lookup: func(context.Context, int64) (Finding, error) {
 			return Finding{RuleID: "propagate-context", Repo: "acme/app", PR: 4}, nil
 		},
-		Enqueue: func(context.Context, store.FeedbackLinkArgs) error { return nil }}
+		Enqueue: func(context.Context, store.FeedbackLinkArgs) error { return nil },
+	}
 	if github {
 		cfg.GitHub = &GitHubAuth{ClientID: "c", ClientSecret: "s", AllowEveryone: true}
 		cfg.Identities = &memIdentities{links: map[string][2]string{}}
@@ -179,8 +186,10 @@ func TestOIDCSignIn(t *testing.T) {
 		return get(srv.URL + "/oidc/callback?code=good&state=" + url.QueryEscape(state))
 	}
 	claims := func() map[string]any {
-		return map[string]any{"iss": idp.srv.URL, "sub": "u1", "aud": "web", "exp": time.Now().Add(time.Hour).Unix(),
-			"email": "dana@acme.example", "preferred_username": "dana-acme", "groups": []any{"eng"}}
+		return map[string]any{
+			"iss": idp.srv.URL, "sub": "u1", "aud": "web", "exp": time.Now().Add(time.Hour).Unix(),
+			"email": "dana@acme.example", "preferred_username": "dana-acme", "groups": []any{"eng"},
+		}
 	}
 	if resp := signIn(claims(), "forged"); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("forged state = %d", resp.StatusCode)
@@ -269,8 +278,10 @@ func (f flow) oidc(sub string) result {
 	resp := f.get("/oidc/start?return=" + url.QueryEscape("/ui/rules/x"))
 	auth, _ := url.Parse(resp.Header.Get("Location"))
 	f.idp.challenge = auth.Query().Get("code_challenge")
-	f.idp.claims = map[string]any{"iss": f.idp.srv.URL, "sub": sub, "aud": "web", "exp": time.Now().Add(time.Hour).Unix(), "nonce": auth.Query().Get("nonce"),
-		"email": "dana@acme.example", "preferred_username": "dana-acme", "groups": []any{"eng"}}
+	f.idp.claims = map[string]any{
+		"iss": f.idp.srv.URL, "sub": sub, "aud": "web", "exp": time.Now().Add(time.Hour).Unix(), "nonce": auth.Query().Get("nonce"),
+		"email": "dana@acme.example", "preferred_username": "dana-acme", "groups": []any{"eng"},
+	}
 	return f.get("/oidc/callback?code=good&state=" + url.QueryEscape(auth.Query().Get("state")))
 }
 
@@ -399,9 +410,11 @@ func TestGitHubConnectOnly(t *testing.T) {
 		t.Errorf("connect = %d", resp.StatusCode)
 	}
 	links, _ := feedbacklink.New([]byte(strings.Repeat("l", 32)), "http://127.0.0.1")
-	if _, err := New(Config{Links: links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: "https://x",
+	if _, err := New(Config{
+		Links: links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: "https://x",
 		GitHub: &GitHubAuth{ClientID: "c", ClientSecret: "s", AllowEveryone: true, SignInDisabled: true},
-		Lookup: func(context.Context, int64) (Finding, error) { return Finding{}, nil }, Enqueue: func(context.Context, store.FeedbackLinkArgs) error { return nil }}); err == nil {
+		Lookup: func(context.Context, int64) (Finding, error) { return Finding{}, nil }, Enqueue: func(context.Context, store.FeedbackLinkArgs) error { return nil },
+	}); err == nil {
 		t.Error("GitHub for connecting only, without OIDC, was accepted")
 	}
 }

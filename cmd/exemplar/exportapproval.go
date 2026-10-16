@@ -64,7 +64,7 @@ func newExportApprovalCmd() *cobra.Command {
 			}
 			md := exportMarkdown(res)
 			if markdownOut != "" {
-				if err := os.WriteFile(markdownOut, []byte(md), 0o644); err != nil {
+				if err := os.WriteFile(markdownOut, []byte(md), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 					return err
 				}
 			}

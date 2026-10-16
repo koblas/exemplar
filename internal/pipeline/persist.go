@@ -45,7 +45,10 @@ func Begin(ctx context.Context, st *store.Store, p *engine.Prepared, caller stri
 	}
 	q := st.Queries
 	for _, rule := range p.Effective.Rules {
-		spec, _ := json.Marshal(rule.Rule)
+		spec, err := json.Marshal(rule.Rule)
+		if err != nil {
+			return nil, fmt.Errorf("encode rule %s: %w", rule.ID, err)
+		}
 		var reviewBy pgtype.Date
 		if t, err := time.Parse(time.DateOnly, rule.ReviewBy); err == nil {
 			reviewBy = pgtype.Date{Time: t, Valid: true}
@@ -165,10 +168,15 @@ func Finish(ctx context.Context, st *store.Store, rec *Record, res *engine.Resul
 	}); err != nil {
 		return err
 	}
-	stage1, _ := json.Marshal(res.Stage1)
+	stage1, err := json.Marshal(res.Stage1)
+	if err != nil {
+		return fmt.Errorf("encode stage 1 gate: %w", err)
+	}
 	var stage2 []byte
 	if res.Stage2 != nil {
-		stage2, _ = json.Marshal(res.Stage2)
+		if stage2, err = json.Marshal(res.Stage2); err != nil {
+			return fmt.Errorf("encode stage 2 gate: %w", err)
+		}
 	}
 	return q.UpsertApprovalDecision(ctx, queries.UpsertApprovalDecisionParams{
 		ReviewID: rec.ReviewID, Stage1: stage1, Stage2: stage2, Decision: res.Decision(),

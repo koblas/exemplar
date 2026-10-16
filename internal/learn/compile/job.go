@@ -195,7 +195,9 @@ func (j *Job) compileOne(ctx context.Context, c queries.CandidatesNeedingCompile
 	prec, rec := score.Precision(), score.Recall()
 	a.Cases, a.TruePos, a.FalsePos, a.FalseNeg = int32(score.Cases), int32(score.TP), int32(score.FP), int32(score.FN)
 	a.Precision, a.Recall = f32(prec), f32(rec)
-	a.Metrics, _ = json.Marshal(map[string]any{"outcomes": score.Outcomes, "explanation": p.Explanation, "prompt": Version})
+	if a.Metrics, err = json.Marshal(map[string]any{"outcomes": score.Outcomes, "explanation": p.Explanation, "prompt": Version}); err != nil {
+		return "", fmt.Errorf("encode compile metrics: %w", err)
+	}
 	a.Status, a.Reason = j.decide(score)
 	return j.record(ctx, a)
 }
@@ -203,7 +205,7 @@ func (j *Job) compileOne(ctx context.Context, c queries.CandidatesNeedingCompile
 // decide applies the acceptance bar. With the thresholds baseline the
 // thresholds are the bar itself; against exemplar scores, recall may be
 // RecallRatio of the exemplar's.
-func (j *Job) decide(s Score) (status, reason string) {
+func (j *Job) decide(s Score) (string, string) {
 	t := j.cfg.Thresholds
 	switch {
 	case s.Cases < t.MinCases:

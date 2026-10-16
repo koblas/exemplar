@@ -46,7 +46,13 @@ func newTenant(t *testing.T) *tenant {
 
 func (tn *tenant) sign(t *testing.T, hdr, claims map[string]any) string {
 	t.Helper()
-	enc := func(v any) string { b, _ := json.Marshal(v); return base64.RawURLEncoding.EncodeToString(b) }
+	enc := func(v any) string {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
 	in := enc(hdr) + "." + enc(claims)
 	sum := sha256.Sum256([]byte(in))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, tn.key, crypto.SHA256, sum[:])
@@ -72,8 +78,10 @@ func TestVerify(t *testing.T) {
 	}
 	hdr := map[string]any{"alg": "RS256", "kid": "k1", "typ": "JWT"}
 	good := func() map[string]any {
-		return map[string]any{"iss": "https://acme.us.auth0.com/", "sub": "ci-bot@clients", "aud": []string{"https://exemplar.example/api", "x"},
-			"exp": now.Add(time.Hour).Unix(), "iat": now.Unix(), "scope": "evaluate:acme/app", "permissions": []string{"evaluate:tools/*"}}
+		return map[string]any{
+			"iss": "https://acme.us.auth0.com/", "sub": "ci-bot@clients", "aud": []string{"https://exemplar.example/api", "x"},
+			"exp": now.Add(time.Hour).Unix(), "iat": now.Unix(), "scope": "evaluate:acme/app", "permissions": []string{"evaluate:tools/*"},
+		}
 	}
 	c, err := verify(tn.sign(t, hdr, good()))
 	if err != nil || c.Sub != "ci-bot@clients" || c.Scope != "evaluate:acme/app" {
@@ -105,7 +113,10 @@ func TestVerify(t *testing.T) {
 			tok := tn.sign(t, hdr, good())
 			c := good()
 			c["permissions"] = []string{"evaluate:*"}
-			b, _ := json.Marshal(c)
+			b, err := json.Marshal(c)
+			if err != nil {
+				t.Fatal(err)
+			}
 			parts := strings.Split(tok, ".")
 			return parts[0] + "." + base64.RawURLEncoding.EncodeToString(b) + "." + parts[2]
 		},

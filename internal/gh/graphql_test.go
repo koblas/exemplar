@@ -30,7 +30,7 @@ func TestGraphQL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != "POST" || r.URL.Path != "/graphql" {
+				if r.Method != http.MethodPost || r.URL.Path != "/graphql" {
 					t.Errorf("request %s %s", r.Method, r.URL.Path)
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -70,7 +70,7 @@ func TestContextFetch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/access_tokens"):
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/access_tokens"):
 			_ = json.NewDecoder(r.Body).Decode(&minted)
 			_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_ctx", "expires_at": time.Now().Add(time.Hour)})
 		case r.URL.Path == "/repos/acme/shared":

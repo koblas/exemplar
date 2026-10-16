@@ -60,11 +60,9 @@ func TestStage1Invariants(t *testing.T) {
 // input type may not grow string fields, which is where model text would
 // leak in (messages, verdicts, explanations).
 func TestStage1InputHasNoModelText(t *testing.T) {
-	typ := reflect.TypeOf(Stage1Input{})
+	typ := reflect.TypeFor[Stage1Input]()
 	for f := range typ.Fields() {
-		switch f.Type.Kind() {
-		case reflect.Bool, reflect.Int, reflect.Float64:
-		default:
+		if k := f.Type.Kind(); k != reflect.Bool && k != reflect.Int && k != reflect.Float64 {
 			t.Errorf("Stage1Input.%s has type %s; only code-measured numbers and flags are allowed", f.Name, f.Type)
 		}
 	}

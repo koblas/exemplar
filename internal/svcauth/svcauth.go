@@ -211,7 +211,12 @@ func (v *Verifier) fetch(ctx context.Context) (map[string]*rsa.PublicKey, error)
 	}
 	var set struct {
 		Keys []struct {
-			Kty, Kid, Use, Alg, N, E string
+			Kty string `json:"kty"`
+			Kid string `json:"kid"`
+			Use string `json:"use"`
+			Alg string `json:"alg"`
+			N   string `json:"n"`
+			E   string `json:"e"`
 		} `json:"keys"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&set); err != nil {

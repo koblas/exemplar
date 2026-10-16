@@ -23,8 +23,7 @@ func newValidateCmd() *cobra.Command {
 				dir = args[0]
 			}
 			s, err := config.LoadSnapshot(os.DirFS(dir), "")
-			var probs config.Problems
-			if errors.As(err, &probs) {
+			if probs, ok := errors.AsType[config.Problems](err); ok {
 				for _, p := range probs {
 					fmt.Fprintln(cmd.ErrOrStderr(), p.Error())
 				}

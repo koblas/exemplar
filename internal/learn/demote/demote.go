@@ -83,8 +83,10 @@ func Decide(s queries.DemotionStatsRow, cfg *schema.FeedbackConfig) Decision {
 			floor = cfg.DemotionWilsonFlr
 		}
 	}
-	d := Decision{RuleID: s.RuleID, Judged: int(s.Judged), Negatives: int(s.Negatives),
-		Adjudicated: s.Adjudicated, NonAuthorActors: int(s.NonAuthorActors)}
+	d := Decision{
+		RuleID: s.RuleID, Judged: int(s.Judged), Negatives: int(s.Negatives),
+		Adjudicated: s.Adjudicated, NonAuthorActors: int(s.NonAuthorActors),
+	}
 	if s.NegW+s.PosW > 0 {
 		d.EFP = s.NegW / (s.NegW + s.PosW)
 	}
@@ -110,6 +112,8 @@ func Decide(s queries.DemotionStatsRow, cfg *schema.FeedbackConfig) Decision {
 }
 
 // Repo is the part of exemplar-config the writer needs (gh.ConfigRepo).
+//
+//nolint:interfacebloat // mirrors the gh.ConfigRepo calls the demotion writer makes; splitting it would only add indirection
 type Repo interface {
 	DefaultBranch(ctx context.Context) (name, sha string, err error)
 	FindPR(ctx context.Context, branch string) (url string, found bool, err error)
@@ -132,6 +136,7 @@ type Stats interface {
 // Outcome is what happened to one rule the test would demote.
 type Outcome struct {
 	Decision
+
 	Action string `json:"action"` // demoted | opened | flagged | waiting | responded | skipped | dry_run
 	URL    string `json:"url,omitempty"`
 	Reason string `json:"reason,omitempty"`
@@ -334,8 +339,10 @@ func (r Runner) flag(ctx context.Context, rule config.Rule, d Decision) (Outcome
 
 func flagBody(rule config.Rule, d Decision, deadline time.Time) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s: authors keep rejecting `%s`. Over its last %d findings with feedback, the role-weighted false-positive rate is %.3f and the precision lower bound %.3f (%d of %d negative).\n\n", rule.Owner, rule.ID, d.Judged, d.EFP, d.Wilson, d.Negatives, d.Judged)
+	fmt.Fprintf(&b, "%s: authors keep rejecting `%s`. Over its last %d findings with feedback, "+
+		"the role-weighted false-positive rate is %.3f and the precision lower bound %.3f (%d of %d negative).\n\n", rule.Owner, rule.ID, d.Judged, d.EFP, d.Wilson, d.Negatives, d.Judged)
 	b.WriteString("Only PR authors have objected so far, so the rule is flagged rather than demoted (spec §9.4). ")
-	fmt.Fprintf(&b, "**Respond by %s** (adjudicate findings with `/exemplar uphold` or `/exemplar overturn`, change the rule, or comment or close here); otherwise Exemplar moves the rule to shadow.\n", deadline.UTC().Format(time.DateOnly))
+	fmt.Fprintf(&b, "**Respond by %s** (adjudicate findings with `/exemplar uphold` or `/exemplar overturn`, change the rule, or comment or close here); "+
+		"otherwise Exemplar moves the rule to shadow.\n", deadline.UTC().Format(time.DateOnly))
 	return b.String()
 }

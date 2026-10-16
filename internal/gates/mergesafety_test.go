@@ -30,24 +30,44 @@ func TestMergeSafety(t *testing.T) {
 		terms []string
 	}{
 		{"clean", MergeSafetyInput{Paths: []PathFacts{{Path: "a.go"}}}, 1, "", nil},
-		{"worst path only",
+		{
+			"worst path only",
 			MergeSafetyInput{Paths: []PathFacts{
 				{Path: "a.go", Revert: true},                              // 0.20
 				{Path: "db/migrate.sql", Incident: true, Sensitive: true}, // 0.55
 				{Path: "b.go", Revert: true, MergedPRs: 11},               // 0.30
 			}},
-			0.45, "db/migrate.sql", []string{TermIncident, TermSensitive}},
+			0.45, "db/migrate.sql",
+			[]string{TermIncident, TermSensitive},
+		},
 		{"churn needs more than ten PRs", MergeSafetyInput{Paths: []PathFacts{{Path: "a.go", MergedPRs: 10}}}, 1, "", nil},
-		{"PR-level terms", MergeSafetyInput{Paths: []PathFacts{{Path: "a.go"}}, NoTests: true, NewAuthor: true, ForcePush: true},
-			0.70, "", []string{TermNoTests, TermNewAuthor, TermForcePush}},
-		{"floored at zero",
-			MergeSafetyInput{Paths: []PathFacts{{Path: "a.go", Incident: true, Revert: true, MergedPRs: 20, Sensitive: true}},
-				NoTests: true, NewAuthor: true, ForcePush: true},
-			0, "a.go", []string{TermIncident, TermRevert, TermChurn, TermSensitive, TermNoTests, TermNewAuthor, TermForcePush}},
-		{"float noise does not break a tie", MergeSafetyInput{Paths: []PathFacts{{Path: "x.go", Incident: true}, {Path: "y.go", Revert: true, MergedPRs: 11}}},
-			0.70, "x.go", []string{TermIncident}},
-		{"tie keeps the first path", MergeSafetyInput{Paths: []PathFacts{{Path: "x.go", Revert: true}, {Path: "y.go", Revert: true}}},
-			0.80, "x.go", []string{TermRevert}},
+		{
+			"PR-level terms",
+			MergeSafetyInput{Paths: []PathFacts{{Path: "a.go"}}, NoTests: true, NewAuthor: true, ForcePush: true},
+			0.70, "",
+			[]string{TermNoTests, TermNewAuthor, TermForcePush},
+		},
+		{
+			"floored at zero",
+			MergeSafetyInput{
+				Paths:   []PathFacts{{Path: "a.go", Incident: true, Revert: true, MergedPRs: 20, Sensitive: true}},
+				NoTests: true, NewAuthor: true, ForcePush: true,
+			},
+			0, "a.go",
+			[]string{TermIncident, TermRevert, TermChurn, TermSensitive, TermNoTests, TermNewAuthor, TermForcePush},
+		},
+		{
+			"float noise does not break a tie",
+			MergeSafetyInput{Paths: []PathFacts{{Path: "x.go", Incident: true}, {Path: "y.go", Revert: true, MergedPRs: 11}}},
+			0.70, "x.go",
+			[]string{TermIncident},
+		},
+		{
+			"tie keeps the first path",
+			MergeSafetyInput{Paths: []PathFacts{{Path: "x.go", Revert: true}, {Path: "y.go", Revert: true}}},
+			0.80, "x.go",
+			[]string{TermRevert},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

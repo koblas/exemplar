@@ -88,7 +88,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -212,7 +211,6 @@ func pass(ctx context.Context, d *extract.Driver) error {
 	if err != nil {
 		return err
 	}
-	out, _ := json.Marshal(map[string]any{"collected": collected, "submitted": submitted})
-	fmt.Println(string(out))
+	printJSON(map[string]any{"collected": collected, "submitted": submitted})
 	return nil
 }

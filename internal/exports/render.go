@@ -69,7 +69,7 @@ func area(patterns []string) string {
 			continue
 		}
 		var lit []string
-		for _, seg := range strings.Split(path.Dir(p), "/") {
+		for seg := range strings.SplitSeq(path.Dir(p), "/") {
 			if seg == "." || strings.ContainsAny(seg, "*?[{") {
 				break
 			}
@@ -131,7 +131,7 @@ func Render(rules []config.Rule, targets []string) []File {
 		areas = append(areas, a)
 	}
 	slices.Sort(areas)
-	var out []File
+	out := make([]File, 0, len(areas)*len(targets))
 	for _, t := range targets {
 		for _, a := range areas {
 			rs := byArea[a]

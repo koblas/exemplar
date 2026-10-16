@@ -37,10 +37,14 @@ func TestEvaluateStage2(t *testing.T) {
 			in.MinMergeSafety, in.MinReviewConfidence = 0.1, 0.1
 			in.MergeSafety.Score, in.Categorization.ReviewConfidence = 0.5, 0.5
 		}, DecisionIneligible, []string{ReasonMergeSafetyBelowBar, ReasonConfidenceBelowBar}},
-		{"nothing measured", func(in *Stage2Input) { *in = Stage2Input{Repo: in.Repo} }, DecisionIneligible,
-			[]string{ReasonOwnersNotChecked, ReasonBranchRulesNotChecked, ReasonMergeSafetyNotScored, ReasonCategorizationNotRun}},
-		{"categorizer skipped", func(in *Stage2Input) { in.Owners = &OwnersResult{}; in.Categorization = nil }, DecisionIneligible,
-			[]string{ReasonOwners, ReasonCategorizationNotRun}},
+		{
+			"nothing measured", func(in *Stage2Input) { *in = Stage2Input{Repo: in.Repo} }, DecisionIneligible,
+			[]string{ReasonOwnersNotChecked, ReasonBranchRulesNotChecked, ReasonMergeSafetyNotScored, ReasonCategorizationNotRun},
+		},
+		{
+			"categorizer skipped", func(in *Stage2Input) { in.Owners = &OwnersResult{}; in.Categorization = nil }, DecisionIneligible,
+			[]string{ReasonOwners, ReasonCategorizationNotRun},
+		},
 		{"compliance, one family", func(in *Stage2Input) {
 			in.Repo = "acme/ledger"
 			in.Categorization = &Stage2Categorization{NotIndependent: true}
@@ -49,8 +53,10 @@ func TestEvaluateStage2(t *testing.T) {
 			in.Repo = "acme/ledger"
 			in.Categorization = &Stage2Categorization{}
 		}, DecisionIneligible, []string{ReasonConfidenceBelowBar}},
-		{"one family, not compliance", func(in *Stage2Input) { in.Categorization = &Stage2Categorization{NotIndependent: true} }, DecisionIneligible,
-			[]string{ReasonConfidenceBelowBar}},
+		{
+			"one family, not compliance", func(in *Stage2Input) { in.Categorization = &Stage2Categorization{NotIndependent: true} }, DecisionIneligible,
+			[]string{ReasonConfidenceBelowBar},
+		},
 	}
 	for _, tt := range tests {
 		in := passing()

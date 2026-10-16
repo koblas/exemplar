@@ -67,10 +67,10 @@ func (fp *fingerprinter) next(ctx context.Context, ruleID string, a scope.Anchor
 // identify returns a new occurrence's fingerprint, the normalized code it
 // was computed from and its ordinal k, which re-anchoring after a rebase
 // searches for (FR-C4).
-func (fp *fingerprinter) identify(ctx context.Context, ruleID string, a scope.Anchor) (id, code string, k int) {
-	code = fp.normalizedCode(ctx, a)
+func (fp *fingerprinter) identify(ctx context.Context, ruleID string, a scope.Anchor) (string, string, int) {
+	code := fp.normalizedCode(ctx, a)
 	base := ruleID + "|" + a.Path + "|" + code
-	k = fp.seen[base]
+	k := fp.seen[base]
 	fp.seen[base] = k + 1
 	sum := sha256.Sum256(fmt.Appendf(nil, "%s|%d", base, k))
 	return hex.EncodeToString(sum[:]), code, k

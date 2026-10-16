@@ -28,10 +28,14 @@ func TestCheckFix(t *testing.T) {
 	}{
 		{name: "valid", fix: goodFix},
 		{name: "valid with a final newline", fix: goodFix + "\n"},
-		{name: "valid two-line range", anchor: scope.Anchor{Path: "main.go", Side: scope.SideRight, StartLine: 13, EndLine: 14},
-			fix: "\tdefer func() { _ = resp.Body.Close() }()\n\t_ = ctx"},
-		{name: "breaks the block", anchor: scope.Anchor{Path: "main.go", Side: scope.SideRight, StartLine: 9, EndLine: 10},
-			fix: goodFix + "\n\tresp, err := http.DefaultClient.Do(req)", want: FixParse},
+		{
+			name: "valid two-line range", anchor: scope.Anchor{Path: "main.go", Side: scope.SideRight, StartLine: 13, EndLine: 14},
+			fix: "\tdefer func() { _ = resp.Body.Close() }()\n\t_ = ctx",
+		},
+		{
+			name: "breaks the block", anchor: scope.Anchor{Path: "main.go", Side: scope.SideRight, StartLine: 9, EndLine: 10},
+			fix: goodFix + "\n\tresp, err := http.DefaultClient.Do(req)", want: FixParse,
+		},
 		{name: "bug classes may fix", rule: "bug.nil-deref", lane: LaneBug, fix: goodFix},
 		{name: "rule describes only", rule: "other-rule", fix: goodFix, want: FixNotAllowed},
 		{name: "removed lines", anchor: scope.Anchor{Path: "main.go", Side: scope.SideLeft, StartLine: 9, EndLine: 9}, fix: goodFix, want: FixLeftSide},
@@ -104,8 +108,10 @@ func TestReviewPostsValidFix(t *testing.T) {
 	}
 	fix := strings.ReplaceAll(goodFix, `"`, `\"`)
 	fix = strings.ReplaceAll(fix, "\t", `\t`)
-	eng, tr := newEngine(e, Script{Generator: contextViolation(`, "suggested_fix": "` + fix + `"`),
-		Quote: func(path string, line int) string { return headLineNoT(e.prep, path, line) }})
+	eng, tr := newEngine(e, Script{
+		Generator: contextViolation(`, "suggested_fix": "` + fix + `"`),
+		Quote:     func(path string, line int) string { return headLineNoT(e.prep, path, line) },
+	})
 	res, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval"})
 	if err != nil {
 		t.Fatal(err)

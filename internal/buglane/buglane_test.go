@@ -5,10 +5,8 @@ import (
 	"testing"
 )
 
-func ptr[T any](v T) *T { return &v }
-
 func TestDecide(t *testing.T) {
-	quiet := GateInput{Files: []string{"svc/a.go"}, NonTestChangedLines: 10, MergeSafety: ptr(0.9), RecentIncident: ptr(false)}
+	quiet := GateInput{Files: []string{"svc/a.go"}, NonTestChangedLines: 10, MergeSafety: new(0.9), RecentIncident: new(false)}
 	tests := []struct {
 		name     string
 		edit     func(*GateInput)
@@ -20,9 +18,9 @@ func TestDecide(t *testing.T) {
 		{"80 lines", func(in *GateInput) { in.NonTestChangedLines = 80 }, true, []string{TriggerChangedLines}},
 		{"79 lines", func(in *GateInput) { in.NonTestChangedLines = 79 }, false, nil},
 		{"repo threshold", func(in *GateInput) { in.MinChangedLines = 10 }, true, []string{TriggerChangedLines}},
-		{"merge safety 0.59", func(in *GateInput) { in.MergeSafety = ptr(0.59) }, true, []string{TriggerMergeSafety}},
-		{"merge safety 0.6", func(in *GateInput) { in.MergeSafety = ptr(0.6) }, false, nil},
-		{"recent incident", func(in *GateInput) { in.RecentIncident = ptr(true) }, true, []string{TriggerRecentIncident}},
+		{"merge safety 0.59", func(in *GateInput) { in.MergeSafety = new(0.59) }, true, []string{TriggerMergeSafety}},
+		{"merge safety 0.6", func(in *GateInput) { in.MergeSafety = new(0.6) }, false, nil},
+		{"recent incident", func(in *GateInput) { in.RecentIncident = new(true) }, true, []string{TriggerRecentIncident}},
 		{"forced", func(in *GateInput) { in.AutoApproveCandidate = true }, true, []string{TriggerForced}},
 	}
 	for _, tt := range tests {

@@ -35,12 +35,12 @@ var ErrUsage = errors.New("usage: /exemplar try org/repo#1234")
 
 // ParseTry finds a /exemplar try command in a comment. found is false when
 // there is none; a command with a bad target returns ErrUsage.
-func ParseTry(body string) (t Target, found bool, err error) {
+func ParseTry(body string) (Target, bool, error) {
 	m := tryRE.FindStringSubmatch(body)
 	if m == nil {
 		return Target{}, false, nil
 	}
-	t, err = ParseTarget(strings.TrimSpace(m[1]))
+	t, err := ParseTarget(strings.TrimSpace(m[1]))
 	return t, true, err
 }
 
@@ -92,23 +92,24 @@ type Request struct {
 
 // Outcome is a try's result. Reply is safe to post in exemplar-config.
 type Outcome struct {
-	Ran      bool
-	Denied   bool
-	Reply    string
-	Findings []Finding
-	CostUSD  float64
+	Ran      bool      `json:"Ran"`
+	Denied   bool      `json:"Denied"`
+	Reply    string    `json:"Reply"`
+	Findings []Finding `json:"Findings"`
+	CostUSD  float64   `json:"CostUSD"`
 }
 
 // Finding is a draft rule's finding, as the reply shows it.
 type Finding struct {
-	Rule       string
-	Path       string
-	Start, End int
-	Message    string
+	Rule    string `json:"Rule"`
+	Path    string `json:"Path"`
+	Start   int    `json:"Start"`
+	End     int    `json:"End"`
+	Message string `json:"Message"`
 	// Kept is false for findings the verifier or validation dropped;
 	// Reason says why.
-	Kept   bool
-	Reason string
+	Kept   bool   `json:"Kept"`
+	Reason string `json:"Reason"`
 }
 
 // Try runs the draft rules on the target PR. It never posts on the
@@ -117,12 +118,12 @@ func (r *Runner) Try(ctx context.Context, req Request) (Outcome, error) {
 	t := req.Target
 	// One answer for "ineligible", "cannot read" and "check failed", so a
 	// reply never says whether a repo exists or why it was refused.
-	deny := Outcome{Denied: true, Reply: fmt.Sprintf("no access to %s", t.Repo)}
+	deny := Outcome{Denied: true, Reply: "no access to " + t.Repo}
 	if req.Snapshot == nil || req.Snapshot.CheckEligible(t.Repo) != nil {
-		return deny, nil
+		return deny, nil //nolint:nilerr // ineligible is an outcome, worded like no access so nothing leaks
 	}
 	if ok, err := r.GitHub.CanRead(ctx, req.Actor, t.Repo); err != nil || !ok {
-		return deny, nil
+		return deny, nil //nolint:nilerr // a failed check denies, with the same reply as no access, so nothing leaks
 	}
 	pr, err := r.GitHub.PullRequest(ctx, t.Repo, t.PR)
 	if errors.Is(err, gh.ErrNotFound) {
@@ -202,8 +203,10 @@ func (r *Runner) RunPR(ctx context.Context, snap *config.Snapshot, ruleIDs []str
 	if err != nil {
 		return Trial{}, fmt.Errorf("playground: checkout %s: %w", t, err)
 	}
-	info := engine.PRInfo{Repo: pr.Repo, Number: pr.Number, Title: pr.Title, Body: pr.Body, Author: pr.Author,
-		BaseSHA: pr.BaseSHA, HeadSHA: pr.HeadSHA}
+	info := engine.PRInfo{
+		Repo: pr.Repo, Number: pr.Number, Title: pr.Title, Body: pr.Body, Author: pr.Author,
+		BaseSHA: pr.BaseSHA, HeadSHA: pr.HeadSHA,
+	}
 	p, err := engine.Prepare(ctx, ws, snap, info, r.Scanner)
 	if errors.Is(err, engine.ErrIneligible) {
 		return Trial{Ineligible: true}, nil

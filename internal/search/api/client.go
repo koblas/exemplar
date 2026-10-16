@@ -125,7 +125,7 @@ func (c *Client) SnapshotStatus(ctx context.Context, prRepo, repo string) (Snaps
 func (c *Client) FindReferences(ctx context.Context, prRepo, repo, snapshot, name, definedIn string) (FindReferencesResponse, error) {
 	var out FindReferencesResponse
 	err := c.call(ctx, "/v1/find_references", FindReferencesRequest{
-		Target: Target{PRRepo: prRepo, Repo: repo}, Name: name, DefinedIn: definedIn, Snapshot: snapshot,
+		PRRepo: prRepo, Repo: repo, Name: name, DefinedIn: definedIn, Snapshot: snapshot,
 	}, &out)
 	return out, err
 }
@@ -134,7 +134,7 @@ func (c *Client) FindReferences(ctx context.Context, prRepo, repo, snapshot, nam
 func (c *Client) Dependents(ctx context.Context, prRepo, repo, snapshot, path string, depth int) (DependentsResponse, error) {
 	var out DependentsResponse
 	err := c.call(ctx, "/v1/dependents", DependentsRequest{
-		Target: Target{PRRepo: prRepo, Repo: repo}, Path: path, Depth: depth, Snapshot: snapshot,
+		PRRepo: prRepo, Repo: repo, Path: path, Depth: depth, Snapshot: snapshot,
 	}, &out)
 	return out, err
 }
@@ -142,14 +142,14 @@ func (c *Client) Dependents(ctx context.Context, prRepo, repo, snapshot, path st
 // ReadFile returns lines start..end of path at commit.
 func (c *Client) ReadFile(ctx context.Context, prRepo, repo, commit, path string, start, end int) (ReadFileResponse, error) {
 	var out ReadFileResponse
-	err := c.call(ctx, "/v1/read_file", ReadFileRequest{Target: Target{PRRepo: prRepo, Repo: repo}, Commit: commit, Path: path, Start: start, End: end}, &out)
+	err := c.call(ctx, "/v1/read_file", ReadFileRequest{PRRepo: prRepo, Repo: repo, Commit: commit, Path: path, Start: start, End: end}, &out)
 	return out, err
 }
 
 // Log returns up to n commits touching path as of commit.
 func (c *Client) Log(ctx context.Context, prRepo, repo, commit, path string, n int) ([]mirror.Commit, error) {
 	var out LogResponse
-	err := c.call(ctx, "/v1/log", LogRequest{Target: Target{PRRepo: prRepo, Repo: repo}, Commit: commit, Path: path, N: n}, &out)
+	err := c.call(ctx, "/v1/log", LogRequest{PRRepo: prRepo, Repo: repo, Commit: commit, Path: path, N: n}, &out)
 	return out.Commits, err
 }
 
@@ -158,7 +158,7 @@ func (c *Client) Log(ctx context.Context, prRepo, repo, commit, path string, n i
 func (c *Client) SearchText(ctx context.Context, prRepo, repo, snapshot, pattern, pathFilter, lang string) (SearchTextResponse, error) {
 	var out SearchTextResponse
 	err := c.call(ctx, "/v1/search_text", SearchTextRequest{
-		Target: Target{PRRepo: prRepo, Repo: repo}, Pattern: pattern, PathFilter: pathFilter, Lang: lang, Snapshot: snapshot,
+		PRRepo: prRepo, Repo: repo, Pattern: pattern, PathFilter: pathFilter, Lang: lang, Snapshot: snapshot,
 	}, &out)
 	return out, err
 }
@@ -168,7 +168,7 @@ func (c *Client) SearchText(ctx context.Context, prRepo, repo, snapshot, pattern
 func (c *Client) FindDefinition(ctx context.Context, prRepo, repo, snapshot, name, nearPath string) (FindDefinitionResponse, error) {
 	var out FindDefinitionResponse
 	err := c.call(ctx, "/v1/find_definition", FindDefinitionRequest{
-		Target: Target{PRRepo: prRepo, Repo: repo}, Name: name, NearPath: nearPath, Snapshot: snapshot,
+		PRRepo: prRepo, Repo: repo, Name: name, NearPath: nearPath, Snapshot: snapshot,
 	}, &out)
 	return out, err
 }

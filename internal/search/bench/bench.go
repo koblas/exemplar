@@ -209,7 +209,7 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	// 2. Full-object bare mirror (exemplar-search's only git copy).
 	mirror := filepath.Join(cfg.WorkDir, "mirror.git")
 	_ = os.RemoveAll(mirror)
-	secs, err := timed(ctx, env, "", "git", "clone", "--mirror", "-q", cfg.RepoURL, mirror)
+	secs, err := timed(ctx, env, "git", "clone", "--mirror", "-q", cfg.RepoURL, mirror)
 	if err != nil {
 		return nil, fmt.Errorf("mirror: %w", err)
 	}
@@ -223,7 +223,7 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	// 3. Full index with ctags symbols.
 	index := filepath.Join(cfg.WorkDir, "index")
 	_ = os.RemoveAll(index)
-	if r.FullIndex.Seconds, err = timed(ctx, env, "", "zoekt-git-index", "-index", index, "-branches", cfg.Branch, "-require_ctags", "-incremental=false", mirror); err != nil {
+	if r.FullIndex.Seconds, err = timed(ctx, env, "zoekt-git-index", "-index", index, "-branches", cfg.Branch, "-require_ctags", "-incremental=false", mirror); err != nil {
 		return nil, fmt.Errorf("full index: %w", err)
 	}
 	r.FullIndex.IndexBytes = dirSize(index)
@@ -273,7 +273,7 @@ func sparseClone(ctx context.Context, env []string, cfg Config, dir string) (flo
 	_ = os.RemoveAll(dir)
 	var steps []Step
 	run := func(name string, args ...string) error {
-		s, err := timed(ctx, env, "", "git", args...)
+		s, err := timed(ctx, env, "git", args...)
 		steps = append(steps, Step{Name: name, Seconds: s})
 		return err
 	}
@@ -297,37 +297,37 @@ func sparseClone(ctx context.Context, env []string, cfg Config, dir string) (flo
 // incremental indexes the branch as it was `back` commits ago, then moves
 // the branch to its tip and times the incremental re-index.
 func incremental(ctx context.Context, env []string, cfg Config, mirror string, back int) (*Incremental, error) {
-	old, err := output(ctx, env, mirror, "git", "rev-parse", fmt.Sprintf("%s~%d", cfg.Branch, back))
+	old, err := gitOutput(ctx, env, mirror, "rev-parse", fmt.Sprintf("%s~%d", cfg.Branch, back))
 	if err != nil {
 		return nil, err
 	}
-	tip, err := output(ctx, env, mirror, "git", "rev-parse", cfg.Branch)
+	tip, err := gitOutput(ctx, env, mirror, "rev-parse", cfg.Branch)
 	if err != nil {
 		return nil, err
 	}
-	changed, err := output(ctx, env, mirror, "git", "diff", "--name-only", old, tip)
+	changed, err := gitOutput(ctx, env, mirror, "diff", "--name-only", old, tip)
 	if err != nil {
 		return nil, err
 	}
 	const benchRef = "refs/heads/exemplar-bench"
 	index := filepath.Join(cfg.WorkDir, fmt.Sprintf("index-inc-%d", back))
 	_ = os.RemoveAll(index)
-	if _, err := output(ctx, env, mirror, "git", "update-ref", benchRef, old); err != nil {
+	if _, err := gitOutput(ctx, env, mirror, "update-ref", benchRef, old); err != nil {
 		return nil, err
 	}
-	defer func() { _, _ = output(context.WithoutCancel(ctx), env, mirror, "git", "update-ref", "-d", benchRef) }()
-	if _, err := timed(ctx, env, "", "zoekt-git-index", "-index", index, "-branches", "exemplar-bench", "-require_ctags", mirror); err != nil {
+	defer func() { _, _ = gitOutput(context.WithoutCancel(ctx), env, mirror, "update-ref", "-d", benchRef) }()
+	if _, err := timed(ctx, env, "zoekt-git-index", "-index", index, "-branches", "exemplar-bench", "-require_ctags", mirror); err != nil {
 		return nil, err
 	}
-	if _, err := output(ctx, env, mirror, "git", "update-ref", benchRef, tip); err != nil {
+	if _, err := gitOutput(ctx, env, mirror, "update-ref", benchRef, tip); err != nil {
 		return nil, err
 	}
-	secs, err := timed(ctx, env, "", "zoekt-git-index", "-index", index, "-branches", "exemplar-bench", "-require_ctags", "-incremental", mirror)
+	secs, err := timed(ctx, env, "zoekt-git-index", "-index", index, "-branches", "exemplar-bench", "-require_ctags", "-incremental", mirror)
 	if err != nil {
 		return nil, err
 	}
 	n := 0
-	for _, l := range strings.Split(changed, "\n") {
+	for l := range strings.SplitSeq(changed, "\n") {
 		if strings.TrimSpace(l) != "" {
 			n++
 		}
@@ -354,7 +354,10 @@ func queryLatency(ctx context.Context, index string, queries []string, repeats i
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	search := func(q string) (int, time.Duration, error) {
-		body, _ := json.Marshal(map[string]any{"Q": q, "Opts": map[string]any{"MaxDocDisplayCount": 100}})
+		body, err := json.Marshal(map[string]any{"Q": q, "Opts": map[string]any{"MaxDocDisplayCount": 100}})
+		if err != nil {
+			return 0, 0, fmt.Errorf("encode search request: %w", err)
+		}
 		start := time.Now()
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+addr+"/api/search", bytes.NewReader(body))
 		if err != nil {
@@ -412,8 +415,9 @@ func ctagsCoverage(ctx context.Context, env []string, mirror, branch string, fil
 		}
 	}
 	_ = os.MkdirAll(scratch, 0o755)
-	var out []LanguageCoverage
-	for _, lang := range []string{"Go", "C/C++", "TypeScript/JavaScript", "Python", "Java/Kotlin"} {
+	langs := []string{"Go", "C/C++", "TypeScript/JavaScript", "Python", "Java/Kotlin"}
+	out := make([]LanguageCoverage, 0, len(langs))
+	for _, lang := range langs {
 		all := byLang[lang]
 		lc := LanguageCoverage{Language: lang, FilesInRepo: len(all)}
 		picked := EvenSample(all, sample)
@@ -424,7 +428,7 @@ func ctagsCoverage(ctx context.Context, env []string, mirror, branch string, fil
 				continue
 			}
 			local := filepath.Join(scratch, "f"+filepath.Ext(f))
-			if os.WriteFile(local, data, 0o644) != nil {
+			if os.WriteFile(local, data, 0o600) != nil {
 				continue
 			}
 			n := countTags(ctx, local)
@@ -463,13 +467,13 @@ func countTags(ctx context.Context, path string) int {
 
 // treeStats lists files and their total size at branch in the mirror.
 func treeStats(ctx context.Context, env []string, mirror, branch string) ([]string, int64, error) {
-	out, err := output(ctx, env, mirror, "git", "ls-tree", "-r", "-l", "--full-tree", branch)
+	out, err := gitOutput(ctx, env, mirror, "ls-tree", "-r", "-l", "--full-tree", branch)
 	if err != nil {
 		return nil, 0, err
 	}
 	var files []string
 	var total int64
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		meta, path, ok := strings.Cut(line, "\t")
 		if !ok {
 			continue
@@ -519,14 +523,14 @@ func EvenSample(list []string, n int) []string {
 	return out
 }
 
-func timed(ctx context.Context, env []string, dir, name string, args ...string) (float64, error) {
+func timed(ctx context.Context, env []string, name string, args ...string) (float64, error) {
 	start := time.Now()
-	_, err := outputBytes(ctx, env, dir, name, args...)
+	_, err := outputBytes(ctx, env, "", name, args...)
 	return time.Since(start).Seconds(), err
 }
 
-func output(ctx context.Context, env []string, dir, name string, args ...string) (string, error) {
-	b, err := outputBytes(ctx, env, dir, name, args...)
+func gitOutput(ctx context.Context, env []string, dir string, args ...string) (string, error) {
+	b, err := outputBytes(ctx, env, dir, "git", args...)
 	return strings.TrimSpace(string(b)), err
 }
 

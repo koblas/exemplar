@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -45,7 +46,7 @@ func (f *fakeExtractor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	switch {
-	case r.Method == "POST" && r.URL.Path == "/v1/messages/batches":
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/messages/batches":
 		f.creates++
 		var in struct {
 			Requests []struct {
@@ -62,7 +63,7 @@ func (f *fakeExtractor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(data, &in)
 		id := fmt.Sprintf("msgbatch_%d", f.creates)
-		var lines []string
+		lines := make([]string, 0, len(in.Requests))
 		for _, req := range in.Requests {
 			text := req.Params.Messages[0].Content[0].Text
 			f.bodies = append(f.bodies, text)
@@ -70,15 +71,17 @@ func (f *fakeExtractor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		f.batches[id] = lines
 		w.Header().Set(llm.HeaderModel, "claude-sonnet-5-5")
-		fmt.Fprintf(w, `{"id":%q,"type":"message_batch","processing_status":"in_progress","request_counts":{"processing":1,"succeeded":0,"errored":0,"canceled":0,"expired":0},"created_at":"2026-10-12T00:00:00Z","expires_at":"2026-10-13T00:00:00Z","ended_at":null,"cancel_initiated_at":null,"archived_at":null,"results_url":null}`, id)
-	case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/results"):
+		fmt.Fprintf(w, `{"id":%q,"type":"message_batch","processing_status":"in_progress","request_counts":{"processing":1,"succeeded":0,"errored":0,"canceled":0,"expired":0},`+
+			`"created_at":"2026-10-12T00:00:00Z","expires_at":"2026-10-13T00:00:00Z","ended_at":null,"cancel_initiated_at":null,"archived_at":null,"results_url":null}`, id)
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/results"):
 		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/messages/batches/"), "/results")
 		fmt.Fprint(w, strings.Join(f.batches[id], "\n")+"\n")
-	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1/messages/batches/"):
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/messages/batches/"):
 		id := strings.TrimPrefix(r.URL.Path, "/v1/messages/batches/")
-		fmt.Fprintf(w, `{"id":%q,"type":"message_batch","processing_status":"ended","request_counts":{"processing":0,"succeeded":1,"errored":0,"canceled":0,"expired":0},"created_at":"2026-10-12T00:00:00Z","expires_at":"2026-10-13T00:00:00Z","ended_at":"2026-10-12T01:00:00Z","cancel_initiated_at":null,"archived_at":null,"results_url":"x"}`, id)
+		fmt.Fprintf(w, `{"id":%q,"type":"message_batch","processing_status":"ended","request_counts":{"processing":0,"succeeded":1,"errored":0,"canceled":0,"expired":0},`+
+			`"created_at":"2026-10-12T00:00:00Z","expires_at":"2026-10-13T00:00:00Z","ended_at":"2026-10-12T01:00:00Z","cancel_initiated_at":null,"archived_at":null,"results_url":"x"}`, id)
 	default:
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
@@ -101,14 +104,17 @@ func (f *fakeExtractor) answer(customID, text string) string {
 		case strings.Contains(body, "OMIT"):
 			continue
 		case strings.Contains(body, "RULE"):
-			results = append(results, Result{CommentID: id, IsReusable: true, Title: "Set timeouts on outbound calls",
+			results = append(results, Result{
+				CommentID: id, IsReusable: true, Title: "Set timeouts on outbound calls",
 				Description:       "Every outbound HTTP call needs a timeout so a slow dependency cannot hang the service.",
-				PreferredApproach: "Use an http.Client with Timeout set.", Category: "Reliability", LanguageAgnostic: true, Confidence: 0.9})
+				PreferredApproach: "Use an http.Client with Timeout set.", Category: "Reliability", LanguageAgnostic: true, Confidence: 0.9,
+			})
 		default:
 			results = append(results, Result{CommentID: id, Confidence: 0.95})
 		}
 	}
-	answer, _ := json.Marshal(output{Results: results})
+	answer, _ := json.Marshal(output{Results: results}) //nolint:errchkjson // test fixture: plain structs of strings and numbers always encode
+	//nolint:errchkjson // test fixture: maps of strings and numbers always encode
 	msg, _ := json.Marshal(map[string]any{
 		"id": "msg", "type": "message", "role": "assistant", "model": "claude-sonnet-5-5",
 		"content": []any{map[string]any{"type": "text", "text": string(answer)}}, "stop_reason": "end_turn", "stop_sequence": nil,
@@ -127,7 +133,7 @@ func seed(t *testing.T, s *store.Store, id int64, body string) {
 	b, h := body, "@@ -1 +1 @@\n-x\n+y"
 	if err := s.InsertMinedComment(t.Context(), queries.InsertMinedCommentParams{
 		ID: id, Repo: "acme/app", PrNumber: 1, Path: "a.go", Ext: ".go", ReviewerPid: "r", AuthorPid: "a",
-		CreatedAt: tsNow(), CommentUrl: "https://github.com/acme/app/pull/1#discussion_r" + fmt.Sprint(id),
+		CreatedAt: tsNow(), CommentUrl: "https://github.com/acme/app/pull/1#discussion_r" + strconv.FormatInt(id, 10),
 		Body: &b, DiffHunk: &h, DocUrls: []string{}, IsThreadRoot: true, Source: "human",
 	}); err != nil {
 		t.Fatal(err)
@@ -362,7 +368,8 @@ func TestThroughRealGateway(t *testing.T) {
 	}
 	var calls int
 	var stage, caller, classes string
-	if err := s.Pool.QueryRow(ctx, `SELECT count(*) OVER (), stage, caller, array_to_string(data_classes, ',') FROM model_calls WHERE batch_id IS NOT NULL`).Scan(&calls, &stage, &caller, &classes); err != nil {
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) OVER (), stage, caller, array_to_string(data_classes, ',') `+
+		`FROM model_calls WHERE batch_id IS NOT NULL`).Scan(&calls, &stage, &caller, &classes); err != nil {
 		t.Fatalf("batch usage not booked: %v", err)
 	}
 	if calls != 1 || stage != llm.StageGenerator || caller != "learning" || classes != "review_comments,diff" {

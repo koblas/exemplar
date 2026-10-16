@@ -41,7 +41,7 @@ type Expect struct {
 }
 
 // ParseRef splits "owner/name@sha".
-func ParseRef(ref string) (repo, sha string, err error) {
+func ParseRef(ref string) (string, string, error) {
 	repo, sha, ok := strings.Cut(ref, "@")
 	if !ok || strings.Count(repo, "/") != 1 || sha == "" {
 		return "", "", fmt.Errorf("compile: bad case ref %q", ref)
@@ -175,7 +175,7 @@ func materialize(ctx context.Context, src FileSource, dir string, c Case) ([]str
 		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(full, data, 0o640); err != nil {
+		if err := os.WriteFile(full, data, 0o600); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -185,7 +185,7 @@ func materialize(ctx context.Context, src FileSource, dir string, c Case) ([]str
 			return nil, errors.New("injected case has no patch")
 		}
 		pf := filepath.Join(dir, ".exemplar.patch")
-		if err := os.WriteFile(pf, []byte(c.Patch), 0o640); err != nil {
+		if err := os.WriteFile(pf, []byte(c.Patch), 0o600); err != nil {
 			return nil, err
 		}
 		// --unsafe-paths is not set, so the patch cannot write outside dir.

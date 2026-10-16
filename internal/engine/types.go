@@ -79,10 +79,10 @@ const SecretRuleID = "possible-secret-in-diff"
 // It has no rule id, citation or coverage field by design.
 type Violation struct {
 	Path         string `json:"path"`
-	Side         string `json:"side" jsonschema:"enum=RIGHT,enum=LEFT"`
-	StartLine    int    `json:"start_line" jsonschema:"minimum=1"`
-	EndLine      int    `json:"end_line" jsonschema:"minimum=1"`
-	Explanation  string `json:"explanation" jsonschema:"maxLength=1500"`
+	Side         string `json:"side"                    jsonschema:"enum=RIGHT,enum=LEFT"`
+	StartLine    int    `json:"start_line"              jsonschema:"minimum=1"`
+	EndLine      int    `json:"end_line"                jsonschema:"minimum=1"`
+	Explanation  string `json:"explanation"             jsonschema:"maxLength=1500"`
 	SuggestedFix string `json:"suggested_fix,omitempty" jsonschema:"maxLength=1500"`
 }
 

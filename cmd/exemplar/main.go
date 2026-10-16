@@ -38,6 +38,9 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version,
 	}
-	root.AddCommand(newValidateCmd(), newMutationsCmd(), newReplayCmd(), newAdversarialCmd(), newSandboxCmd(), newTryCmd(), newEvalCmd(), newVolumeCmd(), newLinterOverlapCmd(), newExportApprovalCmd(), newCalibrateCmd(), newLoginCmd(), newReviewCmd())
+	root.AddCommand(
+		newValidateCmd(), newMutationsCmd(), newReplayCmd(), newAdversarialCmd(), newSandboxCmd(), newTryCmd(), newEvalCmd(),
+		newVolumeCmd(), newLinterOverlapCmd(), newExportApprovalCmd(), newCalibrateCmd(), newLoginCmd(), newReviewCmd(),
+	)
 	return root
 }

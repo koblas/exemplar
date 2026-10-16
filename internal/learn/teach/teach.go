@@ -203,8 +203,10 @@ func (r Runner) make(ctx context.Context, rule config.Rule, p *Proposal) error {
 		}
 		p.Action, p.URL = "issue", issue.URL
 	}
-	_, err := r.Store.InsertTeachProposal(ctx, queries.InsertTeachProposalParams{RuleID: rule.ID, RuleVersion: rule.VersionSHA, TeachClass: p.Class,
-		EvidenceFindings: ids, ConfigPrUrl: &p.URL, State: state})
+	_, err := r.Store.InsertTeachProposal(ctx, queries.InsertTeachProposalParams{
+		RuleID: rule.ID, RuleVersion: rule.VersionSHA, TeachClass: p.Class,
+		EvidenceFindings: ids, ConfigPrUrl: &p.URL, State: state,
+	})
 	return err
 }
 
@@ -288,7 +290,8 @@ func (r Runner) prBody(rule config.Rule, p Proposal) string {
 	if p.Owner {
 		who = "its owner dismissed its findings"
 	}
-	return fmt.Sprintf("%s: in the last %d days %s under `%s` as out of scope (\"not important here\", or a reason classed as scope). This draft adds `%s` to `file_patterns` (spec §8.7 teach-the-bot). Nothing changes until you merge it; the eval CI on this PR shows the effect.\n\nEvidence:\n\n%s",
+	return fmt.Sprintf("%s: in the last %d days %s under `%s` as out of scope (\"not important here\", or a reason classed as scope). "+
+		"This draft adds `%s` to `file_patterns` (spec §8.7 teach-the-bot). Nothing changes until you merge it; the eval CI on this PR shows the effect.\n\nEvidence:\n\n%s",
 		rule.Owner, Window, who, strings.TrimPrefix(p.Exclude, "!"), p.Exclude, r.links(p))
 }
 

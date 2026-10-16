@@ -187,9 +187,11 @@ func Challenge(verifier string) string {
 
 // AuthCodeURL is where a browser signs in.
 func (p *Provider) AuthCodeURL(redirect, state, nonce, pkceVerifier string) string {
-	q := url.Values{"response_type": {"code"}, "client_id": {p.cfg.ClientID}, "redirect_uri": {redirect},
+	q := url.Values{
+		"response_type": {"code"}, "client_id": {p.cfg.ClientID}, "redirect_uri": {redirect},
 		"scope": {strings.Join(p.cfg.Scopes, " ")}, "state": {state}, "nonce": {nonce},
-		"code_challenge": {Challenge(pkceVerifier)}, "code_challenge_method": {"S256"}}
+		"code_challenge": {Challenge(pkceVerifier)}, "code_challenge_method": {"S256"},
+	}
 	for k, v := range p.cfg.AuthURLParams {
 		if q.Get(k) == "" {
 			q.Set(k, v)
@@ -225,16 +227,18 @@ func (id Identity) Claims() svcauth.Claims {
 	return svcauth.Claims{Subject: id.Username, Permissions: perms, User: true, Issuer: id.Issuer, Sub: id.Subject}
 }
 
-// ErrDenied is a sign-in the settings refuse; its message is safe to show.
-type ErrDenied struct{ Why string }
+// DeniedError is a sign-in the settings refuse; its message is safe to show.
+type DeniedError struct{ Why string }
 
-func (e ErrDenied) Error() string { return e.Why }
+func (e DeniedError) Error() string { return e.Why }
 
 // Exchange completes a browser sign-in: it trades the code, verifies the
 // ID token and its nonce, merges userinfo, and applies the settings.
 func (p *Provider) Exchange(ctx context.Context, code, redirect, nonce, pkceVerifier string) (Identity, error) {
-	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {redirect},
-		"client_id": {p.cfg.ClientID}, "client_secret": {p.cfg.ClientSecret}, "code_verifier": {pkceVerifier}}
+	form := url.Values{
+		"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {redirect},
+		"client_id": {p.cfg.ClientID}, "client_secret": {p.cfg.ClientSecret}, "code_verifier": {pkceVerifier},
+	}
 	var tok struct {
 		IDToken     string `json:"id_token"`
 		AccessToken string `json:"access_token"`
@@ -299,27 +303,27 @@ func (p *Provider) identity(claims map[string]any) (Identity, error) {
 	str := func(k string) string { s, _ := claims[k].(string); return strings.TrimSpace(s) }
 	id := Identity{Issuer: p.disc.Issuer, Subject: str("sub"), Email: str(p.cfg.EmailField), Username: str(p.cfg.UsernameField)}
 	if id.Subject == "" {
-		return Identity{}, ErrDenied{"Your sign-in has no subject."}
+		return Identity{}, DeniedError{"Your sign-in has no subject."}
 	}
 	if id.Email == "" && strings.Contains(id.Username, "@") {
 		id.Email = id.Username
 	}
 	if id.Email == "" || !strings.Contains(id.Email, "@") {
-		return Identity{}, ErrDenied{"Your sign-in has no email address."}
+		return Identity{}, DeniedError{"Your sign-in has no email address."}
 	}
 	if v, ok := claims["email_verified"].(bool); ok && !v && !p.cfg.IgnoreEmailVerified {
-		return Identity{}, ErrDenied{"Your email address is not verified with the identity provider."}
+		return Identity{}, DeniedError{"Your email address is not verified with the identity provider."}
 	}
 	_, domain, _ := strings.Cut(strings.ToLower(id.Email), "@")
 	if len(p.cfg.EmailDomains) > 0 && !slices.Contains(p.cfg.EmailDomains, domain) {
-		return Identity{}, ErrDenied{"Your email domain is not allowed to sign in."}
+		return Identity{}, DeniedError{"Your email domain is not allowed to sign in."}
 	}
 	if id.Username == "" || strings.Contains(id.Username, "@") {
 		id.Username, _, _ = strings.Cut(id.Email, "@")
 	}
 	id.Username = strings.Trim(usernameRE.ReplaceAllString(id.Username, "-"), "-")
 	if id.Username == "" {
-		return Identity{}, ErrDenied{"Your sign-in has no usable username."}
+		return Identity{}, DeniedError{"Your sign-in has no usable username."}
 	}
 	switch g := claims[p.cfg.GroupField].(type) {
 	case string:
@@ -332,7 +336,7 @@ func (p *Provider) identity(claims map[string]any) (Identity, error) {
 		}
 	}
 	if len(p.cfg.AllowedGroups) > 0 && !slices.ContainsFunc(id.Groups, func(g string) bool { return slices.Contains(p.cfg.AllowedGroups, g) }) {
-		return Identity{}, ErrDenied{"You are not in a group allowed to sign in."}
+		return Identity{}, DeniedError{"You are not in a group allowed to sign in."}
 	}
 	for _, g := range id.Groups {
 		id.Repos = append(id.Repos, p.cfg.GroupRepos[g]...)
@@ -385,10 +389,12 @@ func (p *Provider) post(ctx context.Context, u string, form url.Values, out any)
 // FromEnv reads the EXEMPLAR_OIDC_* settings; ok is false when OIDC is
 // not configured (no issuer).
 func FromEnv(getenv func(string) string, readFile func(string) ([]byte, error)) (Config, bool, error) {
-	cfg := Config{IssuerURL: getenv("EXEMPLAR_OIDC_ISSUER_URL"), ClientID: getenv("EXEMPLAR_OIDC_CLIENT_ID"), CLIClientID: getenv("EXEMPLAR_OIDC_CLI_CLIENT_ID"),
+	cfg := Config{
+		IssuerURL: getenv("EXEMPLAR_OIDC_ISSUER_URL"), ClientID: getenv("EXEMPLAR_OIDC_CLIENT_ID"), CLIClientID: getenv("EXEMPLAR_OIDC_CLI_CLIENT_ID"),
 		EmailField: getenv("EXEMPLAR_OIDC_EMAIL_FIELD"), UsernameField: getenv("EXEMPLAR_OIDC_USERNAME_FIELD"), GroupField: getenv("EXEMPLAR_OIDC_GROUP_FIELD"),
 		IgnoreEmailVerified: getenv("EXEMPLAR_OIDC_IGNORE_EMAIL_VERIFIED") == "true", IgnoreUserInfo: getenv("EXEMPLAR_OIDC_IGNORE_USERINFO") == "true",
-		SignInText: getenv("EXEMPLAR_OIDC_SIGN_IN_TEXT"), IconURL: getenv("EXEMPLAR_OIDC_ICON_URL")}
+		SignInText: getenv("EXEMPLAR_OIDC_SIGN_IN_TEXT"), IconURL: getenv("EXEMPLAR_OIDC_ICON_URL"),
+	}
 	if cfg.IssuerURL == "" {
 		return cfg, false, nil
 	}
@@ -401,7 +407,7 @@ func FromEnv(getenv func(string) string, readFile func(string) ([]byte, error)) 
 	}
 	list := func(k string) []string {
 		var out []string
-		for _, s := range strings.Split(getenv(k), ",") {
+		for s := range strings.SplitSeq(getenv(k), ",") {
 			if s = strings.TrimSpace(s); s != "" {
 				out = append(out, s)
 			}

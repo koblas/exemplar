@@ -42,33 +42,48 @@ func newIDP(t *testing.T) *idp {
 
 func (p *idp) serve(w http.ResponseWriter, r *http.Request) {
 	base := p.srv.URL
+	reply := func(v any) {
+		if err := json.NewEncoder(w).Encode(v); err != nil {
+			p.t.Error(err)
+		}
+	}
 	switch r.URL.Path {
 	case "/.well-known/openid-configuration":
-		_ = json.NewEncoder(w).Encode(map[string]string{"issuer": base, "authorization_endpoint": base + "/authorize", "token_endpoint": base + "/token",
-			"userinfo_endpoint": base + "/userinfo", "jwks_uri": base + "/jwks", "device_authorization_endpoint": base + "/device"})
+		reply(map[string]string{
+			"issuer": base, "authorization_endpoint": base + "/authorize", "token_endpoint": base + "/token",
+			"userinfo_endpoint": base + "/userinfo", "jwks_uri": base + "/jwks", "device_authorization_endpoint": base + "/device",
+		})
 	case "/jwks":
-		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{"kty": "RSA", "kid": "k1", "alg": "RS256", "use": "sig",
-			"n": base64.RawURLEncoding.EncodeToString(p.key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(p.key.E)).Bytes())}}})
+		reply(map[string]any{"keys": []map[string]string{{
+			"kty": "RSA", "kid": "k1", "alg": "RS256", "use": "sig",
+			"n": base64.RawURLEncoding.EncodeToString(p.key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(p.key.E)).Bytes()),
+		}}})
 	case "/token":
 		_ = r.ParseForm()
 		if r.Form.Get("code") != "good" || r.Form.Get("client_secret") != "shh" || Challenge(r.Form.Get("code_verifier")) != p.challenge {
 			_, _ = w.Write([]byte(`{"error": "invalid_grant"}`))
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"id_token": p.sign(p.claims), "access_token": "at"})
+		reply(map[string]string{"id_token": p.sign(p.claims), "access_token": "at"})
 	case "/userinfo":
 		if r.Header.Get("Authorization") != "Bearer at" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(p.userinfo)
+		reply(p.userinfo)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
 func (p *idp) sign(claims map[string]any) string {
-	enc := func(v any) string { b, _ := json.Marshal(v); return base64.RawURLEncoding.EncodeToString(b) }
+	enc := func(v any) string {
+		b, err := json.Marshal(v)
+		if err != nil {
+			p.t.Error(err) // not Fatal: serve calls sign off the test goroutine
+		}
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
 	in := enc(map[string]string{"alg": "RS256", "kid": "k1"}) + "." + enc(claims)
 	sum := sha256.Sum256([]byte(in))
 	sig, _ := rsa.SignPKCS1v15(rand.Reader, p.key, crypto.SHA256, sum[:])
@@ -76,14 +91,18 @@ func (p *idp) sign(claims map[string]any) string {
 }
 
 func (p *idp) idClaims(aud, nonce string) map[string]any {
-	return map[string]any{"iss": p.srv.URL, "sub": "u1", "aud": aud, "exp": time.Now().Add(time.Hour).Unix(), "nonce": nonce,
-		"email": "dana@acme.example", "email_verified": true, "preferred_username": "dana-acme"}
+	return map[string]any{
+		"iss": p.srv.URL, "sub": "u1", "aud": aud, "exp": time.Now().Add(time.Hour).Unix(), "nonce": nonce,
+		"email": "dana@acme.example", "email_verified": true, "preferred_username": "dana-acme",
+	}
 }
 
 func newProvider(t *testing.T, p *idp, mut func(*Config)) *Provider {
 	t.Helper()
-	cfg := Config{IssuerURL: p.srv.URL, ClientID: "web", ClientSecret: "shh", CLIClientID: "cli", EmailDomains: []string{"acme.example"},
-		GroupRepos: map[string][]string{"eng": {"acme/*"}, "sec": {"acme/secret"}}, AuthURLParams: map[string]string{"prompt": "consent"}, HTTP: p.srv.Client()}
+	cfg := Config{
+		IssuerURL: p.srv.URL, ClientID: "web", ClientSecret: "shh", CLIClientID: "cli", EmailDomains: []string{"acme.example"},
+		GroupRepos: map[string][]string{"eng": {"acme/*"}, "sec": {"acme/secret"}}, AuthURLParams: map[string]string{"prompt": "consent"}, HTTP: p.srv.Client(),
+	}
 	if mut != nil {
 		mut(&cfg)
 	}
@@ -150,7 +169,7 @@ func TestExchange(t *testing.T) {
 	p.claims = p.idClaims("web", "n1")
 	delete(p.claims, "preferred_username")
 	p.claims["email_verified"], p.claims["groups"] = false, []any{"eng"}
-	if _, err := signIn(t, p, strict, "v", "v"); !errors.As(err, new(ErrDenied)) || !strings.Contains(err.Error(), "group") {
+	if _, err := signIn(t, p, strict, "v", "v"); !errors.As(err, new(DeniedError)) || !strings.Contains(err.Error(), "group") {
 		t.Errorf("not in an allowed group = %v", err)
 	}
 	p.claims["groups"] = "sec"
@@ -192,9 +211,11 @@ func TestConfig(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	env := map[string]string{"EXEMPLAR_OIDC_ISSUER_URL": "https://idp.example", "EXEMPLAR_OIDC_CLIENT_ID": "web", "EXEMPLAR_OIDC_CLIENT_SECRET_FILE": "/s",
+	env := map[string]string{
+		"EXEMPLAR_OIDC_ISSUER_URL": "https://idp.example", "EXEMPLAR_OIDC_CLIENT_ID": "web", "EXEMPLAR_OIDC_CLIENT_SECRET_FILE": "/s",
 		"EXEMPLAR_OIDC_EMAIL_DOMAIN": "acme.example, acme.io", "EXEMPLAR_OIDC_GROUP_REPOS": `{"eng": ["acme/*"]}`, "EXEMPLAR_OIDC_IGNORE_USERINFO": "true",
-		"EXEMPLAR_OIDC_SCOPES": "openid,email,offline_access", "EXEMPLAR_OIDC_AUTH_URL_PARAMS": `{"access_type": "offline"}`}
+		"EXEMPLAR_OIDC_SCOPES": "openid,email,offline_access", "EXEMPLAR_OIDC_AUTH_URL_PARAMS": `{"access_type": "offline"}`,
+	}
 	cfg, ok, err := FromEnv(func(k string) string { return env[k] }, func(string) ([]byte, error) { return []byte("shh\n"), nil })
 	if err != nil || !ok || cfg.ClientSecret != "shh" || len(cfg.EmailDomains) != 2 || cfg.GroupRepos["eng"][0] != "acme/*" || !cfg.IgnoreUserInfo ||
 		len(cfg.Scopes) != 3 || cfg.AuthURLParams["access_type"] != "offline" {

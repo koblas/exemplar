@@ -17,6 +17,7 @@ import (
 // Version is the compiler prompt version, recorded on every attempt.
 const Version = "compile-v1"
 
+//nolint:lll // prompt prose; wrapping a raw string would change the text sent to the model
 const systemPrompt = `You write deterministic code-search rules that enforce a code review rule.
 
 You get the rule (title, description, and the preferred approach if known), the target language, and up to five examples: the diff hunks reviewers commented on when they asked for this rule. In each hunk, the added lines (+) near the end are usually what the reviewer flagged.

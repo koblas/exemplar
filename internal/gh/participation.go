@@ -40,7 +40,7 @@ func Participated(ctx context.Context, c *github.Client, repo string, number int
 		}
 		opts.Page = resp.NextPage
 	}
-	copts := &github.PullRequestListCommentsOptions{ListOptions: github.ListOptions{PerPage: 100}}
+	copts := &github.PullRequestListCommentsOptions{PerPage: 100}
 	for range maxParticipationPages {
 		cs, resp, err := c.PullRequests.ListComments(ctx, owner, name, number, copts)
 		if err != nil {
@@ -56,7 +56,7 @@ func Participated(ctx context.Context, c *github.Client, repo string, number int
 		}
 		copts.Page = resp.NextPage
 	}
-	iopts := &github.IssueListCommentsOptions{ListOptions: github.ListOptions{PerPage: 100}}
+	iopts := &github.IssueListCommentsOptions{PerPage: 100}
 	for range maxParticipationPages {
 		cs, resp, err := c.Issues.ListComments(ctx, owner, name, number, iopts)
 		if err != nil {

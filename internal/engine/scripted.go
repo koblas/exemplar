@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -100,7 +101,7 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		return nil, fmt.Errorf("scripted: decode request: %w", err)
 	}
 	if len(in.Messages) == 0 || len(in.Messages[0].Content) < 2 {
-		return nil, fmt.Errorf("scripted: unexpected request shape")
+		return nil, errors.New("scripted: unexpected request shape")
 	}
 	var task, prCtx struct {
 		Text string `json:"text"`
@@ -113,7 +114,11 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	stop := "end_turn"
 	switch stage {
 	case llm.StageVerifier:
-		content = []map[string]any{{"type": "text", "text": s.verdicts(task.Text)}}
+		text, verr := s.verdicts(task.Text)
+		if verr != nil {
+			return nil, verr
+		}
+		content = []map[string]any{{"type": "text", "text": text}}
 	case llm.StageCategorizerA, llm.StageCategorizerB:
 		answer := `{"risk": "medium", "p_low": 0.5, "reasons": ["scripted"]}`
 		if s.Script.Categorizer != nil {
@@ -161,11 +166,14 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			content = []map[string]any{{"type": "text", "text": answer}}
 		}
 	}
-	out, _ := json.Marshal(map[string]any{
+	out, err := json.Marshal(map[string]any{
 		"id": "msg_scripted", "type": "message", "role": "assistant", "model": "scripted",
 		"content": content, "stop_reason": stop, "stop_sequence": nil,
 		"usage": map[string]any{"input_tokens": 100, "output_tokens": 20, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("scripted: encode response: %w", err)
+	}
 	family := s.Script.Family
 	if f, ok := s.Script.CategorizerFamily[stage]; ok {
 		family = f
@@ -183,10 +191,10 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 	h.Set(llm.HeaderBudget, budget)
 	h.Set(llm.HeaderCostUSD, "0")
-	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(bytes.NewReader(out)), Request: req}, nil
+	return &http.Response{StatusCode: http.StatusOK, Header: h, Body: io.NopCloser(bytes.NewReader(out)), Request: req}, nil
 }
 
-func (s *ScriptedTransport) verdicts(task string) string {
+func (s *ScriptedTransport) verdicts(task string) (string, error) {
 	verdict := s.Script.Verdict
 	if s.Script.VerdictFor != nil {
 		verdict = s.Script.VerdictFor(task)
@@ -198,8 +206,9 @@ func (s *ScriptedTransport) verdicts(task string) string {
 	if importance == 0 {
 		importance = 0.9
 	}
-	var vs []map[string]any
-	for _, m := range candidateRE.FindAllStringSubmatch(task, -1) {
+	matches := candidateRE.FindAllStringSubmatch(task, -1)
+	vs := make([]map[string]any, 0, len(matches))
+	for _, m := range matches {
 		idx, _ := strconv.Atoi(m[1])
 		start, _ := strconv.Atoi(m[4])
 		end, _ := strconv.Atoi(m[5])
@@ -209,14 +218,18 @@ func (s *ScriptedTransport) verdicts(task string) string {
 		}
 		vs = append(vs, map[string]any{"index": idx, "verdict": verdict, "importance": importance, "evidence": ev})
 	}
-	out, _ := json.Marshal(map[string]any{"verdicts": vs})
-	return string(out)
+	out, err := json.Marshal(map[string]any{"verdicts": vs})
+	if err != nil {
+		return "", fmt.Errorf("scripted: encode verdicts: %w", err)
+	}
+	return string(out), nil
 }
 
 // scopedFiles extracts the "- path" lines of a rule or baseline task.
 func scopedFiles(task string) []string {
-	var files []string
-	for _, m := range filesInScopeRE.FindAllStringSubmatch(task, -1) {
+	matches := filesInScopeRE.FindAllStringSubmatch(task, -1)
+	files := make([]string, 0, len(matches))
+	for _, m := range matches {
 		files = append(files, strings.TrimSpace(m[1]))
 	}
 	return files

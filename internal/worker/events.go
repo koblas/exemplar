@@ -226,13 +226,14 @@ const maxReasonChars = 1000
 // ParseCommand reads a "/exemplar <command> [reason]" comment: the first
 // non-blank line must start with /exemplar. command is lower-cased; reason
 // is the rest of the comment, trimmed and capped.
-func ParseCommand(body string) (command, reason string, ok bool) {
+func ParseCommand(body string) (string, string, bool) {
 	body = strings.TrimSpace(strings.ReplaceAll(body, "\r\n", "\n"))
 	first, rest, _ := strings.Cut(body, "\n")
 	fields := strings.Fields(first)
 	if len(fields) == 0 || !strings.EqualFold(fields[0], "/exemplar") {
 		return "", "", false
 	}
+	var command, reason string
 	if len(fields) > 1 {
 		command = strings.ToLower(fields[1])
 		reason = strings.Join(fields[2:], " ")
@@ -286,8 +287,10 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 			r := Route{Supersede: &Supersede{Repo: e.Repository.FullName, PR: e.Number}}
 			if e.PullRequest.Merged {
 				// Findings still untouched at merge were ignored (spec §9.1).
-				r.Signals = []store.FeedbackSignalArgs{{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.Number,
-					Signal: store.SignalMerged, Actor: e.PullRequest.User.Login, HeadSHA: e.PullRequest.Head.SHA, At: e.PullRequest.MergedAt}}
+				r.Signals = []store.FeedbackSignalArgs{{
+					InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.Number,
+					Signal: store.SignalMerged, Actor: e.PullRequest.User.Login, HeadSHA: e.PullRequest.Head.SHA, At: e.PullRequest.MergedAt,
+				}}
 			}
 			return r, nil
 		case "edited":
@@ -320,9 +323,11 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		case !ok:
 			// Not a command: a reply in a thread, or a new comment that may
 			// raise a finding's concern (spec §9.1).
-			sig := store.FeedbackSignalArgs{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.PullRequest.Number,
+			sig := store.FeedbackSignalArgs{
+				InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.PullRequest.Number,
 				Signal: store.SignalReply, CommentID: c.ID, ThreadRoot: c.InReplyTo, Actor: c.User.Login, Association: c.Association,
-				At: c.CreatedAt, Body: truncate(c.Body, maxSignalBody)}
+				At: c.CreatedAt, Body: truncate(c.Body, maxSignalBody),
+			}
 			if c.InReplyTo == 0 {
 				start := c.StartLine
 				if start == 0 {
@@ -337,8 +342,10 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		case c.InReplyTo == 0:
 			return Route{Ignored: "command outside a thread"}, nil
 		}
-		a := store.FeedbackCommandArgs{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.PullRequest.Number,
-			CommentID: c.ID, ThreadRoot: c.InReplyTo, Actor: c.User.Login, ActorType: c.User.Type, At: c.CreatedAt, Command: cmd, Reason: reason}
+		a := store.FeedbackCommandArgs{
+			InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.PullRequest.Number,
+			CommentID: c.ID, ThreadRoot: c.InReplyTo, Actor: c.User.Login, ActorType: c.User.Type, At: c.CreatedAt, Command: cmd, Reason: reason,
+		}
 		if a.InstallationID == 0 || a.Repo == "" || a.PR < 1 || a.CommentID == 0 || a.Actor == "" {
 			return Route{}, errors.New("pull_request_review_comment payload lacks installation, repository, number, comment or user")
 		}
@@ -381,8 +388,10 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		case root == 0:
 			return Route{Ignored: "thread without a first comment"}, nil
 		}
-		return Route{Signals: []store.FeedbackSignalArgs{{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.PullRequest.Number,
-			Signal: store.SignalResolved, ThreadRoot: root, Actor: e.Sender.Login}}}, nil
+		return Route{Signals: []store.FeedbackSignalArgs{{
+			InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: e.PullRequest.Number,
+			Signal: store.SignalResolved, ThreadRoot: root, Actor: e.Sender.Login,
+		}}}, nil
 	case "code_scanning_alert":
 		var e alertEvent
 		if err := json.Unmarshal(payload, &e); err != nil {
@@ -397,11 +406,13 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		case al.Tool.Name != pipeline.SARIFTool:
 			return Route{Ignored: "another tool's alert"}, nil
 		case scanErr != nil || pr < 1:
-			return Route{Ignored: "alert not on a pull request"}, nil
+			return Route{Ignored: "alert not on a pull request"}, nil //nolint:nilerr // an unparsable ref means the alert is not on a PR: ignored, not an error
 		}
-		a := store.AlertDismissalArgs{InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: pr, Alert: al.Number,
+		a := store.AlertDismissalArgs{
+			InstallationID: e.Installation.ID, Repo: e.Repository.FullName, PR: pr, Alert: al.Number,
 			RuleID: al.Rule.ID, Path: al.Instance.Location.Path, StartLine: al.Instance.Location.StartLine,
-			Reason: al.DismissedReason, Comment: truncate(al.DismissedComment, maxReasonChars), Actor: al.DismissedBy.Login}
+			Reason: al.DismissedReason, Comment: truncate(al.DismissedComment, maxReasonChars), Actor: al.DismissedBy.Login,
+		}
 		if a.InstallationID == 0 || a.Repo == "" || a.Actor == "" || a.RuleID == "" || a.Path == "" {
 			return Route{}, errors.New("code_scanning_alert payload lacks installation, repository, dismisser, rule or location")
 		}
@@ -414,8 +425,10 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		if e.Action == "completed" && e.CheckRun.Name != gh.CheckName {
 			var r Route
 			for _, pr := range e.CheckRun.PullRequests {
-				r.LinterChecks = append(r.LinterChecks, store.LinterCheckArgs{InstallationID: e.Installation.ID, Repo: e.Repository.FullName,
-					PR: pr.Number, HeadSHA: e.CheckRun.HeadSHA, Check: e.CheckRun.Name})
+				r.LinterChecks = append(r.LinterChecks, store.LinterCheckArgs{
+					InstallationID: e.Installation.ID, Repo: e.Repository.FullName,
+					PR: pr.Number, HeadSHA: e.CheckRun.HeadSHA, Check: e.CheckRun.Name,
+				})
 			}
 			if len(r.LinterChecks) == 0 {
 				return Route{Ignored: "check run has no pull request"}, nil
@@ -447,6 +460,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 // processed, so a retry never enqueues twice.
 type EventWorker struct {
 	river.WorkerDefaults[store.GHEventArgs]
+
 	st  *store.Store
 	log *slog.Logger
 }
@@ -554,6 +568,10 @@ func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs
 	if err != nil {
 		return err
 	}
-	w.log.Info("event routed", "delivery", id, "event", ev.Event, "reviews", len(route.Reviews), "linter_checks", len(route.LinterChecks), "feedback_commands", len(route.FeedbackCommands), "alert_dismissals", len(route.AlertDismissals), "signals", len(route.Signals), "merge_policy", len(route.MergePolicy), "superseded", cancelled, "ignored", route.Ignored)
+	w.log.Info("event routed", "delivery", id, "event", ev.Event,
+		"reviews", len(route.Reviews), "linter_checks", len(route.LinterChecks),
+		"feedback_commands", len(route.FeedbackCommands), "alert_dismissals", len(route.AlertDismissals),
+		"signals", len(route.Signals), "merge_policy", len(route.MergePolicy),
+		"superseded", cancelled, "ignored", route.Ignored)
 	return nil
 }

@@ -142,7 +142,7 @@ func (j *Job) seed(ctx context.Context, api API, repo string, rules exclude.Rule
 	cfg := j.cfg.Seeds
 	reason, _, rerr := cfg.Scanner.Redact(r.reason())
 	if rerr != nil {
-		return 0, nil // a secret in the reason that cannot be removed: no seeds
+		return 0, nil //nolint:nilerr // a secret in the reason that cannot be removed: no seeds, not a failure
 	}
 	var rows []queries.UpsertRevertSeedParams
 	for _, f := range files {

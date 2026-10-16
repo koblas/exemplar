@@ -54,6 +54,7 @@ func (RetentionArgs) InsertOpts() river.InsertOpts {
 // RetentionWorker applies the retention periods.
 type RetentionWorker struct {
 	river.WorkerDefaults[RetentionArgs]
+
 	st       *store.Store
 	snapshot func(context.Context) (*config.Snapshot, error)
 	now      func() time.Time

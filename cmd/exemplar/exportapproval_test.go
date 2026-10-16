@@ -14,8 +14,10 @@ func TestExportApprovalCmd(t *testing.T) {
 	dir := copyConfig(t)
 	base := git(t, dir, "rev-parse", "HEAD")
 	args := func(head string) []string {
-		return []string{"export-approval", "--config", dir, "--changed-since", base, "--repo", "acme/exemplar-config",
-			"--pr", "4", "--head-sha", head, "--author", "owen"}
+		return []string{
+			"export-approval", "--config", dir, "--changed-since", base, "--repo", "acme/exemplar-config",
+			"--pr", "4", "--head-sha", head, "--author", "owen",
+		}
 	}
 
 	// A rule change that leaves export: alone passes with no tokens at all.

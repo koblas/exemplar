@@ -52,13 +52,16 @@ func (f *precheckFlags) client() (*github.Client, string, error) {
 
 func (f *precheckFlags) write(cmd *cobra.Command, reports any, md string) error {
 	if f.jsonOut != "" {
-		data, _ := json.MarshalIndent(reports, "", "  ")
-		if err := os.WriteFile(f.jsonOut, append(data, '\n'), 0o644); err != nil {
+		data, err := json.MarshalIndent(reports, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode reports: %w", err)
+		}
+		if err := os.WriteFile(f.jsonOut, append(data, '\n'), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 			return err
 		}
 	}
 	if f.markdownOut != "" {
-		if err := os.WriteFile(f.markdownOut, []byte(md), 0o644); err != nil {
+		if err := os.WriteFile(f.markdownOut, []byte(md), 0o644); err != nil { //nolint:gosec // G306: a report the user asked for; an ordinary readable output file
 			return err
 		}
 	}
@@ -137,8 +140,10 @@ func newVolumeCmd() *cobra.Command {
 				}
 				defer func() { _ = os.RemoveAll(workDir) }()
 			}
-			trial := &playground.Runner{Engine: engine.New(h, sc, compiledRunner()), Scanner: sc, WorkDir: workDir, Caller: "eval",
-				GitHub: &userGitHub{c: client, token: token}}
+			trial := &playground.Runner{
+				Engine: engine.New(h, sc, compiledRunner()), Scanner: sc, WorkDir: workDir, Caller: "eval",
+				GitHub: &userGitHub{c: client, token: token},
+			}
 			var reports []precheck.VolumeReport
 			for _, id := range ids {
 				r, _ := findRule(sel.head, id)

@@ -165,7 +165,7 @@ func (w *Writer) Run(ctx context.Context) ([]Outcome, error) {
 // publish writes the rule on the candidate's branch and opens the draft
 // PR. If a PR from the branch already exists (a run that crashed before
 // recording it), it is reused instead of opening another.
-func (w *Writer) publish(ctx context.Context, d *Draft, base, baseSHA string) (url string, recovered bool, err error) {
+func (w *Writer) publish(ctx context.Context, d *Draft, base, baseSHA string) (string, bool, error) {
 	if url, found, err := w.repo.FindPR(ctx, d.Branch); err != nil || found {
 		return url, found, err
 	}
@@ -185,7 +185,7 @@ func (w *Writer) publish(ctx context.Context, d *Draft, base, baseSHA string) (u
 			return "", false, err
 		}
 	}
-	url, err = w.repo.OpenDraftPR(ctx, d.Branch, base, d.Title, d.Body)
+	url, err := w.repo.OpenDraftPR(ctx, d.Branch, base, d.Title, d.Body)
 	return url, false, err
 }
 

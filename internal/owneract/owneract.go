@@ -123,8 +123,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot, id int64) (Outco
 	default:
 		err = refused{"unknown action " + a.Action}
 	}
-	var no refused
-	if errors.As(err, &no) {
+	if no, ok := errors.AsType[refused](err); ok {
 		out, err = Outcome{Status: StatusRefused, Result: no.why}, nil
 	}
 	if err != nil {
@@ -318,8 +317,7 @@ func (r Runner) change(ctx context.Context, a queries.OwnerAction, path string, 
 	}
 	next, err := edit(content)
 	if err != nil {
-		var no refused
-		if errors.As(err, &no) {
+		if _, ok := errors.AsType[refused](err); ok {
 			return Outcome{}, err
 		}
 		return Outcome{}, refused{fmt.Sprintf("%s: %v", path, err)}
@@ -375,7 +373,8 @@ func (r Runner) propose(ctx context.Context, snap *config.Snapshot, a queries.Ow
 			existing = &snap.Rules[i]
 		}
 	}
-	path, title := fmt.Sprintf("rules/%s/%s.yaml", strings.ToLower(rule.Category), rule.ID), ""
+	path := fmt.Sprintf("rules/%s/%s.yaml", strings.ToLower(rule.Category), rule.ID)
+	var title string
 	if existing != nil {
 		if existing.Scope != "global" {
 			return Outcome{}, refused{rule.ID + " is a repo's own rule; change it in that repo"}

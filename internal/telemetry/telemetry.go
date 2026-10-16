@@ -116,7 +116,7 @@ func Setup(ctx context.Context, service string) (*slog.Logger, func(context.Cont
 	}
 	log.Info("telemetry exporting", "traces", sig.Traces, "metrics", sig.Metrics)
 	return log, func(ctx context.Context) error {
-		var errs []error
+		errs := make([]error, 0, len(stops))
 		for _, stop := range stops {
 			errs = append(errs, stop(ctx))
 		}

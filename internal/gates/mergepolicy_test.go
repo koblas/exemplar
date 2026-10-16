@@ -3,6 +3,7 @@ package gates
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,10 +14,8 @@ func TestHumanMergePolicy(t *testing.T) {
 	co := codeowners.Parse("* @acme/eng\n/src/net/ @acme/net @dana\n/legal/ legal@example.com\n")
 	member := func(_ context.Context, team, login string) (bool, error) {
 		m := map[string][]string{"@acme/eng": {"erin", "nick"}, "@acme/net": {"nick"}}
-		for _, l := range m[team] {
-			if l == login {
-				return true, nil
-			}
+		if slices.Contains(m[team], login) {
+			return true, nil
 		}
 		return false, nil
 	}
@@ -34,7 +33,12 @@ func TestHumanMergePolicy(t *testing.T) {
 		{"approval of an older commit", []string{"README.md"}, []PolicyReview{approve("erin", "old")}, false, "an approval of this commit"},
 		{"the author's own approval", []string{"README.md"}, []PolicyReview{approve("alice", "h")}, false, "an approval of this commit"},
 		{"a bot's approval", []string{"README.md"}, []PolicyReview{{User: "exemplar[bot]", UserType: "Bot", State: "APPROVED", CommitID: "h"}}, false, "an approval of this commit"},
-		{"approval then changes requested", []string{"README.md"}, []PolicyReview{approve("erin", "h"), {User: "erin", UserType: "User", State: "CHANGES_REQUESTED", CommitID: "h"}}, false, "an approval of this commit"},
+		{
+			"approval then changes requested",
+			[]string{"README.md"},
+			[]PolicyReview{approve("erin", "h"), {User: "erin", UserType: "User", State: "CHANGES_REQUESTED", CommitID: "h"}},
+			false, "an approval of this commit",
+		},
 		{"approval then a comment", []string{"README.md"}, []PolicyReview{approve("erin", "h"), {User: "erin", UserType: "User", State: "COMMENTED", CommitID: "h"}}, true, ""},
 		{"dismissed approval", []string{"README.md"}, []PolicyReview{approve("erin", "h"), {User: "erin", UserType: "User", State: "DISMISSED", CommitID: "h"}}, false, "an approval of this commit"},
 		{"net path needs net", []string{"src/net/a.go", "README.md"}, []PolicyReview{approve("erin", "h")}, false, "@acme/net @dana"},

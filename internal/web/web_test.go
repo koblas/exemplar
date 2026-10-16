@@ -54,10 +54,12 @@ func TestUI(t *testing.T) {
 		return n
 	}
 	for _, r := range []struct{ id, scope string }{{"no-raw-sql", "global"}, {"app-only", "acme/app"}, {"secret-only", "acme/secret"}} {
-		exec(`INSERT INTO rules (rule_id, version_sha, scope, kind, category, severity, status, owner, spec) VALUES ($1, 'v', $2, 'exemplar', 'Security', 'blocking', 'active', '@acme/sec', json_build_object('id', $1::text, 'status', 'active'))`, r.id, r.scope)
+		exec(`INSERT INTO rules (rule_id, version_sha, scope, kind, category, severity, status, owner, spec) VALUES ($1, 'v', $2, 'exemplar', 'Security', 'blocking', 'active', `+
+			`'@acme/sec', json_build_object('id', $1::text, 'status', 'active'))`, r.id, r.scope)
 	}
 	finding := func(repo, msg string) int64 {
-		rid := id(`INSERT INTO reviews (repo, pr_number, head_sha, base_sha, config_version, caller, status, started_at, finished_at) VALUES ($1, 3, 'abcdef0123456789', 'b', 'v', 'production', 'done', now(), now())`, repo)
+		rid := id(`INSERT INTO reviews (repo, pr_number, head_sha, base_sha, config_version, caller, status, started_at, finished_at) VALUES ($1, 3, 'abcdef0123456789', 'b', 'v', `+
+			`'production', 'done', now(), now())`, repo)
 		exec(`INSERT INTO approval_decisions (review_id, stage1, stage2, decision) VALUES ($1, '{"reasons": ["paths_not_auto_approvable"]}', '{}', 'ineligible')`, rid)
 		run := id(`INSERT INTO rule_runs (review_id, rule_id, rule_version, lane, scoped_files, status) VALUES ($1, 'no-raw-sql', 'v', 'exemplar', '{a.go}', 'ok')`, rid)
 		return id(`INSERT INTO findings (rule_run_id, repo, pr_number, rule_id, lane, severity, cc_label, path, side, start_line, end_line, fingerprint, message, state, gh_comment_id)
@@ -73,7 +75,8 @@ func TestUI(t *testing.T) {
 			VALUES ('go', $1, 'd', 5, 3, $2, '{}', '@acme/sec', $3, $4)`, "Candidate from "+repo, 0.9-float64(i)/10, repo, run)
 		exec(`INSERT INTO candidate_sources (candidate_id, comment_id) VALUES ($1, $2)`, c, 100+i)
 	}
-	exec(`INSERT INTO model_calls (stage, provider, model, data_classes, caller, cost_usd) VALUES ('generator', 'anthropic', 'm', '{}', 'production', 1.25), ('generator', 'anthropic', 'm', '{}', 'cli', 0.5)`)
+	exec(`INSERT INTO model_calls (stage, provider, model, data_classes, caller, cost_usd) VALUES ('generator', 'anthropic', 'm', '{}', 'production', 1.25), ('generator', ` +
+		`'anthropic', 'm', '{}', 'cli', 0.5)`)
 	if _, err := st.Pool.Exec(ctx, `REFRESH MATERIALIZED VIEW rule_weekly_stats`); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +86,8 @@ func TestUI(t *testing.T) {
 	var acted []string
 	var flagged []int64
 	read := func(ctx context.Context, repo string) (bool, error) { return access.CanRead(ctx, "tok", repo) }
-	h, err := New(Config{Store: st,
+	h, err := New(Config{
+		Store:   st,
 		Session: func(*http.Request) (string, Access, bool) { return "alice", read, signedIn },
 		SignOut: func(http.ResponseWriter) {},
 		Act: func(ctx context.Context, action, target, actor, reason string) (int64, error) {
@@ -101,7 +105,8 @@ func TestUI(t *testing.T) {
 			return st.CreatePlaygroundRun(ctx, queries.CreatePlaygroundRunParams{Actor: actor, Repo: repo, PrNumber: int32(pr), RuleID: ruleID, RuleYaml: y})
 		},
 		PlaygroundDailyRuns: 2,
-		FormKey:             []byte(strings.Repeat("k", 32))})
+		FormKey:             []byte(strings.Repeat("k", 32)),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

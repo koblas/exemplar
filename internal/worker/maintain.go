@@ -124,6 +124,7 @@ type Deliveries interface {
 // ReconcileWorker requests redelivery of failed webhook deliveries.
 type ReconcileWorker struct {
 	river.WorkerDefaults[ReconcileArgs]
+
 	st  *store.Store
 	app Deliveries
 	now func() time.Time
@@ -268,6 +269,7 @@ type PRSearch interface {
 // whatever happened to their webhooks.
 type SweepWorker struct {
 	river.WorkerDefaults[SweepArgs]
+
 	st       *store.Store
 	search   PRSearch
 	snapshot func(context.Context) (*config.Snapshot, error)

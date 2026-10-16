@@ -150,7 +150,7 @@ func (ws *Workspace) ChangedSince(ctx context.Context, rev string) ([]string, er
 		return nil, err
 	}
 	var paths []string
-	for _, p := range bytes.Split(out, []byte{0}) {
+	for p := range bytes.SplitSeq(out, []byte{0}) {
 		if len(p) > 0 {
 			paths = append(paths, string(p))
 		}

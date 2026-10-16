@@ -75,7 +75,7 @@ func TestApproveAndDismiss(t *testing.T) {
 
 	id, posted, err := p.Approve(t.Context(), pr, 12, "All gates passed.")
 	if err != nil || !posted || id != 99 || len(created) != 1 || created[0]["event"] != "APPROVE" || created[0]["commit_id"] != "new" ||
-		!strings.Contains(created[0]["body"].(string), ApproveMarker(12, "new")) {
+		!strings.Contains(fmt.Sprint(created[0]["body"]), ApproveMarker(12, "new")) {
 		t.Fatalf("approve = %d %v %v %v", id, posted, created, err)
 	}
 

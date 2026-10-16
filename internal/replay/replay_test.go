@@ -113,7 +113,8 @@ func TestReplayPersistsThroughRiverIdempotently(t *testing.T) {
 	var reviews, findings, baselinePosted, decisions int
 	_ = s.Pool.QueryRow(ctx, "SELECT count(*) FROM reviews").Scan(&reviews)
 	_ = s.Pool.QueryRow(ctx, "SELECT count(*) FROM findings").Scan(&findings)
-	_ = s.Pool.QueryRow(ctx, `SELECT count(*) FROM findings f JOIN rule_runs r ON r.id = f.rule_run_id JOIN reviews v ON v.id = r.review_id WHERE v.caller = 'baseline' AND f.state = 'posted'`).Scan(&baselinePosted)
+	_ = s.Pool.QueryRow(ctx, `SELECT count(*) FROM findings f JOIN rule_runs r ON r.id = f.rule_run_id JOIN reviews v ON v.id = r.review_id `+
+		`WHERE v.caller = 'baseline' AND f.state = 'posted'`).Scan(&baselinePosted)
 	_ = s.Pool.QueryRow(ctx, "SELECT count(*) FROM approval_decisions WHERE decision = 'ineligible'").Scan(&decisions)
 	if reviews != 2*len(fixtures) {
 		t.Fatalf("reviews = %d, want eval + baseline per fixture", reviews)
@@ -145,19 +146,23 @@ func (f *fakeGH) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	switch {
-	case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/reviews"):
-		_ = json.NewEncoder(w).Encode(f.reviews)
-	case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/reviews"):
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/reviews"):
+		if err := json.NewEncoder(w).Encode(f.reviews); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reviews"):
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		body["id"] = len(f.reviews) + 1
 		f.reviews = append(f.reviews, body)
-		_ = json.NewEncoder(w).Encode(body)
+		if err := json.NewEncoder(w).Encode(body); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	case strings.Contains(r.URL.Path, "/check-runs"):
 		f.checks++
 		fmt.Fprint(w, `{"id": 9}`)
 	default:
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
@@ -174,7 +179,7 @@ func TestReplayPostsToSandboxPR(t *testing.T) {
 	r := newRunner(t)
 	r.PosterFor = func(context.Context, string) (*gh.Poster, error) { return gh.NewPoster(client), nil }
 	r.Baseline = false
-	var fx = fixtures[0]
+	fx := fixtures[0]
 	for _, f := range fixtures {
 		if f.ID == "ctx-http-get" {
 			fx = f
@@ -195,10 +200,22 @@ func TestReplayPostsToSandboxPR(t *testing.T) {
 		t.Fatalf("posted = %+v", out.Posted)
 	}
 	review := fake.reviews[0]
-	if review["event"] != "COMMENT" || !strings.Contains(review["body"].(string), "exemplar:review") {
+	reviewBody, _ := review["body"].(string)
+	if review["event"] != "COMMENT" || !strings.Contains(reviewBody, "exemplar:review") {
 		t.Fatalf("review = %v", review)
 	}
-	body := review["comments"].([]any)[0].(map[string]any)["body"].(string)
+	comments, ok := review["comments"].([]any)
+	if !ok || len(comments) == 0 {
+		t.Fatalf("review comments = %v", review["comments"])
+	}
+	comment, ok := comments[0].(map[string]any)
+	if !ok {
+		t.Fatalf("comment = %v", comments[0])
+	}
+	body, ok := comment["body"].(string)
+	if !ok {
+		t.Fatalf("comment body = %v", comment["body"])
+	}
 	if !strings.Contains(body, "Rule `propagate-context`") || !strings.Contains(body, "issue (reliability)") {
 		t.Fatalf("comment body = %q", body)
 	}

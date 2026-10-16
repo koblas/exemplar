@@ -97,7 +97,7 @@ func sarifFindings(res *engine.Result) []engine.Finding {
 	return out
 }
 
-func sarifLevel(severity string) (level, securitySeverity string) {
+func sarifLevel(severity string) (string, string) {
 	switch severity {
 	case schema.SeverityBlocking:
 		return "error", "8.0"

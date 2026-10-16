@@ -33,24 +33,43 @@ const (
 // Classes is the allowlist, in a fixed run order. global.yaml can only
 // enable or disable these; it cannot add one.
 var Classes = []Class{
-	{ID: NilDeref, Version: "nil-deref-v1",
+	{
+		ID: NilDeref, Version: "nil-deref-v1",
 		LooksFor: "Dereference of values that can be nil/null/None on a reachable path",
-		Guidance: "Look for a value that can be nil, null or None on some path the changed code can take (a map miss, an error return whose other result is unset, an optional field, a failed lookup or type assertion) and is then dereferenced, indexed, called or has a field read. Name the path that produces the nil."},
-	{ID: ErrorHandling, Version: "error-handling-v1",
+		Guidance: "Look for a value that can be nil, null or None on some path the changed code can take " +
+			"(a map miss, an error return whose other result is unset, an optional field, a failed lookup or type assertion) " +
+			"and is then dereferenced, indexed, called or has a field read. Name the path that produces the nil.",
+	},
+	{
+		ID: ErrorHandling, Version: "error-handling-v1",
 		LooksFor: "Swallowed errors, wrong error propagated, missing cleanup on error paths",
-		Guidance: "Look for errors that are dropped or ignored, an error path that returns a different or nil error than the one that happened, success reported after a failure, and cleanup (unlock, rollback, close, release) skipped when an error returns early."},
-	{ID: Concurrency, Version: "concurrency-v1",
+		Guidance: "Look for errors that are dropped or ignored, an error path that returns a different or nil error than the one that happened, " +
+			"success reported after a failure, and cleanup (unlock, rollback, close, release) skipped when an error returns early.",
+	},
+	{
+		ID: Concurrency, Version: "concurrency-v1",
 		LooksFor: "Data races, lock ordering, unguarded shared state, goroutine/thread leaks",
-		Guidance: "Look for shared state read or written from more than one goroutine or thread without the lock that guards it elsewhere, locks taken in inconsistent order, a lock held across a blocking call that another holder needs, and goroutines or threads that can block forever with no way to stop them."},
-	{ID: ResourceLeak, Version: "resource-leak-v1",
+		Guidance: "Look for shared state read or written from more than one goroutine or thread without the lock that guards it elsewhere, " +
+			"locks taken in inconsistent order, a lock held across a blocking call that another holder needs, and goroutines or threads that can block forever with no way to stop them.",
+	},
+	{
+		ID: ResourceLeak, Version: "resource-leak-v1",
 		LooksFor: "Unclosed handles, connections, files; missing defer/RAII",
-		Guidance: "Look for files, network connections, response bodies, database rows or statements, timers and similar handles that are opened on some path and not closed or released on every path out, including early returns and errors."},
-	{ID: OffByOne, Version: "off-by-one-v1",
+		Guidance: "Look for files, network connections, response bodies, database rows or statements, timers and similar handles that are opened on some path and " +
+			"not closed or released on every path out, including early returns and errors.",
+	},
+	{
+		ID: OffByOne, Version: "off-by-one-v1",
 		LooksFor: "Boundary errors in loops, slices, pagination",
-		Guidance: "Look for loop bounds, slice or substring indexes, length checks, page offsets and range comparisons that are off by one: < where <= is needed or the reverse, a last element skipped or read past the end, an empty input that indexes out of range, or a page that repeats or drops an item."},
-	{ID: Contract, Version: "contract-v1", NeedsReferences: true,
+		Guidance: "Look for loop bounds, slice or substring indexes, length checks, page offsets and range comparisons that are off by one: < where <= is needed or the reverse, " +
+			"a last element skipped or read past the end, an empty input that indexes out of range, or a page that repeats or drops an item.",
+	},
+	{
+		ID: Contract, Version: "contract-v1", NeedsReferences: true,
 		LooksFor: "Changed function behavior that breaks callers found via find_references",
-		Guidance: "For each function whose behavior the change alters (what it returns, when it errors, what it accepts, side effects), use find_references to read its callers, and report a caller that the new behavior breaks. Anchor the finding on the changed function."},
+		Guidance: "For each function whose behavior the change alters (what it returns, when it errors, what it accepts, side effects), use find_references to read its callers, " +
+			"and report a caller that the new behavior breaks. Anchor the finding on the changed function.",
+	},
 }
 
 // ByID returns the class with id.

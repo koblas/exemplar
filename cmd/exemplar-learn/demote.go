@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -66,13 +64,11 @@ func runDemote(args []string) error {
 	decisions, outs, err := r.Run(ctx, snap)
 	if *all {
 		for _, d := range decisions {
-			line, _ := json.Marshal(d)
-			fmt.Println(string(line))
+			printJSON(d)
 		}
 	}
 	for _, o := range outs {
-		line, _ := json.Marshal(o)
-		fmt.Println(string(line))
+		printJSON(o)
 	}
 	return err
 }

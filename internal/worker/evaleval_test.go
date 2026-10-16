@@ -63,8 +63,10 @@ func TestEvaluateEvalMode(t *testing.T) {
 	}
 	create := func(r, b, h string, rules ...string) queries.GetEvaluationRow {
 		t.Helper()
-		id, err := st.CreateEvaluation(ctx, queries.CreateEvaluationParams{Repo: r, BaseSha: b, RequestedBy: "svc:ci@clients", Caller: "agent",
-			Mode: evaluate.ModeEval, HeadSha: &h, Rules: append([]string{}, rules...)})
+		id, err := st.CreateEvaluation(ctx, queries.CreateEvaluationParams{
+			Repo: r, BaseSha: b, RequestedBy: "svc:ci@clients", Caller: "agent",
+			Mode: evaluate.ModeEval, HeadSha: &h, Rules: append([]string{}, rules...),
+		})
 		if err != nil {
 			t.Fatal(err)
 		}

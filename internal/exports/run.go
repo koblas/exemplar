@@ -90,7 +90,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Outcome, erro
 func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (Outcome, error) {
 	rc := snap.Repos[repo]
 	if err := snap.CheckEligible(repo); err != nil {
-		return Outcome{Repo: repo, Action: "skipped", Reason: err.Error()}, nil
+		return Outcome{Repo: repo, Action: "skipped", Reason: err.Error()}, nil //nolint:nilerr // an ineligible repo is a skipped outcome, not a failure
 	}
 	eff, err := snap.Effective(repo, nil)
 	if err != nil {
@@ -192,8 +192,10 @@ func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (O
 		}
 	}
 	for _, c := range changes {
-		if err := r.Store.UpsertExport(ctx, queries.UpsertExportParams{Repo: repo, Path: c.f.Path, Target: c.f.Target,
-			ContentHash: Hash(c.f.Block), BaseHash: hashOrEmpty(c.base), ConfigSha: snap.Version, PrUrl: &o.URL, State: "proposed", AutoMerged: auto}); err != nil {
+		if err := r.Store.UpsertExport(ctx, queries.UpsertExportParams{
+			Repo: repo, Path: c.f.Path, Target: c.f.Target,
+			ContentHash: Hash(c.f.Block), BaseHash: hashOrEmpty(c.base), ConfigSha: snap.Version, PrUrl: &o.URL, State: "proposed", AutoMerged: auto,
+		}); err != nil {
 			return o, err
 		}
 	}
@@ -209,8 +211,10 @@ func hashOrEmpty(block string) string {
 
 func prBody(snap *config.Snapshot, changed, edited []string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Exemplar renders each active rule's one-line `export.summary` into your coding-agent instruction files (spec §10.2), from exemplar-config `%s`.\n\n", snap.Version)
-	b.WriteString("Only the text between the `BEGIN exemplar` and `END exemplar` markers is generated; everything outside them is yours and is never changed. To change what agents are told, change the rules in exemplar-config.\n\nFiles:\n\n")
+	fmt.Fprintf(&b, "Exemplar renders each active rule's one-line `export.summary` into your coding-agent instruction files (spec §10.2), "+
+		"from exemplar-config `%s`.\n\n", snap.Version)
+	b.WriteString("Only the text between the `BEGIN exemplar` and `END exemplar` markers is generated; everything outside them is yours and " +
+		"is never changed. To change what agents are told, change the rules in exemplar-config.\n\nFiles:\n\n")
 	for _, p := range changed {
 		b.WriteString("- `" + p + "`\n")
 	}

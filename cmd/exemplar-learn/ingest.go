@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -106,12 +105,11 @@ func runIngest(args []string) error {
 				failed = append(failed, repo)
 				break
 			}
-			out, _ := json.Marshal(stats)
-			fmt.Println(string(out))
+			printJSON(stats)
 			if stats.ResumeAt == nil || *once || *maxPages > 0 {
 				break
 			}
-			log.Info("ingest rate limited; waiting", "repo", repo, "until", stats.ResumeAt)
+			log.Info("ingest rate limited; waiting", "repo", repo, "until", *stats.ResumeAt)
 			select {
 			case <-ctx.Done():
 				return nil
@@ -130,7 +128,7 @@ func runIngest(args []string) error {
 
 func split(s string) []string {
 	var out []string
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}

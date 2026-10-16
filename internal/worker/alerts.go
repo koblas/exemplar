@@ -30,6 +30,7 @@ var dismissalKinds = map[string]string{
 // AlertDismissalWorker runs alert_dismissal jobs.
 type AlertDismissalWorker struct {
 	river.WorkerDefaults[store.AlertDismissalArgs]
+
 	cfg Config
 }
 

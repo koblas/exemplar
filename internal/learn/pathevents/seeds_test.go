@@ -42,25 +42,31 @@ const cachePatch = "@@ -1,2 +1,4 @@\n package svc\n+import \"sync\"\n+var mu syn
 func TestRevertSeeds(t *testing.T) {
 	st := storetest.New(t)
 	ctx := t.Context()
-	revertPR := mergedPR(9, `Revert "Add price cache"`, "Reverts acme/app#7\n\nThe cache served stale prices after each deploy; see https://docs.internal.example/runbooks/cache.", "m9", "svc/cache.go", "svc/other.go")
+	revertPR := mergedPR(9, `Revert "Add price cache"`, "Reverts acme/app#7\n\n"+
+		"The cache served stale prices after each deploy; see https://docs.internal.example/runbooks/cache.", "m9", "svc/cache.go", "svc/other.go")
 	revertPR.URL = "https://github.com/acme/app/pull/9"
 	revertPR.Author.Login = "oncall"
 	direct := commit("d1", "Revert hotfix\n\nThis reverts commit 5555555.", nil)
 	direct.URL = "https://github.com/acme/app/commit/d1"
-	f := &fakeGitHub{t: t,
+	f := &fakeGitHub{
+		t:       t,
 		pages:   map[string]historyPage{"": history("", commit("m9", "Merge pull request #9", revertPR), direct)},
 		commits: map[string][]string{"d1": {"svc/pay.go"}},
 		reverted: map[int]map[string]any{
-			7: {"merged": true, "headRefOid": "ddddddd4444444", "author": map[string]any{"login": "alice"},
+			7: {
+				"merged": true, "headRefOid": "ddddddd4444444", "author": map[string]any{"login": "alice"},
 				"reviewThreads": map[string]any{"nodes": []any{
 					thread("bob", "User", "svc/cache.go", nil, 3),        // covers hunk 1 (lines 1-4)
 					thread("dependabot", "Bot", "svc/cache.go", nil, 21), // bots do not count
 					thread("alice", "User", "svc/cache.go", 20, 22),      // nor does the author
 					thread("carol", "User", "svc/other.go", nil, nil),    // file-level: covers other.go
 					thread("dave", "User", "svc/unrelated.go", nil, 1),   // another file
-				}}},
-			6: {"merged": true, "headRefOid": "eeeeeee5555555", "author": map[string]any{"login": "erin"},
-				"reviewThreads": map[string]any{"nodes": []any{}}},
+				}},
+			},
+			6: {
+				"merged": true, "headRefOid": "eeeeeee5555555", "author": map[string]any{"login": "erin"},
+				"reviewThreads": map[string]any{"nodes": []any{}},
+			},
 		},
 		patches: map[int][]gh.FilePatch{
 			7: {

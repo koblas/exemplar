@@ -174,8 +174,10 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 	carriedCandidates := 0
 	for i, s := range p.Scoped {
 		if c, ok := opt.Carry[s.Rule.ID]; ok && !candidate && s.Lane == LaneExemplar && c.Version == s.Rule.VersionSHA && c.FromRunID != 0 {
-			runs[i] = agentRun{run: RunResult{RuleID: s.Rule.ID, RuleVersion: s.Rule.VersionSHA, Lane: LaneExemplar, ScopedFiles: s.Files,
-				Status: RunOK, Coverage: 1, Carried: true, CarriedFrom: c.FromRunID}}
+			runs[i] = agentRun{run: RunResult{
+				RuleID: s.Rule.ID, RuleVersion: s.Rule.VersionSHA, Lane: LaneExemplar, ScopedFiles: s.Files,
+				Status: RunOK, Coverage: 1, Carried: true, CarriedFrom: c.FromRunID,
+			}}
 			carriedCandidates += c.Candidates
 			res.CarriedFrom = opt.CarryFrom
 			continue
@@ -198,8 +200,10 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		m.RuleRunID = opt.RuleRunIDs[c.ID]
 		g.Go(func() error {
 			if overBudget.Load() {
-				runs[i] = agentRun{run: RunResult{RuleID: c.ID, RuleVersion: c.Version, Lane: LaneBug, ScopedFiles: p.Files,
-					Status: RunShed, Detail: "shed: the run reached its soft cost ceiling"}}
+				runs[i] = agentRun{run: RunResult{
+					RuleID: c.ID, RuleVersion: c.Version, Lane: LaneBug, ScopedFiles: p.Files,
+					Status: RunShed, Detail: "shed: the run reached its soft cost ceiling",
+				}}
 				return nil
 			}
 			runs[i] = note(e.runBug(gctx, p, c, m))

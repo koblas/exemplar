@@ -171,10 +171,16 @@ var formatters = []struct {
 	exts []string
 	args func(path string) []string
 }{
-	{"clang-format", []string{".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".ipp", ".inl"},
-		func(p string) []string { return []string{"--assume-filename=" + p} }},
-	{"prettier", []string{".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".css", ".json", ".yaml", ".yml"},
-		func(p string) []string { return []string{"--no-config", "--no-editorconfig", "--stdin-filepath", p} }},
+	{
+		"clang-format",
+		[]string{".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".ipp", ".inl"},
+		func(p string) []string { return []string{"--assume-filename=" + p} },
+	},
+	{
+		"prettier",
+		[]string{".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".css", ".json", ".yaml", ".yml"},
+		func(p string) []string { return []string{"--no-config", "--no-editorconfig", "--stdin-filepath", p} },
+	},
 }
 
 // formatTimeout bounds one formatter run.

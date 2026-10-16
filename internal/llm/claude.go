@@ -23,7 +23,7 @@ const FamilyAnthropic = "anthropic"
 // Claude provider settings.
 const (
 	// EnvClaudeAPIKey holds the Claude API key (mounted from the KMS-backed secret).
-	EnvClaudeAPIKey = "ANTHROPIC_API_KEY"
+	EnvClaudeAPIKey = "ANTHROPIC_API_KEY" //nolint:gosec // G101: the environment variable name, not a credential
 	// EnvClaudeBaseURL overrides https://api.anthropic.com (tests, private endpoints).
 	EnvClaudeBaseURL = "EXEMPLAR_CLAUDE_BASE_URL"
 )

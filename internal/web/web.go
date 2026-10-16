@@ -45,7 +45,7 @@ import (
 )
 
 // Store reads what the pages show (store.Store).
-type Store interface {
+type Store interface { //nolint:interfacebloat // exactly the store reads the pages use; one fake implements it
 	UIRules(ctx context.Context, days int32) ([]queries.UIRulesRow, error)
 	UIRuleWeeks(ctx context.Context, ruleID string) ([]queries.UIRuleWeeksRow, error)
 	UIRuleFindings(ctx context.Context, arg queries.UIRuleFindingsParams) ([]queries.UIRuleFindingsRow, error)
@@ -156,7 +156,7 @@ func secure(next http.Handler) http.Handler {
 // memoized for the request on top of the 5-minute cache.
 type viewer struct {
 	h      *Handler
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // request-scoped: a viewer lives for one request and v.can checks access with it
 	Login  string
 	read   Access
 	access map[string]bool
@@ -233,6 +233,7 @@ func (h *Handler) prURL(repo string, pr int32) string {
 // ruleRow is one row of the rules page.
 type ruleRow struct {
 	queries.UIRulesRow
+
 	Acceptance, EFP string
 	Health          string
 }
@@ -302,6 +303,7 @@ func (h *Handler) rules(_ http.ResponseWriter, r *http.Request, v *viewer) (stri
 
 type findingRow struct {
 	queries.UIRuleFindingsRow
+
 	PR, Outcome string
 }
 
@@ -373,8 +375,10 @@ func (h *Handler) finding(_ http.ResponseWriter, r *http.Request, v *viewer) (st
 	if !v.can(f.Repo) {
 		return "", "", nil, errNotFound
 	}
-	b := findingBody{F: f, PR: h.prURL(f.Repo, f.PrNumber), Token: h.token(v.Login, "false_positive", strconv.FormatInt(id, 10)),
-		Recorded: r.URL.Query().Get("recorded") == "1"}
+	b := findingBody{
+		F: f, PR: h.prURL(f.Repo, f.PrNumber), Token: h.token(v.Login, "false_positive", strconv.FormatInt(id, 10)),
+		Recorded: r.URL.Query().Get("recorded") == "1",
+	}
 	if f.GhCommentID != 0 {
 		b.Comment = fmt.Sprintf("%s#discussion_r%d", b.PR, f.GhCommentID)
 	}
@@ -386,6 +390,7 @@ func (h *Handler) finding(_ http.ResponseWriter, r *http.Request, v *viewer) (st
 
 type candidateRow struct {
 	queries.UICandidatesRow
+
 	Visible []string
 	Token   string
 }
@@ -414,6 +419,7 @@ func (h *Handler) candidates(_ http.ResponseWriter, r *http.Request, v *viewer) 
 
 type decisionRow struct {
 	queries.UIDecisionsRow
+
 	PR string
 }
 
@@ -598,7 +604,8 @@ func (h *Handler) falsePositive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not record it; try again", http.StatusServiceUnavailable)
 		return
 	}
-	http.Redirect(w, r, "/ui/findings/"+idText+"?recorded=1", http.StatusSeeOther)
+	// idText parsed as an int64 above, so this is always a same-origin /ui/ path.
+	http.Redirect(w, r, "/ui/findings/"+idText+"?recorded=1", http.StatusSeeOther) //nolint:gosec // G710: fixed local path, numeric id
 }
 
 func (h *Handler) actions(_ http.ResponseWriter, r *http.Request, v *viewer) (string, string, any, error) {

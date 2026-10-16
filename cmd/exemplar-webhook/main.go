@@ -53,7 +53,7 @@ func run(args []string) error {
 	if dbURL == "" || secretFile == "" {
 		return errors.New("EXEMPLAR_DATABASE_URL and EXEMPLAR_WEBHOOK_SECRET_FILE are required")
 	}
-	secret, err := os.ReadFile(secretFile)
+	secret, err := os.ReadFile(secretFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
 		return fmt.Errorf("read webhook secret: %w", err)
 	}
@@ -103,8 +103,10 @@ func run(args []string) error {
 		w.WriteHeader(http.StatusOK)
 	})
 	// GitHub gives a delivery 10 s; stay well inside it.
-	hs := &http.Server{Addr: *addr, Handler: http.TimeoutHandler(mux, 8*time.Second, "timeout"),
-		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 8 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	hs := &http.Server{
+		Addr: *addr, Handler: http.TimeoutHandler(mux, 8*time.Second, "timeout"),
+		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 8 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second,
+	}
 
 	errc := make(chan error, 1)
 	go func() {

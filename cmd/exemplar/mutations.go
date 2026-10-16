@@ -101,7 +101,7 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 	}
 	byClass := map[string][]schema.EvalCase{}
 	patches := map[string]string{}
-	for _, p := range strings.Split(strings.TrimSuffix(string(listed), "\x00"), "\x00") {
+	for p := range strings.SplitSeq(strings.TrimSuffix(string(listed), "\x00"), "\x00") {
 		lang := mutationLang(p)
 		if lang == "" || strings.HasPrefix(p, "vendor/") || strings.HasPrefix(p, "third_party/") ||
 			!slices.ContainsFunc(globs, func(g string) bool { return doublestar.MatchUnvalidated(g, p) }) {
@@ -128,8 +128,10 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 			}
 			name := fmt.Sprintf("mut-%s-%s-%d", m.Op, strings.Trim(unsafeName.ReplaceAllString(strings.ToLower(p), "-"), "-"), m.Expect[0])
 			patch := "patches/" + name + ".diff"
-			byClass[m.Class] = append(byClass[m.Class], schema.EvalCase{Name: name, Ref: repo + "@" + sha, Synthetic: true, Patch: patch,
-				Expect: []schema.Expectation{{Path: p, Lines: []int{m.Expect[0], m.Expect[1]}}}})
+			byClass[m.Class] = append(byClass[m.Class], schema.EvalCase{
+				Name: name, Ref: repo + "@" + sha, Synthetic: true, Patch: patch,
+				Expect: []schema.Expectation{{Path: p, Lines: []int{m.Expect[0], m.Expect[1]}}},
+			})
 			patches[m.Class+"/"+patch] = m.Diff(lines)
 		}
 	}
@@ -161,7 +163,7 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 				if err := os.MkdirAll(filepath.Dir(pf), 0o755); err != nil {
 					return err
 				}
-				if err := os.WriteFile(pf, []byte(patches[class+"/"+c.Patch]), 0o644); err != nil {
+				if err := os.WriteFile(pf, []byte(patches[class+"/"+c.Patch]), 0o644); err != nil { //nolint:gosec // G306: a file in the config repository checkout, committed to git; ordinary source file mode
 					return err
 				}
 			}
@@ -174,7 +176,7 @@ func runMutations(ctx context.Context, out io.Writer, configDir, checkout, repo,
 		if dryRun || added == 0 {
 			continue
 		}
-		if err := os.WriteFile(file, data, 0o644); err != nil {
+		if err := os.WriteFile(file, data, 0o644); err != nil { //nolint:gosec // G306: a file in the config repository checkout, committed to git; ordinary source file mode
 			return err
 		}
 	}

@@ -69,15 +69,19 @@ func PlanClosures(open []OpenFinding, p *engine.Prepared, res *engine.Result) []
 		case o.HeadSha == head:
 			continue
 		case !active[o.RuleID]:
-			out = append(out, Closure{Finding: o, Reason: ClosedRetired, State: "resolved",
-				Reply: fmt.Sprintf("Rule `%s` was retired, so Exemplar no longer reports this.", o.RuleID)})
+			out = append(out, Closure{
+				Finding: o, Reason: ClosedRetired, State: "resolved",
+				Reply: fmt.Sprintf("Rule `%s` was retired, so Exemplar no longer reports this.", o.RuleID),
+			})
 		case holds[o.Fingerprint]:
 			continue
 		case ran(o.RuleID, o.Path):
 			out = append(out, Closure{Finding: o, Reason: ClosedAddressed, State: "resolved", Reply: "Addressed in " + sha7 + "."})
 		case !inDiff(p, o.Path):
-			out = append(out, Closure{Finding: o, Reason: ClosedOutdated, State: "outdated",
-				Reply: "No longer part of this pull request as of " + sha7 + "."})
+			out = append(out, Closure{
+				Finding: o, Reason: ClosedOutdated, State: "outdated",
+				Reply: "No longer part of this pull request as of " + sha7 + ".",
+			})
 		}
 	}
 	return out

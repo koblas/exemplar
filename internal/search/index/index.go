@@ -178,7 +178,7 @@ func (ix *Index) openLatest(ctx context.Context, repo string) (*generation, erro
 		}
 	}
 	if best == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // no complete generation on disk yet; callers check for nil
 	}
 	return ix.open(ctx, repo, filepath.Join(dir, genName(best.Gen)), *best)
 }
@@ -258,8 +258,11 @@ func (ix *Index) Build(ctx context.Context, repo string) (Meta, error) {
 	if err := ix.index(ctx, repo, tmp, delta); err != nil {
 		return Meta{}, err
 	}
-	data, _ := json.Marshal(m)
-	if err := os.WriteFile(filepath.Join(tmp, completeFile), data, 0o640); err != nil {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return Meta{}, fmt.Errorf("encode index meta: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, completeFile), data, 0o600); err != nil {
 		return Meta{}, err
 	}
 	final := filepath.Join(rdir, genName(m.Gen))

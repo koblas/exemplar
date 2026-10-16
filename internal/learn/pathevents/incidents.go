@@ -136,8 +136,10 @@ func (j *Job) Incidents(ctx context.Context, incs []Incident) (IncidentStats, er
 				})
 			}
 			if l.PR > 0 {
-				links = append(links, queries.InsertPRLinkParams{Repo: l.Repo, PrNumber: int32(l.PR), Kind: KindIncident, Ref: inc.ID,
-					At: pgtype.Timestamptz{Time: inc.At, Valid: true}})
+				links = append(links, queries.InsertPRLinkParams{
+					Repo: l.Repo, PrNumber: int32(l.PR), Kind: KindIncident, Ref: inc.ID,
+					At: pgtype.Timestamptz{Time: inc.At, Valid: true},
+				})
 			}
 		}
 		if err := j.insert(ctx, events, links); err != nil {

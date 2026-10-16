@@ -39,6 +39,8 @@ var ErrAlreadyApproved = errors.New("gh: probe PR is already approved; use a PR 
 // waits up to wait for GitHub to recompute the review decision, then
 // dismisses the approval so the sandbox PR is left as it was. Never run it
 // on a production repo.
+//
+//nolint:nonamedreturns // the deferred dismissal records res.Dismissed on every return path
 func (p *Poster) ProbeApproval(ctx context.Context, pr PR, wait time.Duration) (res ApprovalProbe, err error) {
 	res = ApprovalProbe{Repo: pr.Owner + "/" + pr.Repo, PR: pr.Number}
 	before, err := p.mergeState(ctx, pr)
@@ -51,9 +53,9 @@ func (p *Poster) ProbeApproval(ctx context.Context, pr PR, wait time.Duration) (
 	}
 
 	review, _, err := p.gh.PullRequests.CreateReview(ctx, pr.Owner, pr.Repo, pr.Number, &github.PullRequestReviewRequest{
-		CommitID: github.Ptr(pr.HeadSHA),
-		Body:     github.Ptr("Exemplar T-0.3 approval probe. This approval is dismissed automatically."),
-		Event:    github.Ptr("APPROVE"),
+		CommitID: new(pr.HeadSHA),
+		Body:     new("Exemplar T-0.3 approval probe. This approval is dismissed automatically."),
+		Event:    new("APPROVE"),
 	})
 	if err != nil {
 		return res, fmt.Errorf("gh: submit probe approval: %w", err)
@@ -63,7 +65,7 @@ func (p *Poster) ProbeApproval(ctx context.Context, pr PR, wait time.Duration) (
 		dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		_, _, derr := p.gh.PullRequests.DismissReview(dctx, pr.Owner, pr.Repo, pr.Number, review.GetID(),
-			&github.PullRequestReviewDismissalRequest{Message: github.Ptr("T-0.3 probe complete")})
+			&github.PullRequestReviewDismissalRequest{Message: new("T-0.3 probe complete")})
 		res.Dismissed = derr == nil
 	}()
 

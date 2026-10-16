@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -28,16 +29,17 @@ func newUpstream(t *testing.T) *upstream {
 	return u
 }
 
-func (u *upstream) git(args ...string) string {
+func (u *upstream) git(args ...string) {
 	u.t.Helper()
 	cmd := exec.CommandContext(u.t.Context(), "git", append([]string{"-C", u.dir}, args...)...)
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + u.t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
-		"GIT_AUTHOR_NAME=Dev", "GIT_AUTHOR_EMAIL=dev@example.invalid", "GIT_COMMITTER_NAME=Dev", "GIT_COMMITTER_EMAIL=dev@example.invalid"}
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"), "HOME=" + u.t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_AUTHOR_NAME=Dev", "GIT_AUTHOR_EMAIL=dev@example.invalid", "GIT_COMMITTER_NAME=Dev", "GIT_COMMITTER_EMAIL=dev@example.invalid",
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		u.t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
-	return strings.TrimSpace(string(out))
 }
 
 // write sets files (empty body deletes) and commits.
@@ -109,7 +111,7 @@ func setup(t *testing.T) *fixture {
 }
 
 func paths(r Result) []string {
-	var out []string
+	out := make([]string, 0, len(r.Matches))
 	for _, m := range r.Matches {
 		out = append(out, fmt.Sprintf("%s:%d", m.Path, m.Line))
 	}
@@ -269,7 +271,7 @@ func TestSearchLimits(t *testing.T) {
 	f := setup(t)
 	ctx := t.Context()
 	var body strings.Builder
-	for i := 0; i < 150; i++ {
+	for i := range 150 {
 		fmt.Fprintf(&body, "needle %d\n", i)
 	}
 	f.u.write("many", map[string]string{"svc/many.txt": body.String()})
@@ -299,9 +301,7 @@ func TestSearchDuringSwap(t *testing.T) {
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
 	for range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for {
 				select {
 				case <-stop:
@@ -313,10 +313,10 @@ func TestSearchDuringSwap(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
-	for i := 0; i < 5; i++ {
-		f.u.write(fmt.Sprint(i), map[string]string{fmt.Sprintf("svc/f%d.go", i): "package svc\n"})
+	for i := range 5 {
+		f.u.write(strconv.Itoa(i), map[string]string{fmt.Sprintf("svc/f%d.go", i): "package svc\n"})
 		if _, err := f.m.Fetch(ctx, "acme/app"); err != nil {
 			t.Fatal(err)
 		}

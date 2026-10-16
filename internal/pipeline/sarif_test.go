@@ -13,7 +13,10 @@ func TestBuildSARIF(t *testing.T) {
 		return scope.Anchor{Path: path, Side: side, StartLine: line, EndLine: line + 1}
 	}
 	res := &engine.Result{Findings: []engine.Finding{
-		{RuleID: "no-raw-sql", Severity: "blocking", Category: "Security", Anchor: at("db.go", scope.SideRight, 4), Message: "Use placeholders.", Fingerprint: "fp1", State: engine.StatePosted, Citation: "https://docs/sql"},
+		{
+			RuleID: "no-raw-sql", Severity: "blocking", Category: "Security", Anchor: at("db.go", scope.SideRight, 4), Message: "Use placeholders.",
+			Fingerprint: "fp1", State: engine.StatePosted, Citation: "https://docs/sql",
+		},
 		{RuleID: "no-raw-sql", Severity: "blocking", Category: "Security", Anchor: at("db.go", scope.SideRight, 9), Fingerprint: "fp2", State: engine.StateDropped, Suppressed: engine.SuppressAlreadyPosted},
 		{RuleID: "weak-hash", Severity: "important", Category: "security", Anchor: at("h.go", scope.SideRight, 1), Fingerprint: "fp3", State: engine.StatePosted},
 		{RuleID: "no-raw-sql", Severity: "blocking", Category: "Security", Anchor: at("db.go", scope.SideLeft, 2), State: engine.StatePosted}, // removed lines
@@ -53,7 +56,8 @@ func TestBuildSARIF(t *testing.T) {
 							URI string `json:"uri"`
 						} `json:"artifactLocation"`
 						Region struct {
-							StartLine, EndLine int
+							StartLine int `json:"startLine"`
+							EndLine   int `json:"endLine"`
 						} `json:"region"`
 					} `json:"physicalLocation"`
 				} `json:"locations"`

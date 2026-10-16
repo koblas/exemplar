@@ -58,7 +58,7 @@ func (r Rules) Reason(p string) string {
 // depth. Only the root .gitattributes is read.
 func parseLinguist(text string) []attr {
 	var out []attr
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
 			continue
@@ -76,7 +76,7 @@ func parseLinguist(text string) []attr {
 
 func parseIgnore(text string) []string {
 	var out []string
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
 			continue
@@ -90,8 +90,8 @@ func parseIgnore(text string) []string {
 func gitPattern(p string) string {
 	dirOnly := strings.HasSuffix(p, "/")
 	p = strings.TrimSuffix(p, "/")
-	if strings.HasPrefix(p, "/") {
-		p = strings.TrimPrefix(p, "/")
+	if after, ok := strings.CutPrefix(p, "/"); ok {
+		p = after
 	} else if !strings.Contains(p, "/") {
 		p = "**/" + p
 	}

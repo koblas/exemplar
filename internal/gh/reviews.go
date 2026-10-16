@@ -33,8 +33,10 @@ func Reviews(ctx context.Context, c *github.Client, repo string, number int) ([]
 			return nil, restErr(err, fmt.Sprintf("reviews of %s#%d", repo, number))
 		}
 		for _, r := range rs {
-			out = append(out, Review{ID: r.GetID(), User: r.GetUser().GetLogin(), UserType: r.GetUser().GetType(),
-				State: r.GetState(), CommitID: r.GetCommitID()})
+			out = append(out, Review{
+				ID: r.GetID(), User: r.GetUser().GetLogin(), UserType: r.GetUser().GetType(),
+				State: r.GetState(), CommitID: r.GetCommitID(),
+			})
 		}
 		if resp.NextPage == 0 {
 			return out, nil

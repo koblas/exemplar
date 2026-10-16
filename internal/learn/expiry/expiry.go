@@ -226,7 +226,8 @@ func body(rule config.Rule, o Outcome, until time.Time, afterDays int, now time.
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: `%s` passed its review date (%s).\n\n", rule.Owner, rule.ID, o.ReviewBy)
 	if o.Extend {
-		fmt.Fprintf(&b, "Over the last %d days it had %d findings with feedback and a role-weighted false-positive rate of %.3f, under the bar. Merge this PR to extend `review_by` to %s; Exemplar will not merge it for you.\n", Window, o.Judged, o.EFP, until.Format(time.DateOnly))
+		fmt.Fprintf(&b, "Over the last %d days it had %d findings with feedback and a role-weighted false-positive rate of %.3f, under the bar. "+
+			"Merge this PR to extend `review_by` to %s; Exemplar will not merge it for you.\n", Window, o.Judged, o.EFP, until.Format(time.DateOnly))
 		return b.String()
 	}
 	if o.Judged == 0 {
@@ -234,7 +235,8 @@ func body(rule config.Rule, o Outcome, until time.Time, afterDays int, now time.
 	} else {
 		fmt.Fprintf(&b, "Over the last %d days its role-weighted false-positive rate was %.3f, over the bar.", Window, o.EFP)
 	}
-	fmt.Fprintf(&b, " This PR moves it to **shadow**. It merges on its own after %s (%d days) unless you comment, review or close it. To keep the rule active, close this PR and extend `review_by` in a new one.\n",
+	fmt.Fprintf(&b, " This PR moves it to **shadow**. It merges on its own after %s (%d days) unless you comment, review or close it. "+
+		"To keep the rule active, close this PR and extend `review_by` in a new one.\n",
 		now.AddDate(0, 0, afterDays).UTC().Format(time.DateOnly), afterDays)
 	return b.String()
 }

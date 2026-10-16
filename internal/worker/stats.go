@@ -31,6 +31,7 @@ func (StatsArgs) InsertOpts() river.InsertOpts {
 // StatsWorker refreshes the roll-ups.
 type StatsWorker struct {
 	river.WorkerDefaults[StatsArgs]
+
 	st  *store.Store
 	log *slog.Logger
 }

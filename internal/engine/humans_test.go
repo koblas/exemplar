@@ -9,8 +9,10 @@ import (
 )
 
 func TestReviewHumanDedupe(t *testing.T) {
-	reviewer := HumanComment{ID: 7, Author: "dana", AuthorType: "User", Association: "MEMBER", Path: "main.go", Side: "RIGHT",
-		Start: httpGetLine, End: httpGetLine, Body: "This should use the request's context."}
+	reviewer := HumanComment{
+		ID: 7, Author: "dana", AuthorType: "User", Association: "MEMBER", Path: "main.go", Side: "RIGHT",
+		Start: httpGetLine, End: httpGetLine, Body: "This should use the request's context.",
+	}
 	with := func(mod func(*HumanComment)) HumanComment { c := reviewer; mod(&c); return c }
 	tests := []struct {
 		name      string
@@ -94,7 +96,8 @@ func TestHumanDuplicateBeforeLinter(t *testing.T) {
 		Generator: contextViolation(""), Quote: func(path string, line int) string { return headLineNoT(e.prep, path, line) },
 		HumanJudge: func(string) bool { return true },
 	})
-	res, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval",
+	res, err := eng.Review(t.Context(), e.prep, Options{
+		Caller: "eval",
 		HumanComments: func(context.Context) ([]HumanComment, error) {
 			return []HumanComment{{ID: 7, Author: "dana", AuthorType: "User", Association: "OWNER", Path: "main.go", Side: "RIGHT", Start: httpGetLine, Body: "Use ctx here."}}, nil
 		},
@@ -121,8 +124,10 @@ func TestHumanJudgeRedacts(t *testing.T) {
 		HumanJudge: func(pair string) bool { seen = pair; return false },
 	})
 	_, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval", HumanComments: func(context.Context) ([]HumanComment, error) {
-		return []HumanComment{{ID: 7, Author: "dana", AuthorType: "User", Association: "MEMBER", Path: "main.go", Side: "RIGHT",
-			Start: httpGetLine, Body: "Use ctx. Also the token is " + tok}}, nil
+		return []HumanComment{{
+			ID: 7, Author: "dana", AuthorType: "User", Association: "MEMBER", Path: "main.go", Side: "RIGHT",
+			Start: httpGetLine, Body: "Use ctx. Also the token is " + tok,
+		}}, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
