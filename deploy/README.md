@@ -112,7 +112,7 @@ images:
 
 The base's all-zero digests make an unpinned deploy fail to pull.
 
-**Settings.** An overlay patches the `exemplar-settings` ConfigMap: `EXEMPLAR_CONFIG_REPO`, `EXEMPLAR_CONFIG_GIT_URL`, `EXEMPLAR_GH_APP_ID`, `EXEMPLAR_GH_INSTALLATION_ID`, `EXEMPLAR_EXPORTS_APP_ID`, `EXEMPLAR_API_URL`, `EXEMPLAR_AUTH0_DOMAIN` and `EXEMPLAR_AUTH0_AUDIENCE` (service callers of `/v1/evaluate`; both empty turns them off) and `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` (GitHub sign-in; leave it out for OIDC only). It also sets:
+**Settings.** An overlay patches the `exemplar-settings` ConfigMap: `EXEMPLAR_CONFIG_REPO`, `EXEMPLAR_CONFIG_GIT_URL`, `EXEMPLAR_GH_APP_ID`, `EXEMPLAR_GH_INSTALLATION_ID`, `EXEMPLAR_EXPORTS_APP_ID`, `EXEMPLAR_API_URL`, `EXEMPLAR_AUTH0_DOMAIN` and `EXEMPLAR_AUTH0_AUDIENCE` (service callers of `/v1/evaluate`; both empty turns them off) and `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` (GitHub sign-in; leave it out for OIDC only), and for GitHub Enterprise Server `EXEMPLAR_GH_WEB_URL` and `EXEMPLAR_GH_API_URL` (both empty for github.com). It also sets:
 - inbound:
   - **Tunnel:** the `exemplar-cloudflared` ConfigMap's `config.yaml`, with the tunnel id and host names.
   - **Ingress:** the Ingress hosts, classes and TLS secrets, and org SSO in front of the API (an IdP-aware proxy or ingress auth annotations).

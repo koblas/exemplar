@@ -103,6 +103,8 @@ spec:
               valueFrom: {secretKeyRef: {name: exemplar-search, key: token}}
             - name: EXEMPLAR_GH_APP_ID
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_APP_ID}}
+            - name: EXEMPLAR_GH_API_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL, optional: true}}
             - name: EXEMPLAR_GH_INSTALLATION_ID
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_INSTALLATION_ID}}
             - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
