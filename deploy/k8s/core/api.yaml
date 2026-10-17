@@ -70,8 +70,8 @@ spec:
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_AUTH0_DOMAIN}}
             - name: EXEMPLAR_AUTH0_AUDIENCE
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_AUTH0_AUDIENCE}}
-            - {name: EXEMPLAR_LINK_KEY_FILE, value: /var/run/secrets/exemplar/api/link-key}
-            - {name: EXEMPLAR_SESSION_KEY_FILE, value: /var/run/secrets/exemplar/api/session-key}
+            # The link and session keys derive from it (internal/envcfg).
+            - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
             - {name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_SECRET_FILE, value: /var/run/secrets/exemplar/api/oauth-client-secret}
             # Read only when EXEMPLAR_OIDC_ISSUER_URL is set (exemplar-auth).
             - {name: EXEMPLAR_OIDC_CLIENT_SECRET_FILE, value: /var/run/secrets/exemplar/oidc/client-secret}
@@ -91,10 +91,13 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           volumeMounts:
+            - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
             - {name: api-secrets, mountPath: /var/run/secrets/exemplar/api, readOnly: true}
             - {name: oidc-secret, mountPath: /var/run/secrets/exemplar/oidc, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
+        - name: root-key
+          secret: {secretName: exemplar-root-key, defaultMode: 0400}
         - name: api-secrets
           secret: {secretName: exemplar-api, defaultMode: 0400}
         - name: oidc-secret

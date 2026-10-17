@@ -113,3 +113,20 @@ func appFromEnv() (*gh.App, int64, string, error) {
 	}
 	return app, installation, cfgRepo, nil
 }
+
+// gatewayToken is EXEMPLAR_GATEWAY_TOKEN, or the token derived from the
+// root key.
+func gatewayToken() (string, error) {
+	tok, err := envcfg.NewKeys(os.Getenv, os.ReadFile).Token("EXEMPLAR_GATEWAY_TOKEN", envcfg.LabelGatewayToken)
+	if err != nil {
+		return "", fmt.Errorf("gateway token: %w", err)
+	}
+	return tok, nil
+}
+
+// optionalGatewayToken is gatewayToken, or "" when neither is set: the
+// callers report the missing gateway with their own advice.
+func optionalGatewayToken() string {
+	tok, _ := gatewayToken()
+	return tok
+}

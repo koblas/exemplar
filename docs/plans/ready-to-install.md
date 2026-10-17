@@ -149,7 +149,7 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 |---|---|---|---|
 | 1 | Fix GHES env wiring and the optional exports-app mount | §2 | done (2026-10-17) |
 | 2 | Reject placeholder settings at startup | §4.4 | done (2026-10-17) |
-| 3 | Root key with HKDF derivation; explicit files still win | §4.2 | not started |
+| 3 | Root key with HKDF derivation; explicit files still win | §4.2 | done (2026-10-17) |
 | 4 | Setup mode and the GitHub App manifest flow in exemplar-api | §4.3 | not started |
 | 5 | Installation id discovered from the App | §4.3 | not started |
 | 6 | Derive URLs from one hostname; config git URL from the repo | §4.4 | not started |
@@ -196,3 +196,13 @@ Work item 13. `gh.CloneURL` builds `<web base><owner>/<repo>.git` from `EXEMPLAR
 ### Placeholder settings fail startup (2026-10-17)
 
 Work item 2. `internal/envcfg` checks settings against the values the manifests ship for the operator to replace: `example-org`, `Iv1.example`, `example.invalid`, `exemplar.example.`, and `<…>` blanks such as the acme overlay's `"<App ID>"` (case-insensitive). `envcfg.Check` joins every failure, so one startup error lists everything still to fill in. Empty values pass; whether a setting is required stays the caller's check. Checked where each binary loads its settings: api (`API_URL`, OAuth client id and allowed orgs, GitHub bases, OIDC issuer), worker, search and learn (app id, installation id, config repo, GitHub bases; the worker also `API_URL`), and learn `export` (exports app id). The check runs in `cmd/`, not in library constructors, so tests' `.invalid` fixtures are unaffected. Tests: `TestPlaceholder`, `TestCheckJoins`, and `TestRunRejectsPlaceholders` (api exits before connecting to anything).
+
+### One root key (2026-10-17)
+
+Work item 3. `envcfg.Keys` resolves the link key, session key, gateway token, search token and pseudonym key. An explicit setting wins (`EXEMPLAR_LINK_KEY_FILE`, `EXEMPLAR_SESSION_KEY_FILE`, `EXEMPLAR_GATEWAY_TOKEN`, `EXEMPLAR_SEARCH_TOKEN`, `EXEMPLAR_PSEUDONYM_KEY`); otherwise the key is HKDF-SHA256 (stdlib `crypto/hkdf`, no salt, 32 bytes) of the file at `EXEMPLAR_ROOT_KEY_FILE` with a fixed label (`exemplar/link/v1` and so on). File keys are raw bytes; tokens and the pseudonym key are hex, since they travel as strings. The root key must be at least 32 bytes and is read once per process.
+
+- **Python.** The cluster job reads the gateway token too, so `exemplar_learning.rootkey` implements the same derivation with `hmac`. Go and Python test one shared vector (root `0123…cdef`, the gateway label), computed independently.
+- **Manifests.** The `exemplar-gateway`, `exemplar-search` and `exemplar-pseudonym` Secrets are gone, and `exemplar-api` keeps only `oauth-client-secret`. api, worker, gateway, search and the learn jobs that need a derived key (ingest, path-events, extract, cluster, evals, compile) mount `exemplar-root-key` at `/var/run/secrets/exemplar/root`. The webhook doesn't. Nothing has been released, so the manifests don't keep the old Secrets; the code still honours the explicit settings.
+- **Decision (open to Security, §6):** a pod with the root key can derive every internal key, so gateway and search can now derive the session and pseudonym keys. Before, the worker already held the link key and both tokens.
+- **Tests:** `TestDeriveVector`, `TestKeys` (derived, explicit wins, neither set, short root, missing explicit file), `TestTokens` (labels give distinct keys), `TestRootReadOnce`; `learning/tests/test_rootkey.py`. `go test ./deploy` passes with the new Secret in the settings header.
+- **Local note:** `uv run` needs `--frozen` here, because a global `exclude-newer` in the user's uv config makes the lockfile unresolvable.

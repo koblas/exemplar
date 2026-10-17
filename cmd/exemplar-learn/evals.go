@@ -49,7 +49,7 @@ func runEvals(args []string) error {
 
 	var inj *evalgen.Injector
 	if !*noInject {
-		gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), os.Getenv("EXEMPLAR_GATEWAY_TOKEN")
+		gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), optionalGatewayToken()
 		if gwURL == "" || gwToken == "" {
 			return fmt.Errorf("EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are %w for injection (or use --no-inject)", errRequired)
 		}

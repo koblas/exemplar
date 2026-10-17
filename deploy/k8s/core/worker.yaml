@@ -114,17 +114,13 @@ spec:
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
             - name: EXEMPLAR_GATEWAY_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
-            - name: EXEMPLAR_GATEWAY_TOKEN
-              valueFrom: {secretKeyRef: {name: exemplar-gateway, key: token}}
+            - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
             - name: EXEMPLAR_SEARCH_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_SEARCH_URL}}
-            - name: EXEMPLAR_SEARCH_TOKEN
-              valueFrom: {secretKeyRef: {name: exemplar-search, key: token}}
             - {name: EXEMPLAR_AST_GREP, value: /usr/local/bin/ast-grep}
             # Signed feedback links in comments.
             - name: EXEMPLAR_API_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
-            - {name: EXEMPLAR_LINK_KEY_FILE, value: /var/run/secrets/exemplar/api/link-key}
           livenessProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 10
@@ -142,12 +138,14 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           volumeMounts:
+            - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
             - {name: config, mountPath: /config, readOnly: true}
             - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
-            - {name: link-key, mountPath: /var/run/secrets/exemplar/api, readOnly: true}
             - {name: work, mountPath: /var/lib/exemplar/work}
             - {name: tmp, mountPath: /tmp}
       volumes:
+        - name: root-key
+          secret: {secretName: exemplar-root-key, defaultMode: 0400}
         - name: config
           emptyDir: {sizeLimit: 256Mi}
         - name: config-git
@@ -158,11 +156,6 @@ spec:
           secret:
             secretName: exemplar-github-app
             items: [{key: private-key, path: private-key}]
-            defaultMode: 0400
-        - name: link-key
-          secret:
-            secretName: exemplar-api
-            items: [{key: link-key, path: link-key}]
             defaultMode: 0400
         # One checkout per running review, removed when it ends.
         - name: work

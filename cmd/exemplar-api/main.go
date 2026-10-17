@@ -124,13 +124,14 @@ func run(args []string) error {
 	if dbURL == "" || public == "" {
 		return fmt.Errorf("EXEMPLAR_DATABASE_URL and EXEMPLAR_API_URL are %w", errRequired)
 	}
-	linkKey, err := secretFile("EXEMPLAR_LINK_KEY_FILE")
+	keys := envcfg.NewKeys(os.Getenv, os.ReadFile)
+	linkKey, err := keys.File("EXEMPLAR_LINK_KEY_FILE", envcfg.LabelLink)
 	if err != nil {
-		return err
+		return fmt.Errorf("link key: %w", err)
 	}
-	sessionKey, err := secretFile("EXEMPLAR_SESSION_KEY_FILE")
+	sessionKey, err := keys.File("EXEMPLAR_SESSION_KEY_FILE", envcfg.LabelSession)
 	if err != nil {
-		return err
+		return fmt.Errorf("session key: %w", err)
 	}
 	github, ghWeb, ghAPI, err := githubFromEnv()
 	if err != nil {

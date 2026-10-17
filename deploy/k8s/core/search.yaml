@@ -99,8 +99,7 @@ spec:
             - configMapRef: {name: exemplar-otel, optional: true}
             - secretRef: {name: exemplar-otel, optional: true}
           env:
-            - name: EXEMPLAR_SEARCH_TOKEN
-              valueFrom: {secretKeyRef: {name: exemplar-search, key: token}}
+            - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
             - name: EXEMPLAR_GH_APP_ID
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_APP_ID}}
             - name: EXEMPLAR_GH_API_URL
@@ -129,11 +128,14 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           volumeMounts:
+            - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
             - {name: config, mountPath: /config, readOnly: true}
             - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
             - {name: ssd, mountPath: /mnt/ssd}
             - {name: tmp, mountPath: /tmp}
       volumes:
+        - name: root-key
+          secret: {secretName: exemplar-root-key, defaultMode: 0400}
         - name: config
           emptyDir: {sizeLimit: 256Mi}
         - name: config-git

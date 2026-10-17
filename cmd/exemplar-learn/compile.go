@@ -66,7 +66,7 @@ func runCompile(args []string) error {
 		log.Warn("running engines without a sandbox")
 	}
 
-	gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), os.Getenv("EXEMPLAR_GATEWAY_TOKEN")
+	gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), optionalGatewayToken()
 	if gwURL == "" || gwToken == "" {
 		return fmt.Errorf("EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are %w", errRequired)
 	}

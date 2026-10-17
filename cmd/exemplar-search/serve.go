@@ -43,7 +43,10 @@ func runServe(args []string) error {
 	if *root == "" || *indexRoot == "" || *configDir == "" {
 		return fmt.Errorf("--root, --index-root and --config are %w", errRequired)
 	}
-	token := os.Getenv("EXEMPLAR_SEARCH_TOKEN")
+	token, err := envcfg.NewKeys(os.Getenv, os.ReadFile).Token("EXEMPLAR_SEARCH_TOKEN", envcfg.LabelSearchToken)
+	if err != nil {
+		return fmt.Errorf("search token: %w", err)
+	}
 	if len(token) < 32 {
 		return errSearchTokenTooShort
 	}

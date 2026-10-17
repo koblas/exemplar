@@ -3,12 +3,11 @@
 #   exemplar-database        url
 #   exemplar-github-app      private-key, webhook-secret
 #   exemplar-exports-app     private-key (the separate exports app)
-#   exemplar-gateway         token
+#   exemplar-root-key        key (at least 32 bytes: openssl rand -hex 32); the link, session,
+#                            gateway, search and pseudonym keys derive from it (internal/envcfg)
 #   exemplar-providers       anthropic-api-key
-#   exemplar-search          token
 #   exemplar-config-git      ssh (a read-only deploy key on exemplar-config), known_hosts
-#   exemplar-pseudonym       key (at least 32 bytes, from the KMS-held secret)
-#   exemplar-api             link-key, session-key (each at least 32 bytes), oauth-client-secret
+#   exemplar-api             oauth-client-secret
 #   exemplar-oidc            client-secret (optional: the OIDC sign-in client's)
 #   exemplar-cloudflared     credentials.json (the tunnel's, Cloudflare Tunnel builds only)
 #   exemplar-postgres        password (the in-cluster Postgres superuser's, components/postgres only)

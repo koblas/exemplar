@@ -126,12 +126,10 @@ The base's all-zero digests make an unpinned deploy fail to pull.
 | `exemplar-database` | `url` | every binary but search |
 | `exemplar-github-app` | `private-key`, `webhook-secret` | worker, search, learn; webhook (`webhook-secret` only) |
 | `exemplar-exports-app` | `private-key` (the separate exports app: contents and pull requests write on opted-in repos only, never installed on exemplar-config) | learn `export` |
-| `exemplar-gateway` | `token` | gateway, worker, learn |
+| `exemplar-root-key` | `key` (at least 32 bytes; `openssl rand -hex 32`) | api, worker, gateway, search, learn. The link, session, gateway, search and pseudonym keys derive from it with HKDF-SHA256 (`internal/envcfg`). An explicit `EXEMPLAR_LINK_KEY_FILE`, `EXEMPLAR_SESSION_KEY_FILE`, `EXEMPLAR_GATEWAY_TOKEN`, `EXEMPLAR_SEARCH_TOKEN` or `EXEMPLAR_PSEUDONYM_KEY` still wins, for rotating one key alone. Rotating the root key signs everyone out and changes every pseudonym. |
 | `exemplar-providers` | `anthropic-api-key` | gateway |
-| `exemplar-search` | `token` (at least 32 bytes) | search, worker |
 | `exemplar-config-git` | `ssh`, `known_hosts` | every git-sync |
-| `exemplar-pseudonym` | `key` (at least 32 bytes) | ingest, path-events |
-| `exemplar-api` | `link-key`, `session-key` (each at least 32 bytes), `oauth-client-secret` | api; worker (`link-key` only) |
+| `exemplar-api` | `oauth-client-secret` | api |
 | `exemplar-cloudflared` | `credentials.json` (from `cloudflared tunnel create`) | cloudflared, tunnel builds only |
 | `exemplar-postgres` | `password` | exemplar-postgres, `components/postgres` only |
 

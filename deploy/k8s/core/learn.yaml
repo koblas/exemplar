@@ -82,8 +82,7 @@ spec:
                 - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
                 - name: EXEMPLAR_CONFIG_REPO
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
-                - name: EXEMPLAR_PSEUDONYM_KEY
-                  valueFrom: {secretKeyRef: {name: exemplar-pseudonym, key: key}}
+                - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
               resources:
                 requests: {cpu: "250m", memory: 512Mi}
                 limits: {cpu: "1", memory: 2Gi}
@@ -92,10 +91,13 @@ spec:
                 readOnlyRootFilesystem: true
                 capabilities: {drop: [ALL]}
               volumeMounts:
+                - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
                 - {name: tmp, mountPath: /tmp}
                 - {name: config, mountPath: /config, readOnly: true}
                 - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
           volumes:
+            - name: root-key
+              secret: {secretName: exemplar-root-key, defaultMode: 0400}
             - name: tmp
               emptyDir: {sizeLimit: 2Gi}
             - name: config
@@ -190,8 +192,7 @@ spec:
                 - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
                 - name: EXEMPLAR_CONFIG_REPO
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
-                - name: EXEMPLAR_PSEUDONYM_KEY
-                  valueFrom: {secretKeyRef: {name: exemplar-pseudonym, key: key}}
+                - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
               resources:
                 requests: {cpu: "250m", memory: 512Mi}
                 limits: {cpu: "1", memory: 2Gi}
@@ -200,10 +201,13 @@ spec:
                 readOnlyRootFilesystem: true
                 capabilities: {drop: [ALL]}
               volumeMounts:
+                - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
                 - {name: tmp, mountPath: /tmp}
                 - {name: config, mountPath: /config, readOnly: true}
                 - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
           volumes:
+            - name: root-key
+              secret: {secretName: exemplar-root-key, defaultMode: 0400}
             - name: tmp
               emptyDir: {sizeLimit: 2Gi}
             - name: config
@@ -265,8 +269,7 @@ spec:
                   valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
                 - name: EXEMPLAR_GATEWAY_URL
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
-                - name: EXEMPLAR_GATEWAY_TOKEN
-                  valueFrom: {secretKeyRef: {name: exemplar-gateway, key: token}}
+                - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
               resources:
                 requests: {cpu: "100m", memory: 256Mi}
                 limits: {cpu: "1", memory: 1Gi}
@@ -275,8 +278,11 @@ spec:
                 readOnlyRootFilesystem: true
                 capabilities: {drop: [ALL]}
               volumeMounts:
+                - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
                 - {name: tmp, mountPath: /tmp}
           volumes:
+            - name: root-key
+              secret: {secretName: exemplar-root-key, defaultMode: 0400}
             - name: tmp
               emptyDir: {sizeLimit: 2Gi}
 ---
@@ -325,8 +331,7 @@ spec:
                   valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
                 - name: EXEMPLAR_GATEWAY_URL
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
-                - name: EXEMPLAR_GATEWAY_TOKEN
-                  valueFrom: {secretKeyRef: {name: exemplar-gateway, key: token}}
+                - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
               resources:
                 requests: {cpu: "1", memory: 4Gi}
                 limits: {cpu: "4", memory: 16Gi}
@@ -335,8 +340,11 @@ spec:
                 readOnlyRootFilesystem: true
                 capabilities: {drop: [ALL]}
               volumeMounts:
+                - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
                 - {name: tmp, mountPath: /tmp}
           volumes:
+            - name: root-key
+              secret: {secretName: exemplar-root-key, defaultMode: 0400}
             - name: tmp
               emptyDir: {sizeLimit: 2Gi}
 ---
@@ -454,8 +462,7 @@ spec:
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
                 - name: EXEMPLAR_GATEWAY_URL
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
-                - name: EXEMPLAR_GATEWAY_TOKEN
-                  valueFrom: {secretKeyRef: {name: exemplar-gateway, key: token}}
+                - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
               resources:
                 requests: {cpu: "500m", memory: 1Gi}
                 limits: {cpu: "2", memory: 4Gi}
@@ -464,10 +471,13 @@ spec:
                 readOnlyRootFilesystem: true
                 capabilities: {drop: [ALL]}
               volumeMounts:
+                - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
                 - {name: tmp, mountPath: /tmp}
                 - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
                 - {name: work, mountPath: /var/lib/exemplar/work}
           volumes:
+            - name: root-key
+              secret: {secretName: exemplar-root-key, defaultMode: 0400}
             - name: tmp
               emptyDir: {sizeLimit: 2Gi}
             - name: github-app
@@ -571,8 +581,7 @@ spec:
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
                 - name: EXEMPLAR_GATEWAY_URL
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
-                - name: EXEMPLAR_GATEWAY_TOKEN
-                  valueFrom: {secretKeyRef: {name: exemplar-gateway, key: token}}
+                - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
               resources:
                 requests: {cpu: "1", memory: 2Gi}
                 limits: {cpu: "2", memory: 4Gi}
@@ -581,11 +590,14 @@ spec:
                 readOnlyRootFilesystem: true
                 capabilities: {drop: [ALL]}
               volumeMounts:
+                - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
                 - {name: tmp, mountPath: /tmp}
                 - {name: config, mountPath: /config, readOnly: true}
                 - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
                 - {name: work, mountPath: /var/lib/exemplar/work}
           volumes:
+            - name: root-key
+              secret: {secretName: exemplar-root-key, defaultMode: 0400}
             - name: tmp
               emptyDir: {sizeLimit: 2Gi}
             - name: config
