@@ -227,7 +227,7 @@ exemplar/                          # one Go module: github.com/acme/exemplar
     queries/     # sqlc .sql files
   learning/      # Python (uv project): embed/ cluster/ rank/
   dashboards/    # Grafana dashboards as JSON (provisioned, version-controlled)
-  deploy/        # Helm / Terraform
+  deploy/        # Kustomize manifests, images
   .goreleaser.yaml
 
 exemplar-config/                   # the human gate (separate repo, CODEOWNERS-protected)
@@ -1893,7 +1893,7 @@ Pin exact versions at implementation time (Go modules via `go.mod`; Python via `
 | One rule is noisy everywhere | Set rule `status: shadow` → merge |
 | Bad auto-approval suspected | `global.yaml: auto_approve: false` → merge; pull `approval_decisions` trace and transcript |
 | Model outage | Runs become `incomplete` (§6.15): no comments, no approvals; the check run shows "Review did not complete" with a Re-run action; PRs proceed with human review as normal (nothing blocks) |
-| Webhook backlog | Scale `exemplar-orchestrator` ; sweeper catches up any missed PRs |
+| Webhook backlog | Scale `exemplar-worker` (it runs the orchestrator role) ; sweeper catches up any missed PRs |
 | Runs hitting the soft ceiling | Informational board shows which rules or PR shapes are expensive; narrow scope or lower the model tier for those rules; raise `soft_ceiling_usd` only if precision suffers from shedding |
 | One model provider outage | Gateway fails over per stage; runs using a same-family verifier are flagged and cannot auto-approve; check failover rate on the informational board |
 | All providers for a stage unavailable | Runs become incomplete: no comments, no approvals, check run shows "Review did not complete" with a Re-run action; re-run affected PRs when providers recover |
@@ -1955,7 +1955,7 @@ These inputs configure the system and are needed before the end of Phase 0.
 | 3 | Whether any public/fork PRs are in scope | Fork handling, visibility tiers |
 | 4 | Second model provider and its data-processing terms | Gateway provider B, verifier, Stage 2 cross-check |
 | 5 | Model access path (direct API or a cloud marketplace) | Gateway endpoints |
-| 6 | Compute platform | Helm charts and node pools |
+| 6 | Compute platform | Kustomize manifests and node pools |
 | 7 | Rule ownership map (platform-owned global rules, team-owned `.exemplar/` rules) | CODEOWNERS of `exemplar-config` and target repos |
 | 8 | Compliance repo list | `internal/gates/compliance.go` |
 | 9 | Grafana instance and Postgres replica access | §12 |

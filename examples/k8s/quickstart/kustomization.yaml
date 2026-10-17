@@ -7,11 +7,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Outside this repository: the release's install-tunnel.yaml, e.g.
-  # https://github.com/koblas/exemplar/releases/download/<version>/install-tunnel.yaml
-  # (it pins the images, so drop the images list below).
+  # Outside this repository, the release's install-tunnel.yaml, which pins
+  # the images (drop the images list below):
+  #   https://github.com/koblas/exemplar/releases/download/<version>/install-tunnel.yaml
   - ../../../deploy/k8s/base
 components:
+  # Outside this repository:
+  #   github.com/koblas/exemplar//deploy/k8s/components/postgres?ref=<version>
   - ../../../deploy/k8s/components/postgres
 
 # Pin both images by digest (see examples/k8s/acme); all zeros fails to pull.

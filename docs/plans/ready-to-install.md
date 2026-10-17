@@ -157,7 +157,7 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 | 8 | `/ui/setup` checks and `/ui/setup.json` | §4.5 | done (2026-10-17), GitHub checks only |
 | 9 | First tag with rendered install manifests | §4.6 | workflow done (2026-10-17); not run in CI; the tag waits for the release PR |
 | 10 | Quickstart overlay and sizing patches | §4.6 | done (2026-10-17) |
-| 11 | Docs split into quickstart, production, upgrades, reference | §4.7 | not started |
+| 11 | Docs split into quickstart, production, upgrades, reference | §4.7 | done (2026-10-17) |
 | 12 | Confirm goose locks concurrent migrations | §2 | done (2026-10-17): it didn't; Migrate now takes an advisory lock |
 | 13 | GHES clone URLs for worker, search and learn evals | §7 | done (2026-10-17) |
 
@@ -253,3 +253,11 @@ Work item 9. `deploy/render-release.sh <tag> <services digest> <learning digest>
 ### Quickstart overlay (2026-10-17)
 
 Work item 10. `examples/k8s/quickstart`: the default build plus `components/postgres`, one replica of every Deployment and of search (whose required anti-affinity needs two nodes for two), search on the default storage class at 20Gi with 500m/2Gi requests, the worker at 500m/1Gi, and Postgres at 10Gi. Two settings in `settings.yaml`. Not a separate sizing component: components must stay resource-only for `go test ./deploy`, so the patches live in the overlay. The overlay test now covers both examples (`TestExampleOverlays`), and CI and `make manifests` render and schema-check both. Not tried on a real kind cluster here (no cluster available); GitHub still needs the public URL the tunnel provides.
+
+### Install docs (2026-10-17)
+
+Work item 11. The README's 11-step INSTALLATION is now a **Quickstart** (seven steps on the quickstart overlay), a **Production install** (prerequisites, `exemplar-config`, Postgres, Secrets, the acme overlay, the path-scoped edge rules, sign-in, going live, optional pieces), **Releases** (the install files, or the base with digests pinned), **Upgrading** (now including key rotation) and **The CLI**. `deploy/README.md` stays the reference: two settings, setup mode, the `exemplar-github-app` keys, the path-routed tunnel and its `tunnel-id`, git-sync as the App, and the Secrets table without `exemplar-api`, `exemplar-config-git`, `exemplar-gateway`, `exemplar-search` and `exemplar-pseudonym`. The spec's stale Helm and `exemplar-orchestrator` references (§2.3, §15, §16) are fixed, and CLAUDE.md mentions setup mode and `internal/envcfg`.
+
+**Where install stands.** On the desktop: `kubectl`, `openssl`, and `cloudflared` for tunnel builds. Before applying: 3 Secrets (database, root key, provider key) plus the tunnel's, 2 settings. Then one setup page creates the App and its Secret. Before this plan: 9 required Secrets with 13 keys, about 15 values, about 30 App form fields, and a deploy key.
+
+**Still open:** the manifest flow and git-sync's App auth have only been run against fakes and `--help`; a real GitHub org and a real cluster are the next check. The exports app can only be created on the setup page during setup. The provider and search checks on `/ui/setup` need new network paths.
