@@ -64,7 +64,7 @@ func runEvals(args []string) error {
 			}
 			defer func() { _ = os.RemoveAll(dir) }()
 		}
-		files := &evalgen.CheckoutFiles{Root: dir, Token: checkoutToken()}
+		files := &evalgen.CheckoutFiles{Root: dir, Token: checkoutToken(), CloneURL: gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL"))}
 		inj = &evalgen.Injector{Model: evalgen.NewGatewayModel(gwURL, gwToken, nil), Files: files, Scanner: sc}
 	}
 	reports, err := evalgen.New(evalgen.Config{MaxNegatives: *maxNeg, MaxInjected: *maxInj, Logger: log}, st, inj).Run(ctx)

@@ -61,6 +61,10 @@ spec:
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
             - name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID}}
+            - name: EXEMPLAR_GH_WEB_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_WEB_URL, optional: true}}
+            - name: EXEMPLAR_GH_API_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL, optional: true}}
             # Service callers of /v1/evaluate (Auth0); empty turns them off.
             - name: EXEMPLAR_AUTH0_DOMAIN
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_AUTH0_DOMAIN}}

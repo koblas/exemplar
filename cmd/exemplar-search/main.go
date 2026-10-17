@@ -12,7 +12,7 @@
 // Symbols need universal-ctags on PATH (--require-ctags in production).
 // Mirrors are fetched with context-flavor tokens from the review app's
 // EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID and
-// EXEMPLAR_GH_PRIVATE_KEY_FILE (EXEMPLAR_GH_API_URL for GHES), with
+// EXEMPLAR_GH_PRIVATE_KEY_FILE (EXEMPLAR_GH_API_URL and EXEMPLAR_GH_WEB_URL for GHES), with
 // EXEMPLAR_CONFIG_REPO naming the repo those tokens may never read.
 //
 // bench sizes a node: clone, index and query times on a large monorepo.

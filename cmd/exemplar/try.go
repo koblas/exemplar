@@ -78,7 +78,7 @@ func newTryCmd() *cobra.Command {
 			}
 			r := &playground.Runner{
 				Engine: engine.New(h, sc, compiledRunner()), Scanner: sc, WorkDir: workDir, Caller: "cli",
-				GitHub: &userGitHub{c: client, token: token},
+				GitHub: &userGitHub{c: client, token: token}, CloneURL: gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL")),
 			}
 			out, err := r.Try(ctx, playground.Request{Actor: me.GetLogin(), Snapshot: snap, RuleIDs: []string{ruleID}, Target: target})
 			if err != nil {
