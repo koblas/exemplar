@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/exports"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/store"
@@ -116,6 +117,9 @@ func skipExport(appID string, repos []string) (bool, error) {
 // EXEMPLAR_EXPORTS_*; EXEMPLAR_CONFIG_REPO is needed so its tokens can
 // refuse to reach exemplar-config.
 func exportsAppFromEnv() (*gh.App, error) {
+	if err := envcfg.Check(os.Getenv, "EXEMPLAR_EXPORTS_APP_ID", "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL"); err != nil {
+		return nil, fmt.Errorf("settings: %w", err)
+	}
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_EXPORTS_APP_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_EXPORTS_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
 	if appID == 0 || keyFile == "" || cfgRepo == "" {

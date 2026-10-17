@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/learn/propose"
 	"github.com/koblas/exemplar/internal/redact"
@@ -93,6 +94,9 @@ func configRepo(ctx context.Context) (*gh.ConfigRepo, error) {
 
 // appFromEnv builds the review app from EXEMPLAR_GH_* settings.
 func appFromEnv() (*gh.App, int64, string, error) {
+	if err := envcfg.Check(os.Getenv, "EXEMPLAR_GH_APP_ID", "EXEMPLAR_GH_INSTALLATION_ID", "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL"); err != nil {
+		return nil, 0, "", fmt.Errorf("settings: %w", err)
+	}
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
 	installation, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_INSTALLATION_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")

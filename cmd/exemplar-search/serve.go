@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/search/api"
 	"github.com/koblas/exemplar/internal/search/index"
@@ -179,6 +180,9 @@ func reloadConfig(ctx context.Context, dir string, every time.Duration, snap *at
 // no app configured, fetches are anonymous and repos count as private:
 // only for local use against public or local remotes.
 func credentialsFromEnv() (mirror.Credentials, error) {
+	if err := envcfg.Check(os.Getenv, "EXEMPLAR_GH_APP_ID", "EXEMPLAR_GH_INSTALLATION_ID", "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL"); err != nil {
+		return nil, fmt.Errorf("settings: %w", err)
+	}
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
 	installation, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_INSTALLATION_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")

@@ -148,7 +148,7 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 | # | Item | Section | Status |
 |---|---|---|---|
 | 1 | Fix GHES env wiring and the optional exports-app mount | §2 | done (2026-10-17) |
-| 2 | Reject placeholder settings at startup | §4.4 | not started |
+| 2 | Reject placeholder settings at startup | §4.4 | done (2026-10-17) |
 | 3 | Root key with HKDF derivation; explicit files still win | §4.2 | not started |
 | 4 | Setup mode and the GitHub App manifest flow in exemplar-api | §4.3 | not started |
 | 5 | Installation id discovered from the App | §4.3 | not started |
@@ -192,3 +192,7 @@ Work items 1 and 12.
 
 Work item 13. `gh.CloneURL` builds `<web base><owner>/<repo>.git` from `EXEMPLAR_GH_WEB_URL`, defaulting to github.com. The worker (reviews, evaluations, playground), learn `evals` and `compile`, and the CLI's `eval`, `try` and prechecks use it. Search's `--git-url` defaults to the same variable, and an explicit flag still wins. The manifests give `EXEMPLAR_GH_WEB_URL` to worker, search, evals and compile. `go test ./deploy` requires it there and in api, teach and digest. The README no longer warns that GHES clones go to github.com. Replay fixtures keep their own `clone_url`, defaulting to github.com, because they are test data.
 
+
+### Placeholder settings fail startup (2026-10-17)
+
+Work item 2. `internal/envcfg` checks settings against the values the manifests ship for the operator to replace: `example-org`, `Iv1.example`, `example.invalid`, `exemplar.example.`, and `<…>` blanks such as the acme overlay's `"<App ID>"` (case-insensitive). `envcfg.Check` joins every failure, so one startup error lists everything still to fill in. Empty values pass; whether a setting is required stays the caller's check. Checked where each binary loads its settings: api (`API_URL`, OAuth client id and allowed orgs, GitHub bases, OIDC issuer), worker, search and learn (app id, installation id, config repo, GitHub bases; the worker also `API_URL`), and learn `export` (exports app id). The check runs in `cmd/`, not in library constructors, so tests' `.invalid` fixtures are unaffected. Tests: `TestPlaceholder`, `TestCheckJoins`, and `TestRunRejectsPlaceholders` (api exits before connecting to anything).

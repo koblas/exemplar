@@ -53,6 +53,7 @@ import (
 	"github.com/koblas/exemplar/internal/compiled"
 	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/engine"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/feedbacklink"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/owneract"
@@ -456,6 +457,9 @@ func runEnqueue(args []string) error {
 
 // appFromEnv builds the review app from EXEMPLAR_GH_* settings.
 func appFromEnv() (*gh.App, error) {
+	if err := envcfg.Check(os.Getenv, "EXEMPLAR_GH_APP_ID", "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL", "EXEMPLAR_GH_WEB_URL", "EXEMPLAR_API_URL"); err != nil {
+		return nil, fmt.Errorf("settings: %w", err)
+	}
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
 	if appID == 0 || keyFile == "" || cfgRepo == "" {

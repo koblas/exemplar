@@ -67,6 +67,7 @@ import (
 
 	"github.com/koblas/exemplar/internal/api"
 	"github.com/koblas/exemplar/internal/auth0"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/evaluate"
 	"github.com/koblas/exemplar/internal/feedbacklink"
 	"github.com/koblas/exemplar/internal/ghuser"
@@ -114,6 +115,10 @@ func run(args []string) error {
 	tryRuns := fs.Int("playground-daily-runs", 20, "each viewer's daily web UI playground runs")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
+	}
+	if err := envcfg.Check(os.Getenv, "EXEMPLAR_API_URL", "EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID", "EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS",
+		"EXEMPLAR_GH_WEB_URL", "EXEMPLAR_GH_API_URL", "EXEMPLAR_OIDC_ISSUER_URL"); err != nil {
+		return fmt.Errorf("settings: %w", err)
 	}
 	dbURL, public := os.Getenv("EXEMPLAR_DATABASE_URL"), os.Getenv("EXEMPLAR_API_URL")
 	if dbURL == "" || public == "" {
