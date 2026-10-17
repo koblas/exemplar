@@ -51,17 +51,25 @@ spec:
           image: registry.k8s.io/git-sync/git-sync:v4.7.1@sha256:c5e1976da735bf0b53979f079a07475d77174c51863cd084e928ff6074480717
           restartPolicy: Always
           args:
-            - --repo=$(EXEMPLAR_CONFIG_GIT_URL)
+            - --repo=$(EXEMPLAR_GH_WEB_URL)$(EXEMPLAR_CONFIG_REPO)
             - --ref=main
             - --root=/config
             - --link=current
             - --period=60s
-            - --ssh-key-file=/etc/git-secret/ssh
-            - --ssh-known-hosts-file=/etc/git-secret/known_hosts
+            - --github-app-private-key-file=/etc/github-app/private-key
             - --http-bind=:2020
           env:
-            - name: EXEMPLAR_CONFIG_GIT_URL
-              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_GIT_URL}}
+            - name: EXEMPLAR_GH_WEB_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_WEB_URL}}
+            - name: EXEMPLAR_CONFIG_REPO
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
+            # Clones exemplar-config over HTTPS as the review app.
+            - name: GITSYNC_GITHUB_BASE_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL}}
+            - name: GITSYNC_GITHUB_APP_APPLICATION_ID
+              valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id}}
+            - name: GITSYNC_GITHUB_APP_INSTALLATION_ID
+              valueFrom: {secretKeyRef: {name: exemplar-github-app, key: installation-id}}
           ports:
             - {name: sync, containerPort: 2020}
           startupProbe:
@@ -80,7 +88,7 @@ spec:
             capabilities: {drop: [ALL]}
           volumeMounts:
             - {name: config, mountPath: /config}
-            - {name: config-git, mountPath: /etc/git-secret, readOnly: true}
+            - {name: config-app, mountPath: /etc/github-app, readOnly: true}
             - {name: sync-tmp, mountPath: /tmp}
       containers:
         - name: worker
@@ -104,7 +112,7 @@ spec:
             - name: EXEMPLAR_DATABASE_URL
               valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
             - name: EXEMPLAR_GH_APP_ID
-              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_APP_ID}}
+              valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id}}
             - name: EXEMPLAR_GH_API_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL, optional: true}}
             - name: EXEMPLAR_GH_WEB_URL
@@ -148,8 +156,11 @@ spec:
           secret: {secretName: exemplar-root-key, defaultMode: 0400}
         - name: config
           emptyDir: {sizeLimit: 256Mi}
-        - name: config-git
-          secret: {secretName: exemplar-config-git, defaultMode: 0400}
+        - name: config-app
+          secret:
+            secretName: exemplar-github-app
+            items: [{key: private-key, path: private-key}]
+            defaultMode: 0400
         - name: sync-tmp
           emptyDir: {sizeLimit: 64Mi}
         - name: github-app

@@ -10,12 +10,12 @@ resources:
   # Outside this repository, point at a tagged copy instead, for example
   # github.com/koblas/exemplar//deploy/k8s/base?ref=<version>
   - ../../../deploy/k8s/base
-  # For an Ingress instead of the tunnel, use deploy/k8s/direct here, drop
-  # tunnel.yaml below, and uncomment the Ingress patches.
+  # For an Ingress instead of the tunnel, use deploy/k8s/direct here and
+  # uncomment the Ingress patches.
   # - ../../../deploy/k8s/direct
 
 # components:
-  # Both ways in: the tunnel plus Ingresses, on different host names.
+  # Both ways in: the tunnel plus Ingresses.
   # Uncomment the Ingress patches below too.
   # - ../../../deploy/k8s/components/ingress
   # In-cluster Postgres, for evaluation; see deploy/README.md.
@@ -38,8 +38,6 @@ images:
 
 patches:
   - path: settings.yaml
-  - path: auth.yaml
-  - path: tunnel.yaml
   # exemplar-search's volume per replica: the cluster's local-SSD storage
   # class, and a size from the monorepo benchmark (T-0.4).
   - target: {kind: StatefulSet, name: exemplar-search}
@@ -47,12 +45,13 @@ patches:
       - {op: replace, path: /spec/volumeClaimTemplates/0/spec/storageClassName, value: local-ssd}
       - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 500Gi}
 
-  # Ingress builds only: the two hosts, their TLS secrets and the class.
+  # Ingress builds only: EXEMPLAR_API_URL's host on both Ingresses (the
+  # webhook's is /webhook only), the TLS secret and the class.
   # - target: {kind: Ingress, name: exemplar-webhook}
   #   patch: |-
-  #     - {op: replace, path: /spec/rules/0/host, value: exemplar-webhook.acme.com}
-  #     - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar-webhook.acme.com}
-  #     - {op: replace, path: /spec/tls/0/secretName, value: exemplar-webhook-tls}
+  #     - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
+  #     - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar.acme.com}
+  #     - {op: replace, path: /spec/tls/0/secretName, value: exemplar-api-tls}
   #     - {op: replace, path: /spec/ingressClassName, value: nginx}
   # - target: {kind: Ingress, name: exemplar-api}
   #   patch: |-

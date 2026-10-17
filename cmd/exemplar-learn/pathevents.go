@@ -66,7 +66,7 @@ func runPathEvents(args []string) error {
 	if dbURL == "" {
 		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
-	app, installation, _, err := appFromEnv()
+	app, installation, _, err := appFromEnv(ctx)
 	if err != nil {
 		return err
 	}

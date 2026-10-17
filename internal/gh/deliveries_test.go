@@ -43,6 +43,8 @@ func TestHookDeliveriesAndRedeliver(t *testing.T) {
 			_, _ = w.Write([]byte(`{}`))
 		case r.URL.Path == "/repos/acme/app/installation":
 			_, _ = w.Write([]byte(`{"id": 77}`))
+		case r.URL.Path == "/repos/acme/exemplar-config/installation":
+			_, _ = w.Write([]byte(`{"id": 78}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message": "Not Found"}`))
@@ -68,6 +70,9 @@ func TestHookDeliveriesAndRedeliver(t *testing.T) {
 	}
 	if id, err := app.RepoInstallation(t.Context(), "acme/app"); err != nil || id != 77 {
 		t.Errorf("installation = %d, %v", id, err)
+	}
+	if id, err := app.ConfigInstallation(t.Context()); err != nil || id != 78 {
+		t.Errorf("config installation = %d, %v", id, err)
 	}
 	if !authorized {
 		t.Error("an App endpoint was called without the App JWT")

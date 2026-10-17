@@ -189,11 +189,11 @@ func credentialsFromEnv() (mirror.Credentials, error) {
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
 	installation, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_INSTALLATION_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
-	if appID == 0 && installation == 0 && keyFile == "" {
+	if appID == 0 && keyFile == "" {
 		return nil, nil //nolint:nilnil // nil Credentials means anonymous fetches, as documented above
 	}
-	if appID == 0 || installation == 0 || keyFile == "" || cfgRepo == "" {
-		return nil, fmt.Errorf("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO %w", errAppPartial)
+	if appID == 0 || keyFile == "" || cfgRepo == "" {
+		return nil, fmt.Errorf("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO %w", errAppPartial)
 	}
 	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
@@ -202,6 +202,13 @@ func credentialsFromEnv() (mirror.Credentials, error) {
 	app, err := gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: cfgRepo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create github app: %w", err)
+	}
+	if installation == 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if installation, err = app.ConfigInstallation(ctx); err != nil {
+			return nil, fmt.Errorf("EXEMPLAR_GH_INSTALLATION_ID unset and no installation found on %s: %w", cfgRepo, err)
+		}
 	}
 	return func(ctx context.Context, repo string) (string, string, error) {
 		return app.ContextFetch(ctx, installation, repo)

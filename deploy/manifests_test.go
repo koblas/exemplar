@@ -313,7 +313,7 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 			for _, e := range list(c, "env") {
 				name := str(e, "name")
 				set[name] = true
-				if strings.HasPrefix(name, "EXEMPLAR_") && name != "EXEMPLAR_CONFIG_GIT_URL" && !envs[name] {
+				if strings.HasPrefix(name, "EXEMPLAR_") && !envs[name] {
 					t.Errorf("%s: no code reads %s", cname, name)
 				}
 				if k := str(e, "valueFrom", "configMapKeyRef", "key"); k != "" && settings[k] == nil {
@@ -615,8 +615,9 @@ func checkInbound(t *testing.T, docs []obj, ingresses int, inbound []string) {
 		}
 	}
 
-	// Every tunnel route goes to a Service port, and the last one is the
-	// catch-all, so an unknown host never reaches a pod.
+	// Every tunnel route goes to a Service port, and only the last one
+	// matches everything: the others match by host name or path, so the
+	// webhook gets only its path.
 	for _, d := range docs {
 		if str(d, "kind") != "ConfigMap" || str(d, "metadata", "name") != "exemplar-cloudflared" {
 			continue
@@ -626,15 +627,22 @@ func checkInbound(t *testing.T, docs []obj, ingresses int, inbound []string) {
 			t.Fatalf("exemplar-cloudflared config.yaml: %v", err)
 		}
 		rules := list(cfg, "ingress")
-		if len(rules) == 0 || str(rules[len(rules)-1], "hostname") != "" || !strings.HasPrefix(str(rules[len(rules)-1], "service"), "http_status:") {
-			t.Errorf("tunnel routes must end with an http_status catch-all: %v", rules)
+		if len(rules) == 0 || str(rules[len(rules)-1], "hostname") != "" || str(rules[len(rules)-1], "path") != "" {
+			t.Errorf("tunnel routes must end with a catch-all: %v", rules)
 		}
-		for _, r := range rules[:max(len(rules)-1, 0)] {
+		for i, r := range rules {
+			if strings.HasPrefix(str(r, "service"), "http_status:") {
+				continue
+			}
 			u, ok := strings.CutPrefix(str(r, "service"), "http://")
 			host, port, _ := strings.Cut(u, ":")
 			name, ns, _ := strings.Cut(host, ".")
-			if !ok || str(r, "hostname") == "" || !strings.HasPrefix(ns, "exemplar.svc") || !services[name+":"+port] {
-				t.Errorf("tunnel route %v is not a host to an exemplar Service port", r)
+			matches := str(r, "hostname") != "" || str(r, "path") != ""
+			if !ok || !matches && i != len(rules)-1 || !strings.HasPrefix(ns, "exemplar.svc") || !services[name+":"+port] {
+				t.Errorf("tunnel route %v is not a host or path to an exemplar Service port", r)
+			}
+			if name == "exemplar-webhook" && str(r, "path") != "^/webhook$" {
+				t.Errorf("tunnel route %v reaches the webhook beyond POST /webhook", r)
 			}
 		}
 	}

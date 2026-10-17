@@ -64,7 +64,7 @@ func runEvals(args []string) error {
 			}
 			defer func() { _ = os.RemoveAll(dir) }()
 		}
-		files := &evalgen.CheckoutFiles{Root: dir, Token: checkoutToken(), CloneURL: gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL"))}
+		files := &evalgen.CheckoutFiles{Root: dir, Token: checkoutToken(ctx), CloneURL: gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL"))}
 		inj = &evalgen.Injector{Model: evalgen.NewGatewayModel(gwURL, gwToken, nil), Files: files, Scanner: sc}
 	}
 	reports, err := evalgen.New(evalgen.Config{MaxNegatives: *maxNeg, MaxInjected: *maxInj, Logger: log}, st, inj).Run(ctx)
@@ -79,8 +79,8 @@ func runEvals(args []string) error {
 
 // checkoutToken mints worker tokens for injection checkouts when the
 // review app is configured; nil means anonymous checkouts.
-func checkoutToken() func(ctx context.Context, repo string) (string, error) {
-	app, installation, _, err := appFromEnv()
+func checkoutToken(ctx context.Context) func(ctx context.Context, repo string) (string, error) {
+	app, installation, _, err := appFromEnv(ctx)
 	if err != nil {
 		return nil
 	}

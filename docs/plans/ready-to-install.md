@@ -151,9 +151,9 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 | 2 | Reject placeholder settings at startup | §4.4 | done (2026-10-17) |
 | 3 | Root key with HKDF derivation; explicit files still win | §4.2 | done (2026-10-17) |
 | 4 | Setup mode and the GitHub App manifest flow in exemplar-api | §4.3 | not started |
-| 5 | Installation id discovered from the App | §4.3 | not started |
-| 6 | Derive URLs from one hostname; config git URL from the repo | §4.4 | not started |
-| 7 | Config repo sync through the GitHub App | §4.4 | not started (check git-sync first) |
+| 5 | Installation id discovered from the App | §4.3 | done (2026-10-17) |
+| 6 | Derive URLs from one hostname; config git URL from the repo | §4.4 | done (2026-10-17) |
+| 7 | Config repo sync through the GitHub App | §4.4 | done (2026-10-17) |
 | 8 | `/ui/setup` checks and `/v1/setup/checks` | §4.5 | not started |
 | 9 | First tag with rendered install manifests | §4.6 | not started |
 | 10 | Quickstart overlay and sizing patches | §4.6 | not started |
@@ -206,3 +206,15 @@ Work item 3. `envcfg.Keys` resolves the link key, session key, gateway token, se
 - **Decision (open to Security, §6):** a pod with the root key can derive every internal key, so gateway and search can now derive the session and pseudonym keys. Before, the worker already held the link key and both tokens.
 - **Tests:** `TestDeriveVector`, `TestKeys` (derived, explicit wins, neither set, short root, missing explicit file), `TestTokens` (labels give distinct keys), `TestRootReadOnce`; `learning/tests/test_rootkey.py`. `go test ./deploy` passes with the new Secret in the settings header.
 - **Local note:** `uv run` needs `--frozen` here, because a global `exclude-newer` in the user's uv config makes the lockfile unresolvable.
+
+### Two settings, App values in one Secret, config sync as the App (2026-10-17)
+
+Work items 5, 6 and 7, done together so the manifests change once.
+
+- **Settings.** An installation sets `EXEMPLAR_CONFIG_REPO` and `EXEMPLAR_API_URL`. `EXEMPLAR_CONFIG_GIT_URL`, `EXEMPLAR_GH_APP_ID`, `EXEMPLAR_GH_INSTALLATION_ID`, `EXEMPLAR_EXPORTS_APP_ID` and `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` left `exemplar-settings`. `EXEMPLAR_GH_WEB_URL` and `EXEMPLAR_GH_API_URL` now default to github.com's bases instead of empty (every reader already treated empty as those), because git-sync takes an empty `GITSYNC_GITHUB_BASE_URL` literally.
+- **One host (answers the §6 question).** `envcfg.PublicURLs` derives the webhook URL (`<API URL>/webhook`) and the OAuth callback from `EXEMPLAR_API_URL`; `EXEMPLAR_WEBHOOK_URL` is an optional separate host. The tunnel's `config.yaml` now routes by path only (`^/webhook$` to the webhook, everything else to the API), so it holds nothing per installation and the acme `tunnel.yaml` patch is gone. The tunnel id moves to the `exemplar-cloudflared` Secret (`tunnel-id`) and reaches `cloudflared tunnel run` as an argument. Checked with the pinned cloudflared image: `ingress validate` accepts host-free path rules, `ingress rule` sends `/webhook` to the webhook on any host and everything else to the API, and `tunnel run` without an id fails, hence the argument. Edge rules become path-scoped: Access on the host with a bypass for `/webhook`, and the WAF CIDR rule on `/webhook`. The Ingress component uses one host for both Ingresses. `go test ./deploy` now accepts path rules without a host name and requires the webhook's route to be exactly `^/webhook$`.
+- **GitHub App values (`exemplar-github-app`).** `app-id`, `installation-id`, `client-id`, `client-secret`, `private-key`, `webhook-secret`, read with `secretKeyRef`. The `exemplar-api` Secret is gone: the OAuth client secret comes from the App's Secret. The exports app's Secret gains `app-id`. Api's references are optional, for setup mode (item 4).
+- **Installation id (item 5).** Optional in search and learn: unset, they look up the App's installation on the config repo (`gh.App.ConfigInstallation`, 30-second timeout). The worker already took ids from events. git-sync still needs it, so setup writes it into the Secret anyway; the lookup covers an operator who leaves it out.
+- **Config sync (item 7).** Checked with `git-sync:v4.7.1 --help`: it has `--github-app-application-id`, `--github-app-installation-id`, `--github-app-private-key-file` and `--github-base-url`, and reads them from `GITSYNC_*` env too. Every git-sync clones `$(EXEMPLAR_GH_WEB_URL)$(EXEMPLAR_CONFIG_REPO)` over HTTPS as the review app, so `exemplar-config-git` (deploy key, known_hosts) is gone and so is SSH egress (port 22) from gateway, worker, search and learn. **Decision:** the gateway pod's git-sync sidecar now holds the App's private key, where it held a read-only deploy key. Not checked against a real GitHub: that git-sync's App auth clones a private repo.
+- **Sign-in default.** With no `EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS` and no allow-everyone, GitHub sign-in is for members of the config repo's owner. The core `exemplar-auth` no longer ships `example-org`, and the acme `auth.yaml` patch is gone.
+- **Tests:** `TestPublicURLs`, `TestOwner`, `ConfigInstallation` in `TestHookDeliveriesAndRedeliver`; `go test ./deploy`; `kubectl kustomize` renders base, direct and acme.

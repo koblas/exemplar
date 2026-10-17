@@ -411,6 +411,10 @@ func githubFromEnv() (*api.GitHubAuth, string, string, error) {
 			gh.AllowedOrgs = append(gh.AllowedOrgs, o)
 		}
 	}
+	// Unset, sign-in is for members of the org that owns exemplar-config.
+	if owner := envcfg.Owner(os.Getenv("EXEMPLAR_CONFIG_REPO")); len(gh.AllowedOrgs) == 0 && !gh.AllowEveryone && owner != "" {
+		gh.AllowedOrgs = []string{owner}
+	}
 	return gh, web, apiURL, nil
 }
 

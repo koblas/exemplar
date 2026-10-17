@@ -1,5 +1,6 @@
-# GitHub posts webhooks here. Host, class and TLS secret are set by
-# the overlay; restrict it to GitHub's hook CIDRs (api.github.com/meta).
+# GitHub posts webhooks here: EXEMPLAR_API_URL's host plus /webhook, or
+# EXEMPLAR_WEBHOOK_URL's host. Host, class and TLS secret are set by the
+# overlay; restrict /webhook to GitHub's hook CIDRs (api.github.com/meta).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -9,10 +10,10 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: [exemplar-webhook.example.invalid]
+    - hosts: [exemplar.example.invalid]
       secretName: exemplar-webhook-tls
   rules:
-    - host: exemplar-webhook.example.invalid
+    - host: exemplar.example.invalid
       http:
         paths:
           - path: /webhook
@@ -24,7 +25,7 @@ spec:
 ---
 # People open feedback links here. The overlay sets host,
 # class and TLS, and puts org SSO in front (an IdP-aware proxy or ingress
-# auth annotations) for the whole host.
+# auth annotations) for everything but /webhook.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -34,10 +35,10 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: [exemplar-api.example.invalid]
+    - hosts: [exemplar.example.invalid]
       secretName: exemplar-api-tls
   rules:
-    - host: exemplar-api.example.invalid
+    - host: exemplar.example.invalid
       http:
         paths:
           - path: /

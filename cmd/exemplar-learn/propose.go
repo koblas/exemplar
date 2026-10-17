@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/gh"
@@ -77,7 +78,7 @@ func runPropose(args []string) error {
 // configRepo builds the config-writer client: the only token flavor that
 // can write to exemplar-config, and nothing else.
 func configRepo(ctx context.Context) (*gh.ConfigRepo, error) {
-	app, installation, cfgRepo, err := appFromEnv()
+	app, installation, cfgRepo, err := appFromEnv(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w (or use --dry-run)", err)
 	}
@@ -93,15 +94,15 @@ func configRepo(ctx context.Context) (*gh.ConfigRepo, error) {
 }
 
 // appFromEnv builds the review app from EXEMPLAR_GH_* settings.
-func appFromEnv() (*gh.App, int64, string, error) {
+func appFromEnv(ctx context.Context) (*gh.App, int64, string, error) {
 	if err := envcfg.Check(os.Getenv, "EXEMPLAR_GH_APP_ID", "EXEMPLAR_GH_INSTALLATION_ID", "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL"); err != nil {
 		return nil, 0, "", fmt.Errorf("settings: %w", err)
 	}
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
 	installation, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_INSTALLATION_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
-	if appID == 0 || installation == 0 || keyFile == "" || cfgRepo == "" {
-		return nil, 0, "", fmt.Errorf("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are %w", errRequired)
+	if appID == 0 || keyFile == "" || cfgRepo == "" {
+		return nil, 0, "", fmt.Errorf("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO are %w", errRequired)
 	}
 	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
@@ -110,6 +111,13 @@ func appFromEnv() (*gh.App, int64, string, error) {
 	app, err := gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: cfgRepo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("create github app: %w", err)
+	}
+	if installation == 0 {
+		lctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if installation, err = app.ConfigInstallation(lctx); err != nil {
+			return nil, 0, "", fmt.Errorf("EXEMPLAR_GH_INSTALLATION_ID unset and no installation found on %s: %w", cfgRepo, err)
+		}
 	}
 	return app, installation, cfgRepo, nil
 }

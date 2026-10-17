@@ -1,13 +1,12 @@
 # Non-secret settings shared by the services. Secrets are referenced by
 # name only and supplied outside this repository (see deploy/README.md):
 #   exemplar-database        url
-#   exemplar-github-app      private-key, webhook-secret
-#   exemplar-exports-app     private-key (the separate exports app)
+#   exemplar-github-app      app-id, client-id, client-secret, private-key, webhook-secret,
+#                            installation-id: from exemplar-api's setup page (README.md)
+#   exemplar-exports-app     app-id, private-key (optional: the separate exports app)
 #   exemplar-root-key        key (at least 32 bytes: openssl rand -hex 32); the link, session,
 #                            gateway, search and pseudonym keys derive from it (internal/envcfg)
 #   exemplar-providers       anthropic-api-key
-#   exemplar-config-git      ssh (a read-only deploy key on exemplar-config), known_hosts
-#   exemplar-api             oauth-client-secret
 #   exemplar-oidc            client-secret (optional: the OIDC sign-in client's)
 #   exemplar-cloudflared     credentials.json (the tunnel's, Cloudflare Tunnel builds only)
 #   exemplar-postgres        password (the in-cluster Postgres superuser's, components/postgres only)
@@ -19,20 +18,18 @@ metadata:
   labels:
     app.kubernetes.io/part-of: exemplar
 data:
-  # Set per installation by the overlay.
+  # Set per installation by the overlay: the config repo (owner/name) and
+  # exemplar-api's public URL. GitHub posts webhooks to EXEMPLAR_API_URL
+  # plus /webhook unless EXEMPLAR_WEBHOOK_URL names a separate host.
+  # Everything about the GitHub App (ids, keys, secrets) is in the
+  # exemplar-github-app Secret, which exemplar-api's setup page produces.
   EXEMPLAR_CONFIG_REPO: "example-org/exemplar-config"
-  EXEMPLAR_CONFIG_GIT_URL: "git@github.com:example-org/exemplar-config.git"
-  EXEMPLAR_GH_APP_ID: "0"
-  EXEMPLAR_GH_INSTALLATION_ID: "0"
-  # GitHub Enterprise Server web and API bases (https://<host>/ and
-  # https://<host>/api/v3/); both empty means github.com.
-  EXEMPLAR_GH_WEB_URL: ""
-  EXEMPLAR_GH_API_URL: ""
-  # The exports app for rule exports; 0 until it is registered.
-  EXEMPLAR_EXPORTS_APP_ID: "0"
-  # exemplar-api's public URL, and the review app's OAuth client id.
   EXEMPLAR_API_URL: "https://exemplar.example.invalid"
-  EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID: "Iv1.example"
+  EXEMPLAR_WEBHOOK_URL: ""
+  # GitHub's web and API bases; for GitHub Enterprise Server,
+  # https://<host>/ and https://<host>/api/v3/.
+  EXEMPLAR_GH_WEB_URL: "https://github.com/"
+  EXEMPLAR_GH_API_URL: "https://api.github.com/"
   # Auth0 tenant domain and API audience for service callers of
   # /v1/evaluate; both empty turns service callers off.
   EXEMPLAR_AUTH0_DOMAIN: ""
@@ -42,9 +39,9 @@ data:
   EXEMPLAR_SEARCH_URL: "http://exemplar-search.exemplar.svc"
 ---
 # Sign-in sources for exemplar-api, Coder-style (internal/api/signin.go).
-# GitHub OAuth is on when exemplar-settings has
-# EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID; it needs ALLOWED_ORGS or
-# ALLOW_EVERYONE=true. OIDC is on when EXEMPLAR_OIDC_ISSUER_URL is set,
+# GitHub OAuth is on once the exemplar-github-app Secret has the App's
+# client id. ALLOWED_ORGS defaults to the config repo's owner;
+# ALLOW_EVERYONE=true opens it to any GitHub user. OIDC is on when EXEMPLAR_OIDC_ISSUER_URL is set,
 # with its client secret in the exemplar-oidc Secret (client-secret).
 apiVersion: v1
 kind: ConfigMap
@@ -54,7 +51,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: exemplar
 data:
-  EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS: "example-org"
+  # EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS: "acme,acme-labs"
   # EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL: "https://github.example.com"
   # EXEMPLAR_OIDC_ISSUER_URL: "https://acme.okta.com"
   # EXEMPLAR_OIDC_CLIENT_ID: "0oa..."

@@ -67,6 +67,13 @@ func (a *App) Redeliver(ctx context.Context, deliveryID int64) error {
 	return nil
 }
 
+// ConfigInstallation returns the App's installation id on the config repo:
+// the installation that settings leave unset (EXEMPLAR_GH_INSTALLATION_ID)
+// is the one that covers exemplar-config.
+func (a *App) ConfigInstallation(ctx context.Context) (int64, error) {
+	return a.RepoInstallation(ctx, a.cfg.ConfigRepo)
+}
+
 // RepoInstallation returns the App's installation id on repo.
 func (a *App) RepoInstallation(ctx context.Context, repo string) (int64, error) {
 	owner, name, ok := strings.Cut(repo, "/")
