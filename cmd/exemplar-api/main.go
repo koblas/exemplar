@@ -26,10 +26,19 @@
 // feedback_link job, which exemplar-worker records with the person's role.
 // It holds no installation credentials.
 //
+// Without EXEMPLAR_GH_APP_ID it runs in setup mode (internal/setup): the
+// public listener answers only probes and a pointer to setup, and the
+// setup page, on a loopback listener reached with kubectl port-forward,
+// registers the GitHub App and hands out its Secret.
+//
 //	EXEMPLAR_DATABASE_URL                Postgres (findings, River)
 //	EXEMPLAR_API_URL                     this server's public https base
-//	EXEMPLAR_LINK_KEY_FILE               the link-signing key (also given to exemplar-worker)
-//	EXEMPLAR_SESSION_KEY_FILE            the session and form key (this server only)
+//	EXEMPLAR_ROOT_KEY_FILE               the root key the link and session keys derive from
+//	EXEMPLAR_LINK_KEY_FILE               an explicit link-signing key (also given to exemplar-worker)
+//	EXEMPLAR_SESSION_KEY_FILE            an explicit session and form key (this server only)
+//	EXEMPLAR_GH_APP_ID                   the review app; unset means setup mode
+//	EXEMPLAR_CONFIG_REPO                 exemplar-config; its owner is where setup registers the App
+//	EXEMPLAR_WEBHOOK_URL                 a separate webhook host (default EXEMPLAR_API_URL/webhook)
 //	EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID     the GitHub OAuth client (the review app's)
 //	EXEMPLAR_OAUTH2_GITHUB_CLIENT_SECRET_FILE  its secret
 //	EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS  comma-separated orgs whose members may sign in
@@ -113,12 +122,19 @@ func run(args []string) error {
 	perMinute := fs.Int("evaluate-per-minute", 6, "each caller's new evaluations per minute")
 	tryUSD := fs.Float64("playground-daily-usd", 5, "each viewer's daily model spend in the web UI playground")
 	tryRuns := fs.Int("playground-daily-runs", 20, "each viewer's daily web UI playground runs")
+	setupAddr := fs.String("setup-addr", "127.0.0.1:8081", "setup mode: the setup page's listen address (loopback: reached with kubectl port-forward)")
+	setupURL := fs.String("setup-url", "http://localhost:8081", "setup mode: where the operator's browser reaches the setup page")
+	namespace := fs.String("namespace", "exemplar", "setup mode: the namespace the setup page's Secrets go in")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}
 	if err := envcfg.Check(os.Getenv, "EXEMPLAR_API_URL", "EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID", "EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS",
 		"EXEMPLAR_GH_WEB_URL", "EXEMPLAR_GH_API_URL", "EXEMPLAR_OIDC_ISSUER_URL"); err != nil {
 		return fmt.Errorf("settings: %w", err)
+	}
+	// Until setup has produced exemplar-github-app, serve only setup.
+	if os.Getenv("EXEMPLAR_GH_APP_ID") == "" {
+		return runSetup(setupFlags{addr: *addr, setupAddr: *setupAddr, setupURL: *setupURL, namespace: *namespace, drain: *drain})
 	}
 	dbURL, public := os.Getenv("EXEMPLAR_DATABASE_URL"), os.Getenv("EXEMPLAR_API_URL")
 	if dbURL == "" || public == "" {

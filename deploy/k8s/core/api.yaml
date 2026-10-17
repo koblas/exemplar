@@ -46,6 +46,9 @@ spec:
           args: ["--addr=:8080", "--drain=5s"]
           ports:
             - {name: http, containerPort: 8080}
+            # Setup mode only, on the pod's loopback: reached with kubectl
+            # port-forward, never through a Service.
+            - {name: setup, containerPort: 8081}
           # OTel destinations (internal/telemetry): optional, set per installation.
           envFrom:
             - configMapRef: {name: exemplar-otel, optional: true}
