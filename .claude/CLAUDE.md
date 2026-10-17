@@ -6,9 +6,10 @@ This repository is Exemplar, a Go service deployed on Kubernetes. The Go module
 is `github.com/koblas/exemplar`. The spec is `docs/spec/technical-spec.md`
 (`§` references point there); the PRD is `docs/spec/prd.md` (`FR-…` requirement
 ids); `docs/plans/README.md` maps the roadmap and requirement families to
-both. Phase 0 work follows `docs/plans/phase-0.md`
-(status in its §9), which also logs every later step; add a section there for
-each new piece of work. Binaries: `cmd/exemplar` (CLI), `cmd/exemplar-gateway`,
+both. Current work follows `docs/plans/ready-to-install.md`; add a dated
+section to its log (§7) for each new piece of work. `docs/plans/phase-0.md` is
+the Phase 0 plan (status in its §9) and the log of head starts up to 2026-10-17;
+don't add new sections there. Binaries: `cmd/exemplar` (CLI), `cmd/exemplar-gateway`,
 `cmd/exemplar-search` (git mirror, zoekt index, internal API: search_text,
 find_definition, find_references, dependents), `cmd/exemplar-webhook` (GitHub
 webhook receiver), `cmd/exemplar-worker` (routes events, reviews live PRs and
