@@ -8,7 +8,8 @@ The map of Exemplar's plans: which document says what, how to read the reference
 |---|---|
 | [`docs/spec/technical-spec.md`](../spec/technical-spec.md) | **The technical specification** (Draft 1.3), and the **canonical copy**: change the spec here. It covers architecture, pipeline, data model, security and the delivery plan, and is the source for every `§` reference. |
 | [`docs/spec/prd.md`](../spec/prd.md) | **The PRD** (v0.6), and the **canonical copy**: change the PRD here. It covers the problem, goals, personas, and the functional requirements (`FR-…`) the spec implements, with sample interactions (§17). |
-| [`docs/plans/phase-0.md`](phase-0.md) | The Phase 0 implementation plan (§1–§8), its status (§9), and a dated log of every later step. Each "head start" section records what was built, the decisions taken, how it is tested, and what is still missing. |
+| [`docs/plans/phase-0.md`](phase-0.md) | The Phase 0 implementation plan (§1–§8), its status (§9), and a dated log of the head starts up to 2026-10-17. Each "head start" section records what was built, the decisions taken, how it is tested, and what is still missing. No new sections go here. |
+| [`docs/plans/ready-to-install.md`](ready-to-install.md) | **The current plan**: making a first installation short and checkable (setup in the cluster, the GitHub App manifest flow, one root key, a setup page, release manifests). New work is logged in its §7. |
 | [`docs/security/phase-0-data-handling.md`](../security/phase-0-data-handling.md) | What the code does with repository data, for Security's review and sign-off. |
 | [`deploy/README.md`](../../deploy/README.md) | How to deploy: images, manifests, what an installation supplies, and the rollout risks. |
 | [`.claude/CLAUDE.md`](../../.claude/CLAUDE.md) | Repository conventions: binaries, commands, checks, safety rules. |
@@ -43,7 +44,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 
 ## Roadmap
 
-Phases are from spec §16. Work has gone past Phase 0 in "head starts", each logged in the plan. **Built** means implemented and tested in this repository; nothing has run against a real GitHub org, real model providers or production data yet. Every phase's exit criteria need those.
+Phases are from spec §16. Work has gone past Phase 0 in "head starts", each logged in the Phase 0 plan. Work since 2026-10-17 is making Exemplar ready to install, in [its own plan](ready-to-install.md). **Built** means implemented and tested in this repository; nothing has run against a real GitHub org, real model providers or production data yet. Every phase's exit criteria need those.
 
 ### Phase 0 — Foundations
 
