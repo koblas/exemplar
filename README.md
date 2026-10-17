@@ -300,7 +300,7 @@ The base pins both images to all-zero digests, so an overlay that forgets to pin
 **Other patches the overlay usually needs:**
 - **Org SSO:** put it in front of the API host, unless you use OIDC sign-in: Cloudflare Access with the tunnel; an IdP-aware proxy or ingress auth annotations with an Ingress.
 - **Ingress controller namespace** (Ingress builds only): if your controller doesn't run in `ingress-nginx`, uncomment the example's NetworkPolicy patches and set the namespace.
-- **GitHub Enterprise Server:** set `EXEMPLAR_GH_WEB_URL` (`https://<host>/`) and `EXEMPLAR_GH_API_URL` (`https://<host>/api/v3/`) in `exemplar-settings`. Set `EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL` in `exemplar-auth`. Reviews and the search mirror still clone from github.com ([ready-to-install.md](docs/plans/ready-to-install.md) item 13).
+- **GitHub Enterprise Server:** set `EXEMPLAR_GH_WEB_URL` (`https://<host>/`) and `EXEMPLAR_GH_API_URL` (`https://<host>/api/v3/`) in `exemplar-settings`. Set `EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL` in `exemplar-auth`.
 
 #### Sign-in
 

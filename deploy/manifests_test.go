@@ -324,12 +324,13 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 				}
 			}
 			// GitHub Enterprise Server: every container that calls GitHub
-			// takes the API base, and those that build links the web base.
+			// takes the API base, and those that clone or build links the
+			// web base.
 			if (set["EXEMPLAR_GH_APP_ID"] || set["EXEMPLAR_EXPORTS_APP_ID"] || set["EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID"]) && !set["EXEMPLAR_GH_API_URL"] {
 				t.Errorf("%s: calls GitHub without EXEMPLAR_GH_API_URL", cname)
 			}
-			if slices.Contains([]string{"api", "teach", "digest"}, str(c, "name")) && !set["EXEMPLAR_GH_WEB_URL"] {
-				t.Errorf("%s: builds GitHub links without EXEMPLAR_GH_WEB_URL", cname)
+			if slices.Contains([]string{"api", "teach", "digest", "worker", "search", "evals", "compile"}, str(c, "name")) && !set["EXEMPLAR_GH_WEB_URL"] {
+				t.Errorf("%s: clones or links to GitHub without EXEMPLAR_GH_WEB_URL", cname)
 			}
 		}
 	}

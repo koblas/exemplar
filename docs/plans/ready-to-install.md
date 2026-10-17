@@ -159,7 +159,7 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 | 10 | Quickstart overlay and sizing patches | §4.6 | not started |
 | 11 | Docs split into quickstart, production, upgrades, reference | §4.7 | not started |
 | 12 | Confirm goose locks concurrent migrations | §2 | done (2026-10-17): it didn't; Migrate now takes an advisory lock |
-| 13 | GHES clone URLs for worker, search and learn evals | §7 | not started |
+| 13 | GHES clone URLs for worker, search and learn evals | §7 | done (2026-10-17) |
 
 Items 1, 2 and 12 are small and independent. Item 4 depends on 6 for the manifest's URLs. Item 11 goes last.
 
@@ -186,4 +186,9 @@ Work items 1 and 12.
 - **GHES.** Core `exemplar-settings` now has `EXEMPLAR_GH_WEB_URL` and `EXEMPLAR_GH_API_URL`, both empty (github.com). Every container that calls GitHub reads `EXEMPLAR_GH_API_URL` from it with `optional: true`: worker, search, api, and the learn CronJobs ingest, path-events, evals, compile, propose, demote, expiry, teach, digest and export. Api, teach and digest, which build links, also read `EXEMPLAR_GH_WEB_URL`. extract, cluster, rank, webhook and gateway don't call GitHub. `go test ./deploy` now fails a container that has `EXEMPLAR_GH_APP_ID`, `EXEMPLAR_EXPORTS_APP_ID` or `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` without the API base, or api/teach/digest without the web base.
 - **Exports app.** The export CronJob's `exemplar-exports-app` volume is `optional: true`. `exemplar-learn export` exits 0 with a log line when `EXEMPLAR_EXPORTS_APP_ID` is unset or 0 and no enabled repo configures `exports.targets`. It fails if a repo does, or if the app id is set and the key file is missing (`skipExport`, table-tested; `exports.Repos` is shared with the runner).
 - **Migrations.** Goose's provider had no session locker and River's migrator doesn't lock, so webhook, api, worker and learn pods starting together raced. `Store.Migrate` now takes a Postgres advisory lock on its own connection (outside the pool) around both. It polls `pg_try_advisory_lock` instead of blocking in `pg_advisory_lock`: a session blocked in that statement holds a snapshot, and migration 15's `CREATE INDEX CONCURRENTLY` waits for it, so the first version deadlocked in the concurrent test. Tests: `TestMigrateWaitsForLock` (Migrate does nothing while another session holds the lock, then succeeds; fails with the lock removed) and `TestMigrateConcurrent` (8 stores on an empty database; caught the deadlock). `storetest.EmptyURL` gives an unmigrated database.
-- **Still missing (item 13).** Clone URLs ignore GHES: worker (`internal/worker/worker.go:113`) and learn evals (`internal/learn/evalgen/model.go:133`) hard-code `https://github.com/`, and search takes `--git-url`, which the manifest doesn't set. On GHES, reviews and the search mirror still clone from github.com.
+- **Found, then fixed (item 13).** Clone URLs ignore GHES: worker (`internal/worker/worker.go:113`) and learn evals (`internal/learn/evalgen/model.go:133`) hard-code `https://github.com/`, and search takes `--git-url`, which the manifest doesn't set. On GHES, reviews and the search mirror still clone from github.com.
+
+### GHES clone URLs (2026-10-17)
+
+Work item 13. `gh.CloneURL` builds `<web base><owner>/<repo>.git` from `EXEMPLAR_GH_WEB_URL`, defaulting to github.com. The worker (reviews, evaluations, playground), learn `evals` and `compile`, and the CLI's `eval`, `try` and prechecks use it. Search's `--git-url` defaults to the same variable, and an explicit flag still wins. The manifests give `EXEMPLAR_GH_WEB_URL` to worker, search, evals and compile. `go test ./deploy` requires it there and in api, teach and digest. The README no longer warns that GHES clones go to github.com. Replay fixtures keep their own `clone_url`, defaulting to github.com, because they are test data.
+

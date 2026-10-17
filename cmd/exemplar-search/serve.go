@@ -31,7 +31,7 @@ func runServe(args []string) error {
 	indexRoot := fs.String("index-root", "", "zoekt index directory on the same SSD (required)")
 	requireCTags := fs.Bool("require-ctags", false, "refuse to start without universal-ctags and fail builds whose symbol extraction fails")
 	configDir := fs.String("config", "", "exemplar-config checkout: scope and eligibility (required)")
-	gitURL := fs.String("git-url", "https://github.com/", "base clone URL (GHES: https://<host>/)")
+	gitURL := fs.String("git-url", gh.WebBase(os.Getenv("EXEMPLAR_GH_WEB_URL")), "base clone URL (default EXEMPLAR_GH_WEB_URL, else https://github.com/)")
 	debounce := fs.Duration("debounce", mirror.DefaultDebounce, "minimum time between fetches of one repo")
 	backstop := fs.Duration("backstop", mirror.DefaultBackstop, "fetch every repo in scope this often")
 	reload := fs.Duration("config-reload", time.Minute, "how often to re-read --config")
