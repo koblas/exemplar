@@ -677,7 +677,13 @@ func envNames(t *testing.T) map[string]bool {
 // TestExampleOverlay keeps examples/k8s/acme in step with the base: it maps
 // every image the base names, pins each by digest, and lists only paths
 // that exist. CI renders it with kustomize; this catches drift without one.
-func TestExampleOverlay(t *testing.T) {
+func TestExampleOverlays(t *testing.T) {
+	for _, dir := range []string{"../examples/k8s/acme", "../examples/k8s/quickstart"} {
+		t.Run(filepath.Base(dir), func(t *testing.T) { checkOverlay(t, dir) })
+	}
+}
+
+func checkOverlay(t *testing.T, dir string) {
 	read := func(dir string) obj {
 		t.Helper()
 		raw, err := os.ReadFile(filepath.Join(dir, "kustomization.yaml"))
@@ -690,7 +696,6 @@ func TestExampleOverlay(t *testing.T) {
 		}
 		return k
 	}
-	const dir = "../examples/k8s/acme"
 	example := read(dir)
 
 	core := list(read("k8s/core"), "images")

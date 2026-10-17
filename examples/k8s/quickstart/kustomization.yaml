@@ -1,0 +1,43 @@
+# A trial installation: one replica of everything, the in-cluster Postgres
+# (components/postgres; not for production), and requests that fit one
+# small node. Copy this directory, set the two values in settings.yaml and
+# follow README.md, "Quickstart". For production, start from examples/k8s/acme.
+#
+# Render: kubectl kustomize examples/k8s/quickstart
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Outside this repository: the release's install-tunnel.yaml, e.g.
+  # https://github.com/koblas/exemplar/releases/download/<version>/install-tunnel.yaml
+  # (it pins the images, so drop the images list below).
+  - ../../../deploy/k8s/base
+components:
+  - ../../../deploy/k8s/components/postgres
+
+# Pin both images by digest (see examples/k8s/acme); all zeros fails to pull.
+images:
+  - name: exemplar
+    newName: docker.io/koblas/exemplar
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: exemplar-learning
+    newName: docker.io/koblas/exemplar
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+patches:
+  - path: settings.yaml
+  - target: {kind: Deployment, name: "exemplar-(api|webhook|gateway|worker|cloudflared)"}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 1}
+  # One search replica on the default storage class.
+  - target: {kind: StatefulSet, name: exemplar-search}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 1}
+      - {op: remove, path: /spec/volumeClaimTemplates/0/spec/storageClassName}
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 20Gi}
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 2Gi}, limits: {cpu: "2", memory: 8Gi}}}
+  - target: {kind: Deployment, name: exemplar-worker}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 5Gi}, limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 20Gi}}}
+  - target: {kind: StatefulSet, name: exemplar-postgres}
+    patch: |-
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 10Gi}

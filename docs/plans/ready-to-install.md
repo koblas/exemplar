@@ -155,8 +155,8 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 | 6 | Derive URLs from one hostname; config git URL from the repo | §4.4 | done (2026-10-17) |
 | 7 | Config repo sync through the GitHub App | §4.4 | done (2026-10-17) |
 | 8 | `/ui/setup` checks and `/ui/setup.json` | §4.5 | done (2026-10-17), GitHub checks only |
-| 9 | First tag with rendered install manifests | §4.6 | not started |
-| 10 | Quickstart overlay and sizing patches | §4.6 | not started |
+| 9 | First tag with rendered install manifests | §4.6 | workflow done (2026-10-17); not run in CI; the tag waits for the release PR |
+| 10 | Quickstart overlay and sizing patches | §4.6 | done (2026-10-17) |
 | 11 | Docs split into quickstart, production, upgrades, reference | §4.7 | not started |
 | 12 | Confirm goose locks concurrent migrations | §2 | done (2026-10-17): it didn't; Migrate now takes an advisory lock |
 | 13 | GHES clone URLs for worker, search and learn evals | §7 | done (2026-10-17) |
@@ -242,3 +242,14 @@ The page runs the checks on load with a 15-second bound; readiness and liveness 
 
 - **Changed from the plan:** the JSON is `/ui/setup.json` behind the UI's sign-in rather than `/v1/setup/checks`, so it needs no new auth path. Not built: the provider check through the gateway and the search-index check. Both need new NetworkPolicy paths from exemplar-api to the gateway and search; `kubectl get pods` shows their readiness meanwhile. Migrations aren't checked because exemplar-api runs them before it serves.
 - **Tests:** `TestChecks` (healthy, not installed, bad key, config repo missing, no deliveries, failing deliveries, delivered but not stored), `TestSetupPage` (page, JSON, sign-in required).
+
+### Release install manifests (2026-10-17)
+
+Work item 9. `deploy/render-release.sh <tag> <services digest> <learning digest> <dir>` renders `install-tunnel.yaml` (base) and `install-direct.yaml` (direct) with both images pinned, through a throwaway overlay under `deploy/k8s/.release-*`; it refuses malformed digests and fails if an all-zero digest survives. release-please.yml's new `manifests` job runs after `images` and `cli`, reads the release's digests with `docker buildx imagetools inspect koblas/exemplar:<version>` (and `learning-<version>`), and attaches both files to the release. The install files keep the core placeholders, so the operator still sets the two settings (startup refuses the placeholders), or uses the file as a kustomize resource and patches them.
+
+- **Not run in CI yet:** the job only runs when a release PR merges. actionlint passes. CI and `make manifests` now render the release files with stand-in digests and schema-check them. No tag was created: the first one comes from merging release-please's PR.
+- A v* tag pushed by hand (the CONTRIBUTING.md fallback) doesn't get the files; run the script and `gh release upload` by hand.
+
+### Quickstart overlay (2026-10-17)
+
+Work item 10. `examples/k8s/quickstart`: the default build plus `components/postgres`, one replica of every Deployment and of search (whose required anti-affinity needs two nodes for two), search on the default storage class at 20Gi with 500m/2Gi requests, the worker at 500m/1Gi, and Postgres at 10Gi. Two settings in `settings.yaml`. Not a separate sizing component: components must stay resource-only for `go test ./deploy`, so the patches live in the overlay. The overlay test now covers both examples (`TestExampleOverlays`), and CI and `make manifests` render and schema-check both. Not tried on a real kind cluster here (no cluster available); GitHub still needs the public URL the tunnel provides.
