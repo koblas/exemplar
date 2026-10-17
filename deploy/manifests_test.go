@@ -684,6 +684,7 @@ func TestExampleOverlays(t *testing.T) {
 }
 
 func checkOverlay(t *testing.T, dir string) {
+	t.Helper()
 	read := func(dir string) obj {
 		t.Helper()
 		raw, err := os.ReadFile(filepath.Join(dir, "kustomization.yaml"))
