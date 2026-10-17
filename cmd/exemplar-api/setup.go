@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/koblas/exemplar/internal/envcfg"
+	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/setup"
+	"github.com/koblas/exemplar/internal/store"
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
@@ -105,4 +108,39 @@ func newServer(addr string, h http.Handler) *http.Server {
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 45 * time.Second,
 		IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10,
 	}
+}
+
+// installChecks builds /ui/setup's checks from the review app's settings.
+func installChecks(st *store.Store) (func(context.Context) []setup.Check, error) {
+	appID, err := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("EXEMPLAR_GH_APP_ID: %w", err)
+	}
+	key, err := os.ReadFile(os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE")) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
+	if err != nil {
+		return nil, fmt.Errorf("read EXEMPLAR_GH_PRIVATE_KEY_FILE: %w", err)
+	}
+	repo := os.Getenv("EXEMPLAR_CONFIG_REPO")
+	app, err := gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: repo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create github app: %w", err)
+	}
+	urls, err := envcfg.PublicURLs(os.Getenv)
+	if err != nil {
+		return nil, fmt.Errorf("public URLs: %w", err)
+	}
+	c := setup.Checker{
+		App: app, Org: envcfg.Owner(repo), ConfigRepo: repo, WebhookURL: urls.Webhook,
+		LastEvent: func(ctx context.Context) (time.Time, bool, error) {
+			var at *time.Time
+			if err := st.Pool.QueryRow(ctx, "SELECT max(received_at) FROM gh_events").Scan(&at); err != nil {
+				return time.Time{}, false, fmt.Errorf("last event: %w", err)
+			}
+			if at == nil {
+				return time.Time{}, false, nil
+			}
+			return *at, true, nil
+		},
+	}
+	return c.Run, nil
 }

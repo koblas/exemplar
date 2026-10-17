@@ -295,8 +295,12 @@ func run(args []string) error {
 
 	formKey := hmac.New(sha256.New, sessionKey)
 	formKey.Write([]byte("ui-forms"))
+	checks, err := installChecks(st)
+	if err != nil {
+		return err
+	}
 	ui, err := web.New(web.Config{
-		Store: st, SignOut: srv.SignOut,
+		Store: st, SignOut: srv.SignOut, Checks: checks,
 		Session: func(r *http.Request) (string, web.Access, bool) {
 			login, access, ok := srv.UISession(r)
 			return login, web.Access(access), ok

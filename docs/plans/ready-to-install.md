@@ -154,7 +154,7 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 | 5 | Installation id discovered from the App | §4.3 | done (2026-10-17) |
 | 6 | Derive URLs from one hostname; config git URL from the repo | §4.4 | done (2026-10-17) |
 | 7 | Config repo sync through the GitHub App | §4.4 | done (2026-10-17) |
-| 8 | `/ui/setup` checks and `/v1/setup/checks` | §4.5 | not started |
+| 8 | `/ui/setup` checks and `/ui/setup.json` | §4.5 | done (2026-10-17), GitHub checks only |
 | 9 | First tag with rendered install manifests | §4.6 | not started |
 | 10 | Quickstart overlay and sizing patches | §4.6 | not started |
 | 11 | Docs split into quickstart, production, upgrades, reference | §4.7 | not started |
@@ -228,3 +228,17 @@ Work item 4. Without `EXEMPLAR_GH_APP_ID`, exemplar-api runs `runSetup` instead 
 - **Handling of credentials.** They live only in the handler's memory until the operator downloads the Secret; pages are `no-store` with a CSP whose `form-action` allows only GitHub; logs carry the App id and slug, never the key or secrets.
 - **Assumed, checked only against a fake GitHub (httptest):** that GitHub accepts a `http://localhost:8081` `redirect_url`, and that the manifest can't turn on the device flow, so the page links to the App's settings for **Enable Device Flow**. Both need a real org.
 - **Tests:** `TestManifestFlow` (manifest contents and target, CSP, state bound to the cookie and spent once, replayed redirect refused, no Secret before install, forged form refused, installation lookup, Secret YAML parsed and checked), `TestExportsManifest`, `TestCompleteManifest`, `TestOrgInstallation`. Smoke run of the binary: probes 200, public page names the port-forward, setup page renders the form.
+
+### Setup checks page (2026-10-17)
+
+Work item 8. `/ui/setup` (any signed-in viewer: it shows the org and webhook URL, nothing secret) and `/ui/setup.json` (same sign-in, for scripts) run `setup.Checker`, each check with what was found and what to do:
+
+1. **GitHub App installed on the org**: `OrgInstallation` with the App's JWT; separates "not installed" from "GitHub refused the credentials" (app id and key from different Apps, or a revoked key).
+2. **App can read exemplar-config**: `ConfigInstallation`; every workload's config sync needs it.
+3. **GitHub delivers webhooks**: GitHub's own delivery log for the last 24 hours (`HookDeliveries`). None is a warning (open a PR); a non-2xx last delivery fails, naming the webhook URL, the tunnel or Ingress route, SSO or WAF on `/webhook`, and a 401 as a webhook-secret mismatch.
+4. **exemplar-webhook stores events**: `max(received_at)` from `gh_events`; fails when GitHub reports 2xx deliveries but nothing was stored.
+
+The page runs the checks on load with a 15-second bound; readiness and liveness don't change.
+
+- **Changed from the plan:** the JSON is `/ui/setup.json` behind the UI's sign-in rather than `/v1/setup/checks`, so it needs no new auth path. Not built: the provider check through the gateway and the search-index check. Both need new NetworkPolicy paths from exemplar-api to the gateway and search; `kubectl get pods` shows their readiness meanwhile. Migrations aren't checked because exemplar-api runs them before it serves.
+- **Tests:** `TestChecks` (healthy, not installed, bad key, config repo missing, no deliveries, failing deliveries, delivered but not stored), `TestSetupPage` (page, JSON, sign-in required).
