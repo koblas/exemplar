@@ -148,6 +148,11 @@ jobs:
             kubectl kustomize deploy/k8s/$v > rendered-$v.yaml
             go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-$v.yaml
           done
-          # The example installation overlay (README step 7).
-          kubectl kustomize examples/k8s/acme > rendered-example.yaml
-          go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-example.yaml
+          # The example installation overlays (README.md).
+          for ex in acme quickstart; do
+            kubectl kustomize examples/k8s/$ex > rendered-example-$ex.yaml
+            go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-example-$ex.yaml
+          done
+          # The release's install manifests, with placeholder digests.
+          deploy/render-release.sh v0.0.0 "sha256:$(printf '1%.0s' $(seq 64))" "sha256:$(printf '2%.0s' $(seq 64))" rendered-release
+          go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-release/install-*.yaml
