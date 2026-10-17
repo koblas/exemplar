@@ -61,13 +61,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Outcome, erro
 	if r.Log == nil {
 		r.Log = slog.Default()
 	}
-	repos := make([]string, 0, len(snap.Repos))
-	for name, rc := range snap.Repos {
-		if rc.Exports != nil && len(rc.Exports.Targets) > 0 && rc.Enabled {
-			repos = append(repos, name)
-		}
-	}
-	slices.Sort(repos)
+	repos := Repos(snap)
 	// Drift counts config versions as the export job sees them.
 	if r.Writer != nil && len(repos) > 0 {
 		if err := r.Store.RecordExportRun(ctx, snap.Version); err != nil {
@@ -85,6 +79,18 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Outcome, erro
 		out = append(out, o)
 	}
 	return out, errors.Join(errs...)
+}
+
+// Repos lists, sorted, the enabled repos that configure exports.targets.
+func Repos(snap *config.Snapshot) []string {
+	repos := make([]string, 0, len(snap.Repos))
+	for name, rc := range snap.Repos {
+		if rc.Exports != nil && len(rc.Exports.Targets) > 0 && rc.Enabled {
+			repos = append(repos, name)
+		}
+	}
+	slices.Sort(repos)
+	return repos
 }
 
 func (r Runner) repo(ctx context.Context, snap *config.Snapshot, repo string) (Outcome, error) {
