@@ -76,9 +76,27 @@ func run(m *testing.M) int {
 // drops it when the test ends.
 func New(tb testing.TB) *store.Store {
 	tb.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	s, err := store.Open(ctx, EmptyURL(tb))
+	if err != nil {
+		tb.Fatalf("open test database: %v", err)
+	}
+	tb.Cleanup(s.Close)
+	if err := s.Migrate(ctx); err != nil {
+		tb.Fatalf("migrate: %v", err)
+	}
+	return s
+}
+
+// EmptyURL creates a fresh, unmigrated database in the package's container
+// and returns its URL; the database is dropped when the test ends, after
+// cleanups registered later (such as closing a store on it).
+func EmptyURL(tb testing.TB) string {
+	tb.Helper()
 	if adminURL == "" {
 		if skipReason == "" {
-			tb.Fatal("storetest.New called without storetest.Main in TestMain")
+			tb.Fatal("storetest used without storetest.Main in TestMain")
 		}
 		tb.Skip(skipReason)
 	}
@@ -97,21 +115,7 @@ func New(tb testing.TB) *store.Store {
 	if _, err := conn.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		tb.Fatalf("create database: %v", err)
 	}
-
-	u, err := url.Parse(adminURL)
-	if err != nil {
-		tb.Fatalf("parse url: %v", err)
-	}
-	u.Path = "/" + name
-	s, err := store.Open(ctx, u.String())
-	if err != nil {
-		tb.Fatalf("open test database: %v", err)
-	}
-	if err := s.Migrate(ctx); err != nil {
-		tb.Fatalf("migrate: %v", err)
-	}
 	tb.Cleanup(func() {
-		s.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		c, err := pgx.Connect(ctx, adminURL)
@@ -124,5 +128,11 @@ func New(tb testing.TB) *store.Store {
 			tb.Logf("drop %s: %v", name, err)
 		}
 	})
-	return s
+
+	u, err := url.Parse(adminURL)
+	if err != nil {
+		tb.Fatalf("parse url: %v", err)
+	}
+	u.Path = "/" + name
+	return u.String()
 }

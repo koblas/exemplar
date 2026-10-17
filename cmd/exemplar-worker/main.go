@@ -22,6 +22,7 @@
 //	EXEMPLAR_GH_PRIVATE_KEY_FILE            its private key
 //	EXEMPLAR_CONFIG_REPO                    exemplar-config, which worker tokens may not read
 //	EXEMPLAR_GH_API_URL                     GHES API base (optional)
+//	EXEMPLAR_GH_WEB_URL                     GHES web base for clones (optional)
 //	EXEMPLAR_GATEWAY_URL, EXEMPLAR_GATEWAY_TOKEN
 //	EXEMPLAR_SEARCH_URL, EXEMPLAR_SEARCH_TOKEN  exemplar-search (optional: no
 //	                                        find_references or path_history without it)
@@ -178,6 +179,7 @@ func runServe(args []string) error {
 		Snapshot: func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil },
 		Engine:   eng, Scanner: sc, WorkDir: *workDir, Log: log,
 		// Mode eval (config CI) evaluates exemplar-config's changed rules.
+		CloneURL:   gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL")),
 		ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO"), Matcher: compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")},
 	}
 	// Feedback links need exemplar-api's URL and the key it

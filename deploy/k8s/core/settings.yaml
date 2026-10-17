@@ -25,6 +25,10 @@ data:
   EXEMPLAR_CONFIG_GIT_URL: "git@github.com:example-org/exemplar-config.git"
   EXEMPLAR_GH_APP_ID: "0"
   EXEMPLAR_GH_INSTALLATION_ID: "0"
+  # GitHub Enterprise Server web and API bases (https://<host>/ and
+  # https://<host>/api/v3/); both empty means github.com.
+  EXEMPLAR_GH_WEB_URL: ""
+  EXEMPLAR_GH_API_URL: ""
   # The exports app for rule exports; 0 until it is registered.
   EXEMPLAR_EXPORTS_APP_ID: "0"
   # exemplar-api's public URL, and the review app's OAuth client id.

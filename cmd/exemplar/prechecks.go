@@ -144,7 +144,7 @@ func newVolumeCmd() *cobra.Command {
 			}
 			trial := &playground.Runner{
 				Engine: engine.New(h, sc, compiledRunner()), Scanner: sc, WorkDir: workDir, Caller: "eval",
-				GitHub: &userGitHub{c: client, token: token},
+				GitHub: &userGitHub{c: client, token: token}, CloneURL: gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL")),
 			}
 			var reports []precheck.VolumeReport
 			for _, id := range ids {
