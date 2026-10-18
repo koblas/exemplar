@@ -52,6 +52,7 @@ validation:
 
 nav:
   - Overview: index.md
+  - Why Exemplar: why.md
   - Install:
       - install/index.md
       - Quickstart: install/quickstart.md
