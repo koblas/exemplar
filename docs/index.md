@@ -1,8 +1,21 @@
 # Exemplar
 
-Exemplar is a self-correcting AI code reviewer for GitHub. It reviews pull requests against rules your teams own in a git repository (`exemplar-config`). It learns new rules from your reviewers' comments, and demotes rules people say are wrong. It can auto-approve low-risk changes once a set of deterministic gates pass.
+Exemplar is a self-correcting AI code reviewer for GitHub that **reviews with your organization's own judgment, not the internet's**. It mines your review history into rules your teams own in git, enforces them on every pull request with one focused agent per rule, verifies every finding with a second model before a human sees it, and learns from what reviewers say back, through a human gate. The same rules reach coding agents and IDEs before a PR exists.
 
-## Components
+It is built on one conviction: precision is the product. A reviewer people learn to ignore is worse than none. [Why Exemplar](why.md) makes the case; the rest of this site is how to run it.
+
+## What it does
+
+- **Learns rules from review comments**, with citations, and proposes them as pull requests to `exemplar-config`. Nothing enforces until a rule owner merges it.
+- **Reviews every PR** against those rules: deterministic patterns where possible, one agent per rule where judgment is needed, and a narrow bug-hunting lane.
+- **Verifies before posting.** A second model tries to refute each finding and judges whether it matters here; code checks the evidence. Comments are budgeted, labelled, and carry a one-click fix where they can.
+- **Never blocks.** It approves or stays silent, and can auto-approve a narrow, gated class of low-risk PRs with a kill switch.
+- **Demotes rules people reject**, and turns a correction in a reply into a rule-edit proposal.
+- **Ships the rules upstream** to coding-agent instruction files, an MCP server and a pre-PR CLI.
+
+## What's in the box
+
+Everything runs on Kubernetes in one namespace against one Postgres database, as a GitHub App.
 
 | Binary | What it does |
 |---|---|
@@ -15,11 +28,9 @@ Exemplar is a self-correcting AI code reviewer for GitHub. It reviews pull reque
 | `learning/` (Python) | The `cluster` and `rank` CronJobs. |
 | `exemplar` | The CLI. Covers config validation, evals, `exemplar login`/`review`, `try`, replay, mutations, and calibration. |
 
-Everything runs on Kubernetes against one Postgres database. Work is queued with River, in Postgres.
-
-
 ## Where to start
 
+- **Why it exists:** [Why Exemplar](why.md).
 - **Trying it:** [Quickstart](install/quickstart.md), about 20 minutes on one node.
 - **Running it:** [Production install](install/production.md), then [Going live](operations/going-live.md).
 - **Every setting, Secret and workload:** [Deployment reference](reference/deployment.md).
