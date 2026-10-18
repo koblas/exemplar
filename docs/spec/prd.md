@@ -16,7 +16,7 @@ docs/spec/technical-spec.md.
 
 # PRD: Exemplar — Self-Correcting AI Code Review
 
-**Status:** Draft v0.6 · October 2026 · **Build-only** (no third-party AI reviewer will be purchased) **Source:** Redpoint Alchemy talk "AI broke code review" (Andrew Swerdlow, Roblox, Sep 10 2026) and session notes, extended with patterns borrowed from mature industry systems (Appendix B) **Working name:** Exemplar (placeholder) **Companion:** Implementation Plan & Architecture (Go services, Postgres, GitHub App)
+**Status:** Draft v0.7 · October 2026 · **Build-only** (no third-party AI reviewer will be purchased) **Source:** Redpoint Alchemy talk "AI broke code review" (Andrew Swerdlow, Roblox, Sep 10 2026) and session notes, extended with patterns borrowed from mature industry systems (Appendix B) **Working name:** Exemplar (placeholder) **Companion:** Implementation Plan & Architecture (Go services, Postgres, GitHub App)
 
 Contents
 
@@ -43,8 +43,9 @@ Contents
 
 <a id="what-changed-in-v02v04"></a>
 
-### What changed in v0.2–v0.6
+### What changed in v0.2–v0.7
 
+- **v0.7 (after Anthropic's "How the Claude Code team does code review", claude.dev, October 2026):** verifier quorum for the bug lane (FR-V7); convergence controls across pushes: a round cap and class-of-bug findings (FR-C8, FR-C9); a clean-PR false-alarm rate (FR-X12); review rounds, human approvals and time waiting on a person as informational metrics (§13.2); two open questions on unanswered findings and an automatic auto-approve circuit breaker (§16). The further ideas from that post are in [`docs/plans/backlog.md`](../plans/backlog.md), not here, until one is adopted. Where the post disagrees with this PRD (its reviewer blocks merges on open findings and never approves; Exemplar never blocks and may approve within FR-A2) the PRD stands.
 - **v0.6 (gap review):** PR lifecycle (§8.9), degraded operation (§8.10), data handling and repo eligibility (§8.11); importance check extended to compiled rules (FR-V6); auto-approve Stage 1 made strictly deterministic with path denylist, bot-author rules and a "bug lane actually ran" gate (§12); role-weighted feedback and human-comment dedupe (§9, FR-E15); CI-timing rule for linter dedupe (FR-E7); budget exemption for security and must-fix findings (FR-P6); adversarial evals and baseline sampling (§11); export operations and MCP access control (§10); cross-language clustering (FR-L3.1). **Cost and latency moved to informational metrics (§13.2)** — they are tracked and reported but are not goals or exit criteria.
 - **v0.5:** repository context is fully self-contained and never builds code: one in-cluster search container embedding the open-source zoekt engine, with import-based scoping instead of a build graph (constraint 6, FR-E12).
 - **v0.4:** no external code search tool will be available; repository context is built in-house.
@@ -382,6 +383,7 @@ Every candidate finding from Lanes 2 and 3 is sent to a verifier before validati
 | FR-V4 | Verifier outcomes are stored per finding, so per-rule refutation rate is a first-class metric (a rule refuted > 50% of the time is a bad prompt). |
 | FR-V5 | Verification runs only on candidate findings, which are few. Its cost is reported with the review (§13.2) and is subject to the same soft ceiling and degradation order as the lanes (§8.10). |
 | FR-V6 | **Importance check for compiled rules** — *new* . Lane 1 findings skip refutation (a pattern match is not a hallucination) but *not* the importance check: a lightweight model scores importance in context (FR-V2) for compiled rules in the Performance, Style and Nit categories, and for any compiled rule that opts in. Security and Correctness compiled findings post without it. This closes the gap where a Semgrep performance pattern in an offline tool would post exactly the class-2 false positive §2.2 promises to defend against. |
+| FR-V7 | **Verifier quorum for the bug lane** — *v0.7*. A Lane 3 finding is sent to `verifier.quorum.n` verifiers (default 3, each a separate call; different models or families when more than one provider is configured) and posts only when at least `verifier.quorum.k` (default 2) return `confirmed`. Lane 2 findings keep the single verifier of FR-V1 by default; a rule may opt into the quorum with `verify: quorum`. The agreeing share is stored with the finding and is a ranking input for the comment budget (FR-P1), after severity. Quorum calls count toward the soft ceiling and are shed before the lanes in §8.10. *(Borrowed: Anthropic's reviewer posts a bug-hunting finding only when enough separate verifiers vote that it is real.)* |
 
 <a id="85-deterministic-validation-in-code"></a>
 
@@ -469,6 +471,8 @@ Everything above describes one review of one commit. A PR is a sequence of pushe
 | FR-C5 | **Draft PRs** are not reviewed until marked ready, unless the repo opts in to draft review. **Stacked PRs** are reviewed against their declared stack base (the parent branch), not the trunk, so findings are not duplicated down the stack. |
 | FR-C6 | **Config drift within a PR.** Each review records the config SHA it ran under (§17.4). If config changes mid-PR, findings from rules that were killed or demoted are resolved as outdated with a note; new rules apply only to the next push. |
 | FR-C7 | **Lifetime accounting is informational.** Cost and time are recorded per run and summed per PR for §13.2, but repeat pushes do not consume a shared budget. The soft ceiling (§8.10) applies per run; incremental review (FR-C1) is what keeps lifetime cost proportionate. |
+| FR-C8 | **Round cap** — *v0.7*. A review round is one run that posts at least one new finding. After `rounds.max` rounds on one PR (default 3), the bot posts no further inline findings; it posts one summary comment listing what is still open, says that the change may need a different approach, and leaves the check run `neutral`. Later pushes are still reviewed (FR-C1) and still resolve addressed threads (FR-C2), and Security and `blocking` findings are still posted (FR-P6). The cap resets when a human reviewer posts or the PR is marked ready after being a draft. Rounds per PR are recorded for §13.2. *(Borrowed: one of Anthropic's PRs went through more than fifty review rounds overnight before they added a cap and diff-only re-review.)* |
+| FR-C9 | **Class-of-bug findings** — *v0.7*. When one rule or one bug class matches more than `posting.class_threshold` places in one review (default 3), the review posts one grouped comment that names the pattern and lists every occurrence, instead of one anchor now and the rest on later rounds. `posting_mode: grouped` already does this per rule; this applies it per review for `per_occurrence` rules and for the bug lane. The group has one finding key (FR-C2) and one feedback thread. |
 
 <a id="810-degraded-operation-new"></a>
 
@@ -554,6 +558,7 @@ The system sends diffs, repository context, ticket text and three years of revie
 | FR-X9 | **Verifier calibration:** a labeled set of findings (true / wrong / unimportant) measures the verifier's refutation accuracy; target ≥ 90% of known-wrong findings refuted with ≤ 10% of known-true findings refuted. |
 | FR-X10 | **Adversarial eval set** — *new* : from Phase 0, a maintained set of PRs containing prompt injection in diffs, comments, PR descriptions, file names and linked tickets, each with the outcome an attacker wants (a false approval, a suppressed finding, a fabricated citation). The set runs in CI on every config, prompt or model change; any success fails the build. The Phase 5 red team extends this set rather than replacing it. |
 | FR-X11 | **Eval cases for incident-derived rules.** Rules mined from postmortems and reverts (FR-L1.7) often have no review comment and no clean positive case. For these, FR-X1 is satisfied by the reverted or incident-linked diff as the positive case plus injected-violation cases (FR-X6); the config PR labels the rule `eval: synthetic` until a real PR provides a positive. |
+| FR-X12 | **Clean-PR false-alarm rate** — *v0.7*. A maintained set of PRs known to be clean (merged, never reverted, no incident within 90 days, and confirmed by an engineer who knows the code) is reviewed on a schedule with the current config, prompts and models. Every finding on it is a false alarm; a finding whose suggested fix would change behavior is a *harmful* false alarm and is reported separately. The rate is tracked per rule and per bug class, and a prompt, tool or model change is kept only if neither the incident-set score (FR-X11) falls nor this rate rises. *(Borrowed: Anthropic runs its reviewer on known-clean PRs and counts findings that would lead to a harmful change.)* |
 
 <a id="12-auto-approve-gates"></a>
 
@@ -622,6 +627,8 @@ These are reported on every review (§17.4) and in dashboards so the platform te
 | Coverage per run, and share of runs degraded or incomplete (§8.10) | Degradation that becomes routine is a precision problem in disguise |
 | Queue depth and wait time per repo (FR-D6) | Capacity planning |
 | Usage and cost by caller (production, CLI, MCP, agents — FR-S7) | Attribution; a runaway agent loop shows up here first |
+| Review rounds to merge per PR (FR-C8): mean, and the share needing five or more — *v0.7* | Whether the bot converges. Anthropic reports 2.08 → 1.32 mean rounds and 8.9% → 1.5% needing five or more after adding convergence controls; a rising figure here means findings are not being fixed in one pass |
+| Human approvals per PR (median and p95), and time waiting on a person — *v0.7* | What auto-approve and fewer human comments actually buy. Paired with the §13.1 counter-metrics: time saved that reappears as fixing time was not saved |
 
 <a id="14-rollout-plan"></a>
 
@@ -682,6 +689,8 @@ These are reported on every review (§17.4) and in dashboards so the platform te
 13. Languages in scope for v1 Lane 1 and the symbol index (FR-H8).
 14. G4's "other agent" callers (branch validation, test generation) have no requirements until Phase 6 — should one be specified now to shape the API, or deferred?
 15. Whether GitHub Enterprise Server is in scope alongside GitHub.com; several features (SARIF, rulesets, suggestion blocks) differ by version.
+16. *(v0.7)* Should every finding have to be answered? Anthropic requires each finding to be fixed or resolved with a reason, and blocks the merge until then; that is what makes their noise measurement trustworthy. Exemplar never blocks (§3.2) and counts an untouched finding as *ignored* (§13). The middle ground is to make "unanswered at merge" a first-class feedback state surfaced in the owner digest and the check-run summary, without gating. Decide whether that is enough signal, or whether a repo may opt into requiring an answer.
+17. *(v0.7)* An automatic circuit breaker for auto-approve: when a §13.1 counter-metric alarms (revert rate of auto-approved PRs, incidents on PRs the bot was silent on), should auto-approve suspend itself for that repo until an owner re-enables it, rather than waiting for the YAML kill switch (FR-A3)? Anthropic lists this as wanted but not built. The alarms exist; the question is whether the system may act on them alone.
 
 <a id="17-sample-interactions"></a>
 
@@ -1033,7 +1042,7 @@ Borrowed from the industry: - Precision is the product; measure false positives 
 | **Google ML-suggested edits** (resolving review comments) | Fixes alongside comments; Fixer for human comments | §8.7 | — |
 | **Meta Infer / diff-time analysis** | Diff-time and authoring-time beat batch reports | §10 | — |
 | **Uber uReview** | Two false-positive classes; separate grader from a different model family; file eligibility filtering; Fixer | §2.2, §8.2, §8.4 | — |
-| **Anthropic Code Review** | Parallel specialized agents; verification that attempts to disprove findings; bug-only focus for low FP | §8.1, §8.4 | ~20-minute, $15–25 deep reviews as the default path (our default is cheaper, deeper review reserved for risky PRs) |
+| **Anthropic Code Review** | Parallel specialized agents; verification that attempts to disprove findings; bug-only focus for low FP. *v0.7, from their October 2026 post:* verifier quorum (FR-V7), round cap and class-of-bug findings (FR-C8, FR-C9), clean-PR false-alarm rate (FR-X12), rounds-to-merge and human-wait metrics (§13.2) | §8.1, §8.4, §8.9, §11 | ~20-minute, $15–25 deep reviews as the default path (our default is cheaper, deeper review reserved for risky PRs). Blocking the merge on open findings, and a reviewer that never approves: Exemplar never blocks (§3.2) and approves within deterministic gates (§12, FR-A2). Nightly agents over existing code, and `CLAUDE.md` as review context (rules flow the other way, §10). The rest of that post's ideas are in [`docs/plans/backlog.md`](../plans/backlog.md). |
 | **Greptile** | Learning from team comments and reactions; reply-to-teach; codebase-wide context; MCP for coding agents | §6.6, §8.3, §10 | Automatic rule creation without a human gate |
 | **CodeRabbit / declarative config tools** | Config-as-code reviewed like code; precision/recall trade-off made explicit per rule | §7, §11 | — |
 | **GitHub Copilot code review** | Path-specific instruction files; approval semantics in rulesets | §10, §12 | — |
@@ -1043,4 +1052,4 @@ Borrowed from the industry: - Precision is the product; measure false positives 
 | **Palantir policy-bot** | Merge policy as a status check (fallback approval mechanism) | Implementation plan §5.14 | — |
 | **Code-review research** (Bacchelli & Bird 2013; Sadowski et al. 2018) | Knowledge transfer and ownership as outcomes to protect | §13.1 | — |
 
-**Reference links:** Uber Engineering blog, *uReview: Scalable, Trustworthy GenAI for Code Review at Uber*; Google Research, *AI-Assisted Assessment of Coding Practices in Modern Code Review* (AutoCommenter, AIware 2024) and *Resolving Code Review Comments with Machine Learning*; Sadowski et al., *Tricorder: Building a Program Analysis Ecosystem* (ICSE 2015); Anthropic, Code Review for Claude Code (March 2026); Greptile documentation, *Memory and learning*; GitHub Docs, Copilot custom instructions and code scanning SARIF upload.
+**Reference links:** Uber Engineering blog, *uReview: Scalable, Trustworthy GenAI for Code Review at Uber*; Google Research, *AI-Assisted Assessment of Coding Practices in Modern Code Review* (AutoCommenter, AIware 2024) and *Resolving Code Review Comments with Machine Learning*; Sadowski et al., *Tricorder: Building a Program Analysis Ecosystem* (ICSE 2015); Anthropic, Code Review for Claude Code (March 2026) and *How the Claude Code team does code review* (claude.dev, October 2026); Greptile documentation, *Memory and learning*; GitHub Docs, Copilot custom instructions and code scanning SARIF upload.
