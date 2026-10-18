@@ -30,6 +30,7 @@ type fakeGitHub struct {
 	mu        sync.Mutex
 	used      map[string]bool
 	installed bool
+	userOwner bool // acme is a user account, not an organization
 }
 
 func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +61,12 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = w.Write([]byte(`[{"id": 77, "account": {"login": "acme"}}]`))
+	case r.Method == http.MethodGet && r.URL.Path == "/users/acme":
+		if f.userOwner {
+			_, _ = w.Write([]byte(`{"login": "acme", "type": "User"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"login": "acme", "type": "Organization"}`))
 	default:
 		http.NotFound(w, r)
 	}
@@ -292,6 +299,33 @@ func mustState(t *testing.T, page string) string {
 	}
 	u, _ := url.Parse(html.UnescapeString(a[1]))
 	return u.Query().Get("state")
+}
+
+// A config repo under a personal account registers the App in the user's
+// own settings: GitHub has no organizations/<user> page.
+func TestUserOwnedConfigRepo(t *testing.T) {
+	srv, fake := newSetup(t)
+	fake.mu.Lock()
+	fake.userOwner = true
+	fake.mu.Unlock()
+	c := browser(t)
+	p := get(t, c, srv.URL+"/setup")
+	action := actionRe.FindStringSubmatch(p.body)
+	if action == nil {
+		t.Fatalf("no manifest form in:\n%s", p.body)
+	}
+	au, _ := url.Parse(html.UnescapeString(action[1]))
+	if au.Path != "/settings/apps/new" {
+		t.Errorf("manifest posts to %s, want the user's own App settings", au)
+	}
+	state := au.Query().Get("state")
+	if p := get(t, c, srv.URL+"/setup/created?code=c1&state="+state); p.status != http.StatusSeeOther {
+		t.Fatalf("created = %d", p.status)
+	}
+	p = get(t, c, srv.URL+"/setup")
+	if !strings.Contains(p.body, `href="https://github.com/settings/apps/exemplar-acme"`) {
+		t.Errorf("App settings link isn't the user's:\n%s", p.body)
+	}
 }
 
 func TestRefusesOtherHosts(t *testing.T) {

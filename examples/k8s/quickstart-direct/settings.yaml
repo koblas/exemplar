@@ -1,0 +1,10 @@
+# The trial's two values (docs/install/quickstart.md). The host of
+# EXEMPLAR_API_URL is also the Ingress host in kustomization.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-settings
+  namespace: exemplar
+data:
+  EXEMPLAR_CONFIG_REPO: "acme/exemplar-config"
+  EXEMPLAR_API_URL: "https://exemplar.acme.com"

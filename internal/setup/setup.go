@@ -16,8 +16,9 @@
 //  2. GitHub creates the App and redirects to /setup/created with a code.
 //     The handler checks the state against the cookie, spends it, and
 //     exchanges the code for the App's id, key and secrets.
-//  3. The operator installs the App on the org; POST /setup/installation
-//     finds the installation.
+//  3. The operator installs the App on the config repo's owner (an
+//     organization or a user account; the manifest form posts to whichever
+//     one's App settings); POST /setup/installation finds the installation.
 //  4. The page offers the Secret as YAML. The operator applies it and
 //     restarts exemplar-api, which then leaves setup mode.
 //
@@ -98,9 +99,10 @@ type Handler struct {
 	org  string
 	form string // token for this process's forms
 
-	mu     sync.Mutex
-	states map[string]pendingState
-	apps   map[string]*app
+	mu       sync.Mutex
+	states   map[string]pendingState
+	apps     map[string]*app
+	appsPath string // where the owner registers Apps, once looked up
 }
 
 type pendingState struct {
@@ -181,6 +183,45 @@ func (h *Handler) secure(next http.Handler) http.Handler {
 	})
 }
 
+// settingsPath is where the config repo's owner registers GitHub Apps: an
+// organization's settings, or a user's own. GitHub tells which the owner
+// is; while it can't, the page assumes an organization and asks again on
+// the next load.
+func (h *Handler) settingsPath(ctx context.Context) string {
+	h.mu.Lock()
+	p := h.appsPath
+	h.mu.Unlock()
+	if p != "" {
+		return p
+	}
+	p = "organizations/" + h.org + "/settings/apps/"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.cfg.GitHubAPI+"users/"+url.PathEscape(h.org), nil)
+	if err != nil {
+		return p
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := h.cfg.HTTP.Do(req)
+	if err != nil {
+		h.cfg.Log.Warn("setup: looking up the config repo's owner failed; assuming an organization", "owner", h.org, "err", err)
+		return p
+	}
+	defer resp.Body.Close()
+	var owner struct {
+		Type string `json:"type"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&owner) != nil {
+		h.cfg.Log.Warn("setup: looking up the config repo's owner failed; assuming an organization", "owner", h.org, "status", resp.StatusCode)
+		return p
+	}
+	if strings.EqualFold(owner.Type, "User") {
+		p = "settings/apps/"
+	}
+	h.mu.Lock()
+	h.appsPath = p
+	h.mu.Unlock()
+	return p
+}
+
 // Manifest is the App manifest GitHub registers for kind.
 func (h *Handler) Manifest(kind string) map[string]any {
 	m := map[string]any{
@@ -256,7 +297,10 @@ type step struct {
 	Optional, ShowDeviceFlowTip bool
 }
 
-func (h *Handler) status(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	apps := h.cfg.GitHubWeb + h.settingsPath(ctx)
 	steps := make([]step, 0, 2)
 	for _, kind := range []string{KindReview, KindExports} {
 		s := step{Kind: kind, Title: "The review app", Resource: "exemplar-github-app", ShowDeviceFlowTip: true}
@@ -273,7 +317,7 @@ func (h *Handler) status(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "manifest", http.StatusInternalServerError)
 				return
 			}
-			s.Action = h.cfg.GitHubWeb + "organizations/" + h.org + "/settings/apps/new?state=" + state
+			s.Action = apps + "new?state=" + state
 			s.Manifest, s.State = string(manifest), state
 			// Lax: GitHub's redirect back is a top-level GET, which carries it.
 			// Not Secure: the page is plain HTTP on localhost, over port-forward.
@@ -283,7 +327,7 @@ func (h *Handler) status(w http.ResponseWriter, _ *http.Request) {
 			})
 		} else {
 			s.Created, s.Name = true, a.created.Slug
-			s.AppURL = h.cfg.GitHubWeb + "organizations/" + h.org + "/settings/apps/" + a.created.Slug
+			s.AppURL = apps + a.created.Slug
 			s.InstallURL = strings.TrimSuffix(a.created.HTMLURL, "/") + "/installations/new"
 			s.Installation = a.installation
 			if a.installation != 0 || kind == KindExports {

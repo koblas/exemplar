@@ -678,7 +678,7 @@ func envNames(t *testing.T) map[string]bool {
 // every image the base names, pins each by digest, and lists only paths
 // that exist. CI renders it with kustomize; this catches drift without one.
 func TestExampleOverlays(t *testing.T) {
-	for _, dir := range []string{"../examples/k8s/acme", "../examples/k8s/quickstart"} {
+	for _, dir := range []string{"../examples/k8s/acme", "../examples/k8s/quickstart", "../examples/k8s/quickstart-direct"} {
 		t.Run(filepath.Base(dir), func(t *testing.T) { checkOverlay(t, dir) })
 	}
 }

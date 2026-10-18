@@ -146,6 +146,40 @@ func TestRoutesValidateModelsPerProvider(t *testing.T) {
 	}
 }
 
+func TestBuildProvidersSkipsFallbackWithoutCredentials(t *testing.T) {
+	both := schema.Providers{
+		Generator: []schema.ProviderModel{
+			{Provider: ProviderClaude, Standard: "claude-sonnet-5-5", High: "claude-opus-5-5"},
+			{Provider: ProviderBedrock, Standard: "anthropic.claude-sonnet-5-5", High: "anthropic.claude-opus-5-5"},
+		},
+		Verifier: []schema.ProviderModel{{Provider: ProviderClaude, Model: "claude-opus-5-5"}, {Provider: ProviderBedrock, Model: "anthropic.claude-opus-5-5"}},
+		Light:    []schema.ProviderModel{{Provider: ProviderClaude, Model: "claude-haiku-5-5"}, {Provider: ProviderBedrock, Model: "anthropic.claude-haiku-5-5"}},
+	}
+	// The example global.yaml's shape with only the Claude key set: bedrock is skipped.
+	clients, err := BuildProviders(t.Context(), both, envOf(map[string]string{EnvClaudeAPIKey: "sk-test"}), nil)
+	if err != nil {
+		t.Fatalf("a missing fallback stopped start-up: %v", err)
+	}
+	if _, ok := clients[ProviderClaude]; !ok || len(clients) != 1 {
+		t.Fatalf("clients = %v, want claude only", clients)
+	}
+
+	// No credentials at all: every stage is empty, and the error names the providers.
+	_, err = BuildProviders(t.Context(), both, envOf(nil), nil)
+	if err == nil || !strings.Contains(err.Error(), "stage generator has no working provider") ||
+		!strings.Contains(err.Error(), "provider claude:") || !strings.Contains(err.Error(), "provider bedrock:") {
+		t.Fatalf("no credentials: %v", err)
+	}
+
+	// A stage routed only to the missing provider fails even when another stage works.
+	lightOnBedrock := both
+	lightOnBedrock.Light = []schema.ProviderModel{{Provider: ProviderBedrock, Model: "anthropic.claude-haiku-5-5"}}
+	_, err = BuildProviders(t.Context(), lightOnBedrock, envOf(map[string]string{EnvClaudeAPIKey: "sk-test"}), nil)
+	if err == nil || !strings.Contains(err.Error(), "stage light has no working provider") {
+		t.Fatalf("light on bedrock only: %v", err)
+	}
+}
+
 func TestBedrockIsSameFamilyAsClaude(t *testing.T) {
 	a, _ := Family(ProviderClaude, "claude-opus-5-5")
 	b, _ := Family(ProviderBedrock, "anthropic.claude-opus-5-5")

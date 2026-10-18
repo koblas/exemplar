@@ -1,7 +1,8 @@
-# Sandbox repo used by the acceptance tests. Rename to the real
-# sandbox org/repo once it exists.
+# One repo Exemplar reviews. Copy to repos/<owner>/<repo>.yaml for each
+# repo; the file's path names the repo. (This one is also the fixture the
+# repository's own tests run against.)
 enabled: true                 # kill switch for this repo
-shadow: false                 # true for a pilot: review and store, post nothing
+shadow: false                 # set true for a first install: review and store, post nothing
 review_drafts: true
 forks:
   review: false

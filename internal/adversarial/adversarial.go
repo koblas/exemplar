@@ -103,6 +103,9 @@ func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string)
 	if err != nil {
 		return res, fmt.Errorf("prepare review: %w", err)
 	}
+	// The attack is judged on what the review would post. Shadow is the
+	// repo's rollout state, not a defense, so it doesn't hide findings here.
+	p.Effective.RepoConfig.Shadow = false
 
 	h := r.Live
 	if mode == schema.ModeCompromised {

@@ -1,0 +1,66 @@
+# A trial installation reached through the cluster's Ingress controller:
+# the same as examples/k8s/quickstart (one replica of everything, the
+# in-cluster Postgres, small requests) on the direct build instead of the
+# tunnel. Copy this directory, set the two values in settings.yaml and the
+# host below, and follow docs/install/quickstart.md.
+#
+# Render: kubectl kustomize examples/k8s/quickstart-direct
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Outside this repository, the release's install-direct.yaml, which pins
+  # the images (drop the images list below):
+  #   https://github.com/koblas/exemplar/releases/download/<version>/install-direct.yaml
+  - ../../../deploy/k8s/direct
+components:
+  # Outside this repository:
+  #   github.com/koblas/exemplar//deploy/k8s/components/postgres?ref=<version>
+  - ../../../deploy/k8s/components/postgres
+
+# Pin both images by digest (see examples/k8s/acme); all zeros fails to pull.
+images:
+  - name: exemplar
+    newName: docker.io/koblas/exemplar
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: exemplar-learning
+    newName: docker.io/koblas/exemplar
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+patches:
+  - path: settings.yaml
+  # EXEMPLAR_API_URL's host on both Ingresses (the webhook's serves /webhook
+  # only), the TLS Secret (exemplar-tls, created by you or cert-manager) and
+  # the controller's class.
+  - target: {kind: Ingress, name: exemplar-webhook}
+    patch: |-
+      - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
+      - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar.acme.com}
+      - {op: replace, path: /spec/tls/0/secretName, value: exemplar-tls}
+      - {op: replace, path: /spec/ingressClassName, value: nginx}
+  - target: {kind: Ingress, name: exemplar-api}
+    patch: |-
+      - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
+      - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar.acme.com}
+      - {op: replace, path: /spec/tls/0/secretName, value: exemplar-tls}
+      - {op: replace, path: /spec/ingressClassName, value: nginx}
+  # If the controller doesn't run in the ingress-nginx namespace, change the
+  # namespace the webhook and API admit:
+  # - target: {kind: NetworkPolicy, name: "exemplar-(webhook|api)-from-ingress"}
+  #   patch: |-
+  #     - {op: replace, path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name, value: <controller-namespace>}
+  - target: {kind: Deployment, name: "exemplar-(api|webhook|gateway|worker)"}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 1}
+  # One search replica on the default storage class.
+  - target: {kind: StatefulSet, name: exemplar-search}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 1}
+      - {op: remove, path: /spec/volumeClaimTemplates/0/spec/storageClassName}
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 20Gi}
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 2Gi}, limits: {cpu: "2", memory: 8Gi}}}
+  - target: {kind: Deployment, name: exemplar-worker}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 5Gi}, limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 20Gi}}}
+  - target: {kind: StatefulSet, name: exemplar-postgres}
+    patch: |-
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 10Gi}
