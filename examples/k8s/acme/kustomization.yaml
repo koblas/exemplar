@@ -1,7 +1,7 @@
 # An installation overlay for acme.com: copy this directory to wherever you
 # keep deployment config and replace the acme values. It builds on the
 # default (Cloudflare Tunnel) build and pulls the published images from
-# Docker Hub. See README.md, step 7.
+# Docker Hub. See docs/install/production.md.
 #
 # Render: kubectl kustomize examples/k8s/acme
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -18,7 +18,7 @@ resources:
   # Both ways in: the tunnel plus Ingresses.
   # Uncomment the Ingress patches below too.
   # - ../../../deploy/k8s/components/ingress
-  # In-cluster Postgres, for evaluation; see deploy/README.md.
+  # In-cluster Postgres, for evaluation; see docs/reference/deployment.md.
   # - ../../../deploy/k8s/components/postgres
 
 # Both images are published to docker.io/koblas/exemplar by

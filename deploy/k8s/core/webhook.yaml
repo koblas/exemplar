@@ -82,7 +82,7 @@ spec:
           emptyDir: {sizeLimit: 64Mi}
 ---
 # GitHub reaches the Service through the inbound component the build picks
-# (components/cloudflare-tunnel or components/ingress); see deploy/README.md.
+# (components/cloudflare-tunnel or components/ingress); see docs/reference/deployment.md.
 apiVersion: v1
 kind: Service
 metadata:

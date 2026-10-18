@@ -37,7 +37,7 @@ images:
 YAML
   {
     echo "# Exemplar $tag, $name build (deploy/k8s/$build), images pinned by digest."
-    echo "# Set EXEMPLAR_CONFIG_REPO and EXEMPLAR_API_URL in exemplar-settings (README.md), or"
+    echo "# Set EXEMPLAR_CONFIG_REPO and EXEMPLAR_API_URL in exemplar-settings (docs/install/production.md), or"
     echo "# use this file as a kustomize resource and patch them."
     kubectl kustomize "$work/$build"
   } > "$out/install-$name.yaml"

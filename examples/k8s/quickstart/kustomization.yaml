@@ -1,7 +1,7 @@
 # A trial installation: one replica of everything, the in-cluster Postgres
 # (components/postgres; not for production), and requests that fit one
 # small node. Copy this directory, set the two values in settings.yaml and
-# follow README.md, "Quickstart". For production, start from examples/k8s/acme.
+# follow docs/install/quickstart.md. For production, start from examples/k8s/acme.
 #
 # Render: kubectl kustomize examples/k8s/quickstart
 apiVersion: kustomize.config.k8s.io/v1beta1
