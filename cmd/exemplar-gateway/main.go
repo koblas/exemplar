@@ -11,7 +11,9 @@
 //	EXEMPLAR_DATABASE_URL      optional; enables model_calls recording and shared
 //	                           batch records (required with more than one replica)
 //
-// Providers are built for whichever of them global.yaml routes to:
+// Providers are built for whichever of them global.yaml routes to. One whose
+// credentials are missing is skipped with a warning (calls fail over past
+// it); start-up fails only when a stage is left with no provider:
 //
 //	claude   ANTHROPIC_API_KEY (from the KMS-backed secret); EXEMPLAR_CLAUDE_BASE_URL optional
 //	bedrock  EXEMPLAR_BEDROCK_REGION (or AWS_REGION); AWS credentials from the
@@ -68,7 +70,7 @@ func run() error {
 	}
 	defer func() { _ = shutdownTracing(context.Background()) }()
 
-	cfg, st, err := loadConfig(ctx)
+	cfg, st, err := loadConfig(ctx, log)
 	if err != nil {
 		return err
 	}
@@ -130,7 +132,7 @@ func run() error {
 	return nil
 }
 
-func loadConfig(ctx context.Context) (llm.Config, *store.Store, error) {
+func loadConfig(ctx context.Context, log *slog.Logger) (llm.Config, *store.Store, error) {
 	var cfg llm.Config
 	dir := os.Getenv("EXEMPLAR_CONFIG_DIR")
 	if dir == "" {
@@ -151,15 +153,11 @@ func loadConfig(ctx context.Context) (llm.Config, *store.Store, error) {
 	if err := llm.ValidateProviders(global.Providers); err != nil {
 		return cfg, nil, fmt.Errorf("validate providers: %w", err)
 	}
-	// Build exactly the providers global.yaml routes to; a missing
-	// credential for any of them stops start-up.
-	clients := map[string]llm.Provider{}
-	for _, name := range llm.ConfiguredProviders(global.Providers) {
-		p, err := llm.NewProvider(ctx, name, llm.EnvSettings())
-		if err != nil {
-			return cfg, nil, fmt.Errorf("provider %s: %w", name, err)
-		}
-		clients[name] = p
+	// Build exactly the providers global.yaml routes to. One without
+	// credentials is skipped; a stage left with none stops start-up.
+	clients, err := llm.BuildProviders(ctx, global.Providers, llm.EnvSettings(), log)
+	if err != nil {
+		return cfg, nil, fmt.Errorf("providers: %w", err)
 	}
 	scanner, err := redact.New()
 	if err != nil {

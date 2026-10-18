@@ -157,7 +157,7 @@ jobs:
             go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-$v.yaml
           done
           # The example installation overlays (docs/install/).
-          for ex in acme quickstart; do
+          for ex in acme quickstart quickstart-direct; do
             kubectl kustomize examples/k8s/$ex > rendered-example-$ex.yaml
             go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-example-$ex.yaml
           done

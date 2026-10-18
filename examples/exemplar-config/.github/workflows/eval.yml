@@ -35,8 +35,13 @@ jobs:
   # this job holds no gateway, model or GitHub token: only an Auth0 client
   # for exemplar-api whose one permission is evaluate:<this repo>. The
   # PR's head must be pushed (it is, for a pull_request run).
+  #
+  # Skipped until the repository variables and secrets exist (Optional
+  # pieces > Config CI in the docs), so a fresh copy of this repository
+  # starts with only `validate`.
   eval:
     needs: validate
+    if: vars.EXEMPLAR_API_URL != '' && vars.EXEMPLAR_AUTH0_DOMAIN != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -80,8 +85,11 @@ jobs:
 
   # Pre-launch volume estimate: rules the PR adds or activates
   # run alone over recently merged PRs; informational, posted to the summary.
+  # It calls exemplar-gateway directly, which no shipped build exposes
+  # outside the cluster: set EXEMPLAR_GATEWAY_URL only if you route to it.
   volume:
     needs: validate
+    if: vars.EXEMPLAR_GATEWAY_URL != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -99,7 +107,7 @@ jobs:
         working-directory: .exemplar-src
       - name: Estimate volume
         env:
-          EXEMPLAR_GATEWAY_URL: ${{ secrets.EXEMPLAR_GATEWAY_URL }}
+          EXEMPLAR_GATEWAY_URL: ${{ vars.EXEMPLAR_GATEWAY_URL }}
           EXEMPLAR_GATEWAY_TOKEN: ${{ secrets.EXEMPLAR_GATEWAY_TOKEN }}
           EXEMPLAR_EVAL_TOKEN: ${{ secrets.EXEMPLAR_EVAL_TOKEN }}
         run: >-
@@ -112,6 +120,7 @@ jobs:
   # annotations, so EXEMPLAR_EVAL_TOKEN needs checks: read on case repos.
   linter-overlap:
     needs: validate
+    if: vars.EXEMPLAR_LINTER_OVERLAP == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -144,6 +153,7 @@ jobs:
   # otherwise reports "not run".
   verifier-calibration:
     needs: validate
+    if: vars.EXEMPLAR_GATEWAY_URL != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -161,7 +171,7 @@ jobs:
         working-directory: .exemplar-src
       - name: Calibrate the verifier and auto-approve categorizer
         env:
-          EXEMPLAR_GATEWAY_URL: ${{ secrets.EXEMPLAR_GATEWAY_URL }}
+          EXEMPLAR_GATEWAY_URL: ${{ vars.EXEMPLAR_GATEWAY_URL }}
           EXEMPLAR_GATEWAY_TOKEN: ${{ secrets.EXEMPLAR_GATEWAY_TOKEN }}
           EXEMPLAR_EVAL_TOKEN: ${{ secrets.EXEMPLAR_EVAL_TOKEN }}
         run: >-

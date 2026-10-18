@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -87,6 +89,55 @@ func ConfiguredProviders(p schema.Providers) []string {
 	return names
 }
 
+// BuildProviders constructs every provider p routes to. A provider whose
+// credentials are missing is skipped with a warning, so an example config
+// that lists a fallback the installation hasn't set up still starts; it
+// fails only when a stage would be left with no provider at all, naming
+// every provider that didn't build.
+func BuildProviders(ctx context.Context, p schema.Providers, s Settings, log *slog.Logger) (map[string]Provider, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+	clients := map[string]Provider{}
+	failed := map[string]error{}
+	for _, name := range ConfiguredProviders(p) {
+		c, err := NewProvider(ctx, name, s)
+		if err != nil {
+			failed[name] = err
+			continue
+		}
+		clients[name] = c
+	}
+	if len(failed) == 0 {
+		return clients, nil
+	}
+	stages := map[string][]schema.ProviderModel{"generator": p.Generator, "verifier": p.Verifier, "light": p.Light}
+	if p.Categorizer != nil {
+		stages["categorizer.a"] = []schema.ProviderModel{p.Categorizer.A}
+		stages["categorizer.b"] = []schema.ProviderModel{p.Categorizer.B}
+	}
+	var errs []error
+	for _, stage := range slices.Sorted(maps.Keys(stages)) {
+		entries := stages[stage]
+		if len(entries) == 0 {
+			continue
+		}
+		if !slices.ContainsFunc(entries, func(e schema.ProviderModel) bool { _, ok := clients[e.Provider]; return ok }) {
+			errs = append(errs, fmt.Errorf("stage %s %w", stage, errNoWorkingProvider))
+		}
+	}
+	if len(errs) > 0 {
+		for _, name := range slices.Sorted(maps.Keys(failed)) {
+			errs = append(errs, fmt.Errorf("provider %s: %w", name, failed[name]))
+		}
+		return nil, errors.Join(errs...)
+	}
+	for _, name := range slices.Sorted(maps.Keys(failed)) {
+		log.Warn("provider skipped: calls routed to it fail over to the next one", "provider", name, "err", failed[name])
+	}
+	return clients, nil
+}
+
 // Request is one Messages API call. Body is Anthropic Messages JSON with
 // the routed model already set.
 type Request struct {
@@ -130,9 +181,10 @@ type Provider interface {
 }
 
 var (
-	errNotApproved = errors.New("not approved")
-	errRequired    = errors.New("is required")
-	errModelName   = errors.New("unsupported model name")
+	errNotApproved       = errors.New("not approved")
+	errRequired          = errors.New("is required")
+	errModelName         = errors.New("unsupported model name")
+	errNoWorkingProvider = errors.New("has no working provider")
 )
 
 // NewProvider constructs an approved provider.

@@ -35,6 +35,12 @@ providers:
   # model ids take the anthropic. prefix; some regions need a cross-region
   # inference profile id such as us.anthropic.claude-opus-5-5.
   #
+  # claude needs the exemplar-providers Secret (anthropic-api-key); bedrock
+  # needs workload identity on the gateway's service account. The gateway
+  # builds every provider listed here and skips one whose credentials are
+  # missing, as long as each stage keeps a provider that works. Uncomment
+  # the bedrock entries to fail over to it.
+  #
   # Both providers serve Claude, so they fail over for availability but are
   # one model family. The verifier is meant to be a different family from
   # the model that raised the finding, so every finding is flagged
@@ -46,15 +52,15 @@ providers:
   # security rules and bug hunting start on "high".
   generator:
     - { provider: claude,  standard: claude-sonnet-5-5,           high: claude-opus-5-5 }
-    - { provider: bedrock, standard: anthropic.claude-sonnet-5-5, high: anthropic.claude-opus-5-5 }
+    # - { provider: bedrock, standard: anthropic.claude-sonnet-5-5, high: anthropic.claude-opus-5-5 }
   # verifier: independently checks each finding before it is posted.
   verifier:
     - { provider: claude,  model: claude-opus-5-5 }
-    - { provider: bedrock, model: anthropic.claude-opus-5-5 }
+    # - { provider: bedrock, model: anthropic.claude-opus-5-5 }
   # light: cheap, quick calls such as scoring how much a finding matters.
   light:
     - { provider: claude,  model: claude-haiku-5-5 }
-    - { provider: bedrock, model: anthropic.claude-haiku-5-5 }
+    # - { provider: bedrock, model: anthropic.claude-haiku-5-5 }
 # importance_min: findings the verifier scores below this importance (0-1)
 # are stored but not posted.
 verifier:

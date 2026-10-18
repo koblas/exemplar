@@ -140,7 +140,7 @@ manifests: ## Render each Kustomize build and the example overlay to out/ and sc
 	  kubectl kustomize "$$dir" > $(OUT)/rendered-$$v.yaml; \
 	  go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/rendered-$$v.yaml; \
 	done; \
-	for ex in acme quickstart; do \
+	for ex in acme quickstart quickstart-direct; do \
 	  kubectl kustomize examples/k8s/$$ex > $(OUT)/rendered-example-$$ex.yaml; \
 	  go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/rendered-example-$$ex.yaml; \
 	done; \

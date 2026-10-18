@@ -21,6 +21,7 @@ CI repeats the build, render and schema check (the `images` job).
 | `k8s/direct/` | Core plus the Ingresses, with no tunnel. Render with `kubectl kustomize deploy/k8s/direct`. |
 | `manifests_test.go` | Checks the manifests against the code (below). |
 | `../examples/k8s/acme/` | An example installation overlay: the default build, Docker Hub images, settings, sign-in, tunnel routes and search storage. The Ingress and Postgres pieces are commented out. CI renders it. |
+| `../examples/k8s/quickstart/`, `quickstart-direct/` | The trial overlays (one replica, in-cluster Postgres, small requests) through the tunnel and through an Ingress. CI renders both. |
 
 ## Inbound
 
@@ -118,7 +119,7 @@ The base's all-zero digests make an unpinned deploy fail to pull.
 - inbound, for Ingress builds: the Ingress host (the same on both), class and TLS secret, and org SSO in front of everything but `/webhook` (an IdP-aware proxy or ingress auth annotations);
 - the search volume size (from the T-0.4 benchmark) and storage class.
 
-**Setup mode.** Until `exemplar-github-app` exists, exemplar-api serves only its probes and, on `127.0.0.1:8081` (`--setup-addr`, the container's `setup` port, behind no Service), the setup page (`internal/setup`). Port-forward one exemplar-api pod to 8081 and keep it for the whole flow: the state lives in that pod's memory. The page answers only requests for its own host (`localhost:8081`), against DNS rebinding. The page registers the App from a manifest, finds its installation and offers the Secret as YAML. The other workloads reference the Secret without `optional`, so they wait for it and start once it's applied; exemplar-api needs a restart. After setup, `/ui/setup` checks the installation's GitHub side.
+**Setup mode.** Until `exemplar-github-app` exists, exemplar-api serves only its probes and, on `127.0.0.1:8081` (`--setup-addr`, the container's `setup` port, behind no Service), the setup page (`internal/setup`). Port-forward one exemplar-api pod to 8081 and keep it for the whole flow: the state lives in that pod's memory. The page answers only requests for its own host (`localhost:8081`), against DNS rebinding. The page registers the App from a manifest in the config repo owner's App settings (an organization's, or a user's own: it asks GitHub which the owner is), finds its installation and offers the Secret as YAML. The other workloads reference the Secret without `optional`, so they wait for it and start once it's applied; exemplar-api needs a restart. After setup, `/ui/setup` checks the installation's GitHub side.
 
 **Secrets**, created outside this repository from the KMS-held values. They're referenced by name only:
 

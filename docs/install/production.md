@@ -10,10 +10,10 @@ The same steps, with these differences.
 | A way in, with TLS | One public host for people and webhooks (or two, with `EXEMPLAR_WEBHOOK_URL`). **Default:** a Cloudflare Tunnel; the cluster then needs no public ingress. **Or** an ingress controller (`deploy/k8s/direct`, which assumes `ingress-nginx`), or both. |
 | A storage class for local SSD | `exemplar-search` asks for 500Gi per replica on `local-ssd`, two replicas on different nodes. Set both in the overlay. |
 | **Postgres 16** with **pgvector** | Reachable from the cluster on 5432. Use a read replica for Grafana if you add it. |
-| A model provider | An Anthropic API key, or AWS Bedrock through workload identity (see `global.yaml` `providers`). |
-| GitHub org owner rights | To create and install the GitHub App. GitHub Enterprise Server works too. |
+| A model provider | An Anthropic API key, or AWS Bedrock through workload identity (see `global.yaml` `providers`). The gateway builds every provider `global.yaml` routes to, skips one whose credentials are missing with a warning, and fails only when a stage is left with none. |
+| GitHub org owner rights | To create and install the GitHub App (a personal account works too). GitHub Enterprise Server works too. |
 
-**`exemplar-config`.** As in the quickstart, and also review `platform/eligibility.yaml` (repos listed there are never sent to a model) and `CODEOWNERS` (rule owners and the platform team review their files). Validate with `exemplar validate path/to/exemplar-config` ([the CLI](../cli.md)).
+**`exemplar-config`.** As in the quickstart, and also review `platform/eligibility.yaml` (repos listed there are never sent to a model) and `CODEOWNERS` (rule owners and the platform team review their files). Validate with `exemplar validate path/to/exemplar-config` ([the CLI](../cli.md)). Its `eval.yml` jobs beyond `validate` run only once their repository variables are set ([Optional pieces](../operations/optional.md)).
 
 **Postgres.** Create a database and role. The services apply their migrations at startup, one pod at a time:
 

@@ -63,7 +63,7 @@ tags; the first release is `v0.1.0`.
      `SHA256SUMS` to the release (`release.yml`);
    - pushes both images to Docker Hub as `<x.y.z>`, `<x.y>`,
      `learning-<x.y.z>` and `learning-<x.y>` (`images.yml`). Their run
-     summary lists the digests to pin (README, "Choose the image version").
+     summary lists the digests to pin (docs, "Releases and images").
 
 To force a version, put a `Release-As: 0.3.0` footer in a commit on `main`.
 

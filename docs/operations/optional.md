@@ -4,12 +4,13 @@
 
 **Telemetry.** Create an `exemplar-otel` ConfigMap with `OTEL_EXPORTER_OTLP_ENDPOINT`, and an optional Secret with `OTEL_EXPORTER_OTLP_HEADERS`. Every container picks them up. Only OTLP over HTTP is supported. The `allow-otel` NetworkPolicy opens port 4318 to an in-cluster OpenTelemetry Collector.
 
-**Config CI.** The workflows in `exemplar-config` (`.github/workflows/eval.yml`):
-- validate every config PR;
-- run the adversarial set;
-- evaluate changed rules through `/v1/evaluate` (`exemplar eval --remote`).
+**Config CI.** The workflows in `exemplar-config` (`.github/workflows/eval.yml`) validate every config PR and run the adversarial set. The other jobs are skipped until their repository variables exist, so a fresh copy starts green:
 
-The eval job needs repository variables `EXEMPLAR_API_URL`, `EXEMPLAR_AUTH0_DOMAIN` and `EXEMPLAR_AUTH0_AUDIENCE`. It also needs secrets for an Auth0 client whose only permission is `evaluate:<org>/exemplar-config`. On the exemplar-api side, set `EXEMPLAR_AUTH0_DOMAIN` and `EXEMPLAR_AUTH0_AUDIENCE` in `exemplar-settings`.
+| Job | Turn on with | Needs |
+|---|---|---|
+| `eval` (changed rules through `/v1/evaluate`) | variables `EXEMPLAR_API_URL`, `EXEMPLAR_AUTH0_DOMAIN`, `EXEMPLAR_AUTH0_AUDIENCE` | secrets for an Auth0 client whose only permission is `evaluate:<org>/exemplar-config`; `EXEMPLAR_AUTH0_DOMAIN` and `EXEMPLAR_AUTH0_AUDIENCE` in `exemplar-settings` |
+| `volume`, `verifier-calibration` | variable `EXEMPLAR_GATEWAY_URL` | a route from GitHub Actions to exemplar-gateway, which no shipped build exposes, plus secrets `EXEMPLAR_GATEWAY_TOKEN` and `EXEMPLAR_EVAL_TOKEN` |
+| `linter-overlap` | variable `EXEMPLAR_LINTER_OVERLAP=true` | secret `EXEMPLAR_EVAL_TOKEN` with `checks: read` on the case repos |
 
 **Rule exports.** On the setup page (port-forward to exemplar-api during setup), also create the exports app, install it only on the repos that opt in (**never on exemplar-config**), and apply `exemplar-exports-app.yaml`. Then add `exports.targets` to each repo's file in `exemplar-config`. To add it after setup, register it by hand with Contents and Pull requests **Read & write** and no events, and create `exemplar-exports-app` with `app-id` and `private-key`.
 
