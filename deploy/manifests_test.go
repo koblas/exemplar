@@ -309,9 +309,11 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 			if !tmp {
 				t.Errorf("%s: no writable /tmp under a read-only root", cname)
 			}
+			set := map[string]bool{}
 			for _, e := range list(c, "env") {
 				name := str(e, "name")
-				if strings.HasPrefix(name, "EXEMPLAR_") && name != "EXEMPLAR_CONFIG_GIT_URL" && !envs[name] {
+				set[name] = true
+				if strings.HasPrefix(name, "EXEMPLAR_") && !envs[name] {
 					t.Errorf("%s: no code reads %s", cname, name)
 				}
 				if k := str(e, "valueFrom", "configMapKeyRef", "key"); k != "" && settings[k] == nil {
@@ -320,6 +322,15 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 				if s := str(e, "valueFrom", "secretKeyRef", "name"); s != "" && !secrets[s] {
 					t.Errorf("%s: secret %s is not documented in settings.yaml", cname, s)
 				}
+			}
+			// GitHub Enterprise Server: every container that calls GitHub
+			// takes the API base, and those that clone or build links the
+			// web base.
+			if (set["EXEMPLAR_GH_APP_ID"] || set["EXEMPLAR_EXPORTS_APP_ID"] || set["EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID"]) && !set["EXEMPLAR_GH_API_URL"] {
+				t.Errorf("%s: calls GitHub without EXEMPLAR_GH_API_URL", cname)
+			}
+			if slices.Contains([]string{"api", "teach", "digest", "worker", "search", "evals", "compile"}, str(c, "name")) && !set["EXEMPLAR_GH_WEB_URL"] {
+				t.Errorf("%s: clones or links to GitHub without EXEMPLAR_GH_WEB_URL", cname)
 			}
 		}
 	}
@@ -604,8 +615,9 @@ func checkInbound(t *testing.T, docs []obj, ingresses int, inbound []string) {
 		}
 	}
 
-	// Every tunnel route goes to a Service port, and the last one is the
-	// catch-all, so an unknown host never reaches a pod.
+	// Every tunnel route goes to a Service port, and only the last one
+	// matches everything: the others match by host name or path, so the
+	// webhook gets only its path.
 	for _, d := range docs {
 		if str(d, "kind") != "ConfigMap" || str(d, "metadata", "name") != "exemplar-cloudflared" {
 			continue
@@ -615,15 +627,22 @@ func checkInbound(t *testing.T, docs []obj, ingresses int, inbound []string) {
 			t.Fatalf("exemplar-cloudflared config.yaml: %v", err)
 		}
 		rules := list(cfg, "ingress")
-		if len(rules) == 0 || str(rules[len(rules)-1], "hostname") != "" || !strings.HasPrefix(str(rules[len(rules)-1], "service"), "http_status:") {
-			t.Errorf("tunnel routes must end with an http_status catch-all: %v", rules)
+		if len(rules) == 0 || str(rules[len(rules)-1], "hostname") != "" || str(rules[len(rules)-1], "path") != "" {
+			t.Errorf("tunnel routes must end with a catch-all: %v", rules)
 		}
-		for _, r := range rules[:max(len(rules)-1, 0)] {
+		for i, r := range rules {
+			if strings.HasPrefix(str(r, "service"), "http_status:") {
+				continue
+			}
 			u, ok := strings.CutPrefix(str(r, "service"), "http://")
 			host, port, _ := strings.Cut(u, ":")
 			name, ns, _ := strings.Cut(host, ".")
-			if !ok || str(r, "hostname") == "" || !strings.HasPrefix(ns, "exemplar.svc") || !services[name+":"+port] {
-				t.Errorf("tunnel route %v is not a host to an exemplar Service port", r)
+			matches := str(r, "hostname") != "" || str(r, "path") != ""
+			if !ok || !matches && i != len(rules)-1 || !strings.HasPrefix(ns, "exemplar.svc") || !services[name+":"+port] {
+				t.Errorf("tunnel route %v is not a host or path to an exemplar Service port", r)
+			}
+			if name == "exemplar-webhook" && str(r, "path") != "^/webhook$" {
+				t.Errorf("tunnel route %v reaches the webhook beyond POST /webhook", r)
 			}
 		}
 	}
@@ -658,7 +677,14 @@ func envNames(t *testing.T) map[string]bool {
 // TestExampleOverlay keeps examples/k8s/acme in step with the base: it maps
 // every image the base names, pins each by digest, and lists only paths
 // that exist. CI renders it with kustomize; this catches drift without one.
-func TestExampleOverlay(t *testing.T) {
+func TestExampleOverlays(t *testing.T) {
+	for _, dir := range []string{"../examples/k8s/acme", "../examples/k8s/quickstart"} {
+		t.Run(filepath.Base(dir), func(t *testing.T) { checkOverlay(t, dir) })
+	}
+}
+
+func checkOverlay(t *testing.T, dir string) {
+	t.Helper()
 	read := func(dir string) obj {
 		t.Helper()
 		raw, err := os.ReadFile(filepath.Join(dir, "kustomization.yaml"))
@@ -671,7 +697,6 @@ func TestExampleOverlay(t *testing.T) {
 		}
 		return k
 	}
-	const dir = "../examples/k8s/acme"
 	example := read(dir)
 
 	core := list(read("k8s/core"), "images")

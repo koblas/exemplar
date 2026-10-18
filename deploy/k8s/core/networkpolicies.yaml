@@ -73,7 +73,7 @@ spec:
         - {protocol: TCP, port: 5432}
 ---
 # exemplar-gateway: in from the worker and the learning jobs; out to the
-# model providers (HTTPS), Postgres, and GitHub over SSH for its config.
+# model providers and GitHub (HTTPS), and Postgres.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -99,12 +99,11 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       ports:
         - {protocol: TCP, port: 443}
-        - {protocol: TCP, port: 22}
     - ports:
         - {protocol: TCP, port: 5432}
 ---
 # exemplar-worker: out to the gateway, exemplar-search, GitHub and Jira
-# (HTTPS), GitHub over SSH for its config, and Postgres. Nothing in.
+# (HTTPS), and Postgres. Nothing in.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -129,12 +128,11 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       ports:
         - {protocol: TCP, port: 443}
-        - {protocol: TCP, port: 22}
     - ports:
         - {protocol: TCP, port: 5432}
 ---
-# exemplar-search: in from workers only; out to GitHub (HTTPS fetches, SSH
-# for its config). No database.
+# exemplar-search: in from workers only; out to GitHub (HTTPS fetches and
+# its config). No database.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -158,10 +156,9 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       ports:
         - {protocol: TCP, port: 443}
-        - {protocol: TCP, port: 22}
 ---
-# exemplar-learn and the Python jobs: out to GitHub (HTTPS, SSH for
-# config), the gateway, and Postgres. Nothing in.
+# exemplar-learn and the Python jobs: out to GitHub (HTTPS), the gateway,
+# and Postgres. Nothing in.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -184,7 +181,6 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       ports:
         - {protocol: TCP, port: 443}
-        - {protocol: TCP, port: 22}
     - ports:
         - {protocol: TCP, port: 5432}
 ---

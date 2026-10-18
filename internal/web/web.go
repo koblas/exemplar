@@ -29,6 +29,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -38,9 +39,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/koblas/exemplar/internal/setup"
 	"github.com/koblas/exemplar/internal/store/queries"
 )
 
@@ -86,7 +89,10 @@ type Config struct {
 	PlaygroundDailyRuns int
 	// FormKey signs the forms' tokens; at least 32 bytes.
 	FormKey []byte
-	Log     *slog.Logger
+	// Checks runs the installation checks /ui/setup shows (internal/setup);
+	// nil shows none.
+	Checks func(ctx context.Context) []setup.Check
+	Log    *slog.Logger
 }
 
 // Window is the stats window, in days.
@@ -128,6 +134,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /ui/audit", h.page(h.audit))
 	mux.HandleFunc("GET /ui/cost", h.page(h.cost))
 	mux.HandleFunc("GET /ui/actions", h.page(h.actions))
+	mux.HandleFunc("GET /ui/setup", h.page(h.setupChecks))
+	mux.HandleFunc("GET /ui/setup.json", h.setupJSON)
 	mux.HandleFunc("GET /ui/playground", h.page(h.playground))
 	mux.HandleFunc("POST /ui/playground", h.tryRule)
 	mux.HandleFunc("GET /ui/playground/{id}", h.page(h.playgroundRun))
@@ -611,6 +619,33 @@ func (h *Handler) falsePositive(w http.ResponseWriter, r *http.Request) {
 	}
 	// idText parsed as an int64 above, so this is always a same-origin /ui/ path.
 	http.Redirect(w, r, "/ui/findings/"+idText+"?recorded=1", http.StatusSeeOther) //nolint:gosec // G710: fixed local path, numeric id
+}
+
+// setupChecks shows what the installation still needs. Every signed-in
+// viewer sees it: it names the org and the webhook URL, nothing secret.
+func (h *Handler) setupChecks(_ http.ResponseWriter, r *http.Request, _ *viewer) (string, string, any, error) {
+	return "setup", "Setup", h.runChecks(r.Context()), nil
+}
+
+// setupJSON is /ui/setup for scripts, behind the same sign-in.
+func (h *Handler) setupJSON(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := h.cfg.Session(r); !ok {
+		http.Error(w, "sign in first", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]any{"checks": h.runChecks(r.Context())}); err != nil {
+		h.cfg.Log.Warn("web: setup checks", "err", err)
+	}
+}
+
+func (h *Handler) runChecks(ctx context.Context) []setup.Check {
+	if h.cfg.Checks == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	return h.cfg.Checks(ctx)
 }
 
 func (h *Handler) actions(_ http.ResponseWriter, r *http.Request, v *viewer) (string, string, any, error) {

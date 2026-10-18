@@ -46,6 +46,9 @@ spec:
           args: ["--addr=:8080", "--drain=5s"]
           ports:
             - {name: http, containerPort: 8080}
+            # Setup mode only, on the pod's loopback: reached with kubectl
+            # port-forward, never through a Service.
+            - {name: setup, containerPort: 8081}
           # OTel destinations (internal/telemetry): optional, set per installation.
           envFrom:
             - configMapRef: {name: exemplar-otel, optional: true}
@@ -59,16 +62,29 @@ spec:
               valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
             - name: EXEMPLAR_API_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
+            - name: EXEMPLAR_CONFIG_REPO
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
+            - name: EXEMPLAR_WEBHOOK_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_WEBHOOK_URL, optional: true}}
+            # The review app, once setup has produced exemplar-github-app.
+            # Without it exemplar-api serves only the setup page (README.md).
+            - name: EXEMPLAR_GH_APP_ID
+              valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id, optional: true}}
             - name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID
-              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID}}
+              valueFrom: {secretKeyRef: {name: exemplar-github-app, key: client-id, optional: true}}
+            - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
+            - name: EXEMPLAR_GH_WEB_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_WEB_URL, optional: true}}
+            - name: EXEMPLAR_GH_API_URL
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL, optional: true}}
             # Service callers of /v1/evaluate (Auth0); empty turns them off.
             - name: EXEMPLAR_AUTH0_DOMAIN
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_AUTH0_DOMAIN}}
             - name: EXEMPLAR_AUTH0_AUDIENCE
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_AUTH0_AUDIENCE}}
-            - {name: EXEMPLAR_LINK_KEY_FILE, value: /var/run/secrets/exemplar/api/link-key}
-            - {name: EXEMPLAR_SESSION_KEY_FILE, value: /var/run/secrets/exemplar/api/session-key}
-            - {name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_SECRET_FILE, value: /var/run/secrets/exemplar/api/oauth-client-secret}
+            # The link and session keys derive from it (internal/envcfg).
+            - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
+            - {name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_SECRET_FILE, value: /var/run/secrets/exemplar/github-app/client-secret}
             # Read only when EXEMPLAR_OIDC_ISSUER_URL is set (exemplar-auth).
             - {name: EXEMPLAR_OIDC_CLIENT_SECRET_FILE, value: /var/run/secrets/exemplar/oidc/client-secret}
           livenessProbe:
@@ -87,12 +103,19 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           volumeMounts:
-            - {name: api-secrets, mountPath: /var/run/secrets/exemplar/api, readOnly: true}
+            - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
+            - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
             - {name: oidc-secret, mountPath: /var/run/secrets/exemplar/oidc, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
-        - name: api-secrets
-          secret: {secretName: exemplar-api, defaultMode: 0400}
+        - name: root-key
+          secret: {secretName: exemplar-root-key, defaultMode: 0400}
+        - name: github-app
+          secret:
+            secretName: exemplar-github-app
+            items: [{key: client-secret, path: client-secret}, {key: private-key, path: private-key}]
+            defaultMode: 0400
+            optional: true
         - name: oidc-secret
           secret: {secretName: exemplar-oidc, defaultMode: 0400, optional: true}
         - name: tmp

@@ -14,7 +14,9 @@ don't add new sections there. Binaries: `cmd/exemplar` (CLI), `cmd/exemplar-gate
 find_definition, find_references, dependents), `cmd/exemplar-webhook` (GitHub
 webhook receiver), `cmd/exemplar-worker` (routes events, reviews live PRs and
 `exemplar review` evaluations), `cmd/exemplar-learn` (learning-plane jobs),
-`cmd/exemplar-api` (signed feedback links, `/v1/evaluate`, the `/ui/` web UI).
+`cmd/exemplar-api` (signed feedback links, `/v1/evaluate`, the `/ui/` web UI; without
+`EXEMPLAR_GH_APP_ID` it runs setup mode, `internal/setup`). Settings checks and the
+root-key derivation shared by the binaries are in `internal/envcfg`.
 Manifests are plain Kustomize: `deploy/k8s/core` (everything but inbound), inbound
 components in `deploy/k8s/components` (`cloudflare-tunnel`, `ingress`), the optional
 in-cluster Postgres component (`components/postgres`), and the builds

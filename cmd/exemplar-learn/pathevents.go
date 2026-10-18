@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/learn/ingest"
 	"github.com/koblas/exemplar/internal/learn/pathevents"
@@ -65,7 +66,7 @@ func runPathEvents(args []string) error {
 	if dbURL == "" {
 		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
-	app, installation, _, err := appFromEnv()
+	app, installation, _, err := appFromEnv(ctx)
 	if err != nil {
 		return err
 	}
@@ -97,7 +98,11 @@ func runPathEvents(args []string) error {
 	cfg := pathevents.Config{Backfill: *backfill, Logger: log}
 	if !*noReverts && !*noSeeds {
 		// Seeds carry code and free text: same handling as ingest.
-		pseudo, err := ingest.NewPseudonymizer([]byte(os.Getenv("EXEMPLAR_PSEUDONYM_KEY")))
+		key, err := envcfg.NewKeys(os.Getenv, os.ReadFile).Token("EXEMPLAR_PSEUDONYM_KEY", envcfg.LabelPseudonym)
+		if err != nil {
+			return fmt.Errorf("pseudonym key (or --no-seeds): %w", err)
+		}
+		pseudo, err := ingest.NewPseudonymizer([]byte(key))
 		if err != nil {
 			return fmt.Errorf("EXEMPLAR_PSEUDONYM_KEY (or --no-seeds): %w", err)
 		}

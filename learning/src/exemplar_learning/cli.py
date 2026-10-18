@@ -19,7 +19,7 @@ from dataclasses import asdict
 
 import psycopg
 
-from exemplar_learning import db
+from exemplar_learning import db, rootkey
 from exemplar_learning.cluster import graph, job
 from exemplar_learning.cluster.judge import GatewayJudge
 from exemplar_learning.rank import job as rank_job
@@ -41,10 +41,12 @@ def _check(_: argparse.Namespace) -> int:
 def _cluster(args: argparse.Namespace) -> int:
     url, token = (
         os.environ.get("EXEMPLAR_GATEWAY_URL", ""),
-        os.environ.get("EXEMPLAR_GATEWAY_TOKEN", ""),
+        rootkey.token("EXEMPLAR_GATEWAY_TOKEN", rootkey.LABEL_GATEWAY_TOKEN),
     )
     if not url or not token:
-        raise RuntimeError("EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are required")
+        raise RuntimeError(
+            "EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN (or EXEMPLAR_ROOT_KEY_FILE) are required"
+        )
     judge = GatewayJudge(url, token)
     params = graph.Params(
         k=args.k,

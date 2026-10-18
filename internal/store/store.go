@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -51,8 +52,58 @@ func OpenWithConns(ctx context.Context, url string, minConns int32) (*Store, err
 // Close releases the pool.
 func (s *Store) Close() { s.Pool.Close() }
 
-// Migrate applies Exemplar's goose migrations and River's migrations.
+// migrateLockKey is the session-level advisory lock that serializes
+// Migrate across pods ("exemplar" in ASCII). Neither goose's provider nor
+// River's migrator locks on its own.
+const migrateLockKey int64 = 0x6578656d706c6172
+
+// Migrate applies Exemplar's goose migrations and River's migrations. The
+// webhook, api, worker and learn pods all migrate at startup, so it holds
+// an advisory lock on a dedicated connection while it runs; others wait,
+// then find nothing left to apply.
 func (s *Store) Migrate(ctx context.Context) error {
+	// Its own connection, outside the pool the migrations use, so a small
+	// pool cannot deadlock against the lock holder.
+	conn, err := pgx.ConnectConfig(ctx, s.Pool.Config().ConnConfig.Copy())
+	if err != nil {
+		return fmt.Errorf("connect for migration lock: %w", err)
+	}
+	// Closing the session releases the lock.
+	defer func() {
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		_ = conn.Close(cctx)
+	}()
+	if err := tryLock(ctx, conn); err != nil {
+		return err
+	}
+	return s.migrate(ctx)
+}
+
+// tryLock polls pg_try_advisory_lock rather than blocking in
+// pg_advisory_lock: a session blocked in that statement holds a snapshot,
+// and CREATE INDEX CONCURRENTLY in the lock holder's migrations waits for
+// every such snapshot, so the two would deadlock.
+func tryLock(ctx context.Context, conn *pgx.Conn) error {
+	t := time.NewTicker(500 * time.Millisecond)
+	defer t.Stop()
+	for {
+		var ok bool
+		if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", migrateLockKey).Scan(&ok); err != nil {
+			return fmt.Errorf("take migration lock: %w", err)
+		}
+		if ok {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait for migration lock: %w", ctx.Err())
+		case <-t.C:
+		}
+	}
+}
+
+func (s *Store) migrate(ctx context.Context) error {
 	migrations, err := fs.Sub(db.Migrations, "migrations")
 	if err != nil {
 		return fmt.Errorf("migrations dir: %w", err)

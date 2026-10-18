@@ -38,6 +38,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/llm"
 	"github.com/koblas/exemplar/internal/redact"
 	"github.com/koblas/exemplar/internal/schema"
@@ -143,9 +144,9 @@ func loadConfig(ctx context.Context) (llm.Config, *store.Store, error) {
 	if err := schema.Decode(schema.DocGlobal, data, &global); err != nil {
 		return cfg, nil, fmt.Errorf("decode global.yaml: %w", err)
 	}
-	token := os.Getenv("EXEMPLAR_GATEWAY_TOKEN")
-	if token == "" {
-		return cfg, nil, fmt.Errorf("EXEMPLAR_GATEWAY_TOKEN is %w", errRequired)
+	token, err := envcfg.NewKeys(os.Getenv, os.ReadFile).Token("EXEMPLAR_GATEWAY_TOKEN", envcfg.LabelGatewayToken)
+	if err != nil {
+		return cfg, nil, fmt.Errorf("gateway token: %w", err)
 	}
 	if err := llm.ValidateProviders(global.Providers); err != nil {
 		return cfg, nil, fmt.Errorf("validate providers: %w", err)

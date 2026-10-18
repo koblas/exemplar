@@ -66,7 +66,7 @@ func runCompile(args []string) error {
 		log.Warn("running engines without a sandbox")
 	}
 
-	gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), os.Getenv("EXEMPLAR_GATEWAY_TOKEN")
+	gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), optionalGatewayToken()
 	if gwURL == "" || gwToken == "" {
 		return fmt.Errorf("EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are %w", errRequired)
 	}
@@ -93,8 +93,8 @@ func runCompile(args []string) error {
 		}
 		defer func() { _ = os.RemoveAll(dir) }()
 	}
-	files := &evalgen.CheckoutFiles{Root: dir}
-	if app, installation, _, err := appFromEnv(); err == nil {
+	files := &evalgen.CheckoutFiles{Root: dir, CloneURL: gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL"))}
+	if app, installation, _, err := appFromEnv(ctx); err == nil {
 		files.Token = func(ctx context.Context, repo string) (string, error) {
 			tok, err := app.Token(ctx, installation, gh.FlavorWorker, []string{repo})
 			if err != nil {

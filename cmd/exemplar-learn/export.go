@@ -4,12 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/exports"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/store"
@@ -41,6 +44,11 @@ func runExport(args []string) error {
 	snap, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
 	if err != nil {
 		return fmt.Errorf("load config snapshot: %w", err)
+	}
+	if !*dryRun {
+		if skip, err := exportsOff(ctx, log, snap); skip || err != nil {
+			return err
+		}
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
@@ -82,10 +90,36 @@ func runExport(args []string) error {
 	return nil
 }
 
+// exportsOff is skipExport for the environment and snapshot, logging a skip.
+func exportsOff(ctx context.Context, log *slog.Logger, snap *config.Snapshot) (bool, error) {
+	skip, err := skipExport(os.Getenv("EXEMPLAR_EXPORTS_APP_ID"), exports.Repos(snap))
+	if skip {
+		log.InfoContext(ctx, "no exports app and no repo configures exports.targets; nothing to export")
+	}
+	return skip, err
+}
+
+// skipExport reports whether export has nothing to do: the exports app is
+// optional, so with no app id (unset or 0) and no repo configuring
+// exports.targets the job succeeds without the app's key. Repos that
+// configure exports with no app are an error.
+func skipExport(appID string, repos []string) (bool, error) {
+	if appID != "" && appID != "0" {
+		return false, nil
+	}
+	if len(repos) > 0 {
+		return false, fmt.Errorf("%d repos configure exports.targets (%s) but EXEMPLAR_EXPORTS_APP_ID is %w", len(repos), strings.Join(repos, ", "), errRequired)
+	}
+	return true, nil
+}
+
 // exportsAppFromEnv builds the exports app (exemplar-exports) from
 // EXEMPLAR_EXPORTS_*; EXEMPLAR_CONFIG_REPO is needed so its tokens can
 // refuse to reach exemplar-config.
 func exportsAppFromEnv() (*gh.App, error) {
+	if err := envcfg.Check(os.Getenv, "EXEMPLAR_EXPORTS_APP_ID", "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL"); err != nil {
+		return nil, fmt.Errorf("settings: %w", err)
+	}
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_EXPORTS_APP_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_EXPORTS_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
 	if appID == 0 || keyFile == "" || cfgRepo == "" {

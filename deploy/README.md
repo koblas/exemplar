@@ -30,18 +30,20 @@ GitHub and people reach exemplar-webhook and exemplar-api one of three ways. Cor
 |---|---|---|
 | `base` (**default**) | `exemplar-cloudflared` dials out to Cloudflare on 7844 (QUIC, falling back to HTTP/2 over TCP). Cloudflare balances between its 2 replicas. | Only `exemplar-cloudflared` pods |
 | `direct` | Ingresses on the cluster's controller | Only the `ingress-nginx` namespace |
-| `base` + `components/ingress`, in an overlay | Both, on different host names | Both |
+| `base` + `components/ingress`, in an overlay | Both | Both |
 
 The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMap, so it's reviewed with the rest of the manifests rather than set in the dashboard.
-- Only `^/webhook$` on the webhook host reaches the webhook, as the Ingress's `Exact` path did.
-- Any other host gets a 404 from the catch-all rule.
+- The rules match by path, not host name, so the ConfigMap is the same for every installation: only `^/webhook$` reaches the webhook, as the Ingress's `Exact` path did, and everything else reaches the API. Only the host names an installation routes to the tunnel (`cloudflared tunnel route dns`) reach it at all.
+- The tunnel id comes from the `exemplar-cloudflared` Secret (`tunnel-id`), as `cloudflared tunnel run`'s argument.
 - cloudflared reads the file at start, so restart the Deployment after changing it.
 
 cloudflared runs as its own Deployment, never a sidecar. The tunnel credentials stay out of the webhook and API pods, and the webhook's egress stays Postgres only.
 
 With the tunnel, Cloudflare does the work the Ingress did, and an installation must set it up there:
-- **IN-1:** a WAF rule limits the webhook host to GitHub's hook ranges, with no Access policy on it.
-- **IN-2:** an Access application puts org SSO in front of the API host.
+- **IN-1:** a WAF rule limits `/webhook` to GitHub's hook ranges, and the Access application bypasses that path.
+- **IN-2:** an Access application puts org SSO in front of the host.
+
+With a separate webhook host (`EXEMPLAR_WEBHOOK_URL`), each rule goes on its own host instead.
 
 Cloudflare ends TLS at its edge and sees requests in clear text. The webhook still checks each delivery's HMAC. Its rejection log's `remote` is a cloudflared pod's address, not GitHub's.
 
@@ -92,13 +94,13 @@ Every pod:
 - has no service account token, since nothing calls the Kubernetes API;
 - has an `emptyDir` for `/tmp` and any other path it writes.
 
-The `exemplar-config` checkout comes from a git-sync v4.7.1 sidecar with a read-only deploy key:
+The `exemplar-config` checkout comes from a git-sync v4.7.1 sidecar, cloning `$(EXEMPLAR_GH_WEB_URL)$(EXEMPLAR_CONFIG_REPO)` over HTTPS as the review app (`--github-app-*`, from `exemplar-github-app`):
 - **Services** use a native sidecar (`initContainers` with `restartPolicy: Always`), whose startup probe holds the main container until the first sync.
 - **CronJobs** use a one-time init container.
 
 ## What an installation supplies
 
-**Images.** `.github/workflows/images.yml` pushes both images to Docker Hub as `koblas/exemplar` on every push to main and each `v*` tag. The services image is tagged `sha-<short>`, `main` and `<version>`, and the learning image gets the same tags with a `learning-` prefix. Its run summary prints each digest and the entry below. The base keeps the logical names `exemplar` and `exemplar-learning`. Kustomize matches images by name alone, and both images share one repository, so renaming them in the base would leave an overlay unable to pin them apart. An overlay maps each name, as [`examples/k8s/acme`](../examples/k8s/acme) does:
+**Images.** `.github/workflows/images.yml` pushes both images to Docker Hub as `koblas/exemplar` on every push to main and each `v*` tag. The services image is tagged `sha-<short>`, `main` and `<version>`, and the learning image gets the same tags with a `learning-` prefix. Its run summary prints each digest and the entry below. The base keeps the logical names `exemplar` and `exemplar-learning`. Kustomize matches images by name alone, and both images share one repository, so renaming them in the base would leave an overlay unable to pin them apart. Each release attaches `install-tunnel.yaml` and `install-direct.yaml`, rendered by [`render-release.sh`](render-release.sh) with both digests pinned; an overlay can use one as its resource. An overlay of the base maps each name instead, as [`examples/k8s/acme`](../examples/k8s/acme) does:
 
 ```yaml
 images:
@@ -112,33 +114,28 @@ images:
 
 The base's all-zero digests make an unpinned deploy fail to pull.
 
-**Settings.** An overlay patches the `exemplar-settings` ConfigMap: `EXEMPLAR_CONFIG_REPO`, `EXEMPLAR_CONFIG_GIT_URL`, `EXEMPLAR_GH_APP_ID`, `EXEMPLAR_GH_INSTALLATION_ID`, `EXEMPLAR_EXPORTS_APP_ID`, `EXEMPLAR_API_URL`, `EXEMPLAR_AUTH0_DOMAIN` and `EXEMPLAR_AUTH0_AUDIENCE` (service callers of `/v1/evaluate`; both empty turns them off) and `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` (GitHub sign-in; leave it out for OIDC only). It also sets:
-- inbound:
-  - **Tunnel:** the `exemplar-cloudflared` ConfigMap's `config.yaml`, with the tunnel id and host names.
-  - **Ingress:** the Ingress hosts, classes and TLS secrets, and org SSO in front of the API (an IdP-aware proxy or ingress auth annotations).
-- the search volume size (from the T-0.4 benchmark);
-- the storage class.
+**Settings.** An overlay patches the `exemplar-settings` ConfigMap with two values: `EXEMPLAR_CONFIG_REPO` (`owner/name`; the App is registered on its owner, and sign-in defaults to that org's members) and `EXEMPLAR_API_URL` (exemplar-api's public `https://` base; GitHub posts to it plus `/webhook`, and the OAuth callback is `/oauth/callback`). Optional: `EXEMPLAR_WEBHOOK_URL` for a separate webhook host; `EXEMPLAR_GH_WEB_URL` and `EXEMPLAR_GH_API_URL` for GitHub Enterprise Server (default github.com's); `EXEMPLAR_AUTH0_DOMAIN` and `EXEMPLAR_AUTH0_AUDIENCE` (service callers of `/v1/evaluate`; both empty turns them off). Everything about the GitHub App is in the `exemplar-github-app` Secret, not in settings. Startup refuses values left from the examples (`internal/envcfg`). The overlay also sets:
+- inbound, for Ingress builds: the Ingress host (the same on both), class and TLS secret, and org SSO in front of everything but `/webhook` (an IdP-aware proxy or ingress auth annotations);
+- the search volume size (from the T-0.4 benchmark) and storage class.
+
+**Setup mode.** Until `exemplar-github-app` exists, exemplar-api serves only its probes and, on `127.0.0.1:8081` (`--setup-addr`, the container's `setup` port, behind no Service), the setup page (`internal/setup`). Port-forward one exemplar-api pod to 8081 and keep it for the whole flow: the state lives in that pod's memory. The page answers only requests for its own host (`localhost:8081`), against DNS rebinding. The page registers the App from a manifest, finds its installation and offers the Secret as YAML. The other workloads reference the Secret without `optional`, so they wait for it and start once it's applied; exemplar-api needs a restart. After setup, `/ui/setup` checks the installation's GitHub side.
 
 **Secrets**, created outside this repository from the KMS-held values. They're referenced by name only:
 
 | Secret | Keys | Used by |
 |---|---|---|
 | `exemplar-database` | `url` | every binary but search |
-| `exemplar-github-app` | `private-key`, `webhook-secret` | worker, search, learn; webhook (`webhook-secret` only) |
-| `exemplar-exports-app` | `private-key` (the separate exports app: contents and pull requests write on opted-in repos only, never installed on exemplar-config) | learn `export` |
-| `exemplar-gateway` | `token` | gateway, worker, learn |
+| `exemplar-github-app` | `app-id`, `installation-id`, `client-id`, `client-secret`, `private-key`, `webhook-secret`: written by the setup page | worker, search, learn, every git-sync; api (`app-id`, `client-id`, `client-secret`, `private-key`); webhook (`webhook-secret`) |
+| `exemplar-exports-app` | `app-id`, `private-key` (optional: the separate exports app: contents and pull requests write on opted-in repos only, never installed on exemplar-config) | learn `export` |
+| `exemplar-root-key` | `key` (at least 32 bytes; `openssl rand -hex 32`) | api, worker, gateway, search, learn. The link, session, gateway, search and pseudonym keys derive from it with HKDF-SHA256 (`internal/envcfg`). An explicit `EXEMPLAR_LINK_KEY_FILE`, `EXEMPLAR_SESSION_KEY_FILE`, `EXEMPLAR_GATEWAY_TOKEN`, `EXEMPLAR_SEARCH_TOKEN` or `EXEMPLAR_PSEUDONYM_KEY` still wins, for rotating one key alone. Rotating the root key signs everyone out and changes every pseudonym. |
 | `exemplar-providers` | `anthropic-api-key` | gateway |
-| `exemplar-search` | `token` (at least 32 bytes) | search, worker |
-| `exemplar-config-git` | `ssh`, `known_hosts` | every git-sync |
-| `exemplar-pseudonym` | `key` (at least 32 bytes) | ingest, path-events |
-| `exemplar-api` | `link-key`, `session-key` (each at least 32 bytes), `oauth-client-secret` | api; worker (`link-key` only) |
-| `exemplar-cloudflared` | `credentials.json` (from `cloudflared tunnel create`) | cloudflared, tunnel builds only |
+| `exemplar-cloudflared` | `credentials.json` and `tunnel-id` (from `cloudflared tunnel create`) | cloudflared, tunnel builds only |
 | `exemplar-postgres` | `password` | exemplar-postgres, `components/postgres` only |
 
 **Merge policy repos.** A repo with `approval_mode: merge_policy_check` requires the `exemplar/merge-policy` check, restricted to the review app as its source, in its ruleset in place of a code-owner review requirement. It keeps a break-glass bypass actor for incidents. Exemplar never sets that actor.
 
 **Sign-in.** exemplar-api's sign-in sources follow Coder's settings. The `exemplar-auth` ConfigMap holds them, and the API reads it through `envFrom`.
-- **GitHub OAuth** is on with `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID`. It requires `EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS` or `EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE=true`, and takes `EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL` for GHES. Repo access is each person's GitHub permission.
+- **GitHub OAuth** is on with the App's client id (`exemplar-github-app`). `EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS` defaults to the config repo's owner; `EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE=true` opens it to anyone, and takes `EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL` for GHES. Repo access is each person's GitHub permission.
 - **OpenID Connect** is on with `EXEMPLAR_OIDC_ISSUER_URL`, `EXEMPLAR_OIDC_CLIENT_ID` and the `exemplar-oidc` Secret (`client-secret`). Repo access comes only from `EXEMPLAR_OIDC_GROUP_REPOS`, which maps IdP groups to repo patterns. The full list of settings is in `internal/oidc`.
 - Register `https://<api>/oauth/callback` (GitHub) and `https://<api>/oidc/callback` (OIDC) as redirect URIs.
 - For `exemplar login --oidc`, register a public client with the device flow enabled and set it as `EXEMPLAR_OIDC_CLI_CLIENT_ID`.

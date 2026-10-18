@@ -20,6 +20,7 @@ import (
 	"github.com/koblas/exemplar/internal/engine"
 	"github.com/koblas/exemplar/internal/evalrun"
 	"github.com/koblas/exemplar/internal/evaluate"
+	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/learn/evalgen"
 	"github.com/koblas/exemplar/internal/schema"
 )
@@ -74,7 +75,7 @@ func newEvalCmd() *cobra.Command {
 				}
 				defer func() { _ = os.RemoveAll(workDir) }()
 			}
-			files := &evalgen.CheckoutFiles{Root: workDir + "/checkouts"}
+			files := &evalgen.CheckoutFiles{Root: workDir + "/checkouts", CloneURL: gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL"))}
 			if tok := os.Getenv(tokEnv); tok != "" {
 				files.Token = func(context.Context, string) (string, error) { return tok, nil }
 			}

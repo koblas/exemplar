@@ -184,8 +184,12 @@ func runExtract(args []string) error {
 	if err != nil {
 		return fmt.Errorf("create redaction scanner: %w", err)
 	}
+	gwToken, err := gatewayToken()
+	if err != nil {
+		return err
+	}
 	d, err := extract.New(extract.Config{
-		GatewayURL: os.Getenv("EXEMPLAR_GATEWAY_URL"), GatewayToken: os.Getenv("EXEMPLAR_GATEWAY_TOKEN"),
+		GatewayURL: os.Getenv("EXEMPLAR_GATEWAY_URL"), GatewayToken: gwToken,
 		Model: *model, RequestsPerBatch: *perBatch, Logger: log,
 	}, st, sc)
 	if err != nil {

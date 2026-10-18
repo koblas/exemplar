@@ -147,28 +147,30 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 
 | # | Item | Section | Status |
 |---|---|---|---|
-| 1 | Fix GHES env wiring and the optional exports-app mount | §2 | not started |
-| 2 | Reject placeholder settings at startup | §4.4 | not started |
-| 3 | Root key with HKDF derivation; explicit files still win | §4.2 | not started |
-| 4 | Setup mode and the GitHub App manifest flow in exemplar-api | §4.3 | not started |
-| 5 | Installation id discovered from the App | §4.3 | not started |
-| 6 | Derive URLs from one hostname; config git URL from the repo | §4.4 | not started |
-| 7 | Config repo sync through the GitHub App | §4.4 | not started (check git-sync first) |
-| 8 | `/ui/setup` checks and `/v1/setup/checks` | §4.5 | not started |
-| 9 | First tag with rendered install manifests | §4.6 | not started |
-| 10 | Quickstart overlay and sizing patches | §4.6 | not started |
-| 11 | Docs split into quickstart, production, upgrades, reference | §4.7 | not started |
-| 12 | Confirm goose locks concurrent migrations | §2 | not started |
+| 1 | Fix GHES env wiring and the optional exports-app mount | §2 | done (2026-10-17) |
+| 2 | Reject placeholder settings at startup | §4.4 | done (2026-10-17) |
+| 3 | Root key with HKDF derivation; explicit files still win | §4.2 | done (2026-10-17) |
+| 4 | Setup mode and the GitHub App manifest flow in exemplar-api | §4.3 | done (2026-10-17); not run against real GitHub |
+| 5 | Installation id discovered from the App | §4.3 | done (2026-10-17) |
+| 6 | Derive URLs from one hostname; config git URL from the repo | §4.4 | done (2026-10-17) |
+| 7 | Config repo sync through the GitHub App | §4.4 | done (2026-10-17) |
+| 8 | `/ui/setup` checks and `/ui/setup.json` | §4.5 | done (2026-10-17), GitHub checks only |
+| 9 | First tag with rendered install manifests | §4.6 | workflow done (2026-10-17); not run in CI; the tag waits for the release PR |
+| 10 | Quickstart overlay and sizing patches | §4.6 | done (2026-10-17) |
+| 11 | Docs split into quickstart, production, upgrades, reference | §4.7 | done (2026-10-17) |
+| 12 | Confirm goose locks concurrent migrations | §2 | done (2026-10-17): it didn't; Migrate now takes an advisory lock |
+| 13 | GHES clone URLs for worker, search and learn evals | §7 | done (2026-10-17) |
 
 Items 1, 2 and 12 are small and independent. Item 4 depends on 6 for the manifest's URLs. Item 11 goes last.
 
 ## 6. Open questions
 
 - Rename the image `koblas/exemplar-server` before the first tag? And does anything in the cluster run the CLI from the image?
-- One hostname or two? Webhook and API on one host by path is simpler to set up, but a separate webhook host is easier to put behind different edge rules.
-- Is a root key that gateway and search can use to derive the session and pseudonym keys acceptable to Security, or should the pseudonym key stay a separate Secret?
+- ~~One hostname or two?~~ Decided 2026-10-17: one host routed by path by default, `EXEMPLAR_WEBHOOK_URL` for a separate one (§7).
+- **For Security, together:** is a root key that gateway and search can use to derive the session and pseudonym keys acceptable, or should the pseudonym key stay a separate Secret? And the gateway pod's git-sync sidecar now holds the review App's private key where it held a read-only deploy key (§7, config sync as the App).
 - Store the App credentials in Postgres (no restart) in a later cut, or stay with show-and-apply?
 - Does the manifest flow accept a `localhost` redirect for the port-forwarded setup page, and can the manifest turn on the device flow? Both need a real org to confirm.
+- Setup state lives in one exemplar-api pod. With two replicas, a dropped and restarted `port-forward deployment/exemplar-api` can land on the other pod between "Create" and GitHub's redirect, leaving an App on GitHub whose code was never exchanged. Today's recovery is to delete that App on GitHub and start again; the docs say to port-forward one pod. Running setup with one replica, or keeping the state in Postgres, would remove it.
 
 ## 7. Log
 
@@ -177,3 +179,92 @@ Each piece of work adds a dated section here: what was built, the decisions take
 ### Install experience review (2026-10-17)
 
 Compared the install path with about 16 projects that install on Kubernetes (§3), from their current docs. Found the two manifest bugs in §2. Decided against a desktop `exemplar init` (§4.1). Nothing in the code or manifests changed.
+
+### GHES wiring, optional exports app, migration lock (2026-10-17)
+
+Work items 1 and 12.
+
+- **GHES.** Core `exemplar-settings` now has `EXEMPLAR_GH_WEB_URL` and `EXEMPLAR_GH_API_URL`, both empty (github.com). Every container that calls GitHub reads `EXEMPLAR_GH_API_URL` from it with `optional: true`: worker, search, api, and the learn CronJobs ingest, path-events, evals, compile, propose, demote, expiry, teach, digest and export. Api, teach and digest, which build links, also read `EXEMPLAR_GH_WEB_URL`. extract, cluster, rank, webhook and gateway don't call GitHub. `go test ./deploy` now fails a container that has `EXEMPLAR_GH_APP_ID`, `EXEMPLAR_EXPORTS_APP_ID` or `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` without the API base, or api/teach/digest without the web base.
+- **Exports app.** The export CronJob's `exemplar-exports-app` volume is `optional: true`. `exemplar-learn export` exits 0 with a log line when `EXEMPLAR_EXPORTS_APP_ID` is unset or 0 and no enabled repo configures `exports.targets`. It fails if a repo does, or if the app id is set and the key file is missing (`skipExport`, table-tested; `exports.Repos` is shared with the runner).
+- **Migrations.** Goose's provider had no session locker and River's migrator doesn't lock, so webhook, api, worker and learn pods starting together raced. `Store.Migrate` now takes a Postgres advisory lock on its own connection (outside the pool) around both. It polls `pg_try_advisory_lock` instead of blocking in `pg_advisory_lock`: a session blocked in that statement holds a snapshot, and migration 15's `CREATE INDEX CONCURRENTLY` waits for it, so the first version deadlocked in the concurrent test. Tests: `TestMigrateWaitsForLock` (Migrate does nothing while another session holds the lock, then succeeds; fails with the lock removed) and `TestMigrateConcurrent` (8 stores on an empty database; caught the deadlock). `storetest.EmptyURL` gives an unmigrated database.
+- **Found, then fixed (item 13).** Clone URLs ignore GHES: worker (`internal/worker/worker.go:113`) and learn evals (`internal/learn/evalgen/model.go:133`) hard-code `https://github.com/`, and search takes `--git-url`, which the manifest doesn't set. On GHES, reviews and the search mirror still clone from github.com.
+
+### GHES clone URLs (2026-10-17)
+
+Work item 13. `gh.CloneURL` builds `<web base><owner>/<repo>.git` from `EXEMPLAR_GH_WEB_URL`, defaulting to github.com. The worker (reviews, evaluations, playground), learn `evals` and `compile`, and the CLI's `eval`, `try` and prechecks use it. Search's `--git-url` defaults to the same variable, and an explicit flag still wins. The manifests give `EXEMPLAR_GH_WEB_URL` to worker, search, evals and compile. `go test ./deploy` requires it there and in api, teach and digest. The README no longer warns that GHES clones go to github.com. Replay fixtures keep their own `clone_url`, defaulting to github.com, because they are test data.
+
+
+### Placeholder settings fail startup (2026-10-17)
+
+Work item 2. `internal/envcfg` checks settings against the values the manifests ship for the operator to replace: `example-org`, `Iv1.example`, `example.invalid`, `exemplar.example.`, and `<…>` blanks such as the acme overlay's `"<App ID>"` (case-insensitive). `envcfg.Check` joins every failure, so one startup error lists everything still to fill in. Empty values pass; whether a setting is required stays the caller's check. Checked where each binary loads its settings: api (`API_URL`, OAuth client id and allowed orgs, GitHub bases, OIDC issuer), worker, search and learn (app id, installation id, config repo, GitHub bases; the worker also `API_URL`), and learn `export` (exports app id). The check runs in `cmd/`, not in library constructors, so tests' `.invalid` fixtures are unaffected. Tests: `TestPlaceholder`, `TestCheckJoins`, and `TestRunRejectsPlaceholders` (api exits before connecting to anything).
+
+### One root key (2026-10-17)
+
+Work item 3. `envcfg.Keys` resolves the link key, session key, gateway token, search token and pseudonym key. An explicit setting wins (`EXEMPLAR_LINK_KEY_FILE`, `EXEMPLAR_SESSION_KEY_FILE`, `EXEMPLAR_GATEWAY_TOKEN`, `EXEMPLAR_SEARCH_TOKEN`, `EXEMPLAR_PSEUDONYM_KEY`); otherwise the key is HKDF-SHA256 (stdlib `crypto/hkdf`, no salt, 32 bytes) of the file at `EXEMPLAR_ROOT_KEY_FILE` with a fixed label (`exemplar/link/v1` and so on). File keys are raw bytes; tokens and the pseudonym key are hex, since they travel as strings. The root key must be at least 32 bytes and is read once per process.
+
+- **Python.** The cluster job reads the gateway token too, so `exemplar_learning.rootkey` implements the same derivation with `hmac`. Go and Python test one shared vector (root `0123…cdef`, the gateway label), computed independently.
+- **Manifests.** The `exemplar-gateway`, `exemplar-search` and `exemplar-pseudonym` Secrets are gone, and `exemplar-api` keeps only `oauth-client-secret`. api, worker, gateway, search and the learn jobs that need a derived key (ingest, path-events, extract, cluster, evals, compile) mount `exemplar-root-key` at `/var/run/secrets/exemplar/root`. The webhook doesn't. Nothing has been released, so the manifests don't keep the old Secrets; the code still honours the explicit settings.
+- **Decision (open to Security, §6):** a pod with the root key can derive every internal key, so gateway and search can now derive the session and pseudonym keys. Before, the worker already held the link key and both tokens.
+- **Tests:** `TestDeriveVector`, `TestKeys` (derived, explicit wins, neither set, short root, missing explicit file), `TestTokens` (labels give distinct keys), `TestRootReadOnce`; `learning/tests/test_rootkey.py`. `go test ./deploy` passes with the new Secret in the settings header.
+- **Local note:** `uv run` needs `--frozen` here, because a global `exclude-newer` in the user's uv config makes the lockfile unresolvable.
+
+### Two settings, App values in one Secret, config sync as the App (2026-10-17)
+
+Work items 5, 6 and 7, done together so the manifests change once.
+
+- **Settings.** An installation sets `EXEMPLAR_CONFIG_REPO` and `EXEMPLAR_API_URL`. `EXEMPLAR_CONFIG_GIT_URL`, `EXEMPLAR_GH_APP_ID`, `EXEMPLAR_GH_INSTALLATION_ID`, `EXEMPLAR_EXPORTS_APP_ID` and `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` left `exemplar-settings`. `EXEMPLAR_GH_WEB_URL` and `EXEMPLAR_GH_API_URL` now default to github.com's bases instead of empty (every reader already treated empty as those), because git-sync takes an empty `GITSYNC_GITHUB_BASE_URL` literally.
+- **One host (answers the §6 question).** `envcfg.PublicURLs` derives the webhook URL (`<API URL>/webhook`) and the OAuth callback from `EXEMPLAR_API_URL`; `EXEMPLAR_WEBHOOK_URL` is an optional separate host. The tunnel's `config.yaml` now routes by path only (`^/webhook$` to the webhook, everything else to the API), so it holds nothing per installation and the acme `tunnel.yaml` patch is gone. The tunnel id moves to the `exemplar-cloudflared` Secret (`tunnel-id`) and reaches `cloudflared tunnel run` as an argument. Checked with the pinned cloudflared image: `ingress validate` accepts host-free path rules, `ingress rule` sends `/webhook` to the webhook on any host and everything else to the API, and `tunnel run` without an id fails, hence the argument. Edge rules become path-scoped: Access on the host with a bypass for `/webhook`, and the WAF CIDR rule on `/webhook`. The Ingress component uses one host for both Ingresses. `go test ./deploy` now accepts path rules without a host name and requires the webhook's route to be exactly `^/webhook$`.
+- **GitHub App values (`exemplar-github-app`).** `app-id`, `installation-id`, `client-id`, `client-secret`, `private-key`, `webhook-secret`, read with `secretKeyRef`. The `exemplar-api` Secret is gone: the OAuth client secret comes from the App's Secret. The exports app's Secret gains `app-id`. Api's references are optional, for setup mode (item 4).
+- **Installation id (item 5).** Optional in search and learn: unset, they look up the App's installation on the config repo (`gh.App.ConfigInstallation`, 30-second timeout). The worker already took ids from events. git-sync still needs it, so setup writes it into the Secret anyway; the lookup covers an operator who leaves it out.
+- **Config sync (item 7).** Checked with `git-sync:v4.7.1 --help`: it has `--github-app-application-id`, `--github-app-installation-id`, `--github-app-private-key-file` and `--github-base-url`, and reads them from `GITSYNC_*` env too. Every git-sync clones `$(EXEMPLAR_GH_WEB_URL)$(EXEMPLAR_CONFIG_REPO)` over HTTPS as the review app, so `exemplar-config-git` (deploy key, known_hosts) is gone and so is SSH egress (port 22) from gateway, worker, search and learn. **Decision:** the gateway pod's git-sync sidecar now holds the App's private key, where it held a read-only deploy key. Not checked against a real GitHub: that git-sync's App auth clones a private repo.
+- **Sign-in default.** With no `EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS` and no allow-everyone, GitHub sign-in is for members of the config repo's owner. The core `exemplar-auth` no longer ships `example-org`, and the acme `auth.yaml` patch is gone.
+- **Tests:** `TestPublicURLs`, `TestOwner`, `ConfigInstallation` in `TestHookDeliveriesAndRedeliver`; `go test ./deploy`; `kubectl kustomize` renders base, direct and acme.
+
+### Setup mode and the App manifest flow (2026-10-17)
+
+Work item 4. Without `EXEMPLAR_GH_APP_ID`, exemplar-api runs `runSetup` instead of the server: it needs no database or keys, so it starts on a fresh install. The public listener (`:8080`) answers the probes and, for every other path, a 503 naming the port-forward command. The setup page (`internal/setup`) listens on `127.0.0.1:8081` (`--setup-addr`), which no Service, tunnel or Ingress routes to; the operator runs `kubectl -n exemplar port-forward deployment/exemplar-api 8081` and opens `http://localhost:8081/setup` (`--setup-url`). Being able to port-forward is the authorization, so there is no setup token in the logs.
+
+- **Flow.** `/setup` posts the manifest to `<web>organizations/<org>/settings/apps/new?state=…`, where `<org>` is the config repo's owner. The manifest holds the README step 4 permissions and events, the webhook URL and OAuth callback from `envcfg.PublicURLs`, `public: false`, and `redirect_url` back to the setup page. The state is random, single-use, expires in an hour (as GitHub's code does) and must match an HttpOnly, SameSite=Lax cookie set by the same page. `/setup/created` exchanges the code (`gh.CompleteManifest`, go-github's `CompleteAppManifest`). After the operator installs the App, "I've installed it" (a form with a per-process token) finds the installation on the org (`gh.App.OrgInstallation`). The page then offers `exemplar-github-app.yaml` (app-id, installation-id, client-id, client-secret, webhook-secret, private-key) and the `kubectl apply` and `rollout restart deployment/exemplar-api` commands. A second button registers the optional exports app (contents and pull requests write, no events, webhook off) and offers `exemplar-exports-app.yaml`.
+- **Before setup.** Every other workload references `exemplar-github-app` without `optional`, so their pods wait with `secret "exemplar-github-app" not found` and start on their own once it exists. Only exemplar-api needs the restart, because its optional env was read at start.
+- **Handling of credentials.** They live only in the handler's memory until the operator downloads the Secret; pages are `no-store` with a CSP whose `form-action` allows only GitHub; logs carry the App id and slug, never the key or secrets.
+- **Assumed, checked only against a fake GitHub (httptest):** that GitHub accepts a `http://localhost:8081` `redirect_url`, and that the manifest can't turn on the device flow, so the page links to the App's settings for **Enable Device Flow**. Both need a real org.
+- **Tests:** `TestManifestFlow` (manifest contents and target, CSP, state bound to the cookie and spent once, replayed redirect refused, no Secret before install, forged form refused, installation lookup, Secret YAML parsed and checked), `TestExportsManifest`, `TestCompleteManifest`, `TestOrgInstallation`. Smoke run of the binary: probes 200, public page names the port-forward, setup page renders the form.
+
+### Setup checks page (2026-10-17)
+
+Work item 8. `/ui/setup` (any signed-in viewer: it shows the org and webhook URL, nothing secret) and `/ui/setup.json` (same sign-in, for scripts) run `setup.Checker`, each check with what was found and what to do:
+
+1. **GitHub App installed on the org**: `OrgInstallation` with the App's JWT; separates "not installed" from "GitHub refused the credentials" (app id and key from different Apps, or a revoked key).
+2. **App can read exemplar-config**: `ConfigInstallation`; every workload's config sync needs it.
+3. **GitHub delivers webhooks**: GitHub's own delivery log for the last 24 hours (`HookDeliveries`). None is a warning (open a PR); a non-2xx last delivery fails, naming the webhook URL, the tunnel or Ingress route, SSO or WAF on `/webhook`, and a 401 as a webhook-secret mismatch.
+4. **exemplar-webhook stores events**: `max(received_at)` from `gh_events`; fails when GitHub reports 2xx deliveries but nothing was stored.
+
+The page runs the checks on load with a 15-second bound; readiness and liveness don't change.
+
+- **Changed from the plan:** the JSON is `/ui/setup.json` behind the UI's sign-in rather than `/v1/setup/checks`, so it needs no new auth path. Not built: the provider check through the gateway and the search-index check. Both need new NetworkPolicy paths from exemplar-api to the gateway and search; `kubectl get pods` shows their readiness meanwhile. Migrations aren't checked because exemplar-api runs them before it serves.
+- **Tests:** `TestChecks` (healthy, not installed, bad key, config repo missing, no deliveries, failing deliveries, delivered but not stored), `TestSetupPage` (page, JSON, sign-in required).
+
+### Release install manifests (2026-10-17)
+
+Work item 9. `deploy/render-release.sh <tag> <services digest> <learning digest> <dir>` renders `install-tunnel.yaml` (base) and `install-direct.yaml` (direct) with both images pinned, through a throwaway overlay under `deploy/k8s/.release-*`; it refuses malformed digests and fails if an all-zero digest survives. release-please.yml's new `manifests` job runs after `images` and `cli`, reads the release's digests with `docker buildx imagetools inspect koblas/exemplar:<version>` (and `learning-<version>`), and attaches both files to the release. The install files keep the core placeholders, so the operator still sets the two settings (startup refuses the placeholders), or uses the file as a kustomize resource and patches them.
+
+- **Not run in CI yet:** the job only runs when a release PR merges. actionlint passes. CI and `make manifests` now render the release files with stand-in digests and schema-check them. No tag was created: the first one comes from merging release-please's PR.
+- A v* tag pushed by hand (the CONTRIBUTING.md fallback) doesn't get the files; run the script and `gh release upload` by hand.
+
+### Quickstart overlay (2026-10-17)
+
+Work item 10. `examples/k8s/quickstart`: the default build plus `components/postgres`, one replica of every Deployment and of search (whose required anti-affinity needs two nodes for two), search on the default storage class at 20Gi with 500m/2Gi requests, the worker at 500m/1Gi, and Postgres at 10Gi. Two settings in `settings.yaml`. Not a separate sizing component: components must stay resource-only for `go test ./deploy`, so the patches live in the overlay. The overlay test now covers both examples (`TestExampleOverlays`), and CI and `make manifests` render and schema-check both. Not tried on a real kind cluster here (no cluster available); GitHub still needs the public URL the tunnel provides.
+
+### Install docs (2026-10-17)
+
+Work item 11. The README's 11-step INSTALLATION is now a **Quickstart** (seven steps on the quickstart overlay), a **Production install** (prerequisites, `exemplar-config`, Postgres, Secrets, the acme overlay, the path-scoped edge rules, sign-in, going live, optional pieces), **Releases** (the install files, or the base with digests pinned), **Upgrading** (now including key rotation) and **The CLI**. `deploy/README.md` stays the reference: two settings, setup mode, the `exemplar-github-app` keys, the path-routed tunnel and its `tunnel-id`, git-sync as the App, and the Secrets table without `exemplar-api`, `exemplar-config-git`, `exemplar-gateway`, `exemplar-search` and `exemplar-pseudonym`. The spec's stale Helm and `exemplar-orchestrator` references (§2.3, §15, §16) are fixed, and CLAUDE.md mentions setup mode and `internal/envcfg`.
+
+**Where install stands.** On the desktop: `kubectl`, `openssl`, and `cloudflared` for tunnel builds. Before applying: 3 Secrets (database, root key, provider key) plus the tunnel's, 2 settings. Then one setup page creates the App and its Secret. Before this plan: 9 required Secrets with 13 keys, about 15 values, about 30 App form fields, and a deploy key.
+
+**Still open:** the manifest flow and git-sync's App auth have only been run against fakes and `--help`; a real GitHub org and a real cluster are the next check. The exports app can only be created on the setup page during setup. The provider and search checks on `/ui/setup` need new network paths.
+
+### Setup hardening and checks of the docs (2026-10-17)
+
+- **Host check.** The setup listener answers only requests naming the setup URL's host (`localhost:8081` by default) or `127.0.0.1` on its port, with 403 otherwise. Without it, a DNS-rebinding page in the operator's browser could read the Secret YAML through the open port-forward. `TestRefusesOtherHosts`.
+- **Port-forward one pod.** The setup-pending text and the README now port-forward a single pod, so the whole flow stays on the pod holding the state (§6).
+- **Remote resources, checked:** `kubectl kustomize` accepts a GitHub release asset URL as a resource (tried with cert-manager's, which redirects to objects.githubusercontent.com) with a strategic-merge patch on it, and `github.com/koblas/exemplar//deploy/k8s/base?ref=main` with the remote postgres component (57 resources). Exemplar's own install files don't exist until the first release.

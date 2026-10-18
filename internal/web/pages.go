@@ -54,6 +54,7 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 <a href="/ui/cost" {{if eq .Nav "cost"}}class="on"{{end}}>Cost</a>
 <a href="/ui/playground" {{if eq .Nav "playground"}}class="on"{{end}}>Playground</a>
 <a href="/ui/actions" {{if eq .Nav "actions"}}class="on"{{end}}>Your actions</a>
+<a href="/ui/setup" {{if eq .Nav "setup"}}class="on"{{end}}>Setup</a>
 <form method="post" action="/ui/signout"><span class="muted">{{.Login}}</span> <button type="submit">Sign out</button></form>
 </header>
 {{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
@@ -149,6 +150,14 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 {{else}}<tr><td colspan="6" class="muted">No decisions you can see.</td></tr>{{end}}
 </tbody></table>
 {{end}}{{template "foot"}}{{end}}
+
+{{define "setup"}}{{template "head" .}}
+<p class="muted">What the installation needs from GitHub, checked now. As JSON: <a href="/ui/setup.json">/ui/setup.json</a>.</p>
+<table><thead><tr><th>Check</th><th>Status</th><th>Found</th><th>To fix</th></tr></thead><tbody>
+{{range .Body}}<tr><td>{{.Name}}</td><td>{{.Status}}</td><td>{{.Detail}}</td><td>{{.Fix}}</td></tr>
+{{else}}<tr><td colspan="4" class="muted">No checks configured.</td></tr>{{end}}
+</tbody></table>
+{{template "foot"}}{{end}}
 
 {{define "actions"}}{{template "head" .}}
 <p class="muted">Your last 50 owner actions. Each runs in a worker job, which checks you may take it; reload to see the outcome.</p>

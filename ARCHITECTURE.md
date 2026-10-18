@@ -55,7 +55,7 @@ Every service is a Go binary from one module (`cmd/*`), shipped in one image. Th
 | [`exemplar`](cmd/exemplar) | CLI | Config validation, evals, replay, mutations, calibration, `try`, and `login`/`review` against `/v1/evaluate`. | `exemplar-api` |
 | `exemplar-cloudflared` | Deployment | The default way in: a Cloudflare Tunnel connector, so the cluster needs no public ingress. Replaced or joined by an Ingress in [`deploy/k8s/direct`](deploy/k8s/direct). | Cloudflare edge, webhook, api |
 
-The worker, gateway, search and learn pods read `exemplar-config` through a git-sync sidecar. Manifests are in [`deploy/k8s`](deploy/k8s) and documented in [`deploy/README.md`](deploy/README.md).
+The worker, gateway, search and learn pods read `exemplar-config` through a git-sync sidecar that clones it as the GitHub App. Until the App exists, `exemplar-api` runs in setup mode: a page reached with `kubectl port-forward` registers the App from a manifest ([`internal/setup`](internal/setup/setup.go)). Manifests are in [`deploy/k8s`](deploy/k8s) and documented in [`deploy/README.md`](deploy/README.md).
 
 > **Spec vs. as built.** Spec §2.2 describes separate `exemplar-orchestrator`, `exemplar-poster` and `exemplar-feedback` services. Today those roles run as River jobs inside `exemplar-worker` (see the package doc in [`internal/worker/worker.go`](internal/worker/worker.go)). Write access is still separated: the worker mints a distinct GitHub token flavor for reading, for gate lookups, and for posting.
 

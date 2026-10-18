@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/learn/ingest"
 	"github.com/koblas/exemplar/internal/redact"
@@ -55,7 +56,10 @@ func runIngest(args []string) error {
 		}
 		slices.Sort(targets)
 	}
-	key := os.Getenv("EXEMPLAR_PSEUDONYM_KEY")
+	key, err := envcfg.NewKeys(os.Getenv, os.ReadFile).Token("EXEMPLAR_PSEUDONYM_KEY", envcfg.LabelPseudonym)
+	if err != nil {
+		return fmt.Errorf("pseudonym key: %w", err)
+	}
 	pseudo, err := ingest.NewPseudonymizer([]byte(key))
 	if err != nil {
 		return fmt.Errorf("EXEMPLAR_PSEUDONYM_KEY: %w", err)
@@ -64,7 +68,7 @@ func runIngest(args []string) error {
 	if dbURL == "" {
 		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
 	}
-	app, installation, _, err := appFromEnv()
+	app, installation, _, err := appFromEnv(ctx)
 	if err != nil {
 		return err
 	}

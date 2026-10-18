@@ -9,14 +9,19 @@ metadata:
   labels: {app.kubernetes.io/name: exemplar-cloudflared, app.kubernetes.io/part-of: exemplar}
 automountServiceAccountToken: false
 ---
-# The tunnel's routing. The overlay replaces config.yaml with its tunnel id
-# and host names. Only POST /webhook reaches the webhook (as the Ingress's
-# Exact path did); anything unmatched gets a 404 at the edge connector.
+# The tunnel's routing, the same for every installation: the rules match
+# by path, not host name, so the overlay doesn't patch this. POST /webhook
+# reaches the webhook (as the Ingress's Exact path does) and everything
+# else reaches exemplar-api. Only the host names the installation routes
+# to the tunnel (cloudflared tunnel route dns) reach it at all.
 # cloudflared reads it at start: restart the Deployment after a change.
-# At Cloudflare, an installation also:
-#   - limits the webhook host to GitHub's hook CIDRs (api.github.com/meta)
-#     with a WAF custom rule, and puts no Access policy on it;
-#   - puts an Access application (org SSO) on the API host.
+# At Cloudflare, an installation also, with one host:
+#   - puts an Access application (org SSO) on the host, with a bypass
+#     policy for the /webhook path;
+#   - limits /webhook to GitHub's hook CIDRs (api.github.com/meta) with a
+#     WAF custom rule.
+# With a separate webhook host (EXEMPLAR_WEBHOOK_URL), the same rules go on
+# each host instead.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,15 +30,11 @@ metadata:
   labels: {app.kubernetes.io/name: exemplar-cloudflared, app.kubernetes.io/part-of: exemplar}
 data:
   config.yaml: |
-    tunnel: 00000000-0000-0000-0000-000000000000
     credentials-file: /etc/cloudflared/credentials/credentials.json
     ingress:
-      - hostname: exemplar-webhook.example.invalid
-        path: ^/webhook$
+      - path: ^/webhook$
         service: http://exemplar-webhook.exemplar.svc:80
-      - hostname: exemplar-api.example.invalid
-        service: http://exemplar-api.exemplar.svc:80
-      - service: http_status:404
+      - service: http://exemplar-api.exemplar.svc:80
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -91,6 +92,12 @@ spec:
             - --metrics=0.0.0.0:2000
             - --grace-period=20s
             - run
+            - $(TUNNEL_ID)
+          env:
+            # The tunnel's id, kept in its Secret beside credentials.json
+            # (cloudflared tunnel create prints it).
+            - name: TUNNEL_ID
+              valueFrom: {secretKeyRef: {name: exemplar-cloudflared, key: tunnel-id}}
           ports:
             - {name: metrics, containerPort: 2000}
           # /healthcheck answers while the process runs; /ready only once a

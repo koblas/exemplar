@@ -137,8 +137,12 @@ manifests: ## Render each Kustomize build and the example overlay to out/ and sc
 	  kubectl kustomize "$$dir" > $(OUT)/rendered-$$v.yaml; \
 	  go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/rendered-$$v.yaml; \
 	done; \
-	kubectl kustomize examples/k8s/acme > $(OUT)/rendered-example.yaml; \
-	go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/rendered-example.yaml
+	for ex in acme quickstart; do \
+	  kubectl kustomize examples/k8s/$$ex > $(OUT)/rendered-example-$$ex.yaml; \
+	  go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/rendered-example-$$ex.yaml; \
+	done; \
+	deploy/render-release.sh v0.0.0 "sha256:$$(printf '1%.0s' $$(seq 64))" "sha256:$$(printf '2%.0s' $$(seq 64))" $(OUT)/release; \
+	go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/release/install-*.yaml
 
 .PHONY: deploy-test
 deploy-test: ## Check every build's manifests against the code (go test ./deploy)

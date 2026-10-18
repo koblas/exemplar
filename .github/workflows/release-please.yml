@@ -5,7 +5,8 @@ name: release-please
 # .release-please-manifest.json and prepends the new CHANGELOG.md entry.
 # Merging that PR tags v<version> and creates its GitHub release, whose notes
 # are the changelog entry; this workflow then builds and attaches the CLI
-# archives (release.yml) and pushes the version-tagged images (images.yml).
+# archives (release.yml), pushes the version-tagged images (images.yml),
+# and attaches install manifests pinned to those images' digests.
 #
 # release-please signs in with GITHUB_TOKEN. Tags and PRs made with it start
 # no other workflow, so the builds are called here rather than from the tag
@@ -59,3 +60,27 @@ jobs:
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
     secrets: inherit
+
+  # The install manifests, pinned to the digests images.yml just pushed
+  # (README.md, "Install"). After cli, which makes sure the release exists.
+  manifests:
+    needs: [release-please, images, cli]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - name: Render with the release's digests
+        run: |
+          version=${TAG#v}
+          digest() { docker buildx imagetools inspect "koblas/exemplar:$1" --format '{{json .Manifest.Digest}}' | tr -d '"'; }
+          deploy/render-release.sh "$TAG" "$(digest "$version")" "$(digest "learning-$version")" dist
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/install-tunnel.yaml dist/install-direct.yaml

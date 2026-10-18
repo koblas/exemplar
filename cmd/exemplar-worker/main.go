@@ -22,6 +22,7 @@
 //	EXEMPLAR_GH_PRIVATE_KEY_FILE            its private key
 //	EXEMPLAR_CONFIG_REPO                    exemplar-config, which worker tokens may not read
 //	EXEMPLAR_GH_API_URL                     GHES API base (optional)
+//	EXEMPLAR_GH_WEB_URL                     GHES web base for clones (optional)
 //	EXEMPLAR_GATEWAY_URL, EXEMPLAR_GATEWAY_TOKEN
 //	EXEMPLAR_SEARCH_URL, EXEMPLAR_SEARCH_TOKEN  exemplar-search (optional: no
 //	                                        find_references or path_history without it)
@@ -31,7 +32,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -52,6 +52,7 @@ import (
 	"github.com/koblas/exemplar/internal/compiled"
 	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/engine"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/feedbacklink"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/owneract"
@@ -114,9 +115,14 @@ func runServe(args []string) error {
 		return errBadConcurrency
 	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
-	gwURL, gwToken := os.Getenv("EXEMPLAR_GATEWAY_URL"), os.Getenv("EXEMPLAR_GATEWAY_TOKEN")
-	if dbURL == "" || gwURL == "" || gwToken == "" {
-		return fmt.Errorf("EXEMPLAR_DATABASE_URL, EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN are %w", errRequired)
+	gwURL := os.Getenv("EXEMPLAR_GATEWAY_URL")
+	if dbURL == "" || gwURL == "" {
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL and EXEMPLAR_GATEWAY_URL are %w", errRequired)
+	}
+	keys := envcfg.NewKeys(os.Getenv, os.ReadFile)
+	gwToken, err := keys.Token("EXEMPLAR_GATEWAY_TOKEN", envcfg.LabelGatewayToken)
+	if err != nil {
+		return fmt.Errorf("gateway token: %w", err)
 	}
 	app, err := appFromEnv()
 	if err != nil {
@@ -159,7 +165,11 @@ func runServe(args []string) error {
 	}
 	eng := engine.New(engine.NewHarness(engine.HarnessConfig{GatewayURL: gwURL, GatewayToken: gwToken}), sc,
 		compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")})
-	if url, tok := os.Getenv("EXEMPLAR_SEARCH_URL"), os.Getenv("EXEMPLAR_SEARCH_TOKEN"); url != "" {
+	if url := os.Getenv("EXEMPLAR_SEARCH_URL"); url != "" {
+		tok, err := keys.Token("EXEMPLAR_SEARCH_TOKEN", envcfg.LabelSearchToken)
+		if err != nil {
+			return fmt.Errorf("search token: %w", err)
+		}
 		search, err := api.NewClient(url, tok, nil)
 		if err != nil {
 			return fmt.Errorf("create search client: %w", err)
@@ -178,16 +188,17 @@ func runServe(args []string) error {
 		Snapshot: func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil },
 		Engine:   eng, Scanner: sc, WorkDir: *workDir, Log: log,
 		// Mode eval (config CI) evaluates exemplar-config's changed rules.
+		CloneURL:   gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL")),
 		ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO"), Matcher: compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")},
 	}
 	// Feedback links need exemplar-api's URL and the key it
 	// verifies with; without them comments name the slash commands only.
-	if apiURL, keyFile := os.Getenv("EXEMPLAR_API_URL"), os.Getenv("EXEMPLAR_LINK_KEY_FILE"); apiURL != "" || keyFile != "" {
-		key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
+	if apiURL := os.Getenv("EXEMPLAR_API_URL"); apiURL != "" {
+		key, err := keys.File("EXEMPLAR_LINK_KEY_FILE", envcfg.LabelLink)
 		if err != nil {
-			return fmt.Errorf("EXEMPLAR_API_URL and EXEMPLAR_LINK_KEY_FILE go together: %w", err)
+			return fmt.Errorf("feedback links: %w", err)
 		}
-		if wcfg.Links, err = feedbacklink.New(bytes.TrimSpace(key), apiURL); err != nil {
+		if wcfg.Links, err = feedbacklink.New(key, apiURL); err != nil {
 			return fmt.Errorf("create feedback link signer: %w", err)
 		}
 	}
@@ -454,6 +465,9 @@ func runEnqueue(args []string) error {
 
 // appFromEnv builds the review app from EXEMPLAR_GH_* settings.
 func appFromEnv() (*gh.App, error) {
+	if err := envcfg.Check(os.Getenv, "EXEMPLAR_GH_APP_ID", "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL", "EXEMPLAR_GH_WEB_URL", "EXEMPLAR_API_URL"); err != nil {
+		return nil, fmt.Errorf("settings: %w", err)
+	}
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
 	if appID == 0 || keyFile == "" || cfgRepo == "" {

@@ -1,6 +1,7 @@
-# The installation's values (README.md, step 7). For GitHub Enterprise
-# Server, also set EXEMPLAR_GH_WEB_URL (https://<host>/) and
-# EXEMPLAR_GH_API_URL (https://<host>/api/v3/).
+# The installation's two values (README.md). Everything about the GitHub
+# App comes from exemplar-api's setup page as the exemplar-github-app
+# Secret. Sign-in defaults to members of the config repo's owner (acme);
+# to change that, patch the exemplar-auth ConfigMap (deploy/k8s/core).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,8 +9,7 @@ metadata:
   namespace: exemplar
 data:
   EXEMPLAR_CONFIG_REPO: "acme/exemplar-config"
-  EXEMPLAR_CONFIG_GIT_URL: "git@github.com:acme/exemplar-config.git"
-  EXEMPLAR_GH_APP_ID: "<App ID>"
-  EXEMPLAR_GH_INSTALLATION_ID: "<installation id>"
   EXEMPLAR_API_URL: "https://exemplar.acme.com"
-  EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID: "<Client ID>"
+  # GitHub Enterprise Server:
+  # EXEMPLAR_GH_WEB_URL: "https://github.acme.com/"
+  # EXEMPLAR_GH_API_URL: "https://github.acme.com/api/v3/"

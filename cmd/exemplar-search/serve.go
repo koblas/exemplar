@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/search/api"
 	"github.com/koblas/exemplar/internal/search/index"
@@ -31,7 +32,7 @@ func runServe(args []string) error {
 	indexRoot := fs.String("index-root", "", "zoekt index directory on the same SSD (required)")
 	requireCTags := fs.Bool("require-ctags", false, "refuse to start without universal-ctags and fail builds whose symbol extraction fails")
 	configDir := fs.String("config", "", "exemplar-config checkout: scope and eligibility (required)")
-	gitURL := fs.String("git-url", "https://github.com/", "base clone URL (GHES: https://<host>/)")
+	gitURL := fs.String("git-url", gh.WebBase(os.Getenv("EXEMPLAR_GH_WEB_URL")), "base clone URL (default EXEMPLAR_GH_WEB_URL, else https://github.com/)")
 	debounce := fs.Duration("debounce", mirror.DefaultDebounce, "minimum time between fetches of one repo")
 	backstop := fs.Duration("backstop", mirror.DefaultBackstop, "fetch every repo in scope this often")
 	reload := fs.Duration("config-reload", time.Minute, "how often to re-read --config")
@@ -42,7 +43,10 @@ func runServe(args []string) error {
 	if *root == "" || *indexRoot == "" || *configDir == "" {
 		return fmt.Errorf("--root, --index-root and --config are %w", errRequired)
 	}
-	token := os.Getenv("EXEMPLAR_SEARCH_TOKEN")
+	token, err := envcfg.NewKeys(os.Getenv, os.ReadFile).Token("EXEMPLAR_SEARCH_TOKEN", envcfg.LabelSearchToken)
+	if err != nil {
+		return fmt.Errorf("search token: %w", err)
+	}
 	if len(token) < 32 {
 		return errSearchTokenTooShort
 	}
@@ -179,14 +183,17 @@ func reloadConfig(ctx context.Context, dir string, every time.Duration, snap *at
 // no app configured, fetches are anonymous and repos count as private:
 // only for local use against public or local remotes.
 func credentialsFromEnv() (mirror.Credentials, error) {
+	if err := envcfg.Check(os.Getenv, "EXEMPLAR_GH_APP_ID", "EXEMPLAR_GH_INSTALLATION_ID", "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL"); err != nil {
+		return nil, fmt.Errorf("settings: %w", err)
+	}
 	appID, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_APP_ID"), 10, 64)
 	installation, _ := strconv.ParseInt(os.Getenv("EXEMPLAR_GH_INSTALLATION_ID"), 10, 64)
 	keyFile, cfgRepo := os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE"), os.Getenv("EXEMPLAR_CONFIG_REPO")
-	if appID == 0 && installation == 0 && keyFile == "" {
+	if appID == 0 && keyFile == "" {
 		return nil, nil //nolint:nilnil // nil Credentials means anonymous fetches, as documented above
 	}
-	if appID == 0 || installation == 0 || keyFile == "" || cfgRepo == "" {
-		return nil, fmt.Errorf("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO %w", errAppPartial)
+	if appID == 0 || keyFile == "" || cfgRepo == "" {
+		return nil, fmt.Errorf("EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO %w", errAppPartial)
 	}
 	key, err := os.ReadFile(keyFile) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
 	if err != nil {
@@ -195,6 +202,13 @@ func credentialsFromEnv() (mirror.Credentials, error) {
 	app, err := gh.NewApp(gh.AppConfig{AppID: appID, PrivateKey: key, ConfigRepo: cfgRepo, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL")}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create github app: %w", err)
+	}
+	if installation == 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if installation, err = app.ConfigInstallation(ctx); err != nil {
+			return nil, fmt.Errorf("EXEMPLAR_GH_INSTALLATION_ID unset and no installation found on %s: %w", cfgRepo, err)
+		}
 	}
 	return func(ctx context.Context, repo string) (string, string, error) {
 		return app.ContextFetch(ctx, installation, repo)
