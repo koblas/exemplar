@@ -23,8 +23,11 @@ in-cluster Postgres component (`components/postgres`), and the builds
 `deploy/k8s/base` (default: core + tunnel) and `deploy/k8s/direct` (core + Ingress); images
 are in `deploy/docker`, published to Docker Hub `koblas/exemplar` by `images.yml`. `examples/k8s/acme`
 is the example installation overlay (CI renders it). `go test ./deploy` checks every build against the code (see
-`deploy/README.md`); keep components resource-only, since it reads them without kustomize. Grafana boards and alerts
+`docs/reference/deployment.md`); keep components resource-only, since it reads them without kustomize. Grafana boards and alerts
 are in `dashboards/`; `go test ./dashboards` runs their SQL.
+User documentation is an MkDocs Material site (`mkdocs.yml`, pages in `docs/` except
+`docs/spec`, `docs/plans`, `docs/security`), published to GitHub Pages by `docs.yml`;
+`make docs` builds it strictly. Update the pages, not the README, when behavior changes.
 Postgres tests start a pgvector container with testcontainers-go (needs a
 container runtime such as Docker or Podman); they skip without one unless
 `EXEMPLAR_REQUIRE_DB=1`. Regenerate `internal/store/queries` with sqlc v1.31.1.

@@ -12,7 +12,7 @@ name: images
 # The Go services image takes the plain tags; the learning-plane image
 # shares the repository under a "learning-" prefix. Each job writes the
 # pushed digest and the kustomize images entry that pins it to the step
-# summary (see deploy/README.md, "What an installation supplies").
+# summary (see docs/reference/deployment.md, "What an installation supplies").
 #
 # Signs in as the koblas Docker Hub user with the DOCKERHUB_PAT repository
 # secret (a personal access token with read/write on koblas/exemplar). Pull

@@ -268,3 +268,10 @@ Work item 11. The README's 11-step INSTALLATION is now a **Quickstart** (seven s
 - **Host check.** The setup listener answers only requests naming the setup URL's host (`localhost:8081` by default) or `127.0.0.1` on its port, with 403 otherwise. Without it, a DNS-rebinding page in the operator's browser could read the Secret YAML through the open port-forward. `TestRefusesOtherHosts`.
 - **Port-forward one pod.** The setup-pending text and the README now port-forward a single pod, so the whole flow stays on the pod holding the state (§6).
 - **Remote resources, checked:** `kubectl kustomize` accepts a GitHub release asset URL as a resource (tried with cert-manager's, which redirects to objects.githubusercontent.com) with a strategic-merge patch on it, and `github.com/koblas/exemplar//deploy/k8s/base?ref=main` with the remote postgres component (57 resources). Exemplar's own install files don't exist until the first release.
+
+### Documentation site (2026-10-18)
+
+The README had grown to 340 lines. User documentation moved to an MkDocs Material site published to GitHub Pages (`mkdocs.yml`, `.github/workflows/docs.yml`): overview, install (quickstart, production, sign-in, releases and images, upgrading), operate (going live, optional pieces, dashboards), reference (deployment, CLI), architecture and developing. Pages live in `docs/`; `docs/spec`, `docs/plans` and `docs/security` stay repository-only (`exclude_docs`). The README is now a short intro with links; `ARCHITECTURE.md`, `deploy/README.md` and `dashboards/README.md` point at their pages. Links into the repository became GitHub URLs, and manifest and code comments name the new paths.
+
+- **Tooling:** mkdocs 1.6.1 and mkdocs-material 9.6.14 through `uvx`, pinned in the Makefile; no project dependency. `make docs` (strict: broken links and anchors fail) and `make docs-serve`. ci.yml's new `docs` job runs `make docs` on every PR, and `make ci` includes it.
+- **Not done here:** the repository's Pages source must be set to "GitHub Actions" (Settings > Pages) before the first deploy; `docs.yml` hasn't run yet.

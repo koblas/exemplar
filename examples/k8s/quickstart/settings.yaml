@@ -1,4 +1,4 @@
-# The trial's two values (README.md, "Quickstart").
+# The trial's two values (docs/install/quickstart.md).
 apiVersion: v1
 kind: ConfigMap
 metadata:

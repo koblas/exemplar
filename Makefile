@@ -14,6 +14,9 @@ SQLC_VERSION        ?= v1.31.1
 GOVULNCHECK_VERSION ?= v1.8.0
 KUBECONFORM_VERSION ?= v0.7.0
 KUBERNETES_VERSION  ?= 1.33.0
+MKDOCS_VERSION      ?= 1.6.1
+MKDOCS_MATERIAL_VERSION ?= 9.6.14
+MKDOCS := uvx --from mkdocs==$(MKDOCS_VERSION) --with mkdocs-material==$(MKDOCS_MATERIAL_VERSION) mkdocs
 
 # Build outputs, replay results and rendered manifests (gitignored).
 OUT     := out
@@ -166,10 +169,18 @@ hooks: ## Use .githooks (commit-msg lint) in this clone
 .PHONY: check
 check: build vet lint fmt-check test ## Quick local gate: build, vet, lint, format, tests
 
+.PHONY: docs
+docs: ## Build the documentation site to out/site, failing on broken links (as ci.yml's docs job)
+	$(MKDOCS) build --strict -d $(OUT)/site
+
+.PHONY: docs-serve
+docs-serve: ## Preview the documentation site at http://127.0.0.1:8000
+	$(MKDOCS) serve
+
 .PHONY: ci
 ci: export EXEMPLAR_REQUIRE_DB = 1
 ci: export EXEMPLAR_REQUIRE_ENGINES = 1
-ci: build vet test test-race lint sqlc-check vuln fuzz adversarial py-check commitlint ## What ci.yml runs, minus images/manifests (DB and engine tests must not skip)
+ci: build vet test test-race lint sqlc-check vuln fuzz adversarial py-check commitlint docs ## What ci.yml runs, minus images/manifests (DB and engine tests must not skip)
 
 .PHONY: clean
 clean: ## Remove out/

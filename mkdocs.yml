@@ -1,0 +1,70 @@
+# The user documentation, published to GitHub Pages by .github/workflows/docs.yml.
+# Build locally: make docs (or make docs-serve). docs/spec, docs/plans and
+# docs/security are internal design documents, kept in the repository only.
+site_name: Exemplar
+site_description: A self-correcting AI code reviewer for GitHub, installed on Kubernetes.
+site_url: https://koblas.github.io/exemplar/
+repo_url: https://github.com/koblas/exemplar
+repo_name: koblas/exemplar
+edit_uri: edit/main/docs/
+docs_dir: docs
+exclude_docs: |
+  spec/
+  plans/
+  security/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/brightness-4, name: Light mode}
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+nav:
+  - Overview: index.md
+  - Install:
+      - install/index.md
+      - Quickstart: install/quickstart.md
+      - Production install: install/production.md
+      - Sign-in: install/sign-in.md
+      - Releases and images: install/releases.md
+      - Upgrading: install/upgrading.md
+  - Operate:
+      - Going live: operations/going-live.md
+      - Optional pieces: operations/optional.md
+      - Dashboards: operations/dashboards.md
+  - Reference:
+      - Deployment: reference/deployment.md
+      - The CLI: cli.md
+  - Architecture: architecture.md
+  - Developing: development.md

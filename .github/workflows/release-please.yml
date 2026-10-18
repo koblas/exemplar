@@ -62,7 +62,7 @@ jobs:
     secrets: inherit
 
   # The install manifests, pinned to the digests images.yml just pushed
-  # (README.md, "Install"). After cli, which makes sure the release exists.
+  # (docs/install/releases.md). After cli, which makes sure the release exists.
   manifests:
     needs: [release-please, images, cli]
     if: needs.release-please.outputs.release_created == 'true'

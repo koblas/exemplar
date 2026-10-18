@@ -1,8 +1,8 @@
 # Non-secret settings shared by the services. Secrets are referenced by
-# name only and supplied outside this repository (see deploy/README.md):
+# name only and supplied outside this repository (see docs/reference/deployment.md):
 #   exemplar-database        url
 #   exemplar-github-app      app-id, client-id, client-secret, private-key, webhook-secret,
-#                            installation-id: from exemplar-api's setup page (README.md)
+#                            installation-id: from exemplar-api's setup page (docs/install/quickstart.md)
 #   exemplar-exports-app     app-id, private-key (optional: the separate exports app)
 #   exemplar-root-key        key (at least 32 bytes: openssl rand -hex 32); the link, session,
 #                            gateway, search and pseudonym keys derive from it (internal/envcfg)

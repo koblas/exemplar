@@ -1,4 +1,4 @@
-# The installation's two values (README.md). Everything about the GitHub
+# The installation's two values (docs/install/production.md). Everything about the GitHub
 # App comes from exemplar-api's setup page as the exemplar-github-app
 # Secret. Sign-in defaults to members of the config repo's owner (acme);
 # to change that, patch the exemplar-auth ConfigMap (deploy/k8s/core).
