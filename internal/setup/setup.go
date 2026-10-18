@@ -22,6 +22,9 @@
 //     restarts exemplar-api, which then leaves setup mode.
 //
 // Credentials stay in this process's memory only, and never reach a log.
+// Requests must name the setup URL's host (or 127.0.0.1 on its port): a
+// page on another site can't use DNS rebinding to reach the port-forward
+// and read the key.
 package setup
 
 import (
@@ -35,6 +38,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -141,7 +145,27 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /setup/installation", h.findInstallation)
 	mux.HandleFunc("GET /setup/{file}", h.secret)
 	mux.Handle("GET /", http.RedirectHandler("/setup", http.StatusFound))
-	return h.secure(mux)
+	return h.local(h.secure(mux))
+}
+
+// local refuses requests for any host but the one the operator's browser
+// uses through the port-forward.
+func (h *Handler) local(next http.Handler) http.Handler {
+	allowed := map[string]bool{}
+	if u, err := url.Parse(h.cfg.Base); err == nil && u.Host != "" {
+		allowed[strings.ToLower(u.Host)] = true
+		if port := u.Port(); port != "" {
+			allowed["127.0.0.1:"+port] = true
+			allowed["localhost:"+port] = true
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !allowed[strings.ToLower(r.Host)] {
+			http.Error(w, "setup answers only on "+h.cfg.Base, http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (h *Handler) secure(next http.Handler) http.Handler {

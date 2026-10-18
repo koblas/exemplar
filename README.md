@@ -84,8 +84,10 @@ You need Kubernetes 1.29+, org-owner rights on a GitHub org, an Anthropic API ke
    exemplar-api and Postgres start. The other pods wait with `secret "exemplar-github-app" not found` until the next step.
 6. **Register the GitHub App** from the setup page:
 
+   Port-forward one exemplar-api pod, and keep that same pod for the whole step (the setup state lives in its memory):
+
    ```bash
-   kubectl --context <your-cluster> -n exemplar port-forward deployment/exemplar-api 8081
+   kubectl --context <your-cluster> -n exemplar port-forward "$(kubectl --context <your-cluster> -n exemplar get pod -l app.kubernetes.io/name=exemplar-api -o name | head -1)" 8081
    ```
 
    Open <http://localhost:8081/setup>, then:
@@ -102,7 +104,7 @@ You need Kubernetes 1.29+, org-owner rights on a GitHub org, an Anthropic API ke
    kubectl --context <your-cluster> -n exemplar rollout restart deployment/exemplar-api
    ```
 
-   Keep the page open until the Secret is applied: the App's key lives only in that pod's memory.
+   Keep the page open until the Secret is applied: the App's key lives only in that pod's memory. If the pod restarts after GitHub created the App but before you saved the Secret, delete that App in your org's settings on GitHub and start the step again.
 7. **Check it.** Once `kubectl -n exemplar get pods` shows everything ready, open `https://exemplar.acme.com/ui/setup` and sign in with GitHub. It checks the App's installation, its access to `exemplar-config`, GitHub's delivery log and the events stored, and says what to fix. Then open a pull request in the shadow repo: the review appears in the web UI.
 
 For a trial that's enough. The quickstart's Postgres has no backups or replication, the tunnel's edge has no SSO in front of the API, and everything runs one replica.

@@ -27,7 +27,7 @@ type setupFlags struct {
 // setupPending is what the public listener says in setup mode.
 const setupPending = `Exemplar is waiting for setup. From a machine with access to the cluster:
 
-  kubectl -n %s port-forward deployment/exemplar-api 8081
+  kubectl -n %[1]s port-forward "$(kubectl -n %[1]s get pod -l app.kubernetes.io/name=exemplar-api -o name | head -1)" 8081
 
 then open http://localhost:8081/setup
 `
@@ -83,7 +83,7 @@ func runSetup(f setupFlags) error {
 	}
 	log.Info("exemplar-api is in setup mode: no EXEMPLAR_GH_APP_ID",
 		"addr", f.addr, "setup_addr", f.setupAddr,
-		"next", fmt.Sprintf("kubectl -n %s port-forward deployment/exemplar-api 8081, then open %s/setup", f.namespace, f.setupURL))
+		"next", fmt.Sprintf("kubectl -n %s port-forward pod/<an exemplar-api pod> 8081, then open %s/setup", f.namespace, f.setupURL))
 	select {
 	case err := <-errc:
 		return err

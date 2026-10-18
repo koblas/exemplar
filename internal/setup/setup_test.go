@@ -92,9 +92,22 @@ func newSetup(t *testing.T) (*httptest.Server, *fakeGitHub) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(h.Routes())
+	// The browser reaches it as localhost:8081, as through a port-forward.
+	srv := httptest.NewServer(asHost("localhost:8081", h.Routes()))
 	t.Cleanup(srv.Close)
 	return srv, fake
+}
+
+// asHost serves next as if every request named host, unless the test set
+// X-Test-Host.
+func asHost(host string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Host = host
+		if h := r.Header.Get("X-Test-Host"); h != "" {
+			r.Host = h
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // browser keeps cookies and doesn't follow redirects.
@@ -279,6 +292,30 @@ func mustState(t *testing.T, page string) string {
 	}
 	u, _ := url.Parse(html.UnescapeString(a[1]))
 	return u.Query().Get("state")
+}
+
+func TestRefusesOtherHosts(t *testing.T) {
+	srv, _ := newSetup(t)
+	for _, path := range []string{"/setup", "/setup/exemplar-github-app.yaml"} {
+		for host, want := range map[string]int{"evil.example": http.StatusForbidden, "127.0.0.1:8081": http.StatusOK, "localhost:8081": http.StatusOK} {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("X-Test-Host", host)
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if path != "/setup" && want == http.StatusOK {
+				want = http.StatusNotFound // no App yet, but the host passed
+			}
+			if resp.StatusCode != want {
+				t.Errorf("GET %s as %s = %d, want %d", path, host, resp.StatusCode, want)
+			}
+		}
+	}
 }
 
 func TestExportsManifest(t *testing.T) {

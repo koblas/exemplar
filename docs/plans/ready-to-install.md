@@ -166,10 +166,11 @@ Items 1, 2 and 12 are small and independent. Item 4 depends on 6 for the manifes
 ## 6. Open questions
 
 - Rename the image `koblas/exemplar-server` before the first tag? And does anything in the cluster run the CLI from the image?
-- One hostname or two? Webhook and API on one host by path is simpler to set up, but a separate webhook host is easier to put behind different edge rules.
-- Is a root key that gateway and search can use to derive the session and pseudonym keys acceptable to Security, or should the pseudonym key stay a separate Secret?
+- ~~One hostname or two?~~ Decided 2026-10-17: one host routed by path by default, `EXEMPLAR_WEBHOOK_URL` for a separate one (§7).
+- **For Security, together:** is a root key that gateway and search can use to derive the session and pseudonym keys acceptable, or should the pseudonym key stay a separate Secret? And the gateway pod's git-sync sidecar now holds the review App's private key where it held a read-only deploy key (§7, config sync as the App).
 - Store the App credentials in Postgres (no restart) in a later cut, or stay with show-and-apply?
 - Does the manifest flow accept a `localhost` redirect for the port-forwarded setup page, and can the manifest turn on the device flow? Both need a real org to confirm.
+- Setup state lives in one exemplar-api pod. With two replicas, a dropped and restarted `port-forward deployment/exemplar-api` can land on the other pod between "Create" and GitHub's redirect, leaving an App on GitHub whose code was never exchanged. Today's recovery is to delete that App on GitHub and start again; the docs say to port-forward one pod. Running setup with one replica, or keeping the state in Postgres, would remove it.
 
 ## 7. Log
 
@@ -261,3 +262,9 @@ Work item 11. The README's 11-step INSTALLATION is now a **Quickstart** (seven s
 **Where install stands.** On the desktop: `kubectl`, `openssl`, and `cloudflared` for tunnel builds. Before applying: 3 Secrets (database, root key, provider key) plus the tunnel's, 2 settings. Then one setup page creates the App and its Secret. Before this plan: 9 required Secrets with 13 keys, about 15 values, about 30 App form fields, and a deploy key.
 
 **Still open:** the manifest flow and git-sync's App auth have only been run against fakes and `--help`; a real GitHub org and a real cluster are the next check. The exports app can only be created on the setup page during setup. The provider and search checks on `/ui/setup` need new network paths.
+
+### Setup hardening and checks of the docs (2026-10-17)
+
+- **Host check.** The setup listener answers only requests naming the setup URL's host (`localhost:8081` by default) or `127.0.0.1` on its port, with 403 otherwise. Without it, a DNS-rebinding page in the operator's browser could read the Secret YAML through the open port-forward. `TestRefusesOtherHosts`.
+- **Port-forward one pod.** The setup-pending text and the README now port-forward a single pod, so the whole flow stays on the pod holding the state (§6).
+- **Remote resources, checked:** `kubectl kustomize` accepts a GitHub release asset URL as a resource (tried with cert-manager's, which redirects to objects.githubusercontent.com) with a strategic-merge patch on it, and `github.com/koblas/exemplar//deploy/k8s/base?ref=main` with the remote postgres component (57 resources). Exemplar's own install files don't exist until the first release.
