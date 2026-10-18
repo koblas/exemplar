@@ -1,0 +1,41 @@
+# Backlog
+
+Potential enhancements that are not in the [PRD](../spec/prd.md) or any plan yet. Each item says where it came from, what it would change, roughly what it costs, and what would make it worth doing. An item leaves this list when it is adopted into the PRD as a requirement (noted in the PRD's "What changed") or declined, in which case it moves to [Declined](#declined) with the reason. The [plans index](README.md) explains how this fits the other documents.
+
+Status as of 2026-10-18. Items are grouped by the area they touch, not by priority; the **Worth it when** column is the trigger to pick one up.
+
+## Review pipeline
+
+| Item | Source | What it would change | Cost | Worth it when |
+|---|---|---|---|---|
+| **"Pre-existing" findings in the check-run summary** | Anthropic's code-review post (Oct 2026): findings on code the PR didn't introduce are tagged *Pre-existing* so the author isn't blamed; 59% of what their reviewer kept flagging was old code. | Keep FR-T2 (inline comments only on visible hunks), but let the bug lane report findings in a changed file that anchor outside the diff under their own heading in the check-run summary (§17.4), never inline, never counted against the author's acceptance. | Small: the engine already drops these anchors; it would keep them in a separate state and the poster would render the section. | The bug lane posts on critical paths and owners ask why the bot "never finds old bugs". |
+| **Per-path free-text review guidance** | Anthropic's `REVIEW.md`: code owners write what failure looks like in their directory ("it lies" for docs, "it misroutes" for config), paths to skip, nit caps. | An optional `guidance:` block per path pattern in the repo file in `exemplar-config`, passed to the bug lane and to the verifier's importance scoring (FR-V2) as untrusted context. It is never a rule, never cited, and cannot add findings. | Medium: config schema, effective-config layering, prompt plumbing, and an eval that it doesn't change Lane 2 precision. | Importance-check false positives (class 2, §2.2) cluster in areas the owners could have described in a sentence. |
+| **Named depth presets per repo** | Anthropic's Quick / Standard / Deep per repository. | A `depth:` field in the repo file that sets the bug-lane thresholds, comment budget, agent concurrency and verifier quorum together, with the individual knobs still overriding it. | Small: config schema and defaults. | More than a handful of repos are onboarded and owners copy each other's YAML. Also helps the install path. |
+| **Diff-only re-review after the first rounds** | Anthropic: after the first few passes, only the new diff is re-reviewed. | FR-C1 already re-reviews only changed hunks plus files with open findings. The remaining step is to stop re-running rules on files with open findings once FR-C8's round cap is near, reviewing only new hunks. | Small, after FR-C8. | FR-C8 is built and lifetime cost per PR (FR-C7) shows late rounds dominating. |
+
+## Feedback and measurement
+
+| Item | Source | What it would change | Cost | Worth it when |
+|---|---|---|---|---|
+| **"Unanswered at merge" as a first-class state** | PRD §16 question 16; Anthropic requires every finding to be fixed or resolved with a reason. | Today an untouched finding is *ignored* (§13). Record *unanswered* separately when the PR merges with the thread open and unreplied, show it per rule in the owner digest and per PR in the check-run summary, and let a repo opt into a `neutral` check until every finding has an answer. Never a blocking check. | Small for the state and digest; medium for the opt-in. | Acceptance rate is hard to read because ignored findings dominate the denominator. |
+| **"Intentional" as a dismissal reason** | Anthropic classifies every reviewer comment by the response: fixed, wrong, intentional, or unimportant. | §9's reasons are *wrong*, *not here* and *already covered*. Add *intentional* ("I know, and it's deliberate") so a correct finding on a deliberate choice doesn't count as the rule being wrong, and feeds a suppression proposal for that path rather than demotion. | Small: one reason, one weighting rule, one slash command. | Owners report rules demoted by authors who agreed the rule was right. |
+| **Automatic auto-approve circuit breaker** | PRD §16 question 17; Anthropic lists it as wanted but not built. | When a §13.1 counter-metric alarms for a repo, auto-approve suspends itself for that repo (a recorded state, visible in the audit board and the digest) until an owner re-enables it. The YAML kill switch (FR-A3) stays as the manual override. | Medium: the alarms exist as Grafana rules; this moves one into the worker and adds a suspended state and an owner action. | Before any repo goes to zero-human merges. |
+
+## Operations
+
+| Item | Source | What it would change | Cost | Worth it when |
+|---|---|---|---|---|
+| **Rendered quickstart install file per release** | Install review (2026-10-18). | `render-release.sh` also attaches `install-quickstart.yaml` (base, Postgres component, one-replica patches, digests pinned), or a `quickstart/kustomization.yaml` with that release's URLs filled in, so the quickstart is download, set two values, apply. | Small. | The first release is tagged. |
+| **exemplar-api leaves setup mode on its own** | Install review. | In setup mode, poll the optional `exemplar-github-app` volume for `private-key` and exit 0 once it appears; kubelet restarts the container and the `secretKeyRef` env resolves. Removes the manual `rollout restart` and narrows the "keep the page open" window. | Small. | Any time; no dependency. |
+| **Gateway and search checks on `/ui/setup`** | Install review; ready-to-install plan §4.5. | Add "each provider in `global.yaml` answers through the gateway" and "search is ready, with index coverage" to the setup checks. Needs NetworkPolicy paths from exemplar-api to the gateway and to search. | Small code, one manifest change per path. | The first real install hits a provider or index problem that `kubectl get pods` had to explain. |
+| **Cloudflare Access and WAF rules as commands** | Ready-to-install plan §4.7, still prose in the production install page. | Give the two edge rules as Cloudflare API calls or a Terraform snippet, with the GitHub hook ranges fetched from `api.github.com/meta`. | Small, docs only. | Before the first production tunnel install. |
+| **A README in `examples/exemplar-config`** | Install review. | What each file is, which to rename, and what `shadow` means, in the repository people copy. | Small, docs only. | Any time. |
+
+## Declined
+
+| Item | Source | Why not |
+|---|---|---|
+| **Nightly review agents over existing code** | Anthropic runs agents nightly over the codebase to catch old bugs. | Exemplar reviews changes; a standing audit is a different product with its own triage model. The "pre-existing" item above covers old bugs in files a PR touches. |
+| **`CLAUDE.md` as reviewer context** | Anthropic loads the repo's `CLAUDE.md` into every review. | Exemplar's rules flow the other way: from the mined corpus into `CLAUDE.md` and `AGENTS.md` (§10). Loading a free-text file as review context would reintroduce the unowned, uncited judgment the rule corpus replaces. The per-path guidance item above is the narrow, untrusted version. |
+| **Blocking merges on open findings** | Anthropic blocks the merge while findings from the code or security review are open. | §3.2: the bot never blocks. §16 question 16 covers the non-blocking middle ground. |
+| **The reviewer never approves** | Anthropic: an agent's approval never counts as a person's. | Exemplar auto-approves within deterministic gates (§12) and never fills a compliance-required human slot (FR-A2). A product decision, recorded in Appendix B. |
