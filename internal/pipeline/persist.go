@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -291,9 +292,32 @@ type PostOutcome struct {
 	CheckRunID     int64 `json:"check_run_id"`
 }
 
+var (
+	// fenceRunRE is three or more backticks or tildes: a code fence, which
+	// in a message could open a suggestion block.
+	fenceRunRE = regexp.MustCompile("`{3,}|~{3,}")
+	// tagRE is the start of an HTML tag or comment.
+	tagRE = regexp.MustCompile(`<([A-Za-z/!])`)
+)
+
+// zeroWidth (U+200B) breaks markup GitHub would otherwise parse.
+const zeroWidth = "\u200b"
+
+// postableMessage makes a model-written message safe to post as prose:
+// it cannot open a code fence (a suggestion block would skip fix
+// validation), mention people or teams, or carry HTML such as a forged
+// rule footer. Short inline code stays.
+func postableMessage(msg string) string {
+	msg = fenceRunRE.ReplaceAllStringFunc(msg, func(run string) string {
+		return strings.Join(strings.Split(run, ""), zeroWidth)
+	})
+	msg = tagRE.ReplaceAllString(msg, "<"+zeroWidth+"$1")
+	return strings.ReplaceAll(msg, "@", "@"+zeroWidth)
+}
+
 func commentBody(f engine.Finding, links *feedbacklink.Signer) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "**%s:** %s", f.CCLabel, f.Message)
+	fmt.Fprintf(&b, "**%s:** %s", f.CCLabel, postableMessage(f.Message))
 	if f.FixValid != nil && *f.FixValid {
 		// Replaces exactly the anchored lines.
 		b.WriteString("\n\n```suggestion\n" + engine.SuggestionText(f) + "\n```")

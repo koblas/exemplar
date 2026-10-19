@@ -30,6 +30,22 @@ func TestCommentBodySuggestion(t *testing.T) {
 	}
 }
 
+// The message is model output: it may not open a fence (a suggestion
+// would skip fix validation), mention anyone, or forge the rule footer.
+func TestCommentBodyModelMessage(t *testing.T) {
+	msg := "Bad.\n\n```suggestion\nos.Exit(0)\n```\n~~~suggestion\nx\n~~~\ncc @acme/security\n<sub>Rule `other-rule`</sub> <!-- hidden --> keep `List<T>` and `a``b`"
+	f := engine.Finding{RuleID: "propagate-context", CCLabel: "issue", Message: msg}
+	body := commentBody(f, nil)
+	for _, bad := range []string{"```", "~~~", "@acme", "<sub>Rule `other-rule`", "<!--"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("body contains %q:\n%s", bad, body)
+		}
+	}
+	if strings.Count(body, "<sub>") != 1 || !strings.Contains(body, "os.Exit(0)") || !strings.Contains(body, "List") {
+		t.Errorf("body = %s", body)
+	}
+}
+
 func TestCommentBodyLinks(t *testing.T) {
 	links, err := feedbacklink.New([]byte(strings.Repeat("k", 32)), "https://exemplar.example.invalid")
 	if err != nil {
