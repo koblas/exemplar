@@ -44,7 +44,8 @@ func reportMergePolicy(ctx context.Context, reader *github.Client, member gates.
 	for _, r := range rs {
 		reviews = append(reviews, gates.PolicyReview{User: r.User, UserType: r.UserType, State: r.State, CommitID: r.CommitID})
 	}
-	res, err := gates.HumanMergePolicy(ctx, in.touched, in.owners, in.author, target.HeadSHA, reviews, member)
+	writer := func(ctx context.Context, login string) (bool, error) { return gh.CanWrite(ctx, reader, in.repo, login) }
+	res, err := gates.HumanMergePolicy(ctx, in.touched, in.owners, in.author, target.HeadSHA, reviews, member, writer)
 	if err != nil {
 		return false, fmt.Errorf("worker: merge policy: %w", err)
 	}

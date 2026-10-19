@@ -16,23 +16,42 @@ import (
 // client cannot see is "no", never an error; any other failure is an
 // error, and callers deny on errors.
 func CanRead(ctx context.Context, c *github.Client, repo, login string) (bool, error) {
+	switch lvl, err := permission(ctx, c, repo, login); {
+	case err != nil:
+		return false, err
+	default:
+		return lvl == "admin" || lvl == "maintain" || lvl == "write" || lvl == "triage" || lvl == "read", nil
+	}
+}
+
+// CanWrite reports whether login can push to repo (write, maintain or
+// admin), which is what GitHub requires of an approval that counts toward
+// a branch's required reviews. Errors and unknowns behave as in CanRead.
+func CanWrite(ctx context.Context, c *github.Client, repo, login string) (bool, error) {
+	switch lvl, err := permission(ctx, c, repo, login); {
+	case err != nil:
+		return false, err
+	default:
+		return lvl == "admin" || lvl == "maintain" || lvl == "write", nil
+	}
+}
+
+// permission returns login's collaborator permission on repo, "" for an
+// unknown user or a repo the client cannot see.
+func permission(ctx context.Context, c *github.Client, repo, login string) (string, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || login == "" {
-		return false, nil
+		return "", nil
 	}
 	lvl, _, err := c.Repositories.GetPermissionLevel(ctx, owner, name, login)
 	if err != nil {
 		var er *github.ErrorResponse
 		if errors.As(err, &er) && er.Response != nil && er.Response.StatusCode == http.StatusNotFound {
-			return false, nil
+			return "", nil
 		}
-		return false, fmt.Errorf("gh: permission of %s on %s: %w", login, repo, err)
+		return "", fmt.Errorf("gh: permission of %s on %s: %w", login, repo, err)
 	}
-	switch lvl.GetPermission() {
-	case "admin", "maintain", "write", "triage", "read":
-		return true, nil
-	}
-	return false, nil
+	return lvl.GetPermission(), nil
 }
 
 // PullRequest is what a playground run needs about a PR.

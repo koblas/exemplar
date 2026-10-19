@@ -19,6 +19,8 @@ func TestHumanMergePolicy(t *testing.T) {
 		}
 		return false, nil
 	}
+	// mallory reviews but has only read access.
+	writer := func(_ context.Context, login string) (bool, error) { return login != "mallory", nil }
 	approve := func(user, commit string) PolicyReview {
 		return PolicyReview{User: user, UserType: "User", State: "APPROVED", CommitID: commit}
 	}
@@ -44,20 +46,30 @@ func TestHumanMergePolicy(t *testing.T) {
 		{"net path needs net", []string{"src/net/a.go", "README.md"}, []PolicyReview{approve("erin", "h")}, false, "@acme/net @dana"},
 		{"user owner", []string{"src/net/a.go"}, []PolicyReview{approve("Dana", "h")}, true, ""},
 		{"one approver owns both", []string{"src/net/a.go", "README.md"}, []PolicyReview{approve("nick", "h")}, true, ""},
+		{"read-only approver", []string{"README.md"}, []PolicyReview{approve("mallory", "h")}, false, "an approval of this commit"},
 		{"email owner cannot be matched", []string{"legal/terms.md"}, []PolicyReview{approve("erin", "h")}, false, "legal@example.com"},
 	} {
-		res, err := HumanMergePolicy(t.Context(), c.touched, co, "alice", "h", c.reviews, member)
+		res, err := HumanMergePolicy(t.Context(), c.touched, co, "alice", "h", c.reviews, member, writer)
 		if err != nil || res.Pass != c.pass || strings.Join(res.Missing, ";") != c.missing {
 			t.Errorf("%s: %+v, %v", c.name, res, err)
 		}
 	}
 	// No CODEOWNERS: any approver.
-	if res, _ := HumanMergePolicy(t.Context(), []string{"a.go"}, codeowners.File{}, "alice", "h", []PolicyReview{approve("bob", "h")}, member); !res.Pass {
+	if res, _ := HumanMergePolicy(t.Context(), []string{"a.go"}, codeowners.File{}, "alice", "h", []PolicyReview{approve("bob", "h")}, member, writer); !res.Pass {
 		t.Errorf("unowned = %+v", res)
 	}
 	// A membership lookup failure is an error, not a pass or a fail.
 	fail := func(context.Context, string, string) (bool, error) { return false, errors.New("rate limited") }
-	if _, err := HumanMergePolicy(t.Context(), []string{"README.md"}, co, "alice", "h", []PolicyReview{approve("erin", "h")}, fail); err == nil {
+	if _, err := HumanMergePolicy(t.Context(), []string{"README.md"}, co, "alice", "h", []PolicyReview{approve("erin", "h")}, fail, writer); err == nil {
 		t.Error("membership error swallowed")
+	}
+	// An approval from someone without write access does not count, even on
+	// an unowned path or a repo without CODEOWNERS.
+	if res, _ := HumanMergePolicy(t.Context(), []string{"a.go"}, codeowners.File{}, "alice", "h", []PolicyReview{approve("mallory", "h")}, member, writer); res.Pass {
+		t.Errorf("read-only approver passed: %+v", res)
+	}
+	noWriter := func(context.Context, string) (bool, error) { return false, errors.New("rate limited") }
+	if _, err := HumanMergePolicy(t.Context(), []string{"a.go"}, codeowners.File{}, "alice", "h", []PolicyReview{approve("bob", "h")}, member, noWriter); err == nil {
+		t.Error("write-access error swallowed")
 	}
 }

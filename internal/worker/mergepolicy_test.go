@@ -98,7 +98,9 @@ func TestMergePolicyWorker(t *testing.T) {
 		{"an approval of an older commit", []string{"bob:APPROVED:0ld"}, false, "Waiting for a code-owner approval"},
 		{"a non-owner approves", []string{"carol:APPROVED:" + e.head}, false, "Waiting for a code-owner approval"},
 		{"the owner's approval was dismissed", []string{"bob:APPROVED:" + e.head, "bob:DISMISSED:" + e.head}, false, "Waiting for a code-owner approval"},
+		{"an owner without write access approves", []string{"bob:APPROVED:" + e.head}, false, "Waiting for a code-owner approval"},
 	} {
+		e.fake.readOnly = map[string]bool{"bob": c.name == "an owner without write access approves"}
 		e.fake.approvals = c.approvals
 		before := len(policyChecks(e.fake))
 		pass, ignored, err := mw.Handle(t.Context(), a)
@@ -108,6 +110,7 @@ func TestMergePolicyWorker(t *testing.T) {
 		}
 	}
 
+	e.fake.readOnly = nil
 	// Gates passed on this head: success whatever people did.
 	rid := insertReview(t, st, e.head)
 	if _, err := st.Pool.Exec(t.Context(), `INSERT INTO approval_decisions (review_id, stage1, stage2, decision) VALUES ($1, '{}', '{}', 'approved')`, rid); err != nil {

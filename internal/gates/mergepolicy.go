@@ -34,15 +34,20 @@ type MergePolicyResult struct {
 // MemberFunc reports whether login is an active member of an @org/team.
 type MemberFunc func(ctx context.Context, team, login string) (bool, error)
 
+// WriterFunc reports whether login has write access to the PR's repo.
+type WriterFunc func(ctx context.Context, login string) (bool, error)
+
 // HumanMergePolicy decides the check from people's reviews of head:
 //   - an approver is a person other than the author whose latest review
 //     (comments aside) is an approval of head itself, so a push needs a
-//     new approval;
+//     new approval, and who has write access to the repo, as GitHub
+//     requires of an approval that counts (anyone can review a public
+//     repo, and read access is enough on a private one);
 //   - every touched path with CODEOWNERS owners needs an approver among
 //     them (a user, or a member of a team; an email owner cannot be
 //     matched);
 //   - a PR touching no owned path needs one approver.
-func HumanMergePolicy(ctx context.Context, touched []string, co codeowners.File, author, head string, reviews []PolicyReview, member MemberFunc) (MergePolicyResult, error) {
+func HumanMergePolicy(ctx context.Context, touched []string, co codeowners.File, author, head string, reviews []PolicyReview, member MemberFunc, writer WriterFunc) (MergePolicyResult, error) {
 	latest := map[string]PolicyReview{}
 	var order []string
 	for _, r := range reviews {
@@ -58,7 +63,14 @@ func HumanMergePolicy(ctx context.Context, touched []string, co codeowners.File,
 	var res MergePolicyResult
 	for _, u := range order {
 		r := latest[u]
-		if r.State == "APPROVED" && r.CommitID == head && strings.EqualFold(r.UserType, "User") && !strings.EqualFold(u, author) {
+		if r.State != "APPROVED" || r.CommitID != head || !strings.EqualFold(r.UserType, "User") || strings.EqualFold(u, author) {
+			continue
+		}
+		ok, err := writer(ctx, r.User)
+		if err != nil {
+			return res, fmt.Errorf("gates: write access of %s: %w", r.User, err)
+		}
+		if ok {
 			res.Approvers = append(res.Approvers, u)
 		}
 	}
