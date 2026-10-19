@@ -254,7 +254,11 @@ func runServe(args []string) error {
 			if err != nil {
 				return nil, fmt.Errorf("create github client: %w", err)
 			}
-			return gh.NewConfigRepo(c, cfgRepo)
+			bot, err := app.BotLogin(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("app login: %w", err)
+			}
+			return gh.NewConfigRepo(c, cfgRepo, bot)
 		},
 		Member: func(ctx context.Context, team, login string) (bool, error) {
 			inst, err := cfgInstallation(ctx)

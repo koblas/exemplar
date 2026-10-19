@@ -52,6 +52,8 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/app":
+		f.writeJSON(w, map[string]any{"id": 1, "slug": "exemplar-review"})
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/access_tokens"):
 		f.writeJSON(w, map[string]any{"token": "ghs_test", "expires_at": time.Now().Add(time.Hour)})
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/reviews"):
@@ -337,5 +339,19 @@ func TestProbeApproval(t *testing.T) {
 	}
 	if len(f.find("POST", "/reviews")) != 0 {
 		t.Error("probe submitted an approval on an already-approved PR")
+	}
+}
+
+func TestBotLogin(t *testing.T) {
+	f, srv := newFake(t)
+	app := newTestApp(t, srv)
+	for range 2 {
+		login, err := app.BotLogin(t.Context())
+		if err != nil || login != "exemplar-review[bot]" {
+			t.Fatalf("BotLogin = %q, %v", login, err)
+		}
+	}
+	if n := len(f.find("GET", "/app")); n != 1 {
+		t.Errorf("GET /app called %d times, want 1 (cached)", n)
 	}
 }

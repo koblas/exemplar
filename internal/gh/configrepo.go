@@ -18,15 +18,22 @@ type ConfigRepo struct {
 	gh    *github.Client
 	owner string
 	repo  string
+	// bot is the app's own account ("<slug>[bot]", App.BotLogin): the only
+	// author whose commits it reuses or merges.
+	bot string
 }
 
-// NewConfigRepo wraps a config-writer client for "owner/exemplar-config".
-func NewConfigRepo(c *github.Client, fullName string) (*ConfigRepo, error) {
+// NewConfigRepo wraps a config-writer client for "owner/exemplar-config";
+// bot is the app's account login (App.BotLogin).
+func NewConfigRepo(c *github.Client, fullName, bot string) (*ConfigRepo, error) {
 	owner, repo, ok := strings.Cut(fullName, "/")
 	if !ok || owner == "" || repo == "" {
 		return nil, fmt.Errorf("%w: config repo %q", ErrInvalidRepo, fullName)
 	}
-	return &ConfigRepo{gh: c, owner: owner, repo: repo}, nil
+	if bot == "" {
+		return nil, fmt.Errorf("%w: the app's login is required", ErrInvalidAppConfig)
+	}
+	return &ConfigRepo{gh: c, owner: owner, repo: repo, bot: bot}, nil
 }
 
 // DefaultBranch returns the default branch and its head commit.
@@ -57,17 +64,52 @@ func (r *ConfigRepo) FindPR(ctx context.Context, branch string) (string, bool, e
 	return prs[0].GetHTMLURL(), true, nil
 }
 
-// EnsureBranch creates branch at sha unless it already exists.
+// ErrForeignCommits is a branch or PR the config writer would reuse or
+// merge that carries commits it did not write.
+var ErrForeignCommits = errors.New("gh: commits not written by the app")
+
+// EnsureBranch creates branch at sha. A branch that already exists (a
+// retried run) is reused only when every commit it adds to sha is the
+// app's own: anyone with push access could have created it first.
 func (r *ConfigRepo) EnsureBranch(ctx context.Context, branch, sha string) error {
 	_, _, err := r.gh.Git.CreateRef(ctx, r.owner, r.repo, github.CreateRef{Ref: "refs/heads/" + branch, SHA: sha})
 	var ge *github.ErrorResponse
 	if errors.As(err, &ge) && ge.Response != nil && ge.Response.StatusCode == http.StatusUnprocessableEntity {
-		return nil // already exists (a retried run)
+		ref, _, err := r.gh.Git.GetRef(ctx, r.owner, r.repo, "heads/"+branch)
+		if err != nil {
+			return fmt.Errorf("gh: get branch %s: %w", branch, err)
+		}
+		tip := ref.GetObject().GetSHA()
+		if tip == sha {
+			return nil
+		}
+		cmp, _, err := r.gh.Repositories.CompareCommits(ctx, r.owner, r.repo, sha, tip, &github.ListOptions{PerPage: 100})
+		if err != nil {
+			return fmt.Errorf("gh: compare %s with %s: %w", branch, sha, err)
+		}
+		if cmp.GetTotalCommits() > len(cmp.Commits) || !r.ownCommits(cmp.Commits) {
+			return fmt.Errorf("%w: branch %s already exists", ErrForeignCommits, branch)
+		}
+		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("gh: create branch %s: %w", branch, err)
 	}
 	return nil
+}
+
+// ownCommits reports whether every commit was written by this app through
+// the API: authored by its own account and signed by GitHub. Another app
+// (GitHub Actions run by a committer's workflow) is not enough, and a
+// pushed commit can name the bot's address as its author but cannot carry
+// GitHub's signature for it.
+func (r *ConfigRepo) ownCommits(cs []*github.RepositoryCommit) bool {
+	for _, c := range cs {
+		if !strings.EqualFold(c.GetAuthor().GetLogin(), r.bot) || !c.GetCommit().GetVerification().GetVerified() {
+			return false
+		}
+	}
+	return true
 }
 
 // PutFile writes path on branch, creating or replacing it.
@@ -142,10 +184,27 @@ func (r *ConfigRepo) OpenPR(ctx context.Context, branch, base, title, body strin
 	return pr.GetHTMLURL(), pr.GetNumber(), nil
 }
 
-// MergePR squash-merges a config PR. Branch protection that needs a review
-// refuses it; the PR then stays open for a human.
+// MergePR squash-merges a config PR the app opened, holding only the
+// app's own commits, at the head it checked: a commit pushed to the
+// branch meanwhile makes GitHub refuse the merge. Branch protection that
+// needs a review refuses it too; the PR then stays open for a human.
 func (r *ConfigRepo) MergePR(ctx context.Context, number int, message string) error {
-	if _, _, err := r.gh.PullRequests.Merge(ctx, r.owner, r.repo, number, message, &github.PullRequestOptions{MergeMethod: "squash"}); err != nil {
+	pr, _, err := r.gh.PullRequests.Get(ctx, r.owner, r.repo, number)
+	if err != nil {
+		return fmt.Errorf("gh: get %s/%s#%d: %w", r.owner, r.repo, number, err)
+	}
+	if !strings.EqualFold(pr.GetUser().GetLogin(), r.bot) {
+		return fmt.Errorf("%w: %s/%s#%d was opened by %s", ErrForeignCommits, r.owner, r.repo, number, pr.GetUser().GetLogin())
+	}
+	cs, _, err := r.gh.PullRequests.ListCommits(ctx, r.owner, r.repo, number, &github.ListOptions{PerPage: 100})
+	if err != nil {
+		return fmt.Errorf("gh: commits of %s/%s#%d: %w", r.owner, r.repo, number, err)
+	}
+	if len(cs) == 0 || len(cs) >= 100 || !r.ownCommits(cs) {
+		return fmt.Errorf("%w: %s/%s#%d", ErrForeignCommits, r.owner, r.repo, number)
+	}
+	opts := &github.PullRequestOptions{MergeMethod: "squash", SHA: pr.GetHead().GetSHA()}
+	if _, _, err := r.gh.PullRequests.Merge(ctx, r.owner, r.repo, number, message, opts); err != nil {
 		return fmt.Errorf("gh: merge %s/%s#%d: %w", r.owner, r.repo, number, err)
 	}
 	return nil

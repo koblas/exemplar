@@ -23,6 +23,27 @@ type fakeConfigGitHub struct {
 	prs      []map[string]any
 	comments []string
 	requests []string
+	// commits are the commits each ref or PR has beyond its base, as the
+	// compare and PR-commits endpoints list them; merged records the
+	// expected head each merge named.
+	commits map[string][]map[string]any
+	prUser  string
+	merged  map[string]string
+}
+
+// botCommit and humanCommit are list entries for the fake's commits.
+func botCommit() map[string]any {
+	return map[string]any{"author": map[string]any{"login": "exemplar[bot]", "type": "Bot"}, "commit": map[string]any{"verification": map[string]any{"verified": true}}}
+}
+
+// actionsCommit is a signed commit from another app: GitHub Actions,
+// which a committer's workflow can make push to any branch.
+func actionsCommit() map[string]any {
+	return map[string]any{"author": map[string]any{"login": "github-actions[bot]", "type": "Bot"}, "commit": map[string]any{"verification": map[string]any{"verified": true}}}
+}
+
+func humanCommit() map[string]any {
+	return map[string]any{"author": map[string]any{"login": "mallory", "type": "User"}, "commit": map[string]any{"verification": map[string]any{"verified": true}}}
 }
 
 func (f *fakeConfigGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +119,17 @@ func (f *fakeConfigGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, out)
+	case r.Method == http.MethodGet && strings.HasPrefix(p, repo+"/compare/"):
+		_, head, _ := strings.Cut(strings.TrimPrefix(p, repo+"/compare/"), "...")
+		cs := f.commits[head]
+		writeJSON(w, map[string]any{"status": "ahead", "total_commits": len(cs), "commits": cs})
+	case r.Method == http.MethodGet && p == repo+"/pulls/9":
+		fmt.Fprintf(w, `{"number":9,"head":{"sha":"tip9"},"base":{"sha":"base1"},"user":{"login":%q,"type":%q}}`, f.prUser, map[bool]string{true: "Bot", false: "User"}[strings.HasSuffix(f.prUser, "[bot]")])
+	case r.Method == http.MethodGet && p == repo+"/pulls/9/commits":
+		writeJSON(w, f.commits["pr9"])
+	case r.Method == http.MethodPut && p == repo+"/pulls/9/merge":
+		f.merged["9"] = fmt.Sprint(body["sha"])
+		fmt.Fprint(w, `{"merged":true}`)
 	case r.Method == http.MethodPost && p == repo+"/issues/5/comments":
 		f.comments = append(f.comments, fmt.Sprint(body["body"]))
 		fmt.Fprint(w, `{"id": 1}`)
@@ -121,7 +153,7 @@ func TestConfigRepoFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewConfigRepo(client, "acme/exemplar-config")
+	r, err := NewConfigRepo(client, "acme/exemplar-config", "exemplar[bot]")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +189,72 @@ func TestConfigRepoFlow(t *testing.T) {
 	if got, found, _ := r.FindPR(ctx, "exemplar/candidate-1"); !found || got != url {
 		t.Fatalf("FindPR after open = %s %v", got, found)
 	}
-	if _, err := NewConfigRepo(client, "no-slash"); err == nil {
+	if _, err := NewConfigRepo(client, "no-slash", "exemplar[bot]"); err == nil {
 		t.Fatal("bad repo name accepted")
+	}
+	if _, err := NewConfigRepo(client, "acme/exemplar-config", ""); err == nil {
+		t.Fatal("config repo without the app's login accepted")
+	}
+}
+
+// A branch or PR Exemplar writes can carry commits someone else pushed;
+// those never merge under the App's identity.
+func TestConfigRepoRefusesForeignCommits(t *testing.T) {
+	fake := &fakeConfigGitHub{
+		refs: map[string]string{"heads/exemplar/demote-x": "tipX"}, files: map[string]string{}, sha: map[string]string{},
+		commits: map[string][]map[string]any{}, merged: map[string]string{},
+	}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+	base := srv.URL + "/"
+	client, _ := github.NewClient(github.WithURLs(&base, &base), github.WithAuthToken("ghs_cfg"))
+	r, _ := NewConfigRepo(client, "acme/exemplar-config", "exemplar[bot]")
+	ctx := t.Context()
+
+	// A pre-pushed branch with a person's commit is refused.
+	fake.commits["tipX"] = []map[string]any{humanCommit()}
+	if err := r.EnsureBranch(ctx, "exemplar/demote-x", "base1"); err == nil {
+		t.Error("reused a branch with a person's commit")
+	}
+	// A retried run's own commits are fine.
+	fake.commits["tipX"] = []map[string]any{botCommit()}
+	if err := r.EnsureBranch(ctx, "exemplar/demote-x", "base1"); err != nil {
+		t.Errorf("retried branch: %v", err)
+	}
+	fake.commits["tipX"] = []map[string]any{actionsCommit()}
+	if err := r.EnsureBranch(ctx, "exemplar/demote-x", "base1"); err == nil {
+		t.Error("reused a branch with another app's commit")
+	}
+	unsigned := botCommit()
+	unsigned["commit"] = map[string]any{"verification": map[string]any{"verified": false}}
+	fake.commits["tipX"] = []map[string]any{unsigned}
+	if err := r.EnsureBranch(ctx, "exemplar/demote-x", "base1"); err == nil {
+		t.Error("reused a branch with an unsigned commit claiming the bot")
+	}
+
+	// MergePR merges only the App's own PR of the App's own commits, pinned
+	// to the head it checked.
+	fake.prUser = "exemplar[bot]"
+	fake.commits["pr9"] = []map[string]any{botCommit(), humanCommit()}
+	if err := r.MergePR(ctx, 9, "msg"); err == nil || fake.merged["9"] != "" {
+		t.Errorf("merged a PR with a person's commit: %v", err)
+	}
+	fake.commits["pr9"] = []map[string]any{botCommit(), actionsCommit()}
+	if err := r.MergePR(ctx, 9, "msg"); err == nil || fake.merged["9"] != "" {
+		t.Errorf("merged a PR with another app's commit: %v", err)
+	}
+	fake.prUser = "github-actions[bot]"
+	fake.commits["pr9"] = []map[string]any{botCommit()}
+	if err := r.MergePR(ctx, 9, "msg"); err == nil || fake.merged["9"] != "" {
+		t.Errorf("merged another app's PR: %v", err)
+	}
+	fake.prUser = "mallory"
+	if err := r.MergePR(ctx, 9, "msg"); err == nil || fake.merged["9"] != "" {
+		t.Errorf("merged a person's PR: %v", err)
+	}
+	fake.prUser = "exemplar[bot]"
+	if err := r.MergePR(ctx, 9, "msg"); err != nil || fake.merged["9"] != "tip9" {
+		t.Errorf("MergePR = %v, merged %q", err, fake.merged["9"])
 	}
 }
 
@@ -168,7 +264,7 @@ func TestConfigRepoCommentAndPR(t *testing.T) {
 	defer srv.Close()
 	base := srv.URL + "/"
 	client, _ := github.NewClient(github.WithURLs(&base, &base), github.WithAuthToken("ghs_cfg"))
-	r, _ := NewConfigRepo(client, "acme/exemplar-config")
+	r, _ := NewConfigRepo(client, "acme/exemplar-config", "exemplar[bot]")
 	pr, err := r.PullRequest(t.Context(), 5)
 	if err != nil || pr.BaseSHA != "base1" || pr.HeadSHA != "head1" || pr.Repo != "acme/exemplar-config" {
 		t.Fatalf("PullRequest = %+v, %v", pr, err)

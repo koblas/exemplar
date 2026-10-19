@@ -126,6 +126,8 @@ type App struct {
 
 	mu       sync.Mutex
 	limiters map[int64]*rate.Limiter
+	botMu    sync.Mutex // not mu: BotLogin waits on the network
+	bot      string     // BotLogin, once read
 }
 
 var (
@@ -164,6 +166,25 @@ func NewApp(cfg AppConfig, base http.RoundTripper) (*App, error) {
 		return nil, fmt.Errorf("gh: app client: %w", err)
 	}
 	return &App{cfg: cfg, base: base, apps: apps, limiters: map[int64]*rate.Limiter{}}, nil
+}
+
+// BotLogin returns the app's own account login, "<slug>[bot]", the author
+// of everything it commits through the API. It is read once from GET /app.
+func (a *App) BotLogin(ctx context.Context) (string, error) {
+	a.botMu.Lock()
+	defer a.botMu.Unlock()
+	if a.bot != "" {
+		return a.bot, nil
+	}
+	app, _, err := a.apps.Apps.Get(ctx, "")
+	if err != nil {
+		return "", fmt.Errorf("gh: read the app: %w", err)
+	}
+	if app.GetSlug() == "" {
+		return "", fmt.Errorf("%w: GitHub returned no app slug", ErrInvalidAppConfig)
+	}
+	a.bot = app.GetSlug() + "[bot]"
+	return a.bot, nil
 }
 
 // Token mints an installation token for flavor, restricted to repos
