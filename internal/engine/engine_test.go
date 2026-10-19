@@ -574,7 +574,9 @@ func TestReviewStage2(t *testing.T) {
 		p.CodeOwners = codeowners.Parse("* @acme/app\n")
 		p.Effective.RepoConfig.AutoApprove = &schema.RepoAutoApprove{Enabled: true, ApprovableOwners: []string{"@acme/app"}}
 	}
-	oneApproval := func(context.Context) (gates.BranchRules, error) { return gates.BranchRules{RequiredApprovals: 1}, nil }
+	oneApproval := func(context.Context) (gates.BranchRules, error) {
+		return gates.BranchRules{RequiredApprovals: 1, DismissStaleReviews: true}, nil
+	}
 	safe := gates.MergeSafety(gates.MergeSafetyInput{}, gates.DefaultWeights)
 	risky := gates.MergeSafety(gates.MergeSafetyInput{Paths: []gates.PathFacts{{Path: "main.go", Incident: true}}, ForcePush: true}, gates.DefaultWeights) // 0.65
 

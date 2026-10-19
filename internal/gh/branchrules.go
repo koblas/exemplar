@@ -42,9 +42,7 @@ func BranchRules(ctx context.Context, c *github.Client, repo, branch string) (ga
 	default:
 		br.Sources = append(br.Sources, "branch_protection")
 		if r := prot.RequiredPullRequestReviews; r != nil {
-			br.RequiredApprovals = max(br.RequiredApprovals, r.RequiredApprovingReviewCount)
-			br.CodeOwnerReview = br.CodeOwnerReview || r.RequireCodeOwnerReviews
-			br.LastPushApproval = br.LastPushApproval || r.RequireLastPushApproval
+			addReviews(&br, r.RequiredApprovingReviewCount, r.RequireCodeOwnerReviews, r.RequireLastPushApproval, r.DismissStaleReviews)
 		}
 		if s := prot.RequiredStatusChecks; s != nil {
 			if s.Contexts != nil {
@@ -74,9 +72,7 @@ func BranchRules(ctx context.Context, c *github.Client, repo, branch string) (ga
 			for _, r := range rules.PullRequest {
 				source(r.BranchRuleMetadata)
 				p := r.Parameters
-				br.RequiredApprovals = max(br.RequiredApprovals, p.RequiredApprovingReviewCount)
-				br.CodeOwnerReview = br.CodeOwnerReview || p.RequireCodeOwnerReview
-				br.LastPushApproval = br.LastPushApproval || p.RequireLastPushApproval
+				addReviews(&br, p.RequiredApprovingReviewCount, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.DismissStaleReviewsOnPush)
 			}
 			for _, r := range rules.RequiredStatusChecks {
 				source(r.BranchRuleMetadata)
@@ -92,4 +88,13 @@ func BranchRules(ctx context.Context, c *github.Client, repo, branch string) (ga
 	}
 	slices.Sort(br.RequiredChecks)
 	return br, nil
+}
+
+// addReviews merges one source's pull request review requirements into br,
+// keeping the strictest of each.
+func addReviews(br *gates.BranchRules, approvals int, codeOwner, lastPush, dismissStale bool) {
+	br.RequiredApprovals = max(br.RequiredApprovals, approvals)
+	br.CodeOwnerReview = br.CodeOwnerReview || codeOwner
+	br.LastPushApproval = br.LastPushApproval || lastPush
+	br.DismissStaleReviews = br.DismissStaleReviews || dismissStale
 }

@@ -56,16 +56,19 @@ func TestCheckBranchRules(t *testing.T) {
 		bot, human    int
 		wantHumanNote bool
 	}{
-		{"one approval", "acme/app", "", &BranchRules{RequiredApprovals: 1}, true, nil, 1, 0, false},
+		{"one approval", "acme/app", "", &BranchRules{RequiredApprovals: 1, DismissStaleReviews: true}, true, nil, 1, 0, false},
 		{"no approval required", "acme/app", ApprovalNative, &BranchRules{}, true, nil, 0, 0, false},
-		{"two approvals", "acme/app", ApprovalNative, &BranchRules{RequiredApprovals: 2}, true, nil, 1, 1, true},
+		{"two approvals", "acme/app", ApprovalNative, &BranchRules{RequiredApprovals: 2, DismissStaleReviews: true}, true, nil, 1, 1, true},
+		// The approval counts toward the merge, so a push must dismiss it on
+		// GitHub's side, not only when Exemplar's next review runs.
+		{"stale approvals kept", "acme/app", ApprovalNative, &BranchRules{RequiredApprovals: 1}, false, []string{ReasonStaleApprovalsKept}, 1, 0, false},
 		{"unknown rules", "acme/app", ApprovalNative, nil, false, []string{ReasonBranchRulesUnknown}, 0, 0, false},
-		{"code owner review", "acme/app", ApprovalNative, &BranchRules{RequiredApprovals: 1, CodeOwnerReview: true}, false, []string{ReasonCodeOwnerReviewRequired}, 1, 0, false},
+		{"code owner review", "acme/app", ApprovalNative, &BranchRules{RequiredApprovals: 1, CodeOwnerReview: true, DismissStaleReviews: true}, false, []string{ReasonCodeOwnerReviewRequired}, 1, 0, false},
 		{"merge policy required", "acme/app", ApprovalMergePolicy, &BranchRules{CodeOwnerReview: true, RequiredChecks: []string{"ci", MergePolicyCheck}}, true, nil, 0, 0, false},
 		{"merge policy missing", "acme/app", ApprovalMergePolicy, &BranchRules{RequiredChecks: []string{"ci"}}, false, []string{ReasonMergePolicyNotRequired}, 0, 0, false},
 		{"bad mode", "acme/app", "yolo", &BranchRules{}, false, []string{ReasonUnknownApprovalMode}, 0, 0, false},
-		{"compliance two approvals", "Acme/Ledger", ApprovalNative, &BranchRules{RequiredApprovals: 2}, true, nil, 1, 1, true},
-		{"compliance one approval", "acme/ledger", ApprovalNative, &BranchRules{RequiredApprovals: 1}, false, []string{ReasonComplianceApprovals}, 1, 0, false},
+		{"compliance two approvals", "Acme/Ledger", ApprovalNative, &BranchRules{RequiredApprovals: 2, DismissStaleReviews: true}, true, nil, 1, 1, true},
+		{"compliance one approval", "acme/ledger", ApprovalNative, &BranchRules{RequiredApprovals: 1, DismissStaleReviews: true}, false, []string{ReasonComplianceApprovals}, 1, 0, false},
 	}
 	for _, tt := range tests {
 		got := CheckBranchRules(tt.repo, tt.mode, tt.rules)
