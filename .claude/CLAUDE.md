@@ -102,3 +102,6 @@ application unless requested. Update this guidance as the service takes shape.
 - `/go-service <task>`: implement or debug a service change with focused tests.
 - `/k8s-manifests <task>`: author or validate deployment configuration locally.
 - `/service-review <scope>`: review Go/Kubernetes changes without modifying files.
+- `/security-hunt [scope|all]`: six-phase security review with subagents (map, hunt by
+  class, dedupe, validate, report) into gitignored `.security/`; reads
+  `docs/security/known-non-issues.md`. Expensive; the user runs it, CI never does.
