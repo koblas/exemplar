@@ -150,8 +150,12 @@ func (r Runner) finish(ctx context.Context, id int64, o Outcome) error {
 }
 
 // allowed reports whether actor is one of owners (an @user or a member of
-// an @org/team) or in the platform team.
+// an @org/team) or in the platform team. Only a GitHub login can match:
+// an actor with a provider prefix ("oidc:", "svc:") has no GitHub identity.
 func (r Runner) allowed(ctx context.Context, actor string, owners ...string) (bool, error) {
+	if actor == "" || strings.Contains(actor, ":") {
+		return false, nil
+	}
 	for _, o := range append(owners, r.PlatformTeam) {
 		switch {
 		case o == "":

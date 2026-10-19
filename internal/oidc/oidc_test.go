@@ -184,7 +184,7 @@ func TestVerifyCLIToken(t *testing.T) {
 	c := p.idClaims("cli", "")
 	c["groups"] = []any{"sec"}
 	got, err := prov.Verify(t.Context(), p.sign(c))
-	if err != nil || got.Subject != "dana-acme" || !got.User || !got.CanEvaluate("acme/secret") || got.CanEvaluate("acme/app") {
+	if err != nil || got.Subject != "oidc:dana-acme" || !got.User || !got.CanEvaluate("acme/secret") || got.CanEvaluate("acme/app") {
 		t.Fatalf("cli token = %+v, %v", got, err)
 	}
 	c["aud"] = "unknown"

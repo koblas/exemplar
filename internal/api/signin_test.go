@@ -209,7 +209,9 @@ func TestOIDCSignIn(t *testing.T) {
 		req.AddCookie(ck)
 	}
 	login, access, ok := s.UISession(req)
-	if !ok || login != "dana-acme" {
+	// Unlinked, the IdP username is marked so it is never read as the
+	// GitHub account of that name.
+	if !ok || login != "oidc:dana-acme" {
 		t.Fatalf("session = %q %v", login, ok)
 	}
 	// Repo access is the groups' mapping, not GitHub.
@@ -380,7 +382,7 @@ func TestConnectGitHubOptional(t *testing.T) {
 	if resp := f.get("/connect/skip"); resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/ui/rules/x" {
 		t.Fatalf("skip = %d %s", resp.StatusCode, resp.Header.Get("Location"))
 	}
-	if login, _, ok := f.session(s); !ok || login != "dana-acme" {
+	if login, _, ok := f.session(s); !ok || login != "oidc:dana-acme" {
 		t.Errorf("skipped session = %q %v", login, ok)
 	}
 	// Required: skipping is refused.

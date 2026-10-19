@@ -16,4 +16,5 @@ People sign in to exemplar-api with GitHub OAuth, OpenID Connect, or both. The s
 - **Both.**
   - Each OIDC user connects their GitHub account once after signing in, so feedback and rule ownership use their real GitHub login.
   - `EXEMPLAR_OIDC_GITHUB_LINK` is `required` (the default), `optional` or `off`.
+  - With `optional` or `off`, someone who has not connected GitHub signs in as `oidc:<username>`. That login never matches a GitHub account, so they cannot run rule-owner actions, and their feedback counts as an observer's.
   - `EXEMPLAR_OAUTH2_GITHUB_SIGN_IN=false` keeps GitHub as the connect step only, with no GitHub sign-in button.

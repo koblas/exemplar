@@ -235,8 +235,13 @@ func (id Identity) Claims() svcauth.Claims {
 	for _, r := range id.Repos {
 		perms = append(perms, "evaluate:"+r)
 	}
-	return svcauth.Claims{Subject: id.Username, Permissions: perms, User: true, Issuer: id.Issuer, Sub: id.Subject}
+	return svcauth.Claims{Subject: UnlinkedLogin(id.Username), Permissions: perms, User: true, Issuer: id.Issuer, Sub: id.Subject}
 }
+
+// UnlinkedLogin is the login of an OIDC person with no connected GitHub
+// account. The prefix keeps the IdP username from being read as the GitHub
+// account of the same name by owner, author and team checks.
+func UnlinkedLogin(username string) string { return "oidc:" + username }
 
 // DeniedError is a sign-in the settings refuse; its message is safe to show.
 type DeniedError struct{ Why string }
