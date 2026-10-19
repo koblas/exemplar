@@ -23,7 +23,11 @@ type Config struct {
 	// MaxInjected per candidate (default 3); 0 with a nil Injector skips
 	// injection.
 	MaxInjected int
-	Logger      *slog.Logger
+	// Eligible re-checks a source repo against the current exemplar-config
+	// (repo opt-in and denylist): a repo can leave eligibility after it was
+	// mined, and nothing from it may then reach a model. Required.
+	Eligible func(repo string) bool
+	Logger   *slog.Logger
 }
 
 // Generator writes candidate_eval_cases.
@@ -34,8 +38,14 @@ type Generator struct {
 	log      *slog.Logger
 }
 
+// errConfig is a Generator configured without a required piece.
+var errConfig = errors.New("evalgen: invalid config")
+
 // New returns a Generator. A nil injector generates only history cases.
-func New(cfg Config, st *store.Store, inj *Injector) *Generator {
+func New(cfg Config, st *store.Store, inj *Injector) (*Generator, error) {
+	if cfg.Eligible == nil {
+		return nil, fmt.Errorf("%w: an eligibility check is required", errConfig)
+	}
 	if cfg.Candidates <= 0 {
 		cfg.Candidates = 50
 	}
@@ -48,7 +58,7 @@ func New(cfg Config, st *store.Store, inj *Injector) *Generator {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	return &Generator{cfg: cfg, store: st, injector: inj, log: cfg.Logger}
+	return &Generator{cfg: cfg, store: st, injector: inj, log: cfg.Logger}, nil
 }
 
 // Report is what one candidate got.
@@ -87,6 +97,9 @@ func (g *Generator) one(ctx context.Context, c queries.CandidatesNeedingEvalsRow
 	var sources []PositiveSource
 	repoSet := map[string]bool{}
 	for _, r := range rows {
+		if !g.cfg.Eligible(r.Repo) {
+			continue
+		}
 		repoSet[r.Repo] = true
 		sources = append(sources, PositiveSource{
 			CommentID: r.ID, Repo: r.Repo, PR: int(r.PrNumber), Path: r.Path, CommitSHA: deref(r.CommitSha),
@@ -97,7 +110,7 @@ func (g *Generator) one(ctx context.Context, c queries.CandidatesNeedingEvalsRow
 	rep.Positives = len(cases)
 	if len(cases) == 0 {
 		// Without a positive there is nothing to measure recall against.
-		rep.Skipped = "no source comment records its commit and lines"
+		rep.Skipped = "no source comment in an eligible repo records its commit and lines"
 		return rep, nil
 	}
 

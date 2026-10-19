@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/learn/evalgen"
 	"github.com/koblas/exemplar/internal/redact"
@@ -19,6 +20,7 @@ import (
 // and negatives from history, plus injected violations unless --no-inject.
 func runEvals(args []string) error {
 	fs := flag.NewFlagSet("evals", flag.ContinueOnError)
+	configDir := fs.String("config", "", "exemplar-config checkout: repo eligibility (required)")
 	noInject := fs.Bool("no-inject", false, "only history cases; no model calls or repo checkouts")
 	maxNeg := fs.Int("max-negatives", 10, "negative cases per candidate")
 	maxInj := fs.Int("max-injected", 3, "injected cases per candidate")
@@ -34,6 +36,10 @@ func runEvals(args []string) error {
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
+	eligible, err := eligibility(*configDir)
+	if err != nil {
+		return err
+	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
 		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
@@ -67,7 +73,16 @@ func runEvals(args []string) error {
 		files := &evalgen.CheckoutFiles{Root: dir, Token: checkoutToken(ctx), CloneURL: gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL"))}
 		inj = &evalgen.Injector{Model: evalgen.NewGatewayModel(gwURL, gwToken, nil), Files: files, Scanner: sc}
 	}
-	reports, err := evalgen.New(evalgen.Config{MaxNegatives: *maxNeg, MaxInjected: *maxInj, Logger: log}, st, inj).Run(ctx)
+	return generateEvals(ctx, evalgen.Config{MaxNegatives: *maxNeg, MaxInjected: *maxInj, Logger: log, Eligible: eligible}, st, inj)
+}
+
+// generateEvals runs eval generation and prints each candidate's report.
+func generateEvals(ctx context.Context, cfg evalgen.Config, st *store.Store, inj *evalgen.Injector) error {
+	gen, err := evalgen.New(cfg, st, inj)
+	if err != nil {
+		return fmt.Errorf("create eval generator: %w", err)
+	}
+	reports, err := gen.Run(ctx)
 	for _, r := range reports {
 		printJSON(r)
 	}
@@ -75,6 +90,19 @@ func runEvals(args []string) error {
 		return fmt.Errorf("run eval generation: %w", err)
 	}
 	return nil
+}
+
+// eligibility is the repo eligibility check of the exemplar-config
+// checkout in dir.
+func eligibility(dir string) (func(repo string) bool, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("--config is %w", errRequired)
+	}
+	snap, err := config.LoadSnapshot(os.DirFS(dir), dir)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	return func(repo string) bool { return snap.CheckEligible(repo) == nil }, nil
 }
 
 // checkoutToken mints worker tokens for injection checkouts when the
