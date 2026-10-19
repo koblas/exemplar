@@ -65,13 +65,6 @@ import (
 	"github.com/koblas/exemplar/internal/worker"
 )
 
-// Per-engine-run limits for mode eval's unreviewed compiled rules, as the
-// compile job's sandbox defaults; the pod's limit is 8 GiB.
-const (
-	evalEngineMemory = 2 << 30
-	evalEngineCPU    = 120
-)
-
 var (
 	// errRequired marks a missing flag or environment setting.
 	errRequired       = errors.New("required")
@@ -193,7 +186,7 @@ func runServe(args []string) error {
 	// Mode eval runs rule bodies from an unmerged config head: cap each
 	// engine run so one cannot take the pod's memory.
 	evalMatcher := compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")}
-	if lim, ok := compiled.LimitCommand(evalEngineMemory, evalEngineCPU); ok {
+	if lim, ok := compiled.LimitCommand(compiled.EvalMemoryLimit, compiled.EvalCPULimit); ok {
 		evalMatcher.Sandbox = lim
 	} else {
 		log.Warn("prlimit unavailable: mode eval runs compiled rules without resource limits")

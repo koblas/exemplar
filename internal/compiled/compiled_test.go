@@ -200,7 +200,7 @@ func TestLimitCommand(t *testing.T) {
 // Both engines must still work under mode eval's limits (Linux only;
 // CI runs it).
 func TestRealEnginesUnderLimits(t *testing.T) {
-	lim, ok := LimitCommand(2<<30, 120)
+	lim, ok := LimitCommand(EvalMemoryLimit, EvalCPULimit)
 	if !ok {
 		t.Skip("prlimit not available")
 	}
