@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -177,5 +178,42 @@ func TestRealSemgrep(t *testing.T) {
 	}
 	if err := r.Validate(t.Context(), "semgrep", "rules:\n  - id: x\n    languages: [go]\n    message: m\n    severity: WARNING\n"); err == nil {
 		t.Error("semgrep accepted a rule with no pattern")
+	}
+}
+
+func TestLimitCommand(t *testing.T) {
+	cmd, ok := LimitCommand(1<<30, 60)
+	if runtime.GOOS != "linux" {
+		if ok {
+			t.Fatalf("LimitCommand on %s = %v", runtime.GOOS, cmd)
+		}
+		return
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		t.Skip("prlimit not installed")
+	}
+	if !ok || strings.Join(cmd, " ") != "prlimit --data=1073741824 --cpu=60 --" {
+		t.Fatalf("LimitCommand = %v, %v", cmd, ok)
+	}
+}
+
+// Both engines must still work under mode eval's limits (Linux only;
+// CI runs it).
+func TestRealEnginesUnderLimits(t *testing.T) {
+	lim, ok := LimitCommand(2<<30, 120)
+	if !ok {
+		t.Skip("prlimit not available")
+	}
+	requireEngine(t, "ast-grep")
+	requireEngine(t, "semgrep")
+	dir := writeSource(t)
+	r := Runner{Sandbox: lim, Timeout: 3 * time.Minute}
+	astRule := "id: no-bare-get\nlanguage: go\nrule:\n  pattern:\n    context: \"func _() { http.Get($URL) }\"\n    selector: call_expression\nmessage: m\n"
+	semRule := "rules:\n  - id: no-bare-get\n    languages: [go]\n    message: m\n    severity: WARNING\n    pattern: http.Get(...)\n"
+	for engine, rule := range map[string]string{"ast-grep": astRule, "semgrep": semRule} {
+		got, err := r.Run(t.Context(), dir, engine, rule, []string{"svc/a.go"})
+		if err != nil || len(got) != 1 {
+			t.Errorf("%s under limits = %+v, %v", engine, got, err)
+		}
 	}
 }

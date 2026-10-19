@@ -65,6 +65,13 @@ import (
 	"github.com/koblas/exemplar/internal/worker"
 )
 
+// Per-engine-run limits for mode eval's unreviewed compiled rules, as the
+// compile job's sandbox defaults; the pod's limit is 8 GiB.
+const (
+	evalEngineMemory = 2 << 30
+	evalEngineCPU    = 120
+)
+
 var (
 	// errRequired marks a missing flag or environment setting.
 	errRequired       = errors.New("required")
@@ -183,13 +190,21 @@ func runServe(args []string) error {
 		log.Warn("EXEMPLAR_SEARCH_URL not set: agents get no find_references or path_history, and bug.contract is skipped")
 	}
 
+	// Mode eval runs rule bodies from an unmerged config head: cap each
+	// engine run so one cannot take the pod's memory.
+	evalMatcher := compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")}
+	if lim, ok := compiled.LimitCommand(evalEngineMemory, evalEngineCPU); ok {
+		evalMatcher.Sandbox = lim
+	} else {
+		log.Warn("prlimit unavailable: mode eval runs compiled rules without resource limits")
+	}
 	wcfg := worker.Config{
 		GitHub: worker.AppClients{App: app}, Store: st,
 		Snapshot: func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil },
 		Engine:   eng, Scanner: sc, WorkDir: *workDir, Log: log,
 		// Mode eval (config CI) evaluates exemplar-config's changed rules.
 		CloneURL:   gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL")),
-		ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO"), Matcher: compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")},
+		ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO"), Matcher: evalMatcher,
 	}
 	// Feedback links need exemplar-api's URL and the key it
 	// verifies with; without them comments name the slash commands only.

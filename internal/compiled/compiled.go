@@ -72,6 +72,21 @@ func SandboxCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
 	}, true
 }
 
+// LimitCommand returns a prefix that only sets resource limits (prlimit):
+// a data-segment cap and CPU time per engine run. It needs no user
+// namespaces, so it works where SandboxCommand cannot; it is for rule
+// bodies nobody reviewed yet, so one cannot exhaust the worker pod's
+// memory. ok is false when prlimit is missing or the OS is not Linux.
+func LimitCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
+	if runtime.GOOS != "linux" {
+		return nil, false
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		return nil, false
+	}
+	return []string{"prlimit", fmt.Sprintf("--data=%d", memBytes), fmt.Sprintf("--cpu=%d", cpuSeconds), "--"}, true
+}
+
 // Run executes one rule body with the named engine over files in dir.
 func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []string) ([]Match, error) {
 	switch engine {
