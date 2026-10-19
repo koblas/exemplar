@@ -84,7 +84,7 @@ func TestValidateAndSandbox(t *testing.T) {
 		t.Fatalf("Validate: %v", err)
 	}
 	args, _ := os.ReadFile(argsFile)
-	if !strings.HasPrefix(string(args), "scan\n--rule\n") {
+	if !strings.HasPrefix(string(args), "scan\n--config\n") || !strings.Contains(string(args), "\n--rule\n") {
 		t.Errorf("validate args = %q", args)
 	}
 	bad, _ := fakeEngine(t, "ast-grep", "", 2)
@@ -142,6 +142,24 @@ func TestRealASTGrep(t *testing.T) {
 	}
 	if err := r.Validate(t.Context(), "ast-grep", "id: x\nlanguage: go\nrule:\n  nonsense: [\n"); err == nil {
 		t.Error("ast-grep accepted a broken rule")
+	}
+}
+
+// A scanned checkout is untrusted: ast-grep must not pick up its project
+// config, whose customLanguages entries load shared libraries.
+func TestRealASTGrepIgnoresCheckoutConfig(t *testing.T) {
+	requireEngine(t, "ast-grep")
+	dir := writeSource(t)
+	hostile := "customLanguages:\n  evil:\n    libraryPath: ./missing-lib.so\n    extensions: [evil]\n"
+	for _, p := range []string{"sgconfig.yml", "svc/sgconfig.yml"} {
+		if err := os.WriteFile(filepath.Join(dir, p), []byte(hostile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rule := "id: no-bare-get\nlanguage: go\nrule:\n  pattern:\n    context: \"func _() { http.Get($URL) }\"\n    selector: call_expression\nmessage: Set a timeout\n"
+	got, err := Runner{}.Run(t.Context(), dir, "ast-grep", rule, []string{"svc/a.go"})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("Run = %+v, %v; the checkout's sgconfig.yml was loaded", got, err)
 	}
 }
 
