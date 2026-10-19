@@ -52,7 +52,10 @@ type EvalConfig struct {
 	// Create stores the request for the requester and enqueues its job, in
 	// one transaction, returning the evaluation's id. caller is cli for a
 	// person, agent for a service.
-	Create func(ctx context.Context, r evaluate.Request, requester, caller string) (string, error)
+	// scopes is nil for a GitHub login; for a service or OIDC person it is
+	// their evaluate:<repo> permissions, which also bound the repos mode
+	// eval may read for them.
+	Create func(ctx context.Context, r evaluate.Request, requester, caller string, scopes []string) (string, error)
 	// Services verifies JWTs: Auth0 service tokens and people's OIDC ID
 	// tokens (svcauth.Multi). Nil accepts no JWT.
 	Services Services
@@ -259,7 +262,11 @@ func (e *Evaluations) create(w http.ResponseWriter, r *http.Request) {
 	if id.service != nil && !id.service.User {
 		caller = "agent"
 	}
-	evalID, err := e.cfg.Create(r.Context(), req, login, caller)
+	var scopes []string
+	if id.service != nil {
+		scopes = append([]string{}, id.service.Permissions...)
+	}
+	evalID, err := e.cfg.Create(r.Context(), req, login, caller, scopes)
 	if err != nil {
 		e.cfg.Log.Error("evaluate: not stored", "repo", req.Repo, "err", err)
 		jsonError(w, http.StatusInternalServerError, "could not queue the review")

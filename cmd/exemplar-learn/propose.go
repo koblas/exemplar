@@ -86,7 +86,11 @@ func configRepo(ctx context.Context) (*gh.ConfigRepo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create github client: %w", err)
 	}
-	repo, err := gh.NewConfigRepo(client, cfgRepo)
+	bot, err := app.BotLogin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("app login: %w", err)
+	}
+	repo, err := gh.NewConfigRepo(client, cfgRepo, bot)
 	if err != nil {
 		return nil, fmt.Errorf("open config repo: %w", err)
 	}

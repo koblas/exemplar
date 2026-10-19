@@ -61,11 +61,12 @@ func TestEvaluateEvalMode(t *testing.T) {
 	if _, err := st.Pool.Exec(ctx, `INSERT INTO gh_events (delivery_id, event, installation_id, repo_full_name) VALUES (gen_random_uuid(), 'pull_request', $1, $2)`, inst, cfgRepo); err != nil {
 		t.Fatal(err)
 	}
+	scopes, requester := []string{"evaluate:acme/*"}, "svc:ci@clients"
 	create := func(r, b, h string, rules ...string) queries.GetEvaluationRow {
 		t.Helper()
 		id, err := st.CreateEvaluation(ctx, queries.CreateEvaluationParams{
-			Repo: r, BaseSha: b, RequestedBy: "svc:ci@clients", Caller: "agent",
-			Mode: evaluate.ModeEval, HeadSha: &h, Rules: append([]string{}, rules...),
+			Repo: r, BaseSha: b, RequestedBy: requester, Caller: "agent",
+			Mode: evaluate.ModeEval, HeadSha: &h, Rules: append([]string{}, rules...), RequesterScopes: scopes,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -108,6 +109,46 @@ func TestEvaluateEvalMode(t *testing.T) {
 	if ev, reps := result(create(cfgRepo, head, head)); !ev.Pass || len(reps) != 0 || !strings.Contains(ev.Markdown, "No rules to evaluate") {
 		t.Errorf("no change = %+v", ev)
 	}
+	// A head's case on a repo the requester cannot read is never run, even
+	// an eligible one: the service's permissions cover only exemplar-config.
+	cases := filepath.Join(cfgDir, "evals/propagate-context/cases.yaml")
+	_ = os.MkdirAll(filepath.Dir(cases), 0o755)
+	_ = os.WriteFile(cases, []byte("rule: propagate-context\ncases:\n  - name: probe\n    ref: "+repo+"@"+strings.Repeat("d", 40)+
+		"\n    paths: [main.go]\n    expect: [{path: main.go, lines: [1, 1]}]\n"), 0o644)
+	git("add", "-A")
+	git("commit", "-q", "-m", "add a case")
+	withCase := git("rev-parse", "HEAD")
+	outcome := func() evalrun.Outcome {
+		t.Helper()
+		_, reps := result(create(cfgRepo, base, withCase))
+		if len(reps) != 1 || len(reps[0].Outcomes) != 1 {
+			t.Fatalf("reports = %+v", reps)
+		}
+		return reps[0].Outcomes[0]
+	}
+	scopes = []string{"evaluate:acme/exemplar-config"}
+	if o := outcome(); o.Result != "unavailable" || o.Detail != "repo is not eligible" {
+		t.Errorf("unreadable case repo = %+v", o)
+	}
+	scopes = []string{"evaluate:*"}
+	if o := outcome(); o.Detail == "repo is not eligible" {
+		t.Errorf("readable case repo refused = %+v", o)
+	}
+	// A GitHub login: the repo's collaborator permission decides.
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO gh_events (delivery_id, event, installation_id, repo_full_name) VALUES (gen_random_uuid(), 'pull_request', $1, $2)`, inst, repo); err != nil {
+		t.Fatal(err)
+	}
+	scopes, requester = nil, "mallory"
+	e.fake.noAccess = map[string]bool{"mallory": true}
+	if o := outcome(); o.Detail != "repo is not eligible" {
+		t.Errorf("case repo the login cannot read = %+v", o)
+	}
+	requester = "alice"
+	if o := outcome(); o.Detail == "repo is not eligible" {
+		t.Errorf("case repo the login can read refused = %+v", o)
+	}
+	scopes, requester = []string{"evaluate:acme/*"}, "svc:ci@clients"
+
 	// Only exemplar-config, and only pushed commits.
 	if row := create(repo, base, head); row.Status != evaluate.StatusRefused || !strings.Contains(*row.Reason, "exemplar-config only") {
 		t.Errorf("other repo = %+v", row)

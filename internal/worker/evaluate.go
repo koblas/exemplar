@@ -19,9 +19,11 @@ import (
 	"github.com/koblas/exemplar/internal/engine"
 	"github.com/koblas/exemplar/internal/evalrun"
 	"github.com/koblas/exemplar/internal/evaluate"
+	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/learn/evalgen"
 	"github.com/koblas/exemplar/internal/store"
 	"github.com/koblas/exemplar/internal/store/queries"
+	"github.com/koblas/exemplar/internal/svcauth"
 )
 
 // EvaluateWorker runs evaluate jobs: the full review of a
@@ -187,6 +189,47 @@ func (w *EvaluateWorker) finish(ctx context.Context, id uuid.UUID, status, reaso
 	return nil
 }
 
+// requesterAccess returns whether the evaluation's requester may read a
+// repo: a service or OIDC person by their evaluate:<repo> permissions, a
+// GitHub login by the repo's collaborator permission. Lookup failures
+// deny. Answers are cached for the evaluation.
+func (w *EvaluateWorker) requesterAccess(ctx context.Context, row queries.StartEvaluationRow) func(repo string) bool {
+	seen := map[string]bool{}
+	return func(repo string) bool {
+		key := strings.ToLower(repo)
+		if ok, done := seen[key]; done {
+			return ok
+		}
+		ok := w.canRead(ctx, row, repo)
+		seen[key] = ok
+		return ok
+	}
+}
+
+func (w *EvaluateWorker) canRead(ctx context.Context, row queries.StartEvaluationRow, repo string) bool {
+	if row.RequesterScopes != nil {
+		return svcauth.Claims{Permissions: row.RequesterScopes}.CanEvaluate(repo)
+	}
+	if strings.Contains(row.RequestedBy, ":") {
+		return false // not a GitHub login, and no permissions recorded
+	}
+	inst, err := w.installation(ctx, repo)
+	if err != nil {
+		return false
+	}
+	c, err := w.cfg.GitHub.Reader(ctx, inst, repo)
+	if err != nil {
+		w.cfg.Log.Warn("evaluate: requester access not checked", "repo", repo, "err", err)
+		return false
+	}
+	ok, err := gh.CanRead(ctx, c, repo, row.RequestedBy)
+	if err != nil {
+		w.cfg.Log.Warn("evaluate: requester access not checked", "repo", repo, "err", err)
+		return false
+	}
+	return ok
+}
+
 // installation finds a repo's installation from its webhook deliveries.
 func (w *EvaluateWorker) installation(ctx context.Context, repo string) (int64, error) {
 	inst, err := w.cfg.Store.RepoInstallationID(ctx, &repo)
@@ -237,8 +280,13 @@ func (w *EvaluateWorker) eval(ctx context.Context, id uuid.UUID, row queries.Sta
 	ids := append(evalrun.ChangedRules(head, changed), row.Rules...)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
+	canRead := w.requesterAccess(ctx, row)
 	ev := &evalrun.Evaluator{
-		Snapshot: head, Eligible: func(repo string) bool { return snap.CheckEligible(repo) == nil },
+		// A head's cases may name any repo, with a matcher its author
+		// wrote: each must be eligible in the deployed config and one the
+		// requester could read, or the results would describe a repo they
+		// cannot see.
+		Snapshot: head, Eligible: func(repo string) bool { return snap.CheckEligible(repo) == nil && canRead(repo) },
 		Engine: w.cfg.Engine, Matcher: w.cfg.Matcher, Scanner: w.cfg.Scanner, WorkDir: filepath.Join(dir, "cases"),
 		Files: &evalgen.CheckoutFiles{
 			Root: filepath.Join(dir, "checkouts"), CloneURL: w.cfg.CloneURL,

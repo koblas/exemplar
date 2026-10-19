@@ -2,7 +2,8 @@
 // EvaluateStage1, is strictly deterministic: its input contains only facts
 // measured by code, never anything derived from model text.
 //
-// A run is ineligible on any candidate finding, coverage below 100%,
+// A run is ineligible on any candidate finding, a changed file excluded
+// from review, coverage below 100%,
 // degradation, an incomplete stage, same-family verification, a kill
 // switch, or a failed policy check (paths, author, fork, size; see
 // CheckPolicy). The later approval checks (EvaluateStage2) run only when
@@ -20,6 +21,10 @@ type Stage1Input struct {
 	// Candidates counts findings produced by every lane before
 	// verification. A refuted finding still counts (system rule 6).
 	Candidates int `json:"Candidates"`
+	// Unreviewed counts changed files excluded from review (binary, over
+	// 1 MB, removed, ignored by .gitattributes or .exemplarignore). No
+	// lane saw them, so they cannot be called clean.
+	Unreviewed int `json:"Unreviewed"`
 	// Degraded is true when anything was shed, deferred or ran degraded.
 	Degraded bool `json:"Degraded"`
 	// SameFamilyVerification is true when any finding was verified by the
@@ -52,6 +57,7 @@ const (
 	ReasonIncomplete    = "incomplete"
 	ReasonCoverage      = "coverage_below_100"
 	ReasonCandidates    = "candidate_findings"
+	ReasonUnreviewed    = "changed_files_not_reviewed"
 	ReasonDegraded      = "degraded"
 	ReasonSameFamily    = "same_family_verification"
 	ReasonBugLane       = "bug_lane_not_covered"
@@ -94,6 +100,9 @@ func EvaluateStage1(in Stage1Input) Stage1Result {
 	}
 	if in.Candidates > 0 {
 		reasons = append(reasons, ReasonCandidates)
+	}
+	if in.Unreviewed > 0 {
+		reasons = append(reasons, ReasonUnreviewed)
 	}
 	if in.Degraded {
 		reasons = append(reasons, ReasonDegraded)

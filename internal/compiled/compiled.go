@@ -72,12 +72,27 @@ func SandboxCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
 	}, true
 }
 
+// LimitCommand returns a prefix that only sets resource limits (prlimit):
+// a data-segment cap and CPU time per engine run. It needs no user
+// namespaces, so it works where SandboxCommand cannot; it is for rule
+// bodies nobody reviewed yet, so one cannot exhaust the worker pod's
+// memory. ok is false when prlimit is missing or the OS is not Linux.
+func LimitCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
+	if runtime.GOOS != "linux" {
+		return nil, false
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		return nil, false
+	}
+	return []string{"prlimit", fmt.Sprintf("--data=%d", memBytes), fmt.Sprintf("--cpu=%d", cpuSeconds), "--"}, true
+}
+
 // Run executes one rule body with the named engine over files in dir.
 func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []string) ([]Match, error) {
 	switch engine {
 	case "ast-grep":
 		out, err := r.runEngine(ctx, dir, r.astGrep(), ruleBody, func(rule string) []string {
-			return append([]string{"scan", "--rule", rule, "--json=stream", "--"}, files...)
+			return append([]string{"scan", "--config", trustedConfig(rule), "--rule", rule, "--json=stream", "--"}, files...)
 		})
 		if err != nil {
 			return nil, err
@@ -109,7 +124,7 @@ func (r Runner) Validate(ctx context.Context, engine, ruleBody string) error {
 	switch engine {
 	case "ast-grep":
 		_, err = r.runEngine(ctx, empty, r.astGrep(), ruleBody, func(rule string) []string {
-			return []string{"scan", "--rule", rule, "--json=stream", "."}
+			return []string{"scan", "--config", trustedConfig(rule), "--rule", rule, "--json=stream", "."}
 		})
 	case "semgrep":
 		_, err = r.runEngine(ctx, empty, r.semgrep(), ruleBody, func(rule string) []string {
@@ -131,6 +146,12 @@ func cmpOr(a, b string) string {
 	return b
 }
 
+// trustedConfig is the empty ast-grep project config runEngine writes next
+// to rule. ast-grep otherwise discovers sgconfig.yml from its working
+// directory, the checkout, whose customLanguages entries load shared
+// libraries: passing --config explicitly turns that discovery off.
+func trustedConfig(rule string) string { return filepath.Join(filepath.Dir(rule), "sgconfig.yml") }
+
 // runEngine writes the rule to a temp file and runs bin with args(rule)
 // in dir. Exit status 1 means "findings reported" for both engines.
 func (r Runner) runEngine(ctx context.Context, dir, bin, ruleBody string, args func(rule string) []string) ([]byte, error) {
@@ -144,20 +165,22 @@ func (r Runner) runEngine(ctx context.Context, dir, bin, ruleBody string, args f
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	ruleFile, err := os.CreateTemp("", "exemplar-rule-*.yml")
+	// The rule and Exemplar's own empty ast-grep project config live in a
+	// private temp dir, never in dir: dir is the untrusted checkout.
+	ruleDir, err := os.MkdirTemp("", "exemplar-rule-*")
 	if err != nil {
-		return nil, fmt.Errorf("compiled: create rule file: %w", err)
+		return nil, fmt.Errorf("compiled: create rule dir: %w", err)
 	}
-	defer func() { _ = os.Remove(ruleFile.Name()) }()
-	if _, err := ruleFile.WriteString(ruleBody); err != nil {
-		_ = ruleFile.Close()
+	defer func() { _ = os.RemoveAll(ruleDir) }()
+	rule := filepath.Join(ruleDir, "rule.yml")
+	if err := os.WriteFile(rule, []byte(ruleBody), 0o600); err != nil {
 		return nil, fmt.Errorf("compiled: write rule file: %w", err)
 	}
-	if err := ruleFile.Close(); err != nil {
-		return nil, fmt.Errorf("compiled: close rule file: %w", err)
+	if err := os.WriteFile(trustedConfig(rule), []byte("ruleDirs: []\n"), 0o600); err != nil {
+		return nil, fmt.Errorf("compiled: write ast-grep config: %w", err)
 	}
 
-	argv := append(append(slices.Clone(r.Sandbox), bin), args(ruleFile.Name())...)
+	argv := append(append(slices.Clone(r.Sandbox), bin), args(rule)...)
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
 	cmd.Env = []string{

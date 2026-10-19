@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -84,7 +85,7 @@ func TestValidateAndSandbox(t *testing.T) {
 		t.Fatalf("Validate: %v", err)
 	}
 	args, _ := os.ReadFile(argsFile)
-	if !strings.HasPrefix(string(args), "scan\n--rule\n") {
+	if !strings.HasPrefix(string(args), "scan\n--config\n") || !strings.Contains(string(args), "\n--rule\n") {
 		t.Errorf("validate args = %q", args)
 	}
 	bad, _ := fakeEngine(t, "ast-grep", "", 2)
@@ -145,6 +146,24 @@ func TestRealASTGrep(t *testing.T) {
 	}
 }
 
+// A scanned checkout is untrusted: ast-grep must not pick up its project
+// config, whose customLanguages entries load shared libraries.
+func TestRealASTGrepIgnoresCheckoutConfig(t *testing.T) {
+	requireEngine(t, "ast-grep")
+	dir := writeSource(t)
+	hostile := "customLanguages:\n  evil:\n    libraryPath: ./missing-lib.so\n    extensions: [evil]\n"
+	for _, p := range []string{"sgconfig.yml", "svc/sgconfig.yml"} {
+		if err := os.WriteFile(filepath.Join(dir, p), []byte(hostile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rule := "id: no-bare-get\nlanguage: go\nrule:\n  pattern:\n    context: \"func _() { http.Get($URL) }\"\n    selector: call_expression\nmessage: Set a timeout\n"
+	got, err := Runner{}.Run(t.Context(), dir, "ast-grep", rule, []string{"svc/a.go"})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("Run = %+v, %v; the checkout's sgconfig.yml was loaded", got, err)
+	}
+}
+
 func TestRealSemgrep(t *testing.T) {
 	requireEngine(t, "semgrep")
 	dir := writeSource(t)
@@ -159,5 +178,42 @@ func TestRealSemgrep(t *testing.T) {
 	}
 	if err := r.Validate(t.Context(), "semgrep", "rules:\n  - id: x\n    languages: [go]\n    message: m\n    severity: WARNING\n"); err == nil {
 		t.Error("semgrep accepted a rule with no pattern")
+	}
+}
+
+func TestLimitCommand(t *testing.T) {
+	cmd, ok := LimitCommand(1<<30, 60)
+	if runtime.GOOS != "linux" {
+		if ok {
+			t.Fatalf("LimitCommand on %s = %v", runtime.GOOS, cmd)
+		}
+		return
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		t.Skip("prlimit not installed")
+	}
+	if !ok || strings.Join(cmd, " ") != "prlimit --data=1073741824 --cpu=60 --" {
+		t.Fatalf("LimitCommand = %v, %v", cmd, ok)
+	}
+}
+
+// Both engines must still work under mode eval's limits (Linux only;
+// CI runs it).
+func TestRealEnginesUnderLimits(t *testing.T) {
+	lim, ok := LimitCommand(2<<30, 120)
+	if !ok {
+		t.Skip("prlimit not available")
+	}
+	requireEngine(t, "ast-grep")
+	requireEngine(t, "semgrep")
+	dir := writeSource(t)
+	r := Runner{Sandbox: lim, Timeout: 3 * time.Minute}
+	astRule := "id: no-bare-get\nlanguage: go\nrule:\n  pattern:\n    context: \"func _() { http.Get($URL) }\"\n    selector: call_expression\nmessage: m\n"
+	semRule := "rules:\n  - id: no-bare-get\n    languages: [go]\n    message: m\n    severity: WARNING\n    pattern: http.Get(...)\n"
+	for engine, rule := range map[string]string{"ast-grep": astRule, "semgrep": semRule} {
+		got, err := r.Run(t.Context(), dir, engine, rule, []string{"svc/a.go"})
+		if err != nil || len(got) != 1 {
+			t.Errorf("%s under limits = %+v, %v", engine, got, err)
+		}
 	}
 }

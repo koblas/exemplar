@@ -237,13 +237,13 @@ func run(args []string) error {
 	evals, err := api.NewEvaluations(api.EvalConfig{
 		GitHubAPI: ghAPI, DailyUSD: *dailyUSD, DailyRuns: *dailyRuns, PerMinute: *perMinute, Log: log,
 		Services: services, GitHub: githubTokens(github), Identities: identities, GitHubLink: linkMode(link),
-		Create: func(ctx context.Context, r evaluate.Request, login, caller string) (string, error) {
+		Create: func(ctx context.Context, r evaluate.Request, login, caller string, scopes []string) (string, error) {
 			var id uuid.UUID
 			err := st.InTx(ctx, func(tx pgx.Tx, q *queries.Queries) error {
 				var err error
 				p := queries.CreateEvaluationParams{
 					Repo: r.Repo, BaseSha: r.BaseSHA, RequestedBy: login, Caller: caller, Agent: r.Agent,
-					Mode: evaluate.ModeReview, Rules: []string{},
+					Mode: evaluate.ModeReview, Rules: []string{}, RequesterScopes: scopes,
 				}
 				if r.Mode == evaluate.ModeEval {
 					p.Mode, p.HeadSha, p.Rules = evaluate.ModeEval, &r.HeadSHA, append(p.Rules, r.Rules...)

@@ -16,6 +16,7 @@ const (
 	ReasonBranchRulesUnknown       = "branch_rules_unknown"
 	ReasonComplianceApprovals      = "compliance_repo_below_two_approvals"
 	ReasonCodeOwnerReviewRequired  = "code_owner_review_required"
+	ReasonStaleApprovalsKept       = "stale_approvals_not_dismissed_on_push"
 	ReasonMergePolicyNotRequired   = "merge_policy_check_not_required"
 	ReasonUnknownApprovalMode      = "unknown_approval_mode"
 	NoteHumanApprovalStillRequired = "human_approval_still_required"
@@ -25,10 +26,13 @@ const (
 // from classic branch protection and every active ruleset: the strictest
 // value of each wins.
 type BranchRules struct {
-	RequiredApprovals int      `json:"required_approvals"`
-	CodeOwnerReview   bool     `json:"code_owner_review"`
-	LastPushApproval  bool     `json:"last_push_approval"`
-	RequiredChecks    []string `json:"required_checks,omitempty"`
+	RequiredApprovals int  `json:"required_approvals"`
+	CodeOwnerReview   bool `json:"code_owner_review"`
+	LastPushApproval  bool `json:"last_push_approval"`
+	// DismissStaleReviews is set when a push dismisses earlier approvals
+	// (classic protection or a ruleset's dismiss_stale_reviews_on_push).
+	DismissStaleReviews bool     `json:"dismiss_stale_reviews"`
+	RequiredChecks      []string `json:"required_checks,omitempty"`
 	// Sources names where the rules came from ("branch_protection",
 	// "ruleset:<id>"), for the trace.
 	Sources []string `json:"sources,omitempty"`
@@ -58,6 +62,10 @@ type BranchRulesResult struct {
 //   - native_approve (the default) cannot satisfy a code-owner review
 //     requirement, since an App is never a code owner; such repos belong in
 //     merge_policy_check mode;
+//   - when the approval counts toward the merge, native_approve needs the
+//     branch to dismiss stale approvals on push: Exemplar dismisses its own
+//     approval only when the next review job runs, and an approval must
+//     never carry forward to a commit nobody reviewed;
 //   - merge_policy_check is pointless unless exemplar/merge-policy is a
 //     required check.
 //
@@ -76,6 +84,9 @@ func CheckBranchRules(repo, mode string, rules *BranchRules) BranchRulesResult {
 	case ApprovalNative:
 		if rules.CodeOwnerReview {
 			res.Reasons = append(res.Reasons, ReasonCodeOwnerReviewRequired)
+		}
+		if rules.RequiredApprovals > 0 && !rules.DismissStaleReviews {
+			res.Reasons = append(res.Reasons, ReasonStaleApprovalsKept)
 		}
 		res.BotApprovals = min(maxBotApprovals, rules.RequiredApprovals)
 	case ApprovalMergePolicy:

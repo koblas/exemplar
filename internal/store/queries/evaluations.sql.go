@@ -13,21 +13,22 @@ import (
 )
 
 const createEvaluation = `-- name: CreateEvaluation :one
-INSERT INTO evaluations (repo, base_sha, requested_by, caller, agent, diff, mode, head_sha, rules)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO evaluations (repo, base_sha, requested_by, caller, agent, diff, mode, head_sha, rules, requester_scopes)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING id
 `
 
 type CreateEvaluationParams struct {
-	Repo        string
-	BaseSha     string
-	RequestedBy string
-	Caller      string
-	Agent       string
-	Diff        *string
-	Mode        string
-	HeadSha     *string
-	Rules       []string
+	Repo            string
+	BaseSha         string
+	RequestedBy     string
+	Caller          string
+	Agent           string
+	Diff            *string
+	Mode            string
+	HeadSha         *string
+	Rules           []string
+	RequesterScopes []string
 }
 
 func (q *Queries) CreateEvaluation(ctx context.Context, arg CreateEvaluationParams) (uuid.UUID, error) {
@@ -41,6 +42,7 @@ func (q *Queries) CreateEvaluation(ctx context.Context, arg CreateEvaluationPara
 		arg.Mode,
 		arg.HeadSha,
 		arg.Rules,
+		arg.RequesterScopes,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -155,19 +157,20 @@ func (q *Queries) RepoInstallationID(ctx context.Context, repoFullName *string) 
 
 const startEvaluation = `-- name: StartEvaluation :one
 UPDATE evaluations SET status = 'running' WHERE id = $1 AND status IN ('queued', 'running')
-RETURNING repo, base_sha, requested_by, caller, agent, coalesce(diff, '')::text AS diff, mode, coalesce(head_sha, '')::text AS head_sha, rules
+RETURNING repo, base_sha, requested_by, caller, agent, coalesce(diff, '')::text AS diff, mode, coalesce(head_sha, '')::text AS head_sha, rules, requester_scopes
 `
 
 type StartEvaluationRow struct {
-	Repo        string
-	BaseSha     string
-	RequestedBy string
-	Caller      string
-	Agent       string
-	Diff        string
-	Mode        string
-	HeadSha     string
-	Rules       []string
+	Repo            string
+	BaseSha         string
+	RequestedBy     string
+	Caller          string
+	Agent           string
+	Diff            string
+	Mode            string
+	HeadSha         string
+	Rules           []string
+	RequesterScopes []string
 }
 
 // Claims a queued evaluation and returns its diff.
@@ -184,6 +187,7 @@ func (q *Queries) StartEvaluation(ctx context.Context, id uuid.UUID) (StartEvalu
 		&i.Mode,
 		&i.HeadSha,
 		&i.Rules,
+		&i.RequesterScopes,
 	)
 	return i, err
 }

@@ -57,14 +57,14 @@ func TestBranchRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if br.RequiredApprovals != 2 || !br.CodeOwnerReview || !br.LastPushApproval ||
+	if br.RequiredApprovals != 2 || !br.CodeOwnerReview || !br.LastPushApproval || !br.DismissStaleReviews ||
 		!slices.Equal(br.RequiredChecks, []string{"ci", "exemplar/merge-policy", "lint"}) ||
 		!slices.Equal(br.Sources, []string{"branch_protection", "ruleset:7", "ruleset:9"}) {
 		t.Errorf("rules = %+v", br)
 	}
 
 	// An unprotected branch with no rulesets has no rules; that's not an error.
-	if br, err := BranchRules(t.Context(), c, "acme/open", "main"); err != nil || br.RequiredApprovals != 0 || len(br.Sources) != 0 {
+	if br, err := BranchRules(t.Context(), c, "acme/open", "main"); err != nil || br.RequiredApprovals != 0 || br.DismissStaleReviews || len(br.Sources) != 0 {
 		t.Errorf("open = %+v, %v", br, err)
 	}
 	// A token without Administration read, or a missing repo, is an error:

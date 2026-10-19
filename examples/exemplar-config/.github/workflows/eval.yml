@@ -33,7 +33,9 @@ jobs:
   # the check fails below global.yaml eval_thresholds. The evaluation runs
   # in exemplar-worker through exemplar-api's /v1/evaluate (mode: eval), so
   # this job holds no gateway, model or GitHub token: only an Auth0 client
-  # for exemplar-api whose one permission is evaluate:<this repo>. The
+  # for exemplar-api with evaluate:<this repo>, plus evaluate:<owner>/<repo>
+  # (or evaluate:<owner>/*) for each repo the eval cases reference; a case
+  # on a repo the client cannot evaluate is reported unavailable. The
   # PR's head must be pushed (it is, for a pull_request run).
   #
   # Skipped until the repository variables and secrets exist (Optional

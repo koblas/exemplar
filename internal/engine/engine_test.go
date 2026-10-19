@@ -574,7 +574,9 @@ func TestReviewStage2(t *testing.T) {
 		p.CodeOwners = codeowners.Parse("* @acme/app\n")
 		p.Effective.RepoConfig.AutoApprove = &schema.RepoAutoApprove{Enabled: true, ApprovableOwners: []string{"@acme/app"}}
 	}
-	oneApproval := func(context.Context) (gates.BranchRules, error) { return gates.BranchRules{RequiredApprovals: 1}, nil }
+	oneApproval := func(context.Context) (gates.BranchRules, error) {
+		return gates.BranchRules{RequiredApprovals: 1, DismissStaleReviews: true}, nil
+	}
 	safe := gates.MergeSafety(gates.MergeSafetyInput{}, gates.DefaultWeights)
 	risky := gates.MergeSafety(gates.MergeSafetyInput{Paths: []gates.PathFacts{{Path: "main.go", Incident: true}}, ForcePush: true}, gates.DefaultWeights) // 0.65
 
@@ -686,10 +688,14 @@ func TestReviewStage1Policy(t *testing.T) {
 	if pol.AuthorOK || !slices.Contains(pol.Reasons, gates.ReasonBotNotAllowlisted) || !slices.Equal(asked, []string{"@acme/app:alice"}) {
 		t.Errorf("author = %+v, asked %v", pol, asked)
 	}
-	for _, r := range []string{gates.ReasonPaths, gates.ReasonAuthor, gates.ReasonBugLane} {
+	// go.sum and vendor/lib.go are excluded from review, so no lane saw them.
+	for _, r := range []string{gates.ReasonPaths, gates.ReasonAuthor, gates.ReasonBugLane, gates.ReasonUnreviewed} {
 		if !slices.Contains(res.Stage1.Reasons, r) {
 			t.Errorf("stage1 reasons %v lack %s", res.Stage1.Reasons, r)
 		}
+	}
+	if res.Stage1.Input.Unreviewed != 2 {
+		t.Errorf("unreviewed = %d, want 2", res.Stage1.Input.Unreviewed)
 	}
 	if slices.Contains(res.Stage1.Reasons, gates.ReasonForkOrUnknown) || slices.Contains(res.Stage1.Reasons, gates.ReasonSize) {
 		t.Errorf("stage1 reasons = %v", res.Stage1.Reasons)

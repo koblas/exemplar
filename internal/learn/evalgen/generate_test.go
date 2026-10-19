@@ -20,6 +20,55 @@ func run(t *testing.T, s *store.Store, sql string, args ...any) {
 	}
 }
 
+func allEligible(string) bool { return true }
+
+func newGenerator(t *testing.T, cfg Config, s *store.Store, inj *Injector) *Generator {
+	t.Helper()
+	if cfg.Eligible == nil {
+		cfg.Eligible = allEligible
+	}
+	g, err := New(cfg, s, inj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+func TestNewRequiresEligibility(t *testing.T) {
+	if _, err := New(Config{}, nil, nil); err == nil {
+		t.Fatal("New without an eligibility check succeeded")
+	}
+}
+
+// A repo denylisted or dropped after it was mined is never read for cases
+// nor sent to the model.
+func TestGeneratorSkipsIneligibleRepos(t *testing.T) {
+	s := storetest.New(t)
+	run(t, s, `INSERT INTO cluster_runs (id, params, status) VALUES (1, '{}', 'done')`)
+	run(t, s, `INSERT INTO candidates (id, ext, title, description, cluster_size, distinct_reviewers, score, score_detail, owner, cluster_hash, last_run_id)
+	           VALUES (1, '.go', 't', 'd', 1, 1, 1, '{}', '@o/t', 'h', 1)`)
+	run(t, s, `INSERT INTO mined_comments (id, repo, pr_number, path, ext, reviewer_pid, author_pid, created_at, comment_url, body, commit_sha, start_line, end_line)
+	           VALUES (1, 'acme/secret', 1, 'a.go', '.go', 'r', 'a', now(), 'u', 'b', 'abc', 3, 3)`)
+	run(t, s, `INSERT INTO candidate_sources VALUES (1, 1)`)
+	run(t, s, `INSERT INTO mined_prs VALUES ('acme/secret', 20, 'h', 'b', now(), true, '{a.go}')`)
+	sc, err := redact.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inj := &Injector{Model: fakeModel{}, Files: &CheckoutFiles{Root: t.TempDir(), CloneURL: func(string) string {
+		t.Error("an ineligible repo was checked out")
+		return ""
+	}}, Scanner: sc}
+	g := newGenerator(t, Config{Eligible: func(repo string) bool { return repo != "acme/secret" }}, s, inj)
+	reports, err := g.Run(t.Context())
+	if err != nil || len(reports) != 1 || reports[0].Skipped == "" || reports[0].Positives != 0 || reports[0].Injected != 0 {
+		t.Fatalf("reports = %+v, %v", reports, err)
+	}
+	if rows, _ := s.CandidateEvalCases(t.Context(), 1); len(rows) != 0 {
+		t.Fatalf("cases written from an ineligible repo: %d", len(rows))
+	}
+}
+
 func TestGeneratorEndToEnd(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
@@ -59,7 +108,7 @@ func TestGeneratorEndToEnd(t *testing.T) {
 		Files:   &CheckoutFiles{Root: t.TempDir(), CloneURL: func(string) string { return repo.Dir }},
 		Scanner: sc,
 	}
-	reports, err := New(Config{}, s, inj).Run(ctx)
+	reports, err := newGenerator(t, Config{}, s, inj).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +148,7 @@ func TestGeneratorEndToEnd(t *testing.T) {
 	}
 
 	// Candidates that already have cases are not regenerated.
-	again, err := New(Config{}, s, inj).Run(ctx)
+	again, err := newGenerator(t, Config{}, s, inj).Run(ctx)
 	if err != nil || len(again) != 0 {
 		t.Fatalf("second run = %+v, %v", again, err)
 	}
@@ -113,7 +162,7 @@ func TestGeneratorSkipsCandidatesWithoutLocations(t *testing.T) {
 	run(t, s, `INSERT INTO mined_comments (id, repo, pr_number, path, ext, reviewer_pid, author_pid, created_at, comment_url, body)
 	           VALUES (1, 'acme/pay', 1, 'a.go', '.go', 'r', 'a', now(), 'u', 'b')`)
 	run(t, s, `INSERT INTO candidate_sources VALUES (1, 1)`)
-	reports, err := New(Config{}, s, nil).Run(t.Context())
+	reports, err := newGenerator(t, Config{}, s, nil).Run(t.Context())
 	if err != nil || len(reports) != 1 || reports[0].Skipped == "" {
 		t.Fatalf("reports = %+v, %v", reports, err)
 	}

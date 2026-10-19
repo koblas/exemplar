@@ -8,7 +8,7 @@ import (
 )
 
 // TestStage1Invariants is a property test: any candidate
-// finding, coverage below 1.0, degradation, incompleteness or same-family
+// finding, changed file left unreviewed, coverage below 1.0, degradation, incompleteness or same-family
 // verification forces ineligible, whatever else is true; and a run is
 // eligible exactly when every check holds.
 func TestStage1Invariants(t *testing.T) {
@@ -18,6 +18,7 @@ func TestStage1Invariants(t *testing.T) {
 			Complete:               r.IntN(2) == 0,
 			Coverage:               []float64{0, 0.5, 0.99, 1}[r.IntN(4)],
 			Candidates:             r.IntN(3),
+			Unreviewed:             r.IntN(3),
 			Degraded:               r.IntN(2) == 0,
 			SameFamilyVerification: r.IntN(2) == 0,
 			BugLaneCovered:         r.IntN(4) != 0,
@@ -30,7 +31,7 @@ func TestStage1Invariants(t *testing.T) {
 			WithinSize:             r.IntN(4) != 0,
 		}
 		res := EvaluateStage1(in)
-		forced := !in.Complete || in.Coverage < 1 || in.Candidates > 0 || in.Degraded || in.SameFamilyVerification
+		forced := !in.Complete || in.Coverage < 1 || in.Candidates > 0 || in.Unreviewed > 0 || in.Degraded || in.SameFamilyVerification
 		if forced && res.Eligible {
 			t.Fatalf("eligible with a forcing condition: %+v", in)
 		}
@@ -46,6 +47,7 @@ func TestStage1Invariants(t *testing.T) {
 		check(!in.Complete, ReasonIncomplete)
 		check(in.Coverage < 1, ReasonCoverage)
 		check(in.Candidates > 0, ReasonCandidates)
+		check(in.Unreviewed > 0, ReasonUnreviewed)
 		check(in.SameFamilyVerification, ReasonSameFamily)
 		check(!in.BugLaneCovered, ReasonBugLane)
 		check(in.RepoShadow, ReasonRepoShadow)

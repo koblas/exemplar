@@ -1,6 +1,6 @@
 -- name: CreateEvaluation :one
-INSERT INTO evaluations (repo, base_sha, requested_by, caller, agent, diff, mode, head_sha, rules)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO evaluations (repo, base_sha, requested_by, caller, agent, diff, mode, head_sha, rules, requester_scopes)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING id;
 
 -- name: GetEvaluation :one
@@ -10,7 +10,7 @@ FROM evaluations WHERE id = $1;
 -- name: StartEvaluation :one
 -- Claims a queued evaluation and returns its diff.
 UPDATE evaluations SET status = 'running' WHERE id = $1 AND status IN ('queued', 'running')
-RETURNING repo, base_sha, requested_by, caller, agent, coalesce(diff, '')::text AS diff, mode, coalesce(head_sha, '')::text AS head_sha, rules;
+RETURNING repo, base_sha, requested_by, caller, agent, coalesce(diff, '')::text AS diff, mode, coalesce(head_sha, '')::text AS head_sha, rules, requester_scopes;
 
 -- name: FinishEvaluation :exec
 UPDATE evaluations SET status = $2, reason = $3, review_id = $4, result = $5, cost_usd = $6, diff = NULL, finished_at = now()

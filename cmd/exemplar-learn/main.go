@@ -4,7 +4,7 @@
 //	exemplar-learn ingest --config DIR [--repos a/b,c/d] [--once]
 //	exemplar-learn path-events --config DIR [--incidents FEED.jsonl]
 //	exemplar-learn extract [--once] [--poll 5m]
-//	exemplar-learn evals [--no-inject]
+//	exemplar-learn evals --config DIR [--no-inject]
 //	exemplar-learn compile --config DIR [--limit 20]
 //	exemplar-learn propose [--dry-run]
 //	exemplar-learn demote --config DIR [--dry-run] [--all]
@@ -35,7 +35,9 @@
 // evals: generates eval cases for new candidates: positives from source
 // comments, negatives from CODEOWNER-approved PRs, and (unless --no-inject)
 // injected violations validated in code. Injection needs the gateway and
-// reads repos with read-only tokens when EXEMPLAR_GH_* is set.
+// reads repos with read-only tokens when EXEMPLAR_GH_* is set. Sources
+// and negative PRs from repos the config no longer makes eligible are
+// skipped, as compile does.
 //
 // compile: asks the high-tier model for an ast-grep or Semgrep rule per
 // candidate, checks it in code and with the engine, runs it in a sandbox

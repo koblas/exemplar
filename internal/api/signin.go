@@ -289,7 +289,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setCookie(w, oidcStateCookie, "", "/oidc/", -time.Second)
 	ui := uiSession{Provider: providerOIDC, Repos: id.Repos, Issuer: id.Issuer, Subject: id.Subject, Email: id.Email, Username: id.Username}
-	login := id.Username
+	login := oidc.UnlinkedLogin(id.Username)
 	if s.linking() {
 		linked, ok, err := s.cfg.Identities.GitHubLink(r.Context(), id.Issuer, id.Subject)
 		if err != nil {
@@ -377,7 +377,7 @@ func (s *Server) connectSkip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setCookie(w, linkCookie, "", "/", -time.Second)
-	if err := s.startSession(w, p.ID.Username, p.ID, true); err != nil {
+	if err := s.startSession(w, oidc.UnlinkedLogin(p.ID.Username), p.ID, true); err != nil {
 		s.render(w, http.StatusForbidden, view{Heading: "Sign-in failed", Message: "Sign-in could not be completed: " + err.Error()})
 		return
 	}

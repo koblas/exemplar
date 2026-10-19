@@ -69,6 +69,8 @@ type fakeGitHub struct {
 	humanComments string          // the PR's review comments (JSON); none when empty
 	issueComments string          // the PR's conversation comments (JSON); none when empty
 	teamMembers   map[string]bool // logins in every team
+	readOnly      map[string]bool // logins with read but not write access
+	noAccess      map[string]bool // logins that cannot read the repo
 	reactions     []string        // "<comment id>:<content>"
 	sarifs        []string        // uploaded SARIF logs, decoded
 	alerts        string          // open code-scanning alerts (JSON); none when empty
@@ -222,6 +224,16 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/pulls/comments/"):
 		id := strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/pulls/comments/")
 		fmt.Fprintf(w, `{"id": %s, "node_id": "PRRC_%s"}`, id, id)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/collaborators/") && strings.HasSuffix(r.URL.Path, "/permission"):
+		login := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/collaborators/"), "/permission")
+		perm := "write"
+		switch {
+		case f.noAccess[login]:
+			perm = "none"
+		case f.readOnly[login]:
+			perm = "read"
+		}
+		fmt.Fprintf(w, `{"permission": %q}`, perm)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/orgs/") && strings.Contains(r.URL.Path, "/memberships/"):
 		login := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
 		if !f.teamMembers[login] {

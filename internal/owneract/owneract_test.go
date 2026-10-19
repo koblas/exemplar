@@ -262,3 +262,17 @@ func TestPropose(t *testing.T) {
 	propose("unchanged", "sam", try("sam", string(example)), StatusRefused, "the same as")
 	propose("invalid", "alice", try("alice", "id: x\n"), StatusRefused, "not valid")
 }
+
+// An actor without a GitHub identity (an unlinked OIDC sign-in, a
+// service) never matches an owner, whatever its name.
+func TestAllowedNeedsGitHubLogin(t *testing.T) {
+	r := Runner{PlatformTeam: "@platform/devex", Member: func(context.Context, string, string) (bool, error) { return true, nil }}
+	for _, actor := range []string{"oidc:dana", "svc:ci", ""} {
+		if ok, err := r.allowed(t.Context(), actor, "@oidc:dana", "@acme/eng"); ok || err != nil {
+			t.Errorf("%q allowed: %v, %v", actor, ok, err)
+		}
+	}
+	if ok, _ := r.allowed(t.Context(), "dana", "@dana"); !ok {
+		t.Error("a GitHub owner was refused")
+	}
+}
