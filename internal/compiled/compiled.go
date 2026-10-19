@@ -72,6 +72,14 @@ func SandboxCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
 	}, true
 }
 
+// Limits for rule bodies nobody reviewed yet (LimitCommand). Semgrep's
+// engine segfaults under a 2 GiB data limit (Linux, Semgrep 1.172.0), so
+// 4 GiB is the floor; the worker pod has 8 GiB.
+const (
+	EvalMemoryLimit = 4 << 30
+	EvalCPULimit    = 120
+)
+
 // LimitCommand returns a prefix that only sets resource limits (prlimit):
 // a data-segment cap and CPU time per engine run. It needs no user
 // namespaces, so it works where SandboxCommand cannot; it is for rule
