@@ -11,7 +11,7 @@ func TestDenylisted(t *testing.T) {
 		"svc/CODEOWNERS", "docs/CODEOWNERS", "Jenkinsfile", "lib/BUILD.bazel", "tools/defs.bzl", "WORKSPACE",
 		"Makefile", "sub/makefile", "CMakeLists.txt", "go.mod", "svc/go.sum", "web/package.json", "web/package-lock.json",
 		"yarn.lock", "requirements-dev.txt", "pyproject.toml", "Cargo.toml", "pom.xml", "build.gradle.kts",
-		"AGENTS.md", "svc/CLAUDE.md", ".cursor/rules/style.mdc", ".exemplar/rules/x.yaml", ".gitattributes",
+		"AGENTS.md", "svc/CLAUDE.md", ".cursor/rules/style.mdc", ".exemplar/rules/x.yaml", ".gitattributes", "src/.gitattributes", "vendor/lib/.gitmodules",
 		"config/prod/flags.yaml", // extra
 	}
 	for _, p := range denied {

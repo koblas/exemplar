@@ -26,6 +26,9 @@ var deniedPaths = []string{
 // deniedNames match a file's base name in any directory.
 var deniedNames = []string{
 	"codeowners",
+	// Checkout behaviour in any directory: a nested .gitattributes can mark
+	// source binary, which takes it out of review.
+	".gitattributes", ".gitmodules",
 	"jenkinsfile",
 	"build", "build.bazel", "*.bzl", "workspace", "module.bazel", "makefile", "cmakelists.txt",
 	"go.mod", "go.sum", "package.json", "*lock*", "requirements*.txt", "pyproject.toml", "cargo.*", "pom.xml", "build.gradle*",
