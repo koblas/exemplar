@@ -62,7 +62,7 @@ func TestEvaluateAPI(t *testing.T) {
 	runs := 0
 	e, err := NewEvaluations(EvalConfig{
 		GitHubAPI: ghs.URL + "/", DailyUSD: 5, DailyRuns: 3, PerMinute: 10, GitHub: &GitHubAuth{AllowEveryone: true},
-		Create: func(_ context.Context, r evaluate.Request, login, _ string) (string, error) {
+		Create: func(_ context.Context, r evaluate.Request, login, _ string, _ []string) (string, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			id := "11111111-1111-1111-1111-11111111111" + string(rune('0'+len(stored)))
@@ -210,11 +210,14 @@ func TestEvaluateServices(t *testing.T) {
 	gh := &fakeUsers{calls: map[string]int{}}
 	ghs := httptest.NewServer(gh)
 	defer ghs.Close()
-	var got struct{ requester, caller string }
+	var got struct {
+		requester, caller string
+		scopes            []string
+	}
 	e, err := NewEvaluations(EvalConfig{
 		GitHubAPI: ghs.URL + "/", DailyUSD: 5, DailyRuns: 10, PerMinute: 10, Services: fakeServices{}, GitHub: &GitHubAuth{AllowedOrgs: []string{"acme"}},
-		Create: func(_ context.Context, _ evaluate.Request, requester, caller string) (string, error) {
-			got.requester, got.caller = requester, caller
+		Create: func(_ context.Context, _ evaluate.Request, requester, caller string, scopes []string) (string, error) {
+			got.requester, got.caller, got.scopes = requester, caller, scopes
 			return "e1", nil
 		},
 		Get: func(_ context.Context, id string) (evaluate.Status, string, error) {
@@ -250,7 +253,10 @@ func TestEvaluateServices(t *testing.T) {
 	}
 	// Mode eval on the config repo, which the service's acme/* covers.
 	eval := evaluate.Request{Mode: evaluate.ModeEval, Repo: "acme/exemplar-config", BaseSHA: strings.Repeat("a", 40), HeadSHA: strings.Repeat("b", 40)}
-	if code := do(http.MethodPost, "/v1/evaluate", "h.ci.s", eval); code != http.StatusAccepted || got.caller != "agent" {
+	// The service's permissions go with the evaluation: they bound the
+	// case repos the worker may read for it.
+	if code := do(http.MethodPost, "/v1/evaluate", "h.ci.s", eval); code != http.StatusAccepted || got.caller != "agent" ||
+		len(got.scopes) != 1 || got.scopes[0] != "evaluate:acme/*" {
 		t.Errorf("eval create = %d, %+v", code, got)
 	}
 	eval.Diff = "diff --git a/x b/x\n"
@@ -270,7 +276,7 @@ func TestEvaluateServices(t *testing.T) {
 	if len(gh.calls) != 0 {
 		t.Errorf("GitHub calls for a service = %v", gh.calls)
 	}
-	if code := do(http.MethodPost, "/v1/evaluate", "tok-alice", req("acme/app")); code != http.StatusAccepted || got.caller != "cli" || got.requester != "alice" {
+	if code := do(http.MethodPost, "/v1/evaluate", "tok-alice", req("acme/app")); code != http.StatusAccepted || got.caller != "cli" || got.requester != "alice" || got.scopes != nil {
 		t.Errorf("user create = %d, %+v", code, got)
 	}
 	// Outside the allowed orgs.

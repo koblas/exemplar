@@ -126,23 +126,24 @@ type EvalCase struct {
 }
 
 type Evaluation struct {
-	ID          uuid.UUID
-	Repo        string
-	BaseSha     string
-	RequestedBy string
-	Caller      string
-	Agent       string
-	Diff        *string
-	Status      string
-	Reason      *string
-	ReviewID    *int64
-	Result      []byte
-	CostUsd     float64
-	CreatedAt   pgtype.Timestamptz
-	FinishedAt  pgtype.Timestamptz
-	Mode        string
-	HeadSha     *string
-	Rules       []string
+	ID              uuid.UUID
+	Repo            string
+	BaseSha         string
+	RequestedBy     string
+	Caller          string
+	Agent           string
+	Diff            *string
+	Status          string
+	Reason          *string
+	ReviewID        *int64
+	Result          []byte
+	CostUsd         float64
+	CreatedAt       pgtype.Timestamptz
+	FinishedAt      pgtype.Timestamptz
+	Mode            string
+	HeadSha         *string
+	Rules           []string
+	RequesterScopes []string
 }
 
 type Export struct {
