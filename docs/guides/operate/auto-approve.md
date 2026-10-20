@@ -42,7 +42,7 @@ auto_approve:
   max_changed_lines: 1000
 ```
 
-- `paths` is the allow list; the hard-coded denylist (CODEOWNERS, workflows, `.exemplar/**`, `.gitattributes` and the like) and `extra_denylist` always win.
+- `paths` is the allow list; the hard-coded denylist and `extra_denylist` always win. The denylist covers CODEOWNERS, CI workflows, `.exemplar/**`, `.gitattributes` and `.gitmodules` in any directory, manifests and lockfiles, and files that change what is built, installed or run (`Dockerfile`, Compose files, `setup.py`, `Gemfile`, `.npmrc`, `.pre-commit-config.yaml`, `.devcontainer/**`, git hooks and the like).
 - `approvable_owners`: every touched path's CODEOWNERS owners must all be listed, or the PR is ineligible. Empty approves nothing.
 - `bot_authors` names the bot identities that may ever be auto-approved, each with its own narrower paths.
 - A repo may lower `max_files` and `max_changed_lines` and raise `min_review_confidence` and `min_merge_safety_score`, never the reverse.

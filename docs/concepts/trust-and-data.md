@@ -51,9 +51,9 @@ The verifier, a second model, tries to refute each finding before it is posted, 
 
 | Data | Goes to | Controls |
 |---|---|---|
-| Diff hunks in scope, the files agents open, rule text, the PR title and body | The model provider routed in `global.yaml`, through the gateway | `platform/eligibility.yaml` denylists repositories outright. `.exemplarignore` and `.gitattributes` exclude paths. `context: text-only` on a rule denies it the repository tools. The gateway redacts secrets a second time and records each call's cost. |
+| Diff hunks in scope, the files agents open, rule text, the PR title and body | The model provider routed in `global.yaml`, through the gateway | `platform/eligibility.yaml` denylists repositories outright. `.exemplarignore` and `.gitattributes` exclude paths, from the diff and from what agents can open, list or search. `context: text-only` on a rule denies it the repository tools. The gateway redacts secrets a second time and records each call's cost. |
 | Review comments, check runs, approvals, SARIF logs | GitHub | Only the worker posts; only Security-category findings go to SARIF. |
-| Mined review comments | The model provider, via `extract` | Authors are pseudonymised with a derived key before storage; only eligible repositories are ingested. |
+| Mined review comments | The model provider, via `extract` | Authors are pseudonymised with a derived key before storage. Only eligible repositories are ingested, and only comments from the repository's owners, members and collaborators are kept. A repository that leaves eligibility has its pending comments held, not sent, until it is eligible again. |
 | Traces and metrics | Wherever the OTel variables point, or nowhere | Metric and trace payloads carry ids, durations and statuses, not code. |
 | Aggregates, rule ids, repo names and PR links | Grafana | The boards never select finding text, code, fixes or reasons; a test refuses a query that does. |
 

@@ -25,3 +25,8 @@
 - An overlay that patches the extract CronJob must keep its new `--config` argument and config-sync init container.
 - People signed in before the upgrade sign in again the next time they open a feedback link: the link now checks that they can read the finding's repo. With OIDC sign-in, that repo must be in their groups' `EXEMPLAR_OIDC_GROUP_REPOS` mapping, or the link shows "not found".
 - If you enabled the compile CronJob, its memory limit is now 6Gi, above the 4 GiB per-engine limit.
+
+### Open items from the security hunt (2026-10-20)
+
+- Auto-approve's built-in denylist now also covers files that change what is built, installed or run: `Dockerfile` and `Containerfile` variants, Compose files, `setup.py`, `setup.cfg`, `Gemfile`, `*.gemspec`, `Rakefile`, `.npmrc`, `.yarnrc*`, `.pre-commit-config.yaml`, `Justfile`, `Taskfile`, `build.sbt`, `meson.build`, `.devcontainer/**` and `.husky/**`. PRs that touch them are no longer auto-approved.
+- Review comments mined before ingest checked the commenter's relation to the repo still feed candidates. To recheck them, run `exemplar-learn ingest --recheck-authors` once (a Job from the ingest CronJob with that argument added). It re-pages each repo from the start, which costs a full backfill's GraphQL points, and when a repo's pass finishes, marks its earlier comments from people outside the repo untrusted. Those are no longer extracted or clustered, and the next rank run retires candidates that only they supported.
