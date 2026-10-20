@@ -7,7 +7,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- name: PendingComments :many
 SELECT id, repo, path, ext, body, diff_hunk, source, extract_attempts FROM mined_comments
-WHERE extract_status = 'pending' AND body IS NOT NULL
+WHERE extract_status = 'pending' AND body IS NOT NULL AND author_trusted IS NOT FALSE
 ORDER BY id
 LIMIT $1;
 
@@ -69,3 +69,13 @@ WHERE batch_id = $1;
 
 -- name: ExtractionStatusCounts :many
 SELECT extract_status, count(*)::int AS n FROM mined_comments GROUP BY extract_status ORDER BY extract_status;
+
+-- name: ParkIneligibleComment :exec
+UPDATE mined_comments SET extract_status = 'ineligible', extract_error = NULL, extract_batch_id = NULL WHERE id = $1;
+
+-- name: IneligibleCommentRepos :many
+SELECT DISTINCT repo FROM mined_comments WHERE extract_status = 'ineligible' ORDER BY repo;
+
+-- name: ReleaseIneligibleComments :execrows
+-- The repo is eligible again: its parked comments are pending once more.
+UPDATE mined_comments SET extract_status = 'pending' WHERE repo = $1 AND extract_status = 'ineligible';

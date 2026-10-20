@@ -182,7 +182,8 @@ func newDriverFor(t *testing.T, s *store.Store, eligible func(string) bool) (*Dr
 func TestSubmitSkipsIneligibleRepos(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	d, fake := newDriverFor(t, s, func(repo string) bool { return repo != "acme/gone" })
+	gone := true
+	d, fake := newDriverFor(t, s, func(repo string) bool { return repo != "acme/gone" || !gone })
 	seed(t, s, 1, "RULE: always set a timeout on outbound HTTP calls")
 	seedIn(t, s, 2, "acme/gone", "RULE: never log request bodies; they carry tokens")
 
@@ -198,11 +199,16 @@ func TestSubmitSkipsIneligibleRepos(t *testing.T) {
 			t.Fatal("an ineligible repo's comment reached the extractor")
 		}
 	}
-	if st, _ := statusOf(t, s, 2); st != "error" {
-		t.Fatalf("ineligible comment = %s, want error", st)
+	if st, _ := statusOf(t, s, 2); st != "ineligible" {
+		t.Fatalf("ineligible comment = %s, want ineligible", st)
 	}
-	if rep, err := d.Submit(ctx); err != nil || rep.Submitted != 0 || rep.Ineligible != 0 {
+	if rep, err := d.Submit(ctx); err != nil || rep.Submitted != 0 || rep.Ineligible != 0 || rep.Released != 0 {
 		t.Fatalf("second submit = %+v, %v", rep, err)
+	}
+	// Eligible again: the parked comment goes back to pending and is sent.
+	gone = false
+	if rep, err := d.Submit(ctx); err != nil || rep.Released != 1 || rep.Submitted != 1 {
+		t.Fatalf("submit after the repo is eligible again = %+v, %v", rep, err)
 	}
 }
 

@@ -12,6 +12,10 @@ func TestDenylisted(t *testing.T) {
 		"Makefile", "sub/makefile", "CMakeLists.txt", "go.mod", "svc/go.sum", "web/package.json", "web/package-lock.json",
 		"yarn.lock", "requirements-dev.txt", "pyproject.toml", "Cargo.toml", "pom.xml", "build.gradle.kts",
 		"AGENTS.md", "svc/CLAUDE.md", ".cursor/rules/style.mdc", ".exemplar/rules/x.yaml", ".gitattributes", "src/.gitattributes", "vendor/lib/.gitmodules",
+		// Files that change what is built, installed or run.
+		"Dockerfile", "svc/Dockerfile.prod", "deploy/api.dockerfile", "Containerfile", "docker-compose.yml", "compose.yaml",
+		"setup.py", "lib/setup.cfg", "Gemfile", "x.gemspec", "Rakefile", ".npmrc", "web/.yarnrc.yml", ".pre-commit-config.yaml",
+		"Justfile", "Taskfile.yml", "build.sbt", "meson.build", ".devcontainer/devcontainer.json", ".husky/pre-commit",
 		"config/prod/flags.yaml", // extra
 	}
 	for _, p := range denied {
@@ -19,7 +23,7 @@ func TestDenylisted(t *testing.T) {
 			t.Errorf("%s not denylisted", p)
 		}
 	}
-	for _, p := range []string{"docs/guide.md", "README.md", "svc/handler.go", "config/dev/flags.yaml", "docs/github.md"} {
+	for _, p := range []string{"docs/guide.md", "README.md", "svc/handler.go", "config/dev/flags.yaml", "docs/github.md", "docs/docker.md", "svc/setup_test.go"} {
 		if Denylisted("acme/app", p, []string{"config/prod/**"}) {
 			t.Errorf("%s denylisted", p)
 		}

@@ -133,6 +133,30 @@ func (q *Queries) GetCachedExtraction(ctx context.Context, inputHash string) ([]
 	return result, err
 }
 
+const ineligibleCommentRepos = `-- name: IneligibleCommentRepos :many
+SELECT DISTINCT repo FROM mined_comments WHERE extract_status = 'ineligible' ORDER BY repo
+`
+
+func (q *Queries) IneligibleCommentRepos(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, ineligibleCommentRepos)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var repo string
+		if err := rows.Scan(&repo); err != nil {
+			return nil, err
+		}
+		items = append(items, repo)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertExtractionBatch = `-- name: InsertExtractionBatch :exec
 INSERT INTO extraction_batches (batch_id, extractor_version, model, comment_count)
 VALUES ($1, $2, $3, $4)
@@ -247,9 +271,18 @@ func (q *Queries) OpenExtractionBatches(ctx context.Context) ([]OpenExtractionBa
 	return items, nil
 }
 
+const parkIneligibleComment = `-- name: ParkIneligibleComment :exec
+UPDATE mined_comments SET extract_status = 'ineligible', extract_error = NULL, extract_batch_id = NULL WHERE id = $1
+`
+
+func (q *Queries) ParkIneligibleComment(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, parkIneligibleComment, id)
+	return err
+}
+
 const pendingComments = `-- name: PendingComments :many
 SELECT id, repo, path, ext, body, diff_hunk, source, extract_attempts FROM mined_comments
-WHERE extract_status = 'pending' AND body IS NOT NULL
+WHERE extract_status = 'pending' AND body IS NOT NULL AND author_trusted IS NOT FALSE
 ORDER BY id
 LIMIT $1
 `
@@ -315,6 +348,19 @@ func (q *Queries) PutCachedExtraction(ctx context.Context, arg PutCachedExtracti
 		arg.Result,
 	)
 	return err
+}
+
+const releaseIneligibleComments = `-- name: ReleaseIneligibleComments :execrows
+UPDATE mined_comments SET extract_status = 'pending' WHERE repo = $1 AND extract_status = 'ineligible'
+`
+
+// The repo is eligible again: its parked comments are pending once more.
+func (q *Queries) ReleaseIneligibleComments(ctx context.Context, repo string) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseIneligibleComments, repo)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const returnCommentsToPending = `-- name: ReturnCommentsToPending :exec

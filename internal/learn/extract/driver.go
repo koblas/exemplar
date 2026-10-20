@@ -107,8 +107,43 @@ type SubmitReport struct {
 	CacheHits   int    `json:"cache_hits"`
 	Unredacted  int    `json:"unredactable"`
 	// Ineligible comments are from repos no longer eligible; they are
-	// marked error and never sent.
-	Ineligible int `json:"ineligible"`
+	// parked as ineligible and not sent. Released are parked comments
+	// whose repo is eligible again, back to pending.
+	Ineligible int   `json:"ineligible"`
+	Released   int64 `json:"released"`
+}
+
+// pending releases parked comments whose repo is eligible again, then
+// lists up to one batch of pending comments.
+func (d *Driver) pending(ctx context.Context, rep *SubmitReport) ([]queries.PendingCommentsRow, error) {
+	if err := d.release(ctx, rep); err != nil {
+		return nil, err
+	}
+	rows, err := d.store.PendingComments(ctx, int32(d.cfg.RequestsPerBatch*CommentsPerRequest))
+	if err != nil {
+		return nil, fmt.Errorf("list pending comments: %w", err)
+	}
+	return rows, nil
+}
+
+// release returns parked comments to pending for repos that are eligible
+// again (opted back in, or taken off the denylist).
+func (d *Driver) release(ctx context.Context, rep *SubmitReport) error {
+	repos, err := d.store.IneligibleCommentRepos(ctx)
+	if err != nil {
+		return fmt.Errorf("list parked repos: %w", err)
+	}
+	for _, repo := range repos {
+		if !d.cfg.Eligible(repo) {
+			continue
+		}
+		n, err := d.store.ReleaseIneligibleComments(ctx, repo)
+		if err != nil {
+			return fmt.Errorf("release parked comments of %s: %w", repo, err)
+		}
+		rep.Released += n
+	}
+	return nil
 }
 
 // Submit sends up to one batch of pending comments per kind (review
@@ -116,17 +151,17 @@ type SubmitReport struct {
 // finished from the cache without a model call.
 func (d *Driver) Submit(ctx context.Context) (*SubmitReport, error) {
 	rep := &SubmitReport{}
-	rows, err := d.store.PendingComments(ctx, int32(d.cfg.RequestsPerBatch*CommentsPerRequest))
+	rows, err := d.pending(ctx, rep)
 	if err != nil {
-		return nil, fmt.Errorf("list pending comments: %w", err)
+		return nil, err
 	}
 	work := map[string][]Comment{}
 	hashes := map[int64]string{}
 	for _, row := range rows {
 		if !d.cfg.Eligible(row.Repo) {
 			rep.Ineligible++
-			if err := d.store.FailComment(ctx, queries.FailCommentParams{ID: row.ID, ExtractError: strPtr("repo is not eligible")}); err != nil {
-				return nil, fmt.Errorf("mark comment failed: %w", err)
+			if err := d.store.ParkIneligibleComment(ctx, row.ID); err != nil {
+				return nil, fmt.Errorf("park ineligible comment: %w", err)
 			}
 			continue
 		}

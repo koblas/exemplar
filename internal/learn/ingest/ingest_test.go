@@ -297,3 +297,66 @@ func TestRunRefusesIneligibleRepo(t *testing.T) {
 		t.Error("queried GitHub for an ineligible repo")
 	}
 }
+
+// Comments mined before ingest checked the commenter's association are
+// rechecked by a full re-pass: the ones it keeps are trusted, the rest of
+// the repo's human comments are not, and those are never extracted.
+func TestRecheckAuthors(t *testing.T) {
+	st := storetest.New(t)
+	ctx := t.Context()
+	f := &fakeGraphQL{t: t, pages: map[string]map[string]any{
+		"": page("c1",
+			pr(1, "alice", true, []string{"svc/a.go"}, nil,
+				thread(101, "bob", "User", "svc/a.go", keep, false),
+				as("NONE", thread(108, "mallory", "User", "svc/a.go", keep, false)),
+			),
+		),
+		"c1": page(""),
+	}}
+	// Rows from before the check: 101 and 108 as mined then, 999 from a
+	// PR the pass no longer returns, 900 a revert seed (no commenter).
+	for _, r := range []struct {
+		id     int
+		source string
+	}{{101, "human"}, {108, "human"}, {999, "human"}, {900, "revert_seed"}} {
+		if _, err := st.Pool.Exec(ctx, `INSERT INTO mined_comments (id, repo, pr_number, path, ext, reviewer_pid, author_pid, created_at, comment_url, body, source)
+			VALUES ($1, 'acme/app', 1, 'svc/a.go', '.go', 'r', 'a', now(), 'u', $2, $3)`, r.id, keep, r.source); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job := newJob(t, st, f, Config{})
+	if err := job.StartAuthorRecheck(ctx, "acme/app"); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := job.Run(ctx, "acme/app")
+	if err != nil || !stats.Done || stats.Untrusted != 2 {
+		t.Fatalf("recheck run = %+v, %v", stats, err)
+	}
+	trust := map[int]*bool{}
+	rows, _ := st.Pool.Query(ctx, `SELECT id, author_trusted FROM mined_comments`)
+	for rows.Next() {
+		var id int
+		var tr *bool
+		if err := rows.Scan(&id, &tr); err != nil {
+			t.Fatal(err)
+		}
+		trust[id] = tr
+	}
+	is := func(p *bool, v bool) bool { return p != nil && *p == v }
+	if !is(trust[101], true) || !is(trust[108], false) || !is(trust[999], false) || trust[900] != nil {
+		t.Errorf("trust = 101:%v 108:%v 999:%v 900:%v", trust[101], trust[108], trust[999], trust[900])
+	}
+	pending, err := st.PendingComments(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pending {
+		if p.ID == 108 || p.ID == 999 {
+			t.Errorf("untrusted comment %d is pending extraction", p.ID)
+		}
+	}
+	// The recheck is done: a later pass marks nothing.
+	if pendingRecheck, err := st.AuthorRecheckPending(ctx, "acme/app"); err != nil || pendingRecheck {
+		t.Errorf("recheck still pending: %v, %v", pendingRecheck, err)
+	}
+}

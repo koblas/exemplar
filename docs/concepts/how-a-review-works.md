@@ -34,7 +34,7 @@ The first outcome is what absorbs volume: it removes the PR from the human queue
 
 **Eligibility.** A repository on the Security-owned denylist in `platform/eligibility.yaml` is never reviewed, mined, indexed or sent to a provider. A repository with `enabled: false`, or `enabled: false` in `global.yaml`, is skipped. Draft PRs are reviewed only where `review_drafts` says so; PRs from forks only where `forks.review` says so.
 
-**Exclusions.** Binary files, files over 1 MB, deleted files, and paths ignored by `.gitattributes` or `.exemplarignore` are left out of the diff. They are also what makes a PR ineligible for auto-approve: a change the bot didn't read can't be approved by it.
+**Exclusions.** Binary files, files over 1 MB, deleted files, and paths ignored by `.gitattributes` or `.exemplarignore` are left out of the diff, and the agents' tools cannot open, list or search them either. They are also what makes a PR ineligible for auto-approve: a change the bot didn't read can't be approved by it.
 
 **Redaction.** The diff is scanned for secrets before it leaves the worker; the gateway scans every request a second time. A diff that cannot be redacted makes the run incomplete rather than sending it anyway.
 

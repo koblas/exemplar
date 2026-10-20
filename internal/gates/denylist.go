@@ -17,6 +17,9 @@ var deniedPaths = []string{
 	".github/**", // workflows, rulesets, instructions, copilot-instructions.md
 	".gitlab-ci.yml", ".buildkite/**", ".circleci/**",
 	".cursor/rules/**",
+	// Run on a developer's machine or in their container: dev containers
+	// and git hooks.
+	".devcontainer/**", ".husky/**",
 	// Exemplar's own review configuration in the target repo. Added
 	// because a merged change to these alters what
 	// later reviews check.
@@ -32,6 +35,10 @@ var deniedNames = []string{
 	"jenkinsfile",
 	"build", "build.bazel", "*.bzl", "workspace", "module.bazel", "makefile", "cmakelists.txt",
 	"go.mod", "go.sum", "package.json", "*lock*", "requirements*.txt", "pyproject.toml", "cargo.*", "pom.xml", "build.gradle*",
+	// Other files that change what is built, installed or run.
+	"dockerfile", "dockerfile.*", "*.dockerfile", "containerfile", "docker-compose*.yml", "docker-compose*.yaml",
+	"compose.yml", "compose.yaml", "setup.py", "setup.cfg", "gemfile", "*.gemspec", "rakefile", ".npmrc", ".yarnrc*",
+	".pre-commit-config.yaml", "justfile", "taskfile.yml", "taskfile.yaml", "build.sbt", "meson.build",
 	// Generated instruction files, which rule exports write.
 	"agents.md", "claude.md",
 }

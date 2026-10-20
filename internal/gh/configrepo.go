@@ -112,7 +112,9 @@ func (r *ConfigRepo) ownCommits(cs []*github.RepositoryCommit) bool {
 	return true
 }
 
-// PutFile writes path on branch, creating or replacing it.
+// PutFile writes path on branch, creating or replacing it. It sets no
+// author or committer: GitHub signs an app's API commit only without
+// them, and EnsureBranch and MergePR accept only signed app commits.
 func (r *ConfigRepo) PutFile(ctx context.Context, branch, path string, content []byte, message string) error {
 	opts := &github.RepositoryContentFileOptions{
 		Message: new(message), Content: content, Branch: new(branch),

@@ -11,6 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const authorRecheckPending = `-- name: AuthorRecheckPending :one
+SELECT (recheck_since IS NOT NULL)::bool FROM ingest_cursors WHERE repo = $1
+`
+
+func (q *Queries) AuthorRecheckPending(ctx context.Context, repo string) (bool, error) {
+	row := q.db.QueryRow(ctx, authorRecheckPending, repo)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const clearAuthorRecheck = `-- name: ClearAuthorRecheck :exec
+UPDATE ingest_cursors SET recheck_since = NULL WHERE repo = $1
+`
+
+func (q *Queries) ClearAuthorRecheck(ctx context.Context, repo string) error {
+	_, err := q.db.Exec(ctx, clearAuthorRecheck, repo)
+	return err
+}
+
+const finishAuthorRecheck = `-- name: FinishAuthorRecheck :execrows
+UPDATE mined_comments SET author_trusted = false
+WHERE repo = $1 AND source = 'human' AND author_trusted IS NULL
+`
+
+// After a full pass: the repo's human comments it did not keep again.
+func (q *Queries) FinishAuthorRecheck(ctx context.Context, repo string) (int64, error) {
+	result, err := q.db.Exec(ctx, finishAuthorRecheck, repo)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getIngestCursor = `-- name: GetIngestCursor :one
 SELECT cursor FROM ingest_cursors WHERE repo = $1
 `
@@ -51,12 +85,25 @@ func (q *Queries) SaveIngestCursor(ctx context.Context, arg SaveIngestCursorPara
 	return err
 }
 
+const startAuthorRecheck = `-- name: StartAuthorRecheck :exec
+INSERT INTO ingest_cursors (repo, cursor, recheck_since) VALUES ($1, NULL, now())
+ON CONFLICT (repo) DO UPDATE SET cursor = NULL, updated_at = now(),
+  recheck_since = coalesce(ingest_cursors.recheck_since, now())
+`
+
+// Re-page a repo from the start; comments the pass does not keep are then
+// marked untrusted (FinishAuthorRecheck).
+func (q *Queries) StartAuthorRecheck(ctx context.Context, repo string) error {
+	_, err := q.db.Exec(ctx, startAuthorRecheck, repo)
+	return err
+}
+
 const upsertIngestedComment = `-- name: UpsertIngestedComment :exec
 INSERT INTO mined_comments (id, repo, pr_number, path, ext, reviewer_pid, author_pid, created_at, comment_url,
                             body, diff_hunk, doc_urls, is_thread_root, thread_resolved, source,
-                            commit_sha, start_line, end_line)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, $13, 'human', $14, $15, $16)
-ON CONFLICT (id) DO UPDATE SET thread_resolved = EXCLUDED.thread_resolved
+                            commit_sha, start_line, end_line, author_trusted)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, $13, 'human', $14, $15, $16, true)
+ON CONFLICT (id) DO UPDATE SET thread_resolved = EXCLUDED.thread_resolved, author_trusted = true
 `
 
 type UpsertIngestedCommentParams struct {

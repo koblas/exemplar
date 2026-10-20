@@ -88,6 +88,15 @@ func (f *fakeConfigGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			branch = b
+			// GitHub signs an app's API commit, which the config writer
+			// relies on (ownCommits), only when the request names no
+			// author, committer or signature of its own.
+			for _, k := range []string{"author", "committer", "signature"} {
+				if _, set := body[k]; set {
+					http.Error(w, "PutFile sent "+k+": GitHub would not sign the commit", http.StatusBadRequest)
+					return
+				}
+			}
 			key := branch + ":" + path
 			if prev, ok := f.sha[key]; ok && body["sha"] != prev {
 				w.WriteHeader(http.StatusConflict)

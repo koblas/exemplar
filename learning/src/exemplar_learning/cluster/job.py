@@ -39,7 +39,7 @@ def load(conn: psycopg.Connection) -> list[Extraction]:
         """
         SELECT e.comment_id, m.ext, e.language_agnostic, e.title, e.description, m.reviewer_pid, e.embedding
         FROM extractions e JOIN mined_comments m ON m.id = e.comment_id
-        WHERE e.embedding IS NOT NULL
+        WHERE e.embedding IS NOT NULL AND m.author_trusted IS NOT FALSE
         ORDER BY e.comment_id
         """
     ).fetchall()
