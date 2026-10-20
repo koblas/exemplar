@@ -77,7 +77,8 @@ type Config struct {
 	// ConfigRepo is exemplar-config (owner/name), the only repo mode eval
 	// evaluates; empty turns mode eval off.
 	ConfigRepo string
-	// Matcher runs compiled rules for mode eval (compiled.Runner).
+	// Matcher runs unmerged compiled rules, for mode eval and the
+	// playground (compiled.Runner with resource limits).
 	Matcher evalrun.Matcher
 }
 

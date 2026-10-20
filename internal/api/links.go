@@ -10,7 +10,8 @@
 // A GET never records anything: mail and chat link previews fetch links
 // on their own. Recording needs the confirmation form's POST, with a token
 // bound to the signed-in login, the finding and the reason. Identity comes
-// from sign-in, never from the link. The server holds no installation
+// from sign-in, never from the link, and both need the person to be able
+// to read the finding's repo (their GitHub permission or OIDC groups). The server holds no installation
 // credentials: it enqueues a feedback_link job and the worker derives the
 // role and records the event.
 package api
@@ -279,6 +280,21 @@ func (s *Server) link(w http.ResponseWriter, r *http.Request, sig string) (int64
 	return id, reason, &f, true
 }
 
+// canRead checks the viewer can read f's repo; if not, or the check
+// fails, it answers as for a missing finding, so a link never shows
+// which repo it is for to someone who cannot read it.
+func (s *Server) canRead(w http.ResponseWriter, r *http.Request, access Access, f *Finding) bool {
+	ok, err := access(r.Context(), f.Repo)
+	if err != nil {
+		s.cfg.Log.Warn("feedback link: repo access not checked", "err", err)
+	}
+	if err != nil || !ok {
+		s.render(w, http.StatusNotFound, view{Heading: "Finding not found", Message: "It may have expired under the retention policy."})
+		return false
+	}
+	return true
+}
+
 func (s *Server) prLink(f *Finding) string {
 	return fmt.Sprintf("%s%s/pull/%d", s.cfg.GitHubWeb, f.Repo, f.PR)
 }
@@ -289,9 +305,12 @@ func (s *Server) confirm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	login := s.login(r)
-	if login == "" {
+	login, access, signedIn := s.viewer(r)
+	if !signedIn {
 		http.Redirect(w, r, "/login?return="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
+		return
+	}
+	if !s.canRead(w, r, access, f) {
 		return
 	}
 	s.render(w, http.StatusOK, view{
@@ -310,9 +329,12 @@ func (s *Server) record(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	login := s.login(r)
-	if login == "" || !s.ok("form", r.PostForm.Get("t"), login, strconv.FormatInt(id, 10), reason) {
+	login, access, signedIn := s.viewer(r)
+	if !signedIn || !s.ok("form", r.PostForm.Get("t"), login, strconv.FormatInt(id, 10), reason) {
 		s.render(w, http.StatusForbidden, view{Heading: "Please open the link again", Message: "Your sign-in expired or the form did not come from this page."})
+		return
+	}
+	if !s.canRead(w, r, access, f) {
 		return
 	}
 	text := strings.TrimSpace(r.PostForm.Get("text"))

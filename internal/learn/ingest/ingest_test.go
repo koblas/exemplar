@@ -85,9 +85,18 @@ func thread(id int, login, typename, path, body string, resolved bool) map[strin
 	return map[string]any{"isResolved": resolved, "comments": map[string]any{"nodes": []any{map[string]any{
 		"fullDatabaseId": itoa(id), "url": "https://github.com/acme/app/pull/1#discussion_r" + itoa(id),
 		"body": body, "path": path, "diffHunk": "@@ -1,3 +1,4 @@\n+x := 1", "createdAt": "2026-09-01T10:00:00Z",
-		"author": map[string]any{"__typename": typename, "login": login}, "originalCommit": map[string]any{"oid": "aaaaaaa1111111"},
-		"originalLine": 12, "originalStartLine": 10,
+		"author": map[string]any{"__typename": typename, "login": login}, "authorAssociation": "MEMBER",
+		"originalCommit": map[string]any{"oid": "aaaaaaa1111111"}, "originalLine": 12, "originalStartLine": 10,
 	}}}}
+}
+
+// as sets a thread root's author association.
+func as(association string, th map[string]any) map[string]any {
+	comments, _ := th["comments"].(map[string]any)
+	nodes, _ := comments["nodes"].([]any)
+	root, _ := nodes[0].(map[string]any)
+	root["authorAssociation"] = association
+	return th
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }
@@ -158,6 +167,9 @@ func TestRun(t *testing.T) {
 				thread(105, "bob", "User", "svc/a.go", "LGTM 👍", false),         // ack
 				thread(106, "bob", "User", "api/x.pb.go", keep, false),          // excluded path
 				thread(107, "carol", "User", "svc/b.go", "Never hardcode tokens: "+fakeToken()+" should come from the secret store.", false),
+				as("NONE", thread(108, "mallory", "User", "svc/a.go", keep, false)),                      // not the repo's
+				as("CONTRIBUTOR", thread(109, "mallory", "User", "svc/a.go", keep, false)),               // an outside contributor
+				as("COLLABORATOR", thread(110, "carol", "User", "lib/b.go", keep+" Again here.", false)), // kept
 			),
 		),
 		"c1": page("",
@@ -173,10 +185,13 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.Done || stats.Pages != 1 || stats.Kept != 2 {
+	if stats.Done || stats.Pages != 1 || stats.Kept != 3 {
 		t.Fatalf("first run stats = %+v", stats)
 	}
-	for reason, n := range map[string]int{DropSelf: 1, DropBot: 2, DropAck: 1, DropExcluded: 1} {
+	if !strings.Contains(prQuery, "authorAssociation") {
+		t.Error("the PR query does not ask for authorAssociation")
+	}
+	for reason, n := range map[string]int{DropSelf: 1, DropBot: 2, DropAck: 1, DropExcluded: 1, DropOutsider: 2} {
 		if stats.Dropped[reason] != n {
 			t.Errorf("dropped[%s] = %d, want %d (%v)", reason, stats.Dropped[reason], n, stats.Dropped)
 		}
@@ -221,8 +236,8 @@ func TestRun(t *testing.T) {
 	if !slices.Equal(docs, []string{"https://docs.internal.example/http/loops"}) {
 		t.Errorf("doc_urls = %v", docs)
 	}
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM mined_comments`).Scan(&n); err != nil || n != 3 {
-		t.Errorf("mined_comments = %d, %v; want 3", n, err)
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM mined_comments`).Scan(&n); err != nil || n != 4 {
+		t.Errorf("mined_comments = %d, %v; want 4", n, err)
 	}
 
 	// Merged PRs only; generated files left out; codeowner approval via a team.
@@ -258,8 +273,8 @@ func TestRun(t *testing.T) {
 	if _, err := newJob(t, st, f, cfg).Run(ctx, "acme/app"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM mined_comments`).Scan(&n); err != nil || n != 3 {
-		t.Errorf("after re-run mined_comments = %d, %v; want 3", n, err)
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM mined_comments`).Scan(&n); err != nil || n != 4 {
+		t.Errorf("after re-run mined_comments = %d, %v; want 4", n, err)
 	}
 }
 

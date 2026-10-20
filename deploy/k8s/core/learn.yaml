@@ -276,12 +276,47 @@ spec:
             runAsGroup: 65532
             fsGroup: 65532
             seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            # One sync, then exit: the job reads a fixed config.
+            - name: config-sync
+              image: registry.k8s.io/git-sync/git-sync:v4.7.1@sha256:c5e1976da735bf0b53979f079a07475d77174c51863cd084e928ff6074480717
+              args:
+                - --repo=$(EXEMPLAR_GH_WEB_URL)$(EXEMPLAR_CONFIG_REPO)
+                - --ref=main
+                - --root=/config
+                - --link=current
+                - --one-time
+                - --github-app-private-key-file=/etc/github-app/private-key
+              env:
+                - name: EXEMPLAR_GH_WEB_URL
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_WEB_URL}}
+                - name: EXEMPLAR_CONFIG_REPO
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
+                # Clones exemplar-config over HTTPS as the review app.
+                - name: GITSYNC_GITHUB_BASE_URL
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL}}
+                - name: GITSYNC_GITHUB_APP_APPLICATION_ID
+                  valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id}}
+                - name: GITSYNC_GITHUB_APP_INSTALLATION_ID
+                  valueFrom: {secretKeyRef: {name: exemplar-github-app, key: installation-id}}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: config, mountPath: /config}
+                - {name: config-app, mountPath: /etc/github-app, readOnly: true}
+                - {name: sync-tmp, mountPath: /tmp}
           containers:
             - name: extract
               image: exemplar
               command: ["/usr/local/bin/exemplar-learn"]
               args:
                 - extract
+                - --config=/config/current
                 - --once
               envFrom:
                 - configMapRef: {name: exemplar-otel, optional: true}
@@ -302,11 +337,21 @@ spec:
               volumeMounts:
                 - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
                 - {name: tmp, mountPath: /tmp}
+                - {name: config, mountPath: /config, readOnly: true}
           volumes:
             - name: root-key
               secret: {secretName: exemplar-root-key, defaultMode: 0400}
             - name: tmp
               emptyDir: {sizeLimit: 2Gi}
+            - name: config
+              emptyDir: {sizeLimit: 256Mi}
+            - name: config-app
+              secret:
+                secretName: exemplar-github-app
+                items: [{key: private-key, path: private-key}]
+                defaultMode: 0400
+            - name: sync-tmp
+              emptyDir: {sizeLimit: 64Mi}
 ---
 # Cluster embedded extractions, nightly.
 apiVersion: batch/v1
@@ -657,9 +702,11 @@ spec:
                 - name: EXEMPLAR_GATEWAY_URL
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
                 - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
+              # Above the 4 GiB per-engine data limit (--sandbox-memory),
+              # so a runaway rule fails alone instead of OOM-killing the job.
               resources:
                 requests: {cpu: "1", memory: 2Gi}
-                limits: {cpu: "2", memory: 4Gi}
+                limits: {cpu: "2", memory: 6Gi}
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true

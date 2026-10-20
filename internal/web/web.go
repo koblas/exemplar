@@ -405,7 +405,10 @@ type candidateRow struct {
 	queries.UICandidatesRow
 
 	Visible []string
-	Token   string
+	// Hidden: the viewer cannot read every source repo, so the title and
+	// description (drawn from the source comments) are not shown.
+	Hidden bool
+	Token  string
 }
 
 func (h *Handler) candidates(_ http.ResponseWriter, r *http.Request, v *viewer) (string, string, any, error) {
@@ -421,10 +424,15 @@ func (h *Handler) candidates(_ http.ResponseWriter, r *http.Request, v *viewer) 
 				vis = append(vis, repo)
 			}
 		}
-		// A candidate is text drawn from its source comments: only for
-		// viewers who can read at least one of their repos.
+		// A candidate is text drawn from its source comments: listed for
+		// viewers who can read at least one of their repos, its text only
+		// for those who can read all of them.
 		if len(vis) > 0 {
-			out = append(out, candidateRow{UICandidatesRow: c, Visible: vis, Token: h.token(v.Login, "kill_candidate", strconv.FormatInt(c.ID, 10))})
+			row := candidateRow{UICandidatesRow: c, Visible: vis, Hidden: len(vis) < len(c.Repos), Token: h.token(v.Login, "kill_candidate", strconv.FormatInt(c.ID, 10))}
+			if row.Hidden {
+				row.Title, row.Description = "", ""
+			}
+			out = append(out, row)
 		}
 	}
 	return "candidates", "Candidates", out, nil

@@ -75,6 +75,10 @@ func TestUI(t *testing.T) {
 			VALUES ('go', $1, 'd', 5, 3, $2, '{}', '@acme/sec', $3, $4)`, "Candidate from "+repo, 0.9-float64(i)/10, repo, run)
 		exec(`INSERT INTO candidate_sources (candidate_id, comment_id) VALUES ($1, $2)`, c, 100+i)
 	}
+	// A candidate drawn from both repos.
+	mixed := id(`INSERT INTO candidates (ext, title, description, cluster_size, distinct_reviewers, score, score_detail, owner, cluster_hash, last_run_id)
+		VALUES ('go', 'Candidate from both', 'mixed detail', 5, 3, 0.5, '{}', '@acme/sec', 'mixed', $1)`, run)
+	exec(`INSERT INTO candidate_sources (candidate_id, comment_id) VALUES ($1, 100), ($1, 101)`, mixed)
 	exec(`INSERT INTO model_calls (stage, provider, model, data_classes, caller, cost_usd) VALUES ('generator', 'anthropic', 'm', '{}', 'production', 1.25), ('generator', ` +
 		`'anthropic', 'm', '{}', 'cli', 0.5)`)
 	if _, err := st.Pool.Exec(ctx, `REFRESH MATERIALIZED VIEW rule_weekly_stats`); err != nil {
@@ -176,7 +180,9 @@ func TestUI(t *testing.T) {
 	})
 	t.Run("candidates", func(t *testing.T) {
 		_, body, _ := get("/ui/candidates")
-		has(t, body, []string{"Candidate from acme/app"}, []string{"Candidate from acme/secret"})
+		// A candidate's text is drawn from its source comments: shown only
+		// to viewers who can read every one of their repos.
+		has(t, body, []string{"Candidate from acme/app", "text hidden"}, []string{"Candidate from acme/secret", "Candidate from both", "mixed detail", "acme/secret"})
 	})
 	t.Run("audit", func(t *testing.T) {
 		_, body, _ := get("/ui/audit")

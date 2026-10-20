@@ -86,6 +86,15 @@ type Options struct {
 	// human-comment dedupe. Review calls it at most once, and
 	// only when a finding could post. Nil, or an error, dedupes nothing.
 	HumanComments func(ctx context.Context) ([]HumanComment, error)
+	// Compiled, when set, runs this review's compiled rules instead of the
+	// engine's runner: rule bodies nobody merged yet (the playground) run
+	// under resource limits (compiled.LimitCommand), merged rules do not.
+	Compiled CompiledMatcher
+}
+
+// CompiledMatcher runs one compiled rule body (compiled.Runner).
+type CompiledMatcher interface {
+	Run(ctx context.Context, dir, engine, ruleBody string, files []string) ([]compiled.Match, error)
 }
 
 // CarriedRun is an earlier, complete run of a rule on identical code.
@@ -188,7 +197,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		g.Go(func() error {
 			switch s.Lane {
 			case LaneCompiled:
-				runs[i] = e.runCompiled(gctx, p, s)
+				runs[i] = e.runCompiled(gctx, p, s, opt.Compiled)
 			default:
 				runs[i] = note(e.runExemplar(gctx, p, s, m))
 			}
@@ -332,13 +341,16 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 }
 
 // runCompiled runs one compiled rule. Matches are deterministic findings.
-func (e *Engine) runCompiled(ctx context.Context, p *Prepared, s ScopedRule) agentRun {
+func (e *Engine) runCompiled(ctx context.Context, p *Prepared, s ScopedRule, m CompiledMatcher) agentRun {
 	ar := agentRun{run: RunResult{RuleID: s.Rule.ID, RuleVersion: s.Rule.VersionSHA, Lane: LaneCompiled, ScopedFiles: s.Files}}
 	if s.Rule.Matcher == nil {
 		ar.run.Status, ar.run.Detail = RunError, "compiled rule has no matcher"
 		return ar
 	}
-	matches, err := e.compiled.Run(ctx, p.Workspace.Dir, s.Rule.Matcher.Engine, s.Rule.Matcher.Rule, s.Files)
+	if m == nil {
+		m = e.compiled
+	}
+	matches, err := m.Run(ctx, p.Workspace.Dir, s.Rule.Matcher.Engine, s.Rule.Matcher.Rule, s.Files)
 	if err != nil {
 		ar.run.Status, ar.run.Detail = RunError, err.Error()
 		if errors.Is(err, compiled.ErrEngineUnavailable) {

@@ -86,7 +86,7 @@ func (d *humanDeduper) trusted(c HumanComment) bool {
 
 // duplicate reports the reviewer comment that already raises f, if any.
 func (d *humanDeduper) duplicate(ctx context.Context, f *Finding) (HumanComment, bool) {
-	if d == nil {
+	if d == nil || !judgeable(f, f.Category) {
 		return HumanComment{}, false
 	}
 	if !d.loaded {

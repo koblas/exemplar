@@ -54,7 +54,7 @@ type Runner struct {
 }
 
 // SandboxCommand returns the Linux sandbox prefix: a new network
-// namespace with no interfaces (unshare) and address-space and CPU-time
+// namespace with no interfaces (unshare) and data-segment and CPU-time
 // limits (prlimit). ok is false when either tool is missing or the OS is
 // not Linux.
 func SandboxCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
@@ -66,15 +66,23 @@ func SandboxCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
 			return nil, false
 		}
 	}
-	return []string{
-		"unshare", "--net", "--map-root-user", "--",
-		"prlimit", fmt.Sprintf("--as=%d", memBytes), fmt.Sprintf("--cpu=%d", cpuSeconds), "--",
-	}, true
+	return sandboxArgs(memBytes, cpuSeconds), true
 }
 
-// Limits for rule bodies nobody reviewed yet (LimitCommand). Semgrep's
-// engine segfaults under a 2 GiB data limit (Linux, Semgrep 1.172.0), so
-// 4 GiB is the floor; the worker pod has 8 GiB.
+func sandboxArgs(memBytes int64, cpuSeconds int) []string {
+	return append([]string{"unshare", "--net", "--map-root-user", "--"}, limitArgs(memBytes, cpuSeconds)...)
+}
+
+// limitArgs caps the data segment rather than the address space (--as):
+// Semgrep reserves far more address space than it touches.
+func limitArgs(memBytes int64, cpuSeconds int) []string {
+	return []string{"prlimit", fmt.Sprintf("--data=%d", memBytes), fmt.Sprintf("--cpu=%d", cpuSeconds), "--"}
+}
+
+// Limits for rule bodies nobody reviewed yet (LimitCommand, and the
+// learning plane's SandboxCommand). Semgrep's engine is killed under a
+// 3 GiB data limit even on one file (Linux, Semgrep 1.172.0, one job),
+// so 4 GiB is the floor; the worker pod has 8 GiB.
 const (
 	EvalMemoryLimit = 4 << 30
 	EvalCPULimit    = 120
@@ -92,7 +100,7 @@ func LimitCommand(memBytes int64, cpuSeconds int) ([]string, bool) {
 	if _, err := exec.LookPath("prlimit"); err != nil {
 		return nil, false
 	}
-	return []string{"prlimit", fmt.Sprintf("--data=%d", memBytes), fmt.Sprintf("--cpu=%d", cpuSeconds), "--"}, true
+	return limitArgs(memBytes, cpuSeconds), true
 }
 
 // Run executes one rule body with the named engine over files in dir.
@@ -109,8 +117,10 @@ func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []s
 	case "semgrep":
 		out, err := r.runEngine(ctx, dir, r.semgrep(), ruleBody, func(rule string) []string {
 			return append([]string{
+				// One job: each reserves its own heap, and the default
+				// (one per CPU of the node) would outgrow the limits.
 				"scan", "--config", rule, "--json", "--metrics=off", "--disable-version-check",
-				"--no-git-ignore", "--quiet", "--",
+				"--no-git-ignore", "--quiet", "--jobs", "1", "--",
 			}, files...)
 		})
 		if err != nil {

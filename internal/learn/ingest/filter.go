@@ -12,6 +12,7 @@ import (
 const (
 	DropBot            = "bot"
 	DropSelf           = "self-comment"
+	DropOutsider       = "not-a-collaborator" // not the repo's owner, a member or a collaborator
 	DropShort          = "short"
 	DropAck            = "ack" // pure emoji, LGTM and the like
 	DropNit            = "nit"

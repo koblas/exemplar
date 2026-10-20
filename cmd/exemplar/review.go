@@ -528,10 +528,10 @@ func printFindings(w io.Writer, res *evaluate.Result, cost float64) {
 		if f.EndLine > f.StartLine {
 			lines += fmt.Sprintf("-%d", f.EndLine)
 		}
-		fmt.Fprintf(w, "%s:%s: %s [%s] %s\n", f.Path, lines, f.Severity, f.RuleID, f.Message)
+		fmt.Fprintf(w, "%s:%s: %s [%s] %s\n", oneLine(f.Path), lines, oneLine(f.Severity), oneLine(f.RuleID), oneLine(f.Message))
 		if f.Suggestion != "" {
 			for l := range strings.SplitSeq(strings.TrimRight(f.Suggestion, "\n"), "\n") {
-				fmt.Fprintln(w, "    | "+l)
+				fmt.Fprintln(w, "    | "+oneLine(l))
 			}
 		}
 	}
@@ -543,6 +543,23 @@ func printFindings(w io.Writer, res *evaluate.Result, cost float64) {
 		summary += ", degraded"
 	}
 	fmt.Fprintf(w, "%s ($%.2f).\n", summary, cost)
+}
+
+// oneLine makes model-written text safe for one terminal line: line
+// breaks become spaces, other control characters go (terminalText).
+func oneLine(s string) string {
+	return terminalText(strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s))
+}
+
+// terminalText drops C0 and C1 control characters (escape sequences
+// among them) from model-written text, keeping newlines and tabs.
+func terminalText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' || (r >= 0x20 && r < 0x7f) || r > 0x9f {
+			return r
+		}
+		return -1
+	}, s)
 }
 
 // reviewSARIF renders findings as SARIF 2.1.0 for editors and CI.

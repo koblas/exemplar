@@ -56,7 +56,9 @@ For each candidate in <candidates>:
 - Read the code it points at (get_hunk, read_file, grep) and decide whether the problem is real in this change.
 - verdict: "confirmed" if the problem is real, "refuted" if it is not (wrong reading of the code, already handled, not in the changed lines), "uncertain" if you cannot tell from the repository.
 - importance: 0 to 1, how much a reviewer on this team would care. Typos and nits are low; bugs and security problems are high.
-- evidence: for confirmed findings, the exact code lines that show the problem, as path, start_line, end_line and quote (copied verbatim from the file at the pull request head).
+- evidence: for confirmed findings, the exact code lines that show the problem, as path, start_line, end_line and quote (copied verbatim from the file at the pull request head;
+  for a finding on removed (LEFT) lines, from the base). At least one evidence item must be in the candidate's own file,
+  within three lines of its range, and quote at least eight non-space characters: a confirmation without one is dropped.
 
 Answer with JSON only: {"verdicts": [{"index": N, "verdict": ..., "importance": ..., "evidence": [...]}]}, one entry per candidate index.`
 

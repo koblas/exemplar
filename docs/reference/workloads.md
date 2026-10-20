@@ -57,7 +57,7 @@ The worker, gateway, search and learn pods read `exemplar-config` from a git-syn
 | CronJob | Schedule (UTC) | Job |
 |---|---|---|
 | `exemplar-learn-ingest` | `15 * * * *` | Mines review-thread roots from eligible repos, resuming from each repo's cursor. |
-| `exemplar-learn-extract` | `*/30 * * * *` | Collects finished extraction batches and submits one new batch to the gateway. |
+| `exemplar-learn-extract` | `*/30 * * * *` | Collects finished extraction batches and submits one new batch to the gateway, skipping comments from repositories the config no longer makes eligible. |
 | `exemplar-learn-path-events` | `30 2 * * *` | Records paths touched by reverts and incident-linked PRs. |
 | `exemplar-learn-cluster` | `30 3 * * *` | Python: clusters embedded extractions. |
 | `exemplar-learn-rank` | `30 4 * * *` | Python: scores the latest cluster run into candidates. |
