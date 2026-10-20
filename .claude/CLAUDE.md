@@ -25,7 +25,7 @@ are in `deploy/docker`, published to Docker Hub `koblas/exemplar` by `images.yml
 is the example installation overlay (CI renders it). `go test ./deploy` checks every build against the code (see
 `docs/reference/workloads.md`); keep components resource-only, since it reads them without kustomize. Grafana boards and alerts
 are in `dashboards/`; `go test ./dashboards` runs their SQL.
-User documentation is an MkDocs Material site (`mkdocs.yml`, pages in `docs/` except
+User documentation is a Zensical site (`mkdocs.yml`, which Zensical reads; pages in `docs/` except
 `docs/spec`, `docs/plans`, `docs/security`), published to GitHub Pages by `docs.yml`.
 It follows the Divio system: `docs/tutorials`, `docs/guides/<persona>` (how-to),
 `docs/concepts`, `docs/reference`; `/docs` says which quadrant a change goes in.

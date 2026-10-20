@@ -14,13 +14,8 @@ SQLC_VERSION        ?= v1.31.1
 GOVULNCHECK_VERSION ?= v1.8.0
 KUBECONFORM_VERSION ?= v0.7.0
 KUBERNETES_VERSION  ?= 1.33.0
-MKDOCS_VERSION      ?= 1.6.1
-MKDOCS_MATERIAL_VERSION ?= 9.6.14
-MKDOCS_REDIRECTS_VERSION ?= 1.2.2
-MKDOCS_GIT_DATE_VERSION ?= 1.4.7
-MKDOCS := uvx --from mkdocs==$(MKDOCS_VERSION) --with mkdocs-material==$(MKDOCS_MATERIAL_VERSION) \
-  --with mkdocs-redirects==$(MKDOCS_REDIRECTS_VERSION) \
-  --with mkdocs-git-revision-date-localized-plugin==$(MKDOCS_GIT_DATE_VERSION) mkdocs
+ZENSICAL_VERSION    ?= 0.0.70
+ZENSICAL := uvx zensical==$(ZENSICAL_VERSION)
 
 # Build outputs, replay results and rendered manifests (gitignored).
 OUT     := out
@@ -174,16 +169,16 @@ hooks: ## Use .githooks (commit-msg lint) in this clone
 check: build vet lint fmt-check test ## Quick local gate: build, vet, lint, format, tests
 
 .PHONY: docs
-docs: docs-test ## Build the documentation site to out/site, failing on broken links (as ci.yml's docs job)
-	$(MKDOCS) build --strict -d $(OUT)/site
+docs: docs-test ## Build the documentation site to out/site (mkdocs.yml site_dir), failing on broken links (as ci.yml's docs job)
+	$(ZENSICAL) build --strict --clean
 
 .PHONY: docs-test
 docs-test: ## Check the reference pages cover every env var, CLI command and schema field (go test ./docs)
 	go test ./docs
 
 .PHONY: docs-serve
-docs-serve: ## Preview the documentation site at http://127.0.0.1:8000
-	$(MKDOCS) serve
+docs-serve: ## Preview the documentation site with live reload
+	$(ZENSICAL) serve
 
 .PHONY: ci
 ci: export EXEMPLAR_REQUIRE_DB = 1

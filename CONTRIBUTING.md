@@ -47,7 +47,7 @@ are ignored.
 
 ## Documentation
 
-The user documentation is the MkDocs Material site in `docs/` (`mkdocs.yml`),
+The user documentation is the Zensical site in `docs/` (`mkdocs.yml`, which Zensical reads),
 published to GitHub Pages. It follows the
 [Divio documentation system](https://docs.divio.com/documentation-system/):
 every page is one of a tutorial (`docs/tutorials/`), a how-to guide

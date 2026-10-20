@@ -62,14 +62,11 @@ jobs:
         run: make commitlint COMMIT_RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
   # The reference pages cover the code (go test ./docs) and the site
-  # builds with no broken links (make docs). The full history gives the
-  # "last updated" dates.
+  # builds with no broken links (make docs).
   docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod

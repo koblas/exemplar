@@ -1,6 +1,6 @@
 # How to write documentation
 
-This site is an MkDocs Material site: `mkdocs.yml` and the pages in `docs/`, except `docs/spec`, `docs/plans` and `docs/security`, which stay in the repository. It follows the [Divio documentation system](https://docs.divio.com/documentation-system/): every page is a tutorial, a how-to guide, an explanation or reference, never a mix.
+This site is built by [Zensical](https://zensical.org), the successor to Material for MkDocs, from `mkdocs.yml` (Zensical reads the MkDocs format) and the pages in `docs/`, except `docs/spec`, `docs/plans` and `docs/security`, which stay in the repository. It follows the [Divio documentation system](https://docs.divio.com/documentation-system/): every page is a tutorial, a how-to guide, an explanation or reference, never a mix.
 
 ## 1. Pick the quadrant
 
