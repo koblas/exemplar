@@ -308,6 +308,39 @@ func TestConfirmedWithoutEvidenceIsDropped(t *testing.T) {
 	}
 }
 
+// Evidence must be about the finding: its file, near its lines, and a
+// quote long enough not to match anywhere.
+func TestEvidenceBoundToFinding(t *testing.T) {
+	e := setup(t, "t", "")
+	eng, _ := newEngine(e, Script{})
+	f := &Finding{Anchor: scope.Anchor{Path: "main.go", Side: scope.SideRight, StartLine: httpGetLine, EndLine: httpGetLine}}
+	get := `resp, err := http.Get("https://inventory.internal/items")`
+	cases := map[string]struct {
+		ev   evidence
+		want bool
+	}{
+		"the finding's line":      {evidence{Path: "main.go", StartLine: httpGetLine, EndLine: httpGetLine, Quote: get}, true},
+		"next to the finding":     {evidence{Path: "main.go", StartLine: 12, EndLine: 13, Quote: "defer resp.Body.Close()"}, true},
+		"another file":            {evidence{Path: "config.go", StartLine: 1, EndLine: 1, Quote: "package main"}, false},
+		"far from the finding":    {evidence{Path: "main.go", StartLine: 1, EndLine: 1, Quote: "package main"}, false},
+		"a trivially short quote": {evidence{Path: "main.go", StartLine: httpGetLine, EndLine: 12, Quote: "}"}, false},
+	}
+	for name, c := range cases {
+		if got := eng.evidenceResolves(t.Context(), e.prep, f, []evidence{c.ev}); got != c.want {
+			t.Errorf("%s: resolves = %v, want %v", name, got, c.want)
+		}
+	} // A finding on removed lines is checked against the base, where its
+	// line numbers are.
+	left := &Finding{Anchor: scope.Anchor{Path: "main.go", Side: scope.SideLeft, StartLine: 9, EndLine: 9}}
+	if eng.evidenceResolves(t.Context(), e.prep, left, []evidence{{Path: "main.go", StartLine: 9, EndLine: 9, Quote: get}}) {
+		t.Error("a removed-line finding resolved with head code")
+	}
+	sig := "func handler(ctx context.Context, w http.ResponseWriter, r *http.Request) {"
+	if !eng.evidenceResolves(t.Context(), e.prep, left, []evidence{{Path: "main.go", StartLine: 8, EndLine: 8, Quote: sig}}) {
+		t.Error("a removed-line finding did not resolve with base code")
+	}
+}
+
 func TestBadAnchorDropped(t *testing.T) {
 	e := setup(t, "t", "")
 	eng, _ := newEngine(e, Script{Generator: func(task string, files []string) ([]string, string) {

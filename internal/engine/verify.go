@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/koblas/exemplar/internal/llm"
+	"github.com/koblas/exemplar/internal/scope"
 )
 
 type verdictOut struct {
@@ -73,7 +75,7 @@ func (e *Engine) verifyBatch(ctx context.Context, p *Prepared, batch []*Finding,
 		Meta: meta, System: verifierSystemPrompt, Context: prContext(p), Task: task.String(),
 		OutputSchema: verdictSchema, Tools: e.toolbox(p),
 	})
-	vr := verifyRun{run: runFromAgent("verifier", "verifier-v1", "verifier", []string{batch[0].Anchor.Path}, res)}
+	vr := verifyRun{run: runFromAgent("verifier", "verifier-v2", "verifier", []string{batch[0].Anchor.Path}, res)}
 
 	var out verdictOut
 	if res.Status == RunOK {
@@ -105,7 +107,7 @@ func (e *Engine) verifyBatch(ctx context.Context, p *Prepared, batch []*Finding,
 		case VerdictConfirmed:
 			f.VerifyVerdict = VerdictConfirmed
 			switch {
-			case !e.evidenceResolves(ctx, p, v.Evidence):
+			case !e.evidenceResolves(ctx, p, f, v.Evidence):
 				f.State, f.Suppressed = StateDropped, SuppressBadEvidence
 			case imp < importanceBar(p, f, minImportance):
 				f.State, f.Suppressed = StateDropped, SuppressUnimportant
@@ -134,25 +136,47 @@ func importanceBar(p *Prepared, f *Finding, verifierMin float64) float64 {
 	return verifierMin
 }
 
+// minQuote is the shortest quote, in non-space characters, that counts
+// as evidence: shorter ones ("}", "err") match almost anywhere.
+const minQuote = 8
+
+// evidenceSlack is how many lines a quote may sit outside its cited
+// range, and the cited range outside the finding's.
+const evidenceSlack = 3
+
 // evidenceResolves checks, in code, that at least one quoted line range is
-// real: the quote must appear in the file at the head commit within (or
-// within three lines of) the cited range.
-func (e *Engine) evidenceResolves(ctx context.Context, p *Prepared, ev []evidence) bool {
+// real and about f: it cites f's file, overlaps f's lines (give or take
+// evidenceSlack), quotes at least minQuote characters, and the quote
+// appears in the file at the head commit (the base for a finding on
+// removed lines) within (or within evidenceSlack lines of) the cited range.
+func (e *Engine) evidenceResolves(ctx context.Context, p *Prepared, f *Finding, ev []evidence) bool {
 	for _, x := range ev {
-		if x.Path == "" || x.StartLine < 1 || x.EndLine < x.StartLine || strings.TrimSpace(x.Quote) == "" {
+		if x.Path != f.Anchor.Path || x.StartLine < 1 || x.EndLine < x.StartLine {
 			continue
 		}
-		data, err := p.Workspace.Show(ctx, p.Workspace.HeadSHA, x.Path)
+		if x.StartLine-evidenceSlack > f.Anchor.EndLine || x.EndLine+evidenceSlack < f.Anchor.StartLine {
+			continue
+		}
+		quote := normalizeSpace(x.Quote)
+		if utf8.RuneCountInString(strings.ReplaceAll(quote, " ", "")) < minQuote {
+			continue
+		}
+		// A finding on removed lines has base line numbers.
+		sha := p.Workspace.HeadSHA
+		if f.Anchor.Side == scope.SideLeft {
+			sha = p.Workspace.BaseSHA
+		}
+		data, err := p.Workspace.Show(ctx, sha, x.Path)
 		if err != nil {
 			continue
 		}
 		lines := strings.Split(string(data), "\n")
-		lo, hi := max(1, x.StartLine-3), min(len(lines), x.EndLine+3)
+		lo, hi := max(1, x.StartLine-evidenceSlack), min(len(lines), x.EndLine+evidenceSlack)
 		if lo > hi {
 			continue
 		}
 		window := normalizeSpace(strings.Join(lines[lo-1:hi], "\n"))
-		if strings.Contains(window, normalizeSpace(x.Quote)) {
+		if strings.Contains(window, quote) {
 			return true
 		}
 	}
