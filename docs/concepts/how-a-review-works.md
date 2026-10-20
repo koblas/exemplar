@@ -18,6 +18,18 @@ flowchart TB
   RK --> OUT["Findings, coverage,<br/>gate trace"]
 ```
 
+## Who reviews this PR?
+
+Every review ends in one of three outcomes, and the point of the pipeline below is to reach the right one with evidence code can check:
+
+| Outcome | What the PR gets | When |
+|---|---|---|
+| **Approved, no human review needed** | A native `APPROVE` from the App (or a passing `exemplar/merge-policy` check), and a check run saying so | The repository opted in, every deterministic gate passed, the review ran to full coverage with zero candidate findings, and two models from different families both rated the change low-risk |
+| **Routed to humans, with findings** | One review with inline comments, each verified, labelled and budgeted, with a fix where it validated | Any lane produced a finding that survived the verifier and validation |
+| **Routed to humans, nothing to flag** | A neutral check run and no comments | The review found nothing, but the PR was not eligible for approval: the repo is not opted in, a path or author is outside the allow list, coverage was incomplete, the run was degraded, or a Stage 2 check failed |
+
+The first outcome is what absorbs volume: it removes the PR from the human queue. The other two keep the standard: a human reads the PR, and where Exemplar had something to say, it has already been checked twice. Exemplar never requests changes and never blocks a merge. Each decision and the gate that made it is recorded in `approval_decisions` and shown on the audit page, so a reviewer, or an auditor, can see why a PR landed where it did. [Auto-approve](#auto-approve) below has the gates.
+
 ## Before any model sees anything
 
 **Eligibility.** A repository on the Security-owned denylist in `platform/eligibility.yaml` is never reviewed, mined, indexed or sent to a provider. A repository with `enabled: false`, or `enabled: false` in `global.yaml`, is skipped. Draft PRs are reviewed only where `review_drafts` says so; PRs from forks only where `forks.review` says so.
@@ -64,6 +76,6 @@ A run that cannot complete (every provider for a stage down, a diff that cannot 
 
 ## Auto-approve
 
-Auto-approval is a separate decision after the review, and off unless both `global.yaml` and the repo opt in. **Stage 1** is strictly deterministic: full coverage, zero findings (including shadow ones), every changed file reviewed, paths inside the repo's allow list and outside the hard-coded and `extra_denylist` paths, an allowed author, file and line limits, no same-family verification, and branch rules that can carry the approval. **Stage 2** asks two models from different families to categorise the PR as safe or risky and requires both to agree above `min_review_confidence`, plus a deterministic merge-safety score above `min_merge_safety_score`. Every decision, with each gate's reason, is recorded in `approval_decisions` and shown on the audit page. An approval never carries forward: a new push dismisses it.
+Auto-approval is the decision that produces the first outcome above. It is a separate decision after the review, and off unless both `global.yaml` and the repo opt in. Models never make it: Stage 1 consults no model output at all, and Stage 2's categorisation can only withhold an approval, never grant one on its own. **Stage 1** is strictly deterministic: full coverage, zero findings (including shadow ones), every changed file reviewed, paths inside the repo's allow list and outside the hard-coded and `extra_denylist` paths, an allowed author, file and line limits, no same-family verification, and branch rules that can carry the approval. **Stage 2** asks two models from different families to categorise the PR as safe or risky and requires both to agree above `min_review_confidence`, plus a deterministic merge-safety score above `min_merge_safety_score`. Every decision, with each gate's reason, is recorded in `approval_decisions` and shown on the audit page. An approval never carries forward: a new push dismisses it.
 
 The design that this page summarises, with its reasoning, is in the [technical specification](https://github.com/koblas/exemplar/blob/main/docs/spec/technical-spec.md).

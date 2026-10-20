@@ -126,5 +126,8 @@
 **Teach the bot**
 : The nightly job that turns recurring rejections into a draft path exclusion or an owner review issue.
 
+**Verdict**
+: The outcome of a review for the question "who reviews this PR?": approved with no human review needed, or routed to humans (with findings, or with nothing to flag but a gate that failed). Recorded in `approval_decisions`. See [How a review works](how-a-review-works.md#who-reviews-this-pr).
+
 **Verifier**
 : The second model that tries to refute each finding and scores its importance before anything is posted.
