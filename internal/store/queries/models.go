@@ -311,12 +311,13 @@ type IdentityLink struct {
 }
 
 type IngestCursor struct {
-	Repo      string
-	Cursor    *string
-	UpdatedAt pgtype.Timestamptz
-	PrsSeen   int32
-	Kept      int32
-	Filtered  int32
+	Repo         string
+	Cursor       *string
+	UpdatedAt    pgtype.Timestamptz
+	PrsSeen      int32
+	Kept         int32
+	Filtered     int32
+	RecheckSince pgtype.Timestamptz
 }
 
 type MergeDecision struct {
@@ -364,6 +365,7 @@ type MinedComment struct {
 	CommitSha       *string
 	StartLine       *int32
 	EndLine         *int32
+	AuthorTrusted   *bool
 }
 
 type MinedPr struct {

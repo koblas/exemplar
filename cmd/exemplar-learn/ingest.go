@@ -25,6 +25,7 @@ func runIngest(args []string) error {
 	configDir := fs.String("config", "", "exemplar-config checkout (eligibility and opted-in repos)")
 	repos := fs.String("repos", "", "comma-separated owner/name repos (default: every opted-in repo)")
 	once := fs.Bool("once", false, "stop at the first rate limit instead of waiting for the reset")
+	recheck := fs.Bool("recheck-authors", false, "re-page each repo from the start and mark its earlier comments that the commenter check no longer keeps as untrusted")
 	maxPages := fs.Int("max-pages", 0, "pages per repo per run (0 = until done)")
 	pageSize := fs.Int("page-size", 25, "PRs per GraphQL page")
 	docHosts := fs.String("doc-hosts", os.Getenv("EXEMPLAR_DOC_HOSTS"), "comma-separated internal docs hosts (FR-L1.6)")
@@ -86,6 +87,13 @@ func runIngest(args []string) error {
 	}
 	cfg := ingest.Config{BotLogins: split(*bots), DocHosts: split(*docHosts), PageSize: *pageSize, MaxPages: *maxPages, Logger: log}
 
+	if *recheck {
+		for _, repo := range targets {
+			if err := st.StartAuthorRecheck(ctx, repo); err != nil {
+				return fmt.Errorf("start author recheck of %s: %w", repo, err)
+			}
+		}
+	}
 	var failed []string
 	for _, repo := range targets {
 		for {

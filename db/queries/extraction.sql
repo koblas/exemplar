@@ -7,7 +7,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- name: PendingComments :many
 SELECT id, repo, path, ext, body, diff_hunk, source, extract_attempts FROM mined_comments
-WHERE extract_status = 'pending' AND body IS NOT NULL
+WHERE extract_status = 'pending' AND body IS NOT NULL AND author_trusted IS NOT FALSE
 ORDER BY id
 LIMIT $1;
 

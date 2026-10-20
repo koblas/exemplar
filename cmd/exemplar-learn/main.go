@@ -1,7 +1,7 @@
 // Command exemplar-learn runs the learning plane's batch jobs.
 // Subcommands:
 //
-//	exemplar-learn ingest --config DIR [--repos a/b,c/d] [--once]
+//	exemplar-learn ingest --config DIR [--repos a/b,c/d] [--once] [--recheck-authors]
 //	exemplar-learn path-events --config DIR [--incidents FEED.jsonl]
 //	exemplar-learn extract --config DIR [--once] [--poll 5m]
 //	exemplar-learn evals --config DIR [--no-inject]

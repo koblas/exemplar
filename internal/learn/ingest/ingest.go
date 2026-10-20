@@ -102,6 +102,48 @@ type Stats struct {
 	Done      bool `json:"done"`
 	// ResumeAt is set when the run stopped for rate limits.
 	ResumeAt *time.Time `json:"resume_at,omitempty"`
+	// Untrusted counts earlier comments a finished author recheck marked
+	// untrusted (StartAuthorRecheck).
+	Untrusted int64 `json:"untrusted,omitempty"`
+}
+
+// StartAuthorRecheck makes repo's next runs re-page it from the start.
+// When that pass finishes, the repo's human comments it did not keep
+// again (mined before ingest checked the commenter's association, or no
+// longer passing the filters) are marked untrusted: they are neither
+// extracted nor clustered. Calling it again during a recheck restarts the
+// pass.
+func (j *Job) StartAuthorRecheck(ctx context.Context, repo string) error {
+	if err := j.st.StartAuthorRecheck(ctx, repo); err != nil {
+		return fmt.Errorf("ingest: start author recheck of %s: %w", repo, err)
+	}
+	return nil
+}
+
+// finishRecheck marks what a finished recheck pass did not keep.
+func (j *Job) finishRecheck(ctx context.Context, repo string, stats *Stats) error {
+	pending, err := j.st.AuthorRecheckPending(ctx, repo)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !pending) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("ingest: read author recheck: %w", err)
+	}
+	err = j.st.InTx(ctx, func(_ pgx.Tx, q *queries.Queries) error {
+		n, err := q.FinishAuthorRecheck(ctx, repo)
+		if err != nil {
+			return fmt.Errorf("ingest: mark untrusted comments: %w", err)
+		}
+		stats.Untrusted = n
+		if err := q.ClearAuthorRecheck(ctx, repo); err != nil {
+			return fmt.Errorf("ingest: clear author recheck: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("ingest: finish author recheck of %s: %w", repo, err)
+	}
+	return nil
 }
 
 // Run ingests repo ("owner/name") from its saved cursor.
@@ -156,7 +198,7 @@ func (j *Job) Run(ctx context.Context, repo string) (Stats, error) {
 		j.cfg.Logger.Info("ingest page", "repo", repo, "prs", len(prs.Nodes), "kept", len(w.comments), "points_remaining", page.RateLimit.Remaining)
 		if !prs.PageInfo.HasNextPage {
 			stats.Done = true
-			return stats, nil
+			return stats, j.finishRecheck(ctx, repo, &stats)
 		}
 		minBudget := j.cfg.MinBudget
 		if minBudget <= 0 {
