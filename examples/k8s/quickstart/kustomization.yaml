@@ -1,7 +1,7 @@
 # A trial installation: one replica of everything, the in-cluster Postgres
 # (components/postgres; not for production), and requests that fit one
 # small node, reached through a Cloudflare Tunnel. Copy this directory, set
-# the two values in settings.yaml and follow docs/install/quickstart.md.
+# the two values in settings.yaml and follow docs/tutorials/quickstart.md.
 # examples/k8s/quickstart-direct is the same through an Ingress controller.
 # For production, start from examples/k8s/acme.
 #

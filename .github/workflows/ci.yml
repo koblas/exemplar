@@ -61,11 +61,18 @@ jobs:
       - name: Commit subjects are Conventional Commits
         run: make commitlint COMMIT_RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
-  # The documentation site builds, with no broken links (make docs).
+  # The reference pages cover the code (go test ./docs) and the site
+  # builds with no broken links (make docs). The full history gives the
+  # "last updated" dates.
   docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - uses: astral-sh/setup-uv@v6
       - run: make docs
 
@@ -156,7 +163,7 @@ jobs:
             kubectl kustomize deploy/k8s/$v > rendered-$v.yaml
             go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-$v.yaml
           done
-          # The example installation overlays (docs/install/).
+          # The example installation overlays (docs/tutorials/quickstart.md, docs/guides/install/).
           for ex in acme quickstart quickstart-direct; do
             kubectl kustomize examples/k8s/$ex > rendered-example-$ex.yaml
             go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-example-$ex.yaml

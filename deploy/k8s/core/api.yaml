@@ -67,7 +67,7 @@ spec:
             - name: EXEMPLAR_WEBHOOK_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_WEBHOOK_URL, optional: true}}
             # The review app, once setup has produced exemplar-github-app.
-            # Without it exemplar-api serves only the setup page (docs/install/quickstart.md).
+            # Without it exemplar-api serves only the setup page (docs/tutorials/quickstart.md).
             - name: EXEMPLAR_GH_APP_ID
               valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id, optional: true}}
             - name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID
@@ -122,7 +122,7 @@ spec:
           emptyDir: {sizeLimit: 64Mi}
 ---
 # People reach the Service through the inbound component the
-# build picks, with org SSO in front of the whole host; see docs/reference/deployment.md.
+# build picks, with org SSO in front of the whole host; see docs/reference/workloads.md.
 apiVersion: v1
 kind: Service
 metadata:

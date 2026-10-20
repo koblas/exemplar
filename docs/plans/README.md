@@ -12,7 +12,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 | [`docs/plans/ready-to-install.md`](ready-to-install.md) | **The current plan**: making a first installation short and checkable (setup in the cluster, the GitHub App manifest flow, one root key, a setup page, release manifests). New work is logged in its §7. |
 | [`docs/plans/backlog.md`](backlog.md) | **The backlog**: potential enhancements that are not in the PRD or any plan yet, each with where it came from, what it would change and what it would cost. An item leaves the backlog when it is adopted into the PRD (as a requirement) or declined (recorded there). |
 | [`docs/security/phase-0-data-handling.md`](../security/phase-0-data-handling.md) | What the code does with repository data, for Security's review and sign-off. |
-| [`docs/reference/deployment.md`](../reference/deployment.md) | How to deploy: images, manifests, what an installation supplies, and the rollout risks. |
+| [`docs/reference/workloads.md`](../reference/deployment.md) | How to deploy: images, manifests, what an installation supplies, and the rollout risks. |
 | [`.claude/CLAUDE.md`](../../.claude/CLAUDE.md) | Repository conventions: binaries, commands, checks, safety rules. |
 
 ## Reading the references

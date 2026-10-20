@@ -1,6 +1,6 @@
 # Grafana datasource for the dashboards: the Postgres read
 # replica, as a read-only role that can SELECT the views and the tables
-# the panels read (see docs/operations/dashboards.md). Values come from Grafana's
+# the panels read (see docs/reference/dashboards.md). Values come from Grafana's
 # environment; nothing secret is in this file.
 apiVersion: 1
 datasources:

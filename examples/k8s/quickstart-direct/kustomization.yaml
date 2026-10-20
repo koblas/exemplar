@@ -2,7 +2,7 @@
 # the same as examples/k8s/quickstart (one replica of everything, the
 # in-cluster Postgres, small requests) on the direct build instead of the
 # tunnel. Copy this directory, set the two values in settings.yaml and the
-# host below, and follow docs/install/quickstart.md.
+# host below, and follow docs/tutorials/quickstart.md.
 #
 # Render: kubectl kustomize examples/k8s/quickstart-direct
 apiVersion: kustomize.config.k8s.io/v1beta1

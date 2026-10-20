@@ -1,4 +1,4 @@
-# The trial's two values (docs/install/quickstart.md). The host of
+# The trial's two values (docs/tutorials/quickstart.md). The host of
 # EXEMPLAR_API_URL is also the Ingress host in kustomization.yaml.
 apiVersion: v1
 kind: ConfigMap

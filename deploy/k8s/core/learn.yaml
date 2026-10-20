@@ -567,7 +567,7 @@ spec:
   # sandbox (--require-sandbox), which needs unprivileged user namespaces.
   # RuntimeDefault seccomp under the restricted Pod Security level
   # normally refuses them. Enable once the cluster provides them (see
-  # docs/reference/deployment.md); never turn the sandbox off instead.
+  # docs/reference/workloads.md); never turn the sandbox off instead.
   suspend: true
   schedule: "30 5 * * *"
   timeZone: Etc/UTC

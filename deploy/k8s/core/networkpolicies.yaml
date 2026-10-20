@@ -2,7 +2,7 @@
 # "HTTPS out" below is any address on 443 outside private ranges. The
 # per-host lists (GitHub only, providers only, Jira) need an
 # FQDN-aware CNI policy (e.g. Cilium toFQDNs) layered on top; see
-# docs/reference/deployment.md. Postgres is reached on 5432, outside the cluster or in
+# docs/reference/workloads.md. Postgres is reached on 5432, outside the cluster or in
 # it (components/postgres).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
