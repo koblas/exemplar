@@ -103,13 +103,29 @@ matcher:
   rule: |
     id: no-raw-sql-concat
     language: go
+    utils:
+      built-query:
+        any:
+          - kind: binary_expression
+            has: { field: operator, regex: ^\+$ }
+          - pattern: { context: "func _() { fmt.Sprintf($$$) }", selector: call_expression }
     rule:
-      pattern: $DB.Query($A + $B, $$$)
+      kind: call_expression
+      any:
+        # The query is the first argument of Query, QueryRow, Exec, Prepare...
+        - all:
+            - has: { field: function, kind: selector_expression, has: { field: field, regex: ^(Query|QueryRow|Exec|Prepare)$ } }
+            - has: { field: arguments, has: { nthChild: 1, matches: built-query } }
+        # ...and the second of their Context variants.
+        - all:
+            - has: { field: function, kind: selector_expression, has: { field: field, regex: ^(Query|QueryRow|Exec|Prepare)Context$ } }
+            - has: { field: arguments, has: { nthChild: 2, matches: built-query } }
 description: |
-  Build SQL with placeholders, not string concatenation, to avoid injection.
+  Build SQL with placeholders, not string concatenation or fmt.Sprintf, to
+  avoid injection. untrusted-input-to-sink covers other languages and sinks.
 fix_policy: describe
 citation:
-  doc: https://docs.internal/security/sql
+  doc: https://cheatsheetseries.owasp.org/cheatsheets/Query_Parameterization_Cheat_Sheet.html
 export:
   agents: true
   summary: "Never build SQL by string concatenation; use placeholders."
