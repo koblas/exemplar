@@ -1,0 +1,50 @@
+# Guides
+
+Each guide solves one task for one kind of reader. They assume you know what Exemplar is ([Concepts](../concepts/index.md)) and have an installation ([Quickstart](../tutorials/quickstart.md)); they point at the [Reference](../reference/index.md) for every field and flag rather than repeating it.
+
+## Install
+
+For the platform engineer standing Exemplar up.
+
+- [How to install for production](install/production.md): a managed Postgres, two replicas, the edge rules.
+- [How to set up sign-in](install/sign-in.md): GitHub OAuth, OpenID Connect, or both.
+- [How to run Postgres in the cluster](install/in-cluster-postgres.md): the optional component for evaluation.
+- [How to build your own images](install/build-images.md): unpublished changes or a private registry.
+- [How to upgrade](install/upgrade.md) and [How to rotate keys](install/rotate-keys.md).
+
+## Operate
+
+For whoever carries the pager.
+
+- [How to troubleshoot an installation](operate/troubleshoot.md): where to look when nothing arrives.
+- [How to respond to an incident](operate/runbook.md): the kill switches, provider outages, backlogs, bad approvals.
+- [How to turn on auto-approve](operate/auto-approve.md): the branch rules and config each repository needs.
+- [How to set up Grafana](operate/grafana.md), [How to send telemetry](operate/telemetry.md).
+- [How to enable rule exports](operate/rule-exports.md), [How to enable the compile CronJob](operate/compile-cronjob.md).
+
+## Rule owners
+
+For the team that owns rules in `exemplar-config`.
+
+- [How to write a rule](rules/write-a-rule.md): exemplar and compiled rules, severities, exports.
+- [How to write eval cases](rules/eval-cases.md): historical and synthetic cases, negatives, mutations.
+- [How to test a rule before merging](rules/test-a-rule.md): `exemplar try`, the playground, local evals.
+- [How to set up config CI](rules/config-ci.md): the variables and secrets each workflow job needs.
+- [How to review mined candidates](rules/review-candidates.md): the candidates page and proposed PRs.
+- [How to adjudicate feedback](rules/adjudicate.md): uphold, overturn, teach-the-bot proposals, the digest.
+
+## PR authors
+
+For anyone whose pull request Exemplar reviews, and the coding agents working for them.
+
+- [How to respond to a finding](authors/respond-to-a-finding.md): the commands, the links, the reactions, what each does.
+- [How to review before pushing](authors/review-before-pushing.md): `exemplar login` and `exemplar review`.
+- [How to run Exemplar from a coding agent](authors/coding-agents.md): instruction files and the pre-PR check.
+
+## Develop
+
+For contributors to Exemplar itself.
+
+- [How to set up the development environment](develop/dev-environment.md).
+- [How to check manifests locally](develop/check-manifests.md).
+- [How to write documentation](develop/docs.md).

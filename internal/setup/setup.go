@@ -241,7 +241,7 @@ func (h *Handler) Manifest(kind string) map[string]any {
 	m["name"] = "Exemplar (" + h.org + ")"
 	m["hook_attributes"] = map[string]any{"url": h.cfg.URLs.Webhook, "active": true}
 	m["callback_urls"] = []string{h.cfg.URLs.Callback}
-	// docs/install/production.md lists them. Contents write is for exemplar-config only: the
+	// docs/guides/install/production.md lists them. Contents write is for exemplar-config only: the
 	// worker mints tokens down-scoped per job.
 	m["default_permissions"] = map[string]string{
 		"metadata": "read", "contents": "write", "pull_requests": "write", "checks": "write",

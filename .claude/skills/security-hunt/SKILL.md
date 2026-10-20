@@ -100,7 +100,7 @@ script and `git` commands are the only shell they need.
    can call, what checks model output before it is posted); the stores (Postgres, the
    River queue, the search mirror, workspace checkouts); and the write paths to GitHub
    (comments, check runs, reviews and approvals, SARIF, config and export PRs).
-   Summarise from spec §13, `docs/architecture.md` and the `cmd/*/main.go` doc comments;
+   Summarise from spec §13, `docs/concepts/architecture.md` and the `cmd/*/main.go` doc comments;
    do not re-derive the system from scratch.
 
 ## Phase 2 — Map (deterministic, then Haiku)

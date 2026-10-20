@@ -45,6 +45,27 @@ Pull requests are merged with a merge commit, so each of their commits shows
 up in the changelog. Squash fix-ups before merging; merge subjects themselves
 are ignored.
 
+## Documentation
+
+The user documentation is the MkDocs Material site in `docs/` (`mkdocs.yml`),
+published to GitHub Pages. It follows the
+[Divio documentation system](https://docs.divio.com/documentation-system/):
+every page is one of a tutorial (`docs/tutorials/`), a how-to guide
+(`docs/guides/<persona>/`, titled "How to …"), an explanation
+(`docs/concepts/`) or reference (`docs/reference/`), for one audience, and
+never cites the spec by section, a requirement id or a delivery phase.
+`docs/spec`, `docs/plans` and `docs/security` are design documents the site
+leaves out.
+
+A behaviour change updates the pages, not the README: usually one how-to and
+one reference page. `make docs` runs `go test ./docs` (every `EXEMPLAR_*`
+variable, CLI subcommand and schema property has a reference entry; every
+page is in the nav; no internal references) and then builds the site
+strictly, as CI's `docs` job does. `make docs-serve` previews it. When a page
+moves, add its old path to the `redirects` map in `mkdocs.yml`. With Claude
+Code, `/docs <change or page>` applies the rules and `/docs-audit` reports
+gaps without editing.
+
 ## Releasing
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please)

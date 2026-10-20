@@ -106,7 +106,7 @@ spec:
             - name: EXEMPLAR_DATABASE_URL
               valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
             # Only the providers global.yaml routes to need credentials;
-            # Bedrock uses workload identity instead (see docs/reference/deployment.md).
+            # Bedrock uses workload identity instead (see docs/reference/workloads.md).
             - name: ANTHROPIC_API_KEY
               valueFrom: {secretKeyRef: {name: exemplar-providers, key: anthropic-api-key, optional: true}}
           livenessProbe:

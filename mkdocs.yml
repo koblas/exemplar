@@ -1,6 +1,11 @@
 # The user documentation, published to GitHub Pages by .github/workflows/docs.yml.
 # Build locally: make docs (or make docs-serve). docs/spec, docs/plans and
 # docs/security are internal design documents, kept in the repository only.
+#
+# The site follows the Divio documentation system (https://docs.divio.com/documentation-system/):
+# Start here (tutorials), Concepts (explanation), Guides (how-to) and Reference.
+# .claude/skills/docs/SKILL.md says which quadrant a change belongs in;
+# go test ./docs checks the reference pages against the code.
 site_name: Exemplar
 site_description: A self-correcting AI code reviewer for GitHub, installed on Kubernetes.
 site_url: https://koblas.github.io/exemplar/
@@ -12,14 +17,19 @@ exclude_docs: |
   spec/
   plans/
   security/
+  docs_test.go
 
 theme:
   name: material
   features:
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.indexes
     - navigation.top
+    - navigation.footer
     - content.code.copy
+    - content.tabs.link
     - search.suggest
   palette:
     - media: "(prefers-color-scheme: light)"
@@ -32,16 +42,44 @@ theme:
 markdown_extensions:
   - admonition
   - attr_list
+  - md_in_html
   - tables
   - toc:
       permalink: true
   - pymdownx.details
   - pymdownx.highlight
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+  # "Last updated" on every page, from git. CI checks out the full history
+  # for the docs jobs (fetch-depth: 0) so the dates are real.
+  - git-revision-date-localized:
+      type: date
+      fallback_to_build_date: true
+  # Old paths (the site before the Divio restructure of 2026-10-20) keep working.
+  - redirects:
+      redirect_maps:
+        why.md: concepts/why.md
+        architecture.md: concepts/architecture.md
+        development.md: guides/develop/dev-environment.md
+        cli.md: reference/cli.md
+        install/index.md: tutorials/quickstart.md
+        install/quickstart.md: tutorials/quickstart.md
+        install/production.md: guides/install/production.md
+        install/sign-in.md: guides/install/sign-in.md
+        install/releases.md: reference/releases.md
+        install/upgrading.md: guides/install/upgrade.md
+        operations/going-live.md: tutorials/first-review.md
+        operations/optional.md: guides/index.md
+        operations/dashboards.md: reference/dashboards.md
+        reference/deployment.md: reference/workloads.md
 
 validation:
   links:
@@ -51,21 +89,70 @@ validation:
     unrecognized_links: warn
 
 nav:
-  - Overview: index.md
-  - Why Exemplar: why.md
-  - Install:
-      - install/index.md
-      - Quickstart: install/quickstart.md
-      - Production install: install/production.md
-      - Sign-in: install/sign-in.md
-      - Releases and images: install/releases.md
-      - Upgrading: install/upgrading.md
-  - Operate:
-      - Going live: operations/going-live.md
-      - Optional pieces: operations/optional.md
-      - Dashboards: operations/dashboards.md
+  - Start here:
+      - index.md
+      - Quickstart: tutorials/quickstart.md
+      - Your first review: tutorials/first-review.md
+      - Your first rule: tutorials/first-rule.md
+  - Concepts:
+      - concepts/index.md
+      - Why Exemplar: concepts/why.md
+      - Architecture: concepts/architecture.md
+      - How a review works: concepts/how-a-review-works.md
+      - Rule lifecycle: concepts/rule-lifecycle.md
+      - Trust and data handling: concepts/trust-and-data.md
+      - Glossary: concepts/glossary.md
+  - Guides:
+      - guides/index.md
+      - Install:
+          - How to install for production: guides/install/production.md
+          - How to set up sign-in: guides/install/sign-in.md
+          - How to run Postgres in the cluster: guides/install/in-cluster-postgres.md
+          - How to build your own images: guides/install/build-images.md
+          - How to upgrade: guides/install/upgrade.md
+          - How to rotate keys: guides/install/rotate-keys.md
+      - Operate:
+          - How to troubleshoot an installation: guides/operate/troubleshoot.md
+          - How to respond to an incident: guides/operate/runbook.md
+          - How to turn on auto-approve: guides/operate/auto-approve.md
+          - How to set up Grafana: guides/operate/grafana.md
+          - How to send telemetry: guides/operate/telemetry.md
+          - How to enable rule exports: guides/operate/rule-exports.md
+          - How to enable the compile CronJob: guides/operate/compile-cronjob.md
+      - Rule owners:
+          - How to write a rule: guides/rules/write-a-rule.md
+          - How to write eval cases: guides/rules/eval-cases.md
+          - How to test a rule before merging: guides/rules/test-a-rule.md
+          - How to set up config CI: guides/rules/config-ci.md
+          - How to review mined candidates: guides/rules/review-candidates.md
+          - How to adjudicate feedback: guides/rules/adjudicate.md
+      - PR authors:
+          - How to respond to a finding: guides/authors/respond-to-a-finding.md
+          - How to review before pushing: guides/authors/review-before-pushing.md
+          - How to run Exemplar from a coding agent: guides/authors/coding-agents.md
+      - Develop:
+          - How to set up the development environment: guides/develop/dev-environment.md
+          - How to check manifests locally: guides/develop/check-manifests.md
+          - How to write documentation: guides/develop/docs.md
   - Reference:
-      - Deployment: reference/deployment.md
-      - The CLI: cli.md
-  - Architecture: architecture.md
-  - Developing: development.md
+      - reference/index.md
+      - exemplar-config:
+          - reference/config/index.md
+          - global.yaml: reference/config/global.md
+          - repos/<owner>/<repo>.yaml: reference/config/repo.md
+          - rules/**/*.yaml: reference/config/rule.md
+          - evals/<rule>/cases.yaml: reference/config/eval-cases.md
+          - platform/eligibility.yaml: reference/config/eligibility.md
+          - platform/retention.yaml: reference/config/retention.md
+          - Recorded PR fixture: reference/config/fixture.md
+          - evals/_adversarial: reference/config/adversarial-case.md
+          - evals/_verifier: reference/config/verifier-label.md
+          - evals/_categorizer: reference/config/categorizer-label.md
+      - Environment variables: reference/environment-variables.md
+      - Secrets and ConfigMaps: reference/secrets-and-configmaps.md
+      - Workloads, ports and probes: reference/workloads.md
+      - The CLI: reference/cli.md
+      - Web UI pages: reference/web-ui.md
+      - Feedback commands: reference/feedback-commands.md
+      - Dashboards and alerts: reference/dashboards.md
+      - Releases and images: reference/releases.md
