@@ -76,10 +76,13 @@ func setup(t *testing.T) *env {
 		GitHub:    &GitHubAuth{ClientID: "Iv1.client", ClientSecret: "shh", AllowedOrgs: []string{"acme"}},
 		GitHubWeb: e.gh.URL + "/", GitHubAPI: e.gh.URL + "/api/",
 		Lookup: func(_ context.Context, id int64) (Finding, error) {
-			if id != 8812 {
-				return Finding{}, errors.New("no rows")
+			switch id {
+			case 8812:
+				return Finding{RuleID: "propagate-context", Repo: "acme/app", PR: 4}, nil
+			case 8813:
+				return Finding{RuleID: "propagate-context", Repo: "acme/other", PR: 9}, nil
 			}
-			return Finding{RuleID: "propagate-context", Repo: "acme/app", PR: 4}, nil
+			return Finding{}, errors.New("no rows")
 		},
 		Enqueue: func(_ context.Context, a store.FeedbackLinkArgs) error { e.queued = append(e.queued, a); return nil },
 		Now:     func() time.Time { return e.now },
@@ -192,6 +195,16 @@ func TestFeedbackLinkFlow(t *testing.T) {
 	if resp, _ := e.get(t, e.link(9, "wrong")); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown finding = %d", resp.StatusCode)
 	}
+	// A finding in a repo the person cannot read looks like no finding,
+	// and records nothing.
+	other := e.link(8813, "not_important")
+	if resp, body := e.get(t, other); resp.StatusCode != http.StatusNotFound || strings.Contains(body, "acme/other") {
+		t.Errorf("unreadable repo = %d\n%s", resp.StatusCode, body)
+	}
+	otherTok := e.s.mac("form", "alice", "8813", "not_important")
+	if r := post("/f/8813/not_important", url.Values{"s": {e.links.Sig(8813, "not_important")}, "t": {otherTok}}); r.StatusCode != http.StatusNotFound || len(e.queued) != 1 {
+		t.Errorf("record on unreadable repo = %d, queued %d", r.StatusCode, len(e.queued))
+	}
 	// The session expires.
 	e.now = e.now.Add(9 * time.Hour)
 	if resp, _ := e.get(t, link); resp.StatusCode != http.StatusFound {
@@ -222,8 +235,8 @@ func TestSignInFailures(t *testing.T) {
 	}
 }
 
-// A sign-in for the web UI keeps the token, sealed, in a cookie only
-// /ui/ receives; a feedback link's sign-in keeps none.
+// A sign-in keeps the token, sealed, in a cookie only /ui/ and /f/
+// receive; a feedback link's sign-in keeps it for /f/ only.
 func TestUISession(t *testing.T) {
 	e := setup(t)
 	session := func(path string) (string, Access, bool) {
@@ -260,11 +273,11 @@ func TestUISession(t *testing.T) {
 	if ok, _ := access(t.Context(), "acme/other"); ok {
 		t.Error("an unreadable repo was readable")
 	}
-	// The cookie goes to /ui/ only, and holds no readable token.
-	u, _ := url.Parse(e.srv.URL + "/f/")
+	// The cookie goes to /ui/ and /f/ only, and holds no readable token.
+	u, _ := url.Parse(e.srv.URL + "/v1/evaluate")
 	for _, c := range e.client.Jar.Cookies(u) {
 		if c.Name == uiTokenCookie {
-			t.Error("the UI token cookie is sent outside /ui/")
+			t.Error("the UI token cookie is sent outside /ui/ and /f/")
 		}
 	}
 	u, _ = url.Parse(e.srv.URL + "/ui/")

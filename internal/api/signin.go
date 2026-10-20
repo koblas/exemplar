@@ -45,8 +45,8 @@ import (
 // /ui/connect-github connects a different account. Every session
 // has the signed-in username in the session cookie, and, for the web UI,
 // what decides repo access sealed (AES-GCM, key derived from the session
-// key) in an HttpOnly cookie sent only to /ui/: the GitHub token, or the
-// OIDC repo patterns. Neither reaches the database or a log.
+// key) in an HttpOnly cookie sent only to /ui/ and /f/: the GitHub token,
+// or the OIDC repo patterns. Neither reaches the database or a log.
 
 // GitHubAuth is the GitHub OAuth sign-in source.
 type GitHubAuth struct {
@@ -183,15 +183,14 @@ func (s *Server) githubAllowed(ctx context.Context, token, login string) (bool, 
 	return ok, nil
 }
 
-// startSession sets the session cookie and, when ui (or always for OIDC,
-// whose access needs no token), the sealed UI cookie.
+// startSession sets the session cookie and the sealed access cookie:
+// always for feedback links (/f/), which check the person can read the
+// finding's repo, and for the web UI (/ui/) when ui (or always for OIDC,
+// whose access needs no token).
 func (s *Server) startSession(w http.ResponseWriter, login string, ui uiSession, forUI bool) error {
 	exp := strconv.FormatInt(s.cfg.Now().Add(sessionTTL).Unix(), 10)
 	enc := base64.RawURLEncoding.EncodeToString([]byte(login))
 	s.setCookie(w, sessionCookie, enc+"."+exp+"."+s.mac("session", enc, exp), "/", sessionTTL)
-	if !forUI && ui.Provider == providerGitHub {
-		return nil
-	}
 	data, err := json.Marshal(ui)
 	if err != nil {
 		return fmt.Errorf("encode ui session: %w", err)
@@ -203,7 +202,10 @@ func (s *Server) startSession(w http.ResponseWriter, login string, ui uiSession,
 	if len(sealed) > 3800 {
 		return errSessionTooLarge
 	}
-	s.setCookie(w, uiTokenCookie, sealed, "/ui/", sessionTTL)
+	s.setCookie(w, uiTokenCookie, sealed, "/f/", sessionTTL)
+	if forUI || ui.Provider != providerGitHub {
+		s.setCookie(w, uiTokenCookie, sealed, "/ui/", sessionTTL)
+	}
 	return nil
 }
 
@@ -483,7 +485,11 @@ type Access func(ctx context.Context, repo string) (bool, error)
 // UISession returns the web UI's viewer: the signed-in login and how to
 // check their repo access (their GitHub permission, or their OIDC groups'
 // repos), or ok false when the session is missing or expired.
-func (s *Server) UISession(r *http.Request) (string, Access, bool) {
+func (s *Server) UISession(r *http.Request) (string, Access, bool) { return s.viewer(r) }
+
+// viewer is the signed-in login and their repo access, from the session
+// cookie and the sealed access cookie of the request's path (/ui/ or /f/).
+func (s *Server) viewer(r *http.Request) (string, Access, bool) {
 	login := s.login(r)
 	c, err := r.Cookie(uiTokenCookie)
 	if login == "" || err != nil {
@@ -512,4 +518,5 @@ func (s *Server) UISession(r *http.Request) (string, Access, bool) {
 func (s *Server) SignOut(w http.ResponseWriter) {
 	s.setCookie(w, sessionCookie, "", "/", -time.Second)
 	s.setCookie(w, uiTokenCookie, "", "/ui/", -time.Second)
+	s.setCookie(w, uiTokenCookie, "", "/f/", -time.Second)
 }
