@@ -24,7 +24,7 @@ A reply `/exemplar <command> [reason]` in an Exemplar review thread records an e
 
 ## Feedback links
 
-The footer of every posted comment carries one signed link per reason: **Fixed**, **Wrong**, **Not important here**, **Already handled**, **Disagree with rule**, recording the same kinds as the commands. The person must be signed in to exemplar-api with a GitHub identity; the role comes from their participation in the PR before the click, and a click never makes someone a reviewer on its own. Anyone else is an observer.
+The footer of every posted comment carries one signed link per reason: **Fixed**, **Wrong**, **Not important here**, **Already handled**, **Disagree with rule**, recording the same kinds as the commands. The person must be signed in to exemplar-api with a GitHub identity and able to read the finding's repository (with OIDC, through their groups' repositories); otherwise the link answers as if the finding did not exist; the role comes from their participation in the PR before the click, and a click never makes someone a reviewer on its own. Anyone else is an observer.
 
 ## Reactions
 
