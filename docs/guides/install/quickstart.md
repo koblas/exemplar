@@ -1,6 +1,6 @@
 # Quickstart
 
-In about 20 minutes you will have Exemplar running on one Kubernetes node with an in-cluster Postgres, registered as a GitHub App, reviewing one repository in shadow. Nothing is posted to a pull request until [Your first review](first-review.md).
+In about 20 minutes you will have Exemplar running on one Kubernetes node with an in-cluster Postgres, registered as a GitHub App, reviewing one repository in shadow. Nothing is posted to a pull request until [Your first review](../../tutorials/first-review.md).
 
 You need Kubernetes 1.29+, a GitHub organization you own (or a personal account), an Anthropic API key, and one public host name that GitHub can reach, for example `exemplar.acme.com`. On the desktop you need only `kubectl` and `openssl` (and `cloudflared` if you choose the tunnel). There is no install CLI: the first time exemplar-api starts, it serves a setup page that registers the GitHub App for you.
 
@@ -16,7 +16,7 @@ Pick how GitHub reaches the cluster. Both are first-class, and the steps differ 
 
 ## 1. Create `exemplar-config`
 
-Make a repository, for example `acme/exemplar-config`, from [`examples/exemplar-config`](https://github.com/koblas/exemplar/tree/main/examples/exemplar-config) (including `.github/workflows/`; only its `validate` job runs until you add the variables in [How to set up config CI](../guides/rules/config-ci.md)).
+Make a repository, for example `acme/exemplar-config`, from [`examples/exemplar-config`](https://github.com/koblas/exemplar/tree/main/examples/exemplar-config) (including `.github/workflows/`; only its `validate` job runs until you add the variables in [How to set up config CI](../rules/config-ci.md)).
 
 Its `rules/` are a starter set for most codebases: secrets in logs, injection, missing timeouts and unsafe migrations in common languages, unpinned container images, and three Go rules. Committed keys need no rule: every review scans for them. Replace the owner teams in the rules (`@platform/exemplar`, `@security/appsec`) and in `CODEOWNERS` with teams of yours.
 
@@ -50,7 +50,7 @@ Rename `repos/exemplar-sandbox/playground.yaml` to `repos/<owner>/<repo>.yaml` f
 
 ## 3. Create the namespace and the Secrets
 
-These are the Secrets that aren't GitHub's. The root key derives every internal key ([Secrets and ConfigMaps](../reference/secrets-and-configmaps.md)).
+These are the Secrets that aren't GitHub's. The root key derives every internal key ([Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md)).
 
 ```bash
 kubectl create namespace exemplar
@@ -80,7 +80,7 @@ kubectl -n exemplar create secret generic exemplar-providers --from-literal=anth
 
 ## 4. Write the overlay
 
-Copy your way in's overlay directory. In `settings.yaml` set your config repo and `https://exemplar.acme.com`. In `kustomization.yaml`, replace the resource with the release's install file URL and drop the `images` list (the file pins them); see [Releases and images](../reference/releases.md).
+Copy your way in's overlay directory. In `settings.yaml` set your config repo and `https://exemplar.acme.com`. In `kustomization.yaml`, replace the resource with the release's install file URL and drop the `images` list (the file pins them); see [Releases and images](../../reference/releases.md).
 
 === "Cloudflare Tunnel"
 
@@ -128,8 +128,8 @@ kubectl --context <your-cluster> -n exemplar rollout restart deployment/exemplar
 
 Once `kubectl -n exemplar get pods` shows everything ready, open `https://exemplar.acme.com/ui/setup` and sign in with GitHub. It checks the App's installation, its access to `exemplar-config`, GitHub's delivery log and the events stored, and says what to fix. A gateway pod that isn't ready means a provider in `global.yaml` has no credentials: its log names the variable.
 
-Then open a pull request in the shadow repo: the review appears in the web UI. Carry on with [Your first review](first-review.md).
+Then open a pull request in the shadow repo: the review appears in the web UI. Carry on with [Your first review](../../tutorials/first-review.md).
 
 ## What you have
 
-For a trial that's enough. The quickstart's Postgres has no backups or replication, nothing but Exemplar's own sign-in is in front of the API, `/webhook` is open to any source (deliveries are still signature-checked), and everything runs one replica. [How to install for production](../guides/install/production.md) adds the edge rules.
+For a trial that's enough. The quickstart's Postgres has no backups or replication, nothing but Exemplar's own sign-in is in front of the API, `/webhook` is open to any source (deliveries are still signature-checked), and everything runs one replica. [How to install for production](production.md) adds the edge rules.

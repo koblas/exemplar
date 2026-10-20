@@ -1,6 +1,6 @@
 # Your first review
 
-You have an installation that passes `/ui/setup` ([Quickstart](quickstart.md)) and one repository in `exemplar-config` with `shadow: true`. In this tutorial you watch a shadow review, turn posting on, and give the bot its first feedback. Fifteen minutes, plus however long your pull request takes to review.
+You have an installation that passes `/ui/setup` ([Quickstart](../guides/install/quickstart.md)) and one repository in `exemplar-config` with `shadow: true`. In this tutorial you watch a shadow review, turn posting on, and give the bot its first feedback. Fifteen minutes, plus however long your pull request takes to review.
 
 ## 1. Watch a shadow review
 

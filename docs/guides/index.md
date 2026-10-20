@@ -1,12 +1,12 @@
 # Guides
 
-Each guide solves one task for one kind of reader. They assume you know what Exemplar is ([Concepts](../concepts/index.md)) and have an installation ([Quickstart](../tutorials/quickstart.md)); they point at the [Reference](../reference/index.md) for every field and flag rather than repeating it.
+Each guide solves one task for one kind of reader. They assume you know what Exemplar is ([Concepts](../concepts/index.md)) and have an installation ([Quickstart](install/quickstart.md)); they point at the [Reference](../reference/index.md) for every field and flag rather than repeating it.
 
 ## Where things are
 
 | Area | What it covers | Start with |
 |---|---|---|
-| Installing | Kubernetes manifests, the setup page that registers the GitHub App, Postgres, inbound through a tunnel or an Ingress, sign-in | [Quickstart](../tutorials/quickstart.md), then [How to install for production](install/production.md) |
+| Installing | Kubernetes manifests, the setup page that registers the GitHub App, Postgres, inbound through a tunnel or an Ingress, sign-in | [Quickstart](install/quickstart.md), then [How to install for production](install/production.md) |
 | Operating | Kill switches, incidents, upgrades, key rotation, Grafana, telemetry, the optional CronJobs | [How to respond to an incident](operate/runbook.md), [How to troubleshoot](operate/troubleshoot.md) |
 | Rules | The `exemplar-config` repository, rule files, eval cases, config CI, the playground, mined candidates, adjudication | [Your first rule](../tutorials/first-rule.md), [exemplar-config reference](../reference/config/index.md) |
 | Reviewing | What a posted finding looks like, feedback commands and links, reactions, SARIF alerts | [How to respond to a finding](authors/respond-to-a-finding.md) |
@@ -20,6 +20,7 @@ Each guide solves one task for one kind of reader. They assume you know what Exe
 
 For the platform engineer standing Exemplar up.
 
+- [Quickstart](install/quickstart.md): a trial install on one node with an in-cluster Postgres, about 20 minutes. Production builds on the same steps.
 - [How to install for production](install/production.md): a managed Postgres, two replicas, the edge rules.
 - [How to set up sign-in](install/sign-in.md): GitHub OAuth, OpenID Connect, or both.
 - [How to run Postgres in the cluster](install/in-cluster-postgres.md): the optional component for evaluation.

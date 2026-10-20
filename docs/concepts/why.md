@@ -105,7 +105,7 @@ Alongside them, counter-metrics watch for harm: the revert rate of auto-approved
 
 - [How a review works](how-a-review-works.md): what happens to a PR, and how the verdict is reached.
 - [Architecture](architecture.md): how the pieces fit, as built.
-- [Quickstart](../tutorials/quickstart.md): a trial in about 20 minutes, then [Your first review](../tutorials/first-review.md): from shadow mode to posted reviews.
+- [Quickstart](../guides/install/quickstart.md): a trial in about 20 minutes, then [Your first review](../tutorials/first-review.md): from shadow mode to posted reviews.
 - [How to turn on auto-approve](../guides/operate/auto-approve.md): letting Exemplar approve low-risk PRs.
 
 [^faros]: Faros AI, [How AI-Generated Code Is Increasing Code Review Burden](https://www.faros.ai/blog/ai-code-quality-senior-engineer-review-burden), telemetry from more than 10,000 developers across 1,255 teams.
