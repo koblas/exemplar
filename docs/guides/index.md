@@ -2,6 +2,20 @@
 
 Each guide solves one task for one kind of reader. They assume you know what Exemplar is ([Concepts](../concepts/index.md)) and have an installation ([Quickstart](../tutorials/quickstart.md)); they point at the [Reference](../reference/index.md) for every field and flag rather than repeating it.
 
+## Where things are
+
+| Area | What it covers | Start with |
+|---|---|---|
+| Installing | Kubernetes manifests, the setup page that registers the GitHub App, Postgres, inbound through a tunnel or an Ingress, sign-in | [Quickstart](../tutorials/quickstart.md), then [How to install for production](install/production.md) |
+| Operating | Kill switches, incidents, upgrades, key rotation, Grafana, telemetry, the optional CronJobs | [How to respond to an incident](operate/runbook.md), [How to troubleshoot](operate/troubleshoot.md) |
+| Rules | The `exemplar-config` repository, rule files, eval cases, config CI, the playground, mined candidates, adjudication | [Your first rule](../tutorials/first-rule.md), [exemplar-config reference](../reference/config/index.md) |
+| Reviewing | What a posted finding looks like, feedback commands and links, reactions, SARIF alerts | [How to respond to a finding](authors/respond-to-a-finding.md) |
+| Who reviews | The verdict on every PR: approved with no human, or routed to humans with reasons; the gates, the audit page, the counter-metrics | [How a review works](../concepts/how-a-review-works.md#who-reviews-this-pr), [How to turn on auto-approve](operate/auto-approve.md) |
+| Before the PR | `exemplar login` and `exemplar review`, coding agents, exported instruction files | [How to review before pushing](authors/review-before-pushing.md) |
+| Configuration | Every `exemplar-config` file, environment variable, Secret and ConfigMap | [Reference](../reference/index.md) |
+| How it works | Components, the review pipeline, trust boundaries, data handling | [Architecture](../concepts/architecture.md), [How a review works](../concepts/how-a-review-works.md) |
+| Developing | The devenv environment, checks, manifests, this site | [How to set up the development environment](develop/dev-environment.md), [CONTRIBUTING.md](https://github.com/koblas/exemplar/blob/main/CONTRIBUTING.md) |
+
 ## Install
 
 For the platform engineer standing Exemplar up.

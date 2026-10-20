@@ -332,3 +332,7 @@ The site's lead is now the problem Exemplar is for: AI-assisted coding multiplie
 ### Documentation site built by Zensical (2026-10-20)
 
 The site is now built by Zensical 0.0.70 (the Material for MkDocs team's successor, with its `modern` look) instead of MkDocs with Material. Zensical reads `mkdocs.yml` as-is, so the config, the nav, the redirects plugin and `go test ./docs` are unchanged; `site_dir` moved into the config (`out/site`) because Zensical has no `--site-dir`. The git-revision-date plugin is not supported by Zensical yet (on its roadmap), so pages no longer show a "last updated" date and the docs jobs no longer need the full git history. Verified in the built site: landing-card icons, content tabs, Mermaid, footnotes and the old-path redirects all render.
+
+### Landing page: one reason (2026-10-20)
+
+`docs/index.md` is now a value-focused landing page in the style of a product site, with the navigation and table of contents hidden and its own stylesheet (`docs/stylesheets/landing.css`, scoped to `.landing`). It makes one argument, "give your reviewers their time back without lowering the bar": a hero with two calls to action, the three problem numbers, the two verdicts, five guarantees, the one-pass pipeline, the PRD targets labelled as targets, and a closing call to action. The capability map ("Where things are") moved to the Guides index; the binaries table was already in Architecture. Why Exemplar opens on the same sentence so the landing and the long-form case agree.

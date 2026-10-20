@@ -1,6 +1,6 @@
 # Why Exemplar
 
-AI made code cheap to write and did nothing for the cost of reviewing it. Pull requests now arrive faster than the people who must read them, and the only ways a team has to cope are to review less carefully or to merge less often. Exemplar exists to give it a third option: hold the review standard, and put human attention only where a human is needed. This page is the case for the product; the [product requirements](https://github.com/koblas/exemplar/blob/main/docs/spec/prd.md) are the long form.
+Exemplar exists for one reason: **to give your reviewers their time back without lowering the bar.** AI made code cheap to write and did nothing for the cost of reviewing it. Pull requests now arrive faster than the people who must read them, and the only ways a team has to cope are to review less carefully or to merge less often. Exemplar gives it a third option: hold the review standard, and put human attention only where a human is needed. This page is the case for the product; the [product requirements](https://github.com/koblas/exemplar/blob/main/docs/spec/prd.md) are the long form.
 
 ## The problem: review is the bottleneck now
 
