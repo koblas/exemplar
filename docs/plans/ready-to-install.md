@@ -372,3 +372,17 @@ The items left after #22, #23 and #27, from the hunt's Low findings and the foll
 - **Denylist.** Build and dev-environment files are denied in any directory: Dockerfile and Containerfile variants, Compose files, setup.py and setup.cfg, Gemfile and gemspecs, Rakefile, .npmrc and .yarnrc, pre-commit config, Justfile and Taskfile, build.sbt, meson.build. `.devcontainer/**` and `.husky/**` are denied at the root.
 
 **Not code changes:** the Semgrep memory figures came from amd64 emulation; CI's `TestRealEnginesUnderLimits` on native runners is the ongoing check, and it passed on #23. The compile CronJob stays suspended until the cluster allows user namespaces under RuntimeDefault seccomp, or a sandboxing runtime such as gVisor is used. `release-please` has failed on every push since at least 2026-10-18 because the repository does not allow GitHub Actions to create pull requests (Settings > Actions > General).
+
+### Starter rules for any codebase (2026-10-20)
+
+The example config's `rules/` should give a quickstart findings on whatever the first repo is written in. They held three Go rules. Six more, scoped to source in about twenty common languages (tests, `testdata` and fixtures excluded) or to file types most stacks have:
+
+- **Model rules (`exemplar`).** `no-secrets-in-logs` (important), `untrusted-input-to-sink` (blocking: SQL, shell, paths, HTML, deserializers, SSRF), `external-call-timeouts` (important: timeouts and bounded retries), `migration-backward-compatible` (important, scoped to migration directories and `*.sql`), and `tests-for-behavior-change` (suggestion, `shadow`: expected to be noisy, so its findings are stored but not posted).
+- **Compiled rule.** `pin-container-images`: Semgrep `languages: [regex]` for `:latest` in Dockerfiles and YAML, no model cost.
+- **No committed-key rule.** A Semgrep key-pattern rule was written and dropped: the built-in `possible-secret-in-diff` lane (gitleaks) already reports keys, and redacts them before any model sees the diff.
+- **`no-raw-sql-concat` never matched.** In Go, ast-grep parses a bare `$DB.Query(...)` pattern ambiguously, and `, $$$` does not match zero trailing arguments, so the rule found nothing. It is now a structural rule over `Query`, `QueryRow`, `Exec`, `Prepare` and their `Context` variants: concatenation or `fmt.Sprintf` in the query argument, not in later arguments. The `docs.internal` citation is an OWASP link. The rule reference and How to write a rule carry the working form. The guide says to run a matcher on a sample file, since `exemplar validate` checks only the schema.
+- **Owners.** The two Go rules move from `@platform/backend` to `@platform/exemplar`, so the rules name only teams CODEOWNERS already does; the quickstart says to replace them.
+
+Each compiled matcher was run with ast-grep 0.45.1 or Semgrep 1.172 on positive and negative files, and the shared `file_patterns` on sample paths. Cost per PR: every rule whose patterns match runs one agent, shadow rules included, three at a time. A source change in a Go repo runs six (four language-agnostic, two Go) and a migration adds one. `untrusted-input-to-sink` is a blocking Security rule, so it starts on the high model tier and is posted over the comment budget.
+
+**Not done:** no eval cases ship, since a case needs a commit in the installer's repositories; How to set up config CI says editing a starter rule fails `eval` until it has them. The model rules have not been run against real PRs; their precision is unknown until a shadow week.
