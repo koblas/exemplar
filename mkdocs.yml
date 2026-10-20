@@ -16,6 +16,8 @@ repo_name: koblas/exemplar
 edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: out/site
+extra_css:
+  - stylesheets/landing.css # the landing page only (docs/index.md)
 exclude_docs: |
   spec/
   plans/

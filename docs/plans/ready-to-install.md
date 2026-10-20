@@ -356,3 +356,7 @@ The items the 2026-10-19 hunt left open, one commit each, each with a test that 
 **Breaking for operators** (in `docs/guides/install/upgrade.md`): overlays that patch the extract CronJob need `--config`. Feedback-link sessions from before the upgrade sign in again. OIDC viewers see "not found" on links for repos outside their groups' mapping.
 
 **Not done:** comments from non-collaborators that ingest already mined stay in `mined_comments` and in any candidates they fed. A one-off cleanup would need the association, which earlier ingest never stored. The Semgrep memory figures come from amd64 under Rosetta on arm64; native amd64 nodes may reserve differently, and CI's `TestRealEnginesUnderLimits` is the check. User namespaces worked only with seccomp and AppArmor unconfined, so the compile CronJob stays suspended.
+
+### Landing page: one reason (2026-10-20)
+
+`docs/index.md` is now a value-focused landing page in the style of a product site, with the navigation and table of contents hidden and its own stylesheet (`docs/stylesheets/landing.css`, scoped to `.landing`). It makes one argument, "give your reviewers their time back without lowering the bar": a hero with two calls to action, the three problem numbers, the two verdicts, five guarantees, the one-pass pipeline, the PRD targets labelled as targets, and a closing call to action. The capability map ("Where things are") moved to the Guides index; the binaries table was already in Architecture. Why Exemplar opens on the same sentence so the landing and the long-form case agree.

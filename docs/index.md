@@ -1,87 +1,149 @@
-# Exemplar
+---
+title: Exemplar
+hide:
+  - navigation
+  - toc
+---
 
-AI-assisted coding multiplied the pull requests a team produces. It did nothing for the people who have to review them. Teams now merge about twice as many PRs and spend about twice as long reviewing each one, and under that load review standards slip: more approvals, less scrutiny ([the numbers](concepts/why.md#the-problem-review-is-the-bottleneck-now)).
+<div class="landing" markdown>
 
-Exemplar is a self-correcting AI code reviewer for GitHub built for that bottleneck. It does two jobs:
+<div class="landing-hero" markdown>
 
-- **Holds the review standard.** It mines your review history into rules your teams own in git, enforces them on every pull request with one focused agent per rule, verifies every finding with a second model before a human sees it, and learns from what reviewers say back, through a human gate. It reviews with **your organization's judgment, not the internet's**.
-- **Absorbs the volume.** Every PR gets a verdict: **approved with no human review needed**, behind deterministic gates you turn on per repository, or **routed to humans with the reasons** it needs them. The same rules reach coding agents and IDEs before a PR exists, so violations stop arriving as review load.
+<p class="landing-kicker">A self-correcting AI code reviewer for GitHub</p>
 
-It is built on one conviction: precision is the product. A reviewer people learn to ignore is worse than none. [Why Exemplar](concepts/why.md) makes the case; the rest of this site is how to run it.
+# Give your reviewers their time back. {: .landing-title }
 
-## Start here
+<p class="landing-lead">AI-assisted coding doubled the pull requests your team produces and did nothing for the people who review them. Exemplar reviews every PR with <strong>your organization's own judgment</strong>, approves the low-risk ones with <strong>no human review needed</strong>, and sends the rest to people <strong>with the reasons</strong>.</p>
 
-<div class="grid cards" markdown>
+[Quickstart: 20 minutes](tutorials/quickstart.md){ .md-button .md-button--primary }
+[Why Exemplar](concepts/why.md){ .md-button }
 
--   :material-rocket-launch: **Quickstart**
-
-    ---
-
-    A trial on one node with an in-cluster Postgres, through a Cloudflare Tunnel or an Ingress. About 20 minutes.
-
-    [:octicons-arrow-right-24: Quickstart](tutorials/quickstart.md)
-
--   :material-source-pull: **Your first review**
-
-    ---
-
-    Watch a shadow review, turn posting on, and give the bot its first feedback.
-
-    [:octicons-arrow-right-24: Your first review](tutorials/first-review.md)
-
--   :material-file-document-edit: **Your first rule**
-
-    ---
-
-    Write a rule, give it eval cases, try it on a real PR, and merge it.
-
-    [:octicons-arrow-right-24: Your first rule](tutorials/first-rule.md)
-
--   :material-lightbulb: **Concepts**
-
-    ---
-
-    How a review works, how a rule lives and dies, what leaves the cluster and what never does.
-
-    [:octicons-arrow-right-24: Concepts](concepts/index.md)
+<p class="landing-note">Open source. Runs on your Kubernetes, in one namespace, against one Postgres, as a GitHub App. Code never leaves the paths you allow.</p>
 
 </div>
 
-## The lifecycle
+<div class="landing-problem" markdown>
 
-1. **Install** Exemplar into one Kubernetes namespace as a GitHub App, with `exemplar-config` as the repository your teams own ([Quickstart](tutorials/quickstart.md), [production install](guides/install/production.md)).
-2. **Review in shadow.** Every lane runs and the results are stored; nothing is posted until you say so ([Your first review](tutorials/first-review.md)).
-3. **Go live.** Findings arrive as one review per PR head, labelled, budgeted, with a one-click fix where the change is local. Exemplar approves or stays silent; it never blocks.
-4. **Let it decide who reviews.** Opt repositories into auto-approve: a PR that passes every deterministic gate and a two-model risk check is approved with no human review needed; the rest go to humans with the gate that sent them there ([How a review works](concepts/how-a-review-works.md#who-reviews-this-pr), [How to turn on auto-approve](guides/operate/auto-approve.md)).
-5. **Give feedback.** Authors reply `/exemplar wrong <why>` or click a link; owners uphold or overturn ([feedback commands](reference/feedback-commands.md)).
-6. **Grow the corpus.** The learning plane mines review history into candidate rules with citations, proposes them as config PRs, and demotes rules people reject ([rule lifecycle](concepts/rule-lifecycle.md)).
-7. **Shift left.** The same rules export to coding-agent instruction files and run from the CLI before a PR exists ([review before pushing](guides/authors/review-before-pushing.md)).
+<div class="landing-stat" markdown>
+<span class="landing-stat-n">2×</span>
+<span class="landing-stat-l">the pull requests merged by teams with high AI adoption</span>
+</div>
+<div class="landing-stat" markdown>
+<span class="landing-stat-n">2×</span>
+<span class="landing-stat-l">the time each of them spends in review</span>
+</div>
+<div class="landing-stat" markdown>
+<span class="landing-stat-n">4 in 5</span>
+<span class="landing-stat-l">developers say review takes more of their day since AI tools arrived</span>
+</div>
 
-## What's where
+<p class="landing-caption">Human review is the bottleneck now, and under that load it degrades: more approvals, less scrutiny. <a href="concepts/why/#the-problem-review-is-the-bottleneck-now">The numbers and their sources.</a></p>
 
-| Area | What it covers | Start with |
-|---|---|---|
-| Installing | Kubernetes manifests, the setup page that registers the GitHub App, Postgres, inbound through a tunnel or an Ingress, sign-in | [Quickstart](tutorials/quickstart.md), then [How to install for production](guides/install/production.md) |
-| Operating | Kill switches, incidents, upgrades, key rotation, Grafana, telemetry, the optional CronJobs | [How to respond to an incident](guides/operate/runbook.md), [How to troubleshoot](guides/operate/troubleshoot.md) |
-| Rules | The `exemplar-config` repository, rule files, eval cases, config CI, the playground, mined candidates, adjudication | [Your first rule](tutorials/first-rule.md), [exemplar-config reference](reference/config/index.md) |
-| Reviewing | What a posted finding looks like, feedback commands and links, reactions, SARIF alerts | [How to respond to a finding](guides/authors/respond-to-a-finding.md) |
-| Who reviews | The verdict on every PR: approved with no human, or routed to humans with reasons; the gates, the audit page, the counter-metrics | [How a review works](concepts/how-a-review-works.md#who-reviews-this-pr), [How to turn on auto-approve](guides/operate/auto-approve.md) |
-| Before the PR | `exemplar login` and `exemplar review`, coding agents, exported instruction files | [How to review before pushing](guides/authors/review-before-pushing.md) |
-| Configuration | Every `exemplar-config` file, environment variable, Secret and ConfigMap | [Reference](reference/index.md) |
-| How it works | Components, the review pipeline, trust boundaries, data handling | [Architecture](concepts/architecture.md), [How a review works](concepts/how-a-review-works.md) |
-| Developing | The devenv environment, checks, manifests, this site | [How to set up the development environment](guides/develop/dev-environment.md), [CONTRIBUTING.md](https://github.com/koblas/exemplar/blob/main/CONTRIBUTING.md) |
+</div>
 
-## What's in the box
+## One verdict on every pull request {: .landing-h2 }
 
-Everything runs on Kubernetes in one namespace against one Postgres database, as a GitHub App.
+<p class="landing-sub">Exemplar does not add comments to a queue that is already too long. It decides who needs to read each PR, and shows its work.</p>
 
-| Binary | What it does |
-|---|---|
-| `exemplar-webhook` | Receives GitHub webhooks and stores each delivery once. |
-| `exemplar-worker` | Routes events and reviews pull requests. Also runs `exemplar review` evaluations, playground runs, web UI owner actions, and the periodic jobs (reconcile, sweep, retention, stats). |
-| `exemplar-gateway` | The only holder of model-provider keys. Routes, fails over, redacts, and records cost. |
-| `exemplar-search` | A git mirror and code index for review context (`search_text`, `find_definition`, `find_references`, `dependents`). |
-| `exemplar-api` | Sign-in (GitHub OAuth and/or OIDC), signed feedback links, the `/ui/` web UI, and `/v1/evaluate` for the CLI and services. |
-| `exemplar-learn` | The learning-plane CronJobs. Ingest, extract, evals, compile, propose, demote, expiry, digest, teach and export. |
-| `learning/` (Python) | The `cluster` and `rank` CronJobs. |
-| `exemplar` | The CLI. Covers config validation, evals, `exemplar login`/`review`, `try`, replay, mutations, and calibration. |
+<div class="grid cards landing-verdicts" markdown>
+
+-   :material-check-decagram: **Approved, no human review needed**
+
+    ---
+
+    The PR touched only allowed paths, came from an allowed author, was reviewed to full coverage with zero findings, and passed a deterministic merge-safety score and a two-model risk check. It merges without waiting on a reviewer.
+
+-   :material-account-arrow-right: **Routed to humans, with the reasons**
+
+    ---
+
+    Everything else goes to your reviewers. The check run says why in plain words: a finding, a denylisted path, a score below the bar. Reviewers open the PR already knowing what to look for.
+
+</div>
+
+## Built on five guarantees {: .landing-h2 }
+
+<div class="grid cards landing-guarantees" markdown>
+
+-   **Your judgment, not the internet's**
+
+    ---
+
+    Rules are mined from your own review history, with citations, and live in a git repository your teams own. Nothing enforces until a rule owner merges it.
+
+-   **Nothing reaches a human unverified**
+
+    ---
+
+    A second model, from a different family, tries to refute every finding. Code checks the anchors, the evidence and the provenance. What survives is budgeted and carries a one-click fix.
+
+-   **Approval is never a model's say-so**
+
+    ---
+
+    Every gate that can approve a PR is deterministic and auditable. The two-model risk check can only withhold an approval, never grant one on its own.
+
+-   **It never blocks**
+
+    ---
+
+    Exemplar approves or stays silent. It never requests changes, and a kill switch at every level is one config merge away.
+
+-   **Violations stop arriving**
+
+    ---
+
+    The same rules export to coding-agent instruction files and a pre-PR check, so agents and IDEs conform before the PR exists.
+
+</div>
+
+## One pass per pull request {: .landing-h2 }
+
+```mermaid
+flowchart LR
+  PR["Pull request"] --> R["Your rules<br/>one agent per rule"]
+  R --> V["Verify<br/>second model refutes"]
+  V --> C["Validate<br/>code checks evidence"]
+  C --> D{"Every gate<br/>passed?"}
+  D -- yes --> A["Approved<br/>no human needed"]
+  D -- no --> H["Humans<br/>with the reasons"]
+```
+
+<p class="landing-caption">Deterministic first, models only where judgment is needed, a human gate on every rule change. <a href="concepts/how-a-review-works/">How a review works.</a></p>
+
+## What it is built to hit {: .landing-h2 }
+
+<p class="landing-sub">The targets in the product requirements, with counter-metrics that watch for auto-approve eroding shared ownership. Cost and latency are reported on every review and are not targets.</p>
+
+<div class="landing-targets" markdown>
+<div class="landing-stat" markdown>
+<span class="landing-stat-n">≥ 65%</span>
+<span class="landing-stat-l">of findings accepted by authors, at or above human reviewers</span>
+</div>
+<div class="landing-stat" markdown>
+<span class="landing-stat-n">≤ 10%</span>
+<span class="landing-stat-l">effective false positives for every active rule</span>
+</div>
+<div class="landing-stat" markdown>
+<span class="landing-stat-n">2×</span>
+<span class="landing-stat-l">the precision of a generic AI reviewer on the same PRs</span>
+</div>
+<div class="landing-stat" markdown>
+<span class="landing-stat-n">5% →</span>
+<span class="landing-stat-l">of PRs merged with no human review at launch, then growing</span>
+</div>
+</div>
+
+<div class="landing-close" markdown>
+
+## Put humans only where a human is needed. {: .landing-h2 }
+
+[Quickstart](tutorials/quickstart.md){ .md-button .md-button--primary }
+[Your first review](tutorials/first-review.md){ .md-button }
+[Why Exemplar](concepts/why.md){ .md-button }
+
+<p class="landing-note">Then <a href="concepts/">Concepts</a> for how it thinks, <a href="guides/">Guides</a> for one task at a time, and the <a href="reference/">Reference</a> for every file, setting and command.</p>
+
+</div>
+
+</div>
