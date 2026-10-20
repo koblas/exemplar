@@ -266,6 +266,54 @@ func TestTry(t *testing.T) {
 	}
 }
 
+// fakeMatcher stands in for the limited compiled.Runner drafts run under.
+type fakeMatcher struct{ bodies []string }
+
+func (m *fakeMatcher) Run(_ context.Context, _, _, body string, files []string) ([]compiled.Match, error) {
+	m.bodies = append(m.bodies, body)
+	return []compiled.Match{{Path: files[0], StartLine: 6, EndLine: 6}}, nil
+}
+
+// A compiled draft runs on Runner.Compiled, never on the engine's
+// own runner, which is for merged rules and has no limits.
+func TestTryCompiledDraft(t *testing.T) {
+	const compiledDraft = `id: no-bare-http-get-c10
+kind: compiled
+category: Reliability
+severity: suggestion
+owner: "@platform/backend"
+status: shadow
+review_by: 2027-10-01
+file_patterns: ["**/*.go"]
+matcher:
+  engine: ast-grep
+  rule: |
+    id: no-bare-http-get-c10
+    language: go
+    rule:
+      pattern: http.Get($U)
+description: |
+  Outbound HTTP calls need a timeout; http.Get uses the default client, which has none.
+`
+	f := setup(t)
+	snap, id, err := RuleFileSnapshot(os.DirFS(exampleConfig), []byte(compiledDraft), "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &fakeMatcher{}
+	f.runner.Compiled = m
+	out, err := f.runner.Try(t.Context(), Request{Actor: "alice", Snapshot: snap, RuleIDs: []string{id}, Target: Target{sandboxRepo, 41}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.bodies) != 1 || !strings.Contains(m.bodies[0], "http.Get($U)") {
+		t.Fatalf("draft matcher ran %d times: %q", len(m.bodies), m.bodies)
+	}
+	if !out.Ran || len(out.Findings) != 1 || out.Findings[0].Start != 6 {
+		t.Fatalf("outcome = %+v", out)
+	}
+}
+
 func TestTryDenials(t *testing.T) {
 	f := setup(t)
 	same := "no access to "
