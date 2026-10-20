@@ -1,6 +1,6 @@
 # How to install for production
 
-The [Quickstart](../../tutorials/quickstart.md) steps, with these differences: your own Postgres, two replicas of each service, pinned images, and the rules at the edge.
+The [Quickstart](quickstart.md) steps, with these differences: your own Postgres, two replicas of each service, pinned images, and the rules at the edge.
 
 ## Prerequisites
 
@@ -80,7 +80,7 @@ kubectl --context <your-cluster> apply -f rendered.yaml
 
 ## 6. Register the App and check
 
-Register the App from the setup page ([Quickstart](../../tutorials/quickstart.md#6-register-the-github-app)) and work through `/ui/setup` (step 7 there). Then set up [sign-in](sign-in.md) for your organisation, and go through [Your first review](../../tutorials/first-review.md) on a shadow repository before posting anywhere.
+Register the App from the setup page ([Quickstart](quickstart.md#6-register-the-github-app)) and work through `/ui/setup` (step 7 there). Then set up [sign-in](sign-in.md) for your organisation, and go through [Your first review](../../tutorials/first-review.md) on a shadow repository before posting anywhere.
 
 From a clone of this repository, `go test ./deploy` also checks every build against the code: ports, probes, shutdown deadlines, every environment variable, security contexts and network paths ([How to check manifests locally](../develop/check-manifests.md)).
 

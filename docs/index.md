@@ -15,7 +15,7 @@ hide:
 
 <p class="landing-lead">AI-assisted coding doubled the pull requests your team produces and did nothing for the people who review them. Exemplar reviews every PR with <strong>your organization's own judgment</strong>, approves the low-risk ones with <strong>no human review needed</strong>, and sends the rest to people <strong>with the reasons</strong>.</p>
 
-[Quickstart: 20 minutes](tutorials/quickstart.md){ .md-button .md-button--primary }
+[Try it: a 20-minute trial install](guides/install/quickstart.md){ .md-button .md-button--primary }
 [Why Exemplar](concepts/why.md){ .md-button }
 
 <p class="landing-note">Open source. Runs on your Kubernetes, in one namespace, against one Postgres, as a GitHub App. Code never leaves the paths you allow.</p>
@@ -138,7 +138,7 @@ flowchart LR
 
 ## Put humans only where a human is needed. {: .landing-h2 }
 
-[Quickstart](tutorials/quickstart.md){ .md-button .md-button--primary }
+[Quickstart](guides/install/quickstart.md){ .md-button .md-button--primary }
 [Your first review](tutorials/first-review.md){ .md-button }
 [Why Exemplar](concepts/why.md){ .md-button }
 

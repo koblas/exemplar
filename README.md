@@ -5,7 +5,7 @@ AI-assisted coding multiplied the pull requests a team produces and did nothing 
 **Documentation: <https://koblas.github.io/exemplar/>**
 
 - [Why Exemplar](https://koblas.github.io/exemplar/concepts/why/): the problem, the approach, and what it won't do.
-- [Quickstart](https://koblas.github.io/exemplar/tutorials/quickstart/): a trial on one node, about 20 minutes, then [your first review](https://koblas.github.io/exemplar/tutorials/first-review/) and [your first rule](https://koblas.github.io/exemplar/tutorials/first-rule/). Production: [how to install](https://koblas.github.io/exemplar/guides/install/production/).
+- [Quickstart](https://koblas.github.io/exemplar/guides/install/quickstart/): a trial on one node, about 20 minutes, then [your first review](https://koblas.github.io/exemplar/tutorials/first-review/) and [your first rule](https://koblas.github.io/exemplar/tutorials/first-rule/). Production: [how to install](https://koblas.github.io/exemplar/guides/install/production/).
 - [Guides](https://koblas.github.io/exemplar/guides/) for installers, operators, rule owners, PR authors and contributors; the [reference](https://koblas.github.io/exemplar/reference/) for every config file, setting, Secret, workload, CLI command and web UI page.
 - [Architecture](https://koblas.github.io/exemplar/concepts/architecture/) and [how a review works](https://koblas.github.io/exemplar/concepts/how-a-review-works/); contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).
 

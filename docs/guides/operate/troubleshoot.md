@@ -10,7 +10,7 @@ Set `EXEMPLAR_LOG_LEVEL=debug` on a workload for more.
 
 ## Pods wait on a missing Secret
 
-`secret "exemplar-github-app" not found` on the worker, search, learn and git-sync containers is expected until the setup page produced the Secret ([Quickstart, step 6](../../tutorials/quickstart.md#6-register-the-github-app)). exemplar-api needs a restart once the Secret exists.
+`secret "exemplar-github-app" not found` on the worker, search, learn and git-sync containers is expected until the setup page produced the Secret ([Quickstart, step 6](../install/quickstart.md#6-register-the-github-app)). exemplar-api needs a restart once the Secret exists.
 
 A pod that refuses to start naming a value such as `example-org` or `exemplar.example.invalid` still has a placeholder from the example overlay in `exemplar-settings`.
 

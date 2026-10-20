@@ -76,8 +76,9 @@ plugins:
         architecture.md: concepts/architecture.md
         development.md: guides/develop/dev-environment.md
         cli.md: reference/cli.md
-        install/index.md: tutorials/quickstart.md
-        install/quickstart.md: tutorials/quickstart.md
+        install/index.md: guides/install/quickstart.md
+        install/quickstart.md: guides/install/quickstart.md
+        tutorials/quickstart.md: guides/install/quickstart.md
         install/production.md: guides/install/production.md
         install/sign-in.md: guides/install/sign-in.md
         install/releases.md: reference/releases.md
@@ -97,7 +98,6 @@ validation:
 nav:
   - Start here:
       - index.md
-      - Quickstart: tutorials/quickstart.md
       - Your first review: tutorials/first-review.md
       - Your first rule: tutorials/first-rule.md
   - Concepts:
@@ -111,6 +111,7 @@ nav:
   - Guides:
       - guides/index.md
       - Install:
+          - Quickstart (a trial install): guides/install/quickstart.md
           - How to install for production: guides/install/production.md
           - How to set up sign-in: guides/install/sign-in.md
           - How to run Postgres in the cluster: guides/install/in-cluster-postgres.md
