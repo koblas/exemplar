@@ -1,6 +1,8 @@
-# The user documentation, published to GitHub Pages by .github/workflows/docs.yml.
-# Build locally: make docs (or make docs-serve). docs/spec, docs/plans and
-# docs/security are internal design documents, kept in the repository only.
+# The user documentation, built by Zensical (https://zensical.org), which reads
+# this MkDocs-format file, and published to GitHub Pages by
+# .github/workflows/docs.yml. Build locally: make docs (or make docs-serve).
+# docs/spec, docs/plans and docs/security are internal design documents, kept
+# in the repository only.
 #
 # The site follows the Divio documentation system (https://docs.divio.com/documentation-system/):
 # Start here (tutorials), Concepts (explanation), Guides (how-to) and Reference.
@@ -13,6 +15,7 @@ repo_url: https://github.com/koblas/exemplar
 repo_name: koblas/exemplar
 edit_uri: edit/main/docs/
 docs_dir: docs
+site_dir: out/site
 exclude_docs: |
   spec/
   plans/
@@ -21,6 +24,7 @@ exclude_docs: |
 
 theme:
   name: material
+  variant: modern # Zensical's own look; "classic" is the Material for MkDocs look
   features:
     - navigation.tabs
     - navigation.tabs.sticky
@@ -44,8 +48,8 @@ markdown_extensions:
   - footnotes
   # Material's icon shortcodes (:material-…:, :octicons-…:) on the landing cards.
   - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:zensical.extensions.emoji.twemoji
+      emoji_generator: !!python/name:zensical.extensions.emoji.to_svg
   - attr_list
   - md_in_html
   - tables
@@ -63,11 +67,6 @@ markdown_extensions:
 
 plugins:
   - search
-  # "Last updated" on every page, from git. CI checks out the full history
-  # for the docs jobs (fetch-depth: 0) so the dates are real.
-  - git-revision-date-localized:
-      type: date
-      fallback_to_build_date: true
   # Old paths (the site before the Divio restructure of 2026-10-20) keep working.
   - redirects:
       redirect_maps:

@@ -19,8 +19,11 @@ __pycache__/
 /exemplar
 /exemplar-*
 
-# make outputs (binaries, replay, rendered manifests)
+# make outputs (binaries, replay, rendered manifests, the docs site)
 /out/
+
+# Zensical's build cache (make docs)
+/.cache/
 
 # /security-hunt working files (current run and runs moved aside)
 /.security/
