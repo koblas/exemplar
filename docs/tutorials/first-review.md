@@ -14,7 +14,7 @@ If nothing arrives, `/ui/setup` says whether the webhook delivery reached the cl
 
 When the findings look right, set `shadow: false` in that repo's file in `exemplar-config` and merge. A push to `exemplar-config` refreshes the workers' config at once; the cache TTL is only a backstop.
 
-The next push to the pull request gets the `exemplar` check run and one review with inline comments. Each comment carries the rule id and severity, a suggestion when the fix is local, and a footer of feedback links. Exemplar never requests changes: it comments and stays neutral, or, where a repo opts in, approves.
+The next push to the pull request gets the `exemplar` check run and one review with inline comments. Each comment carries the rule id and severity, a suggestion when the fix is local, and a footer of feedback links. Exemplar never requests changes: it comments and stays neutral, or, where a repo opts in to auto-approve, approves a PR that passes every gate so no human has to read it. Until you opt a repository in, every PR is routed to your human reviewers; [How a review works](../concepts/how-a-review-works.md#who-reviews-this-pr) describes the three outcomes.
 
 ## 3. Give feedback
 

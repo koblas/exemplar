@@ -1,6 +1,6 @@
 # Exemplar
 
-Exemplar is a self-correcting AI code reviewer for GitHub that reviews with your organization's own judgment, not the internet's. It mines your review history into rules your teams own in a git repository (`exemplar-config`), enforces them on every pull request with one agent per rule, verifies each finding with a second model before anyone sees it, and demotes rules people say are wrong. It never blocks a PR, can auto-approve low-risk changes once deterministic gates pass, and ships the same rules to coding agents before a PR exists. It runs on Kubernetes against one Postgres database.
+AI-assisted coding multiplied the pull requests a team produces and did nothing for the people who review them. Exemplar is a self-correcting AI code reviewer for GitHub built for that bottleneck: it holds the review standard, and it decides which PRs still need a human. It reviews with your organization's own judgment, not the internet's. It mines your review history into rules your teams own in a git repository (`exemplar-config`), enforces them on every pull request with one agent per rule, verifies each finding with a second model before anyone sees it, and demotes rules people say are wrong. It never blocks a PR; it approves low-risk changes with no human review once deterministic gates pass, routes the rest to humans with the reasons, and ships the same rules to coding agents before a PR exists. It runs on Kubernetes against one Postgres database.
 
 **Documentation: <https://koblas.github.io/exemplar/>**
 
