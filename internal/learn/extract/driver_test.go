@@ -130,9 +130,14 @@ func fakeToken() string {
 
 func seed(t *testing.T, s *store.Store, id int64, body string) {
 	t.Helper()
+	seedIn(t, s, id, "acme/app", body)
+}
+
+func seedIn(t *testing.T, s *store.Store, id int64, repo, body string) {
+	t.Helper()
 	b, h := body, "@@ -1 +1 @@\n-x\n+y"
 	if err := s.InsertMinedComment(t.Context(), queries.InsertMinedCommentParams{
-		ID: id, Repo: "acme/app", PrNumber: 1, Path: "a.go", Ext: ".go", ReviewerPid: "r", AuthorPid: "a",
+		ID: id, Repo: repo, PrNumber: 1, Path: "a.go", Ext: ".go", ReviewerPid: "r", AuthorPid: "a",
 		CreatedAt: tsNow(), CommentUrl: "https://github.com/acme/app/pull/1#discussion_r" + strconv.FormatInt(id, 10),
 		Body: &b, DiffHunk: &h, DocUrls: []string{}, IsThreadRoot: true, Source: "human",
 	}); err != nil {
@@ -152,6 +157,11 @@ func statusOf(t *testing.T, s *store.Store, id int64) (string, int) {
 
 func newDriver(t *testing.T, s *store.Store) (*Driver, *fakeExtractor) {
 	t.Helper()
+	return newDriverFor(t, s, func(string) bool { return true })
+}
+
+func newDriverFor(t *testing.T, s *store.Store, eligible func(string) bool) (*Driver, *fakeExtractor) {
+	t.Helper()
 	fake := &fakeExtractor{batches: map[string][]string{}, erroredOnce: map[string]bool{}}
 	srv := httptest.NewServer(fake)
 	t.Cleanup(srv.Close)
@@ -159,11 +169,51 @@ func newDriver(t *testing.T, s *store.Store) (*Driver, *fakeExtractor) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := New(Config{GatewayURL: srv.URL, GatewayToken: "gw"}, s, sc)
+	d, err := New(Config{GatewayURL: srv.URL, GatewayToken: "gw", Eligible: eligible}, s, sc)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return d, fake
+}
+
+// A repo can leave eligibility after its comments were mined: nothing
+// from it may reach the model, and its comments stop being pending so
+// they do not hold the front of every batch.
+func TestSubmitSkipsIneligibleRepos(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	d, fake := newDriverFor(t, s, func(repo string) bool { return repo != "acme/gone" })
+	seed(t, s, 1, "RULE: always set a timeout on outbound HTTP calls")
+	seedIn(t, s, 2, "acme/gone", "RULE: never log request bodies; they carry tokens")
+
+	rep, err := d.Submit(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Submitted != 1 || rep.Ineligible != 1 {
+		t.Fatalf("submit = %+v", rep)
+	}
+	for _, b := range fake.bodies {
+		if strings.Contains(b, "never log request bodies") {
+			t.Fatal("an ineligible repo's comment reached the extractor")
+		}
+	}
+	if st, _ := statusOf(t, s, 2); st != "error" {
+		t.Fatalf("ineligible comment = %s, want error", st)
+	}
+	if rep, err := d.Submit(ctx); err != nil || rep.Submitted != 0 || rep.Ineligible != 0 {
+		t.Fatalf("second submit = %+v, %v", rep, err)
+	}
+}
+
+func TestNewRequiresEligibility(t *testing.T) {
+	sc, err := redact.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Config{GatewayURL: "http://gw.invalid", GatewayToken: "gw"}, nil, sc); err == nil {
+		t.Fatal("New accepted a config without an eligibility check")
+	}
 }
 
 func TestExtractionLifecycle(t *testing.T) {
@@ -351,7 +401,7 @@ func TestThroughRealGateway(t *testing.T) {
 	gwSrv := httptest.NewServer(gw.Handler())
 	t.Cleanup(gwSrv.Close)
 
-	d, err := New(Config{GatewayURL: gwSrv.URL, GatewayToken: "gw"}, s, sc)
+	d, err := New(Config{GatewayURL: gwSrv.URL, GatewayToken: "gw", Eligible: func(string) bool { return true }}, s, sc)
 	if err != nil {
 		t.Fatal(err)
 	}

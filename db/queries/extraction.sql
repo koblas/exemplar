@@ -6,7 +6,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT (id) DO NOTHING;
 
 -- name: PendingComments :many
-SELECT id, path, ext, body, diff_hunk, source, extract_attempts FROM mined_comments
+SELECT id, repo, path, ext, body, diff_hunk, source, extract_attempts FROM mined_comments
 WHERE extract_status = 'pending' AND body IS NOT NULL
 ORDER BY id
 LIMIT $1;
