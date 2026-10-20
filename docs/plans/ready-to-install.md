@@ -372,3 +372,7 @@ The items left after #22, #23 and #27, from the hunt's Low findings and the foll
 - **Denylist.** Build and dev-environment files are denied in any directory: Dockerfile and Containerfile variants, Compose files, setup.py and setup.cfg, Gemfile and gemspecs, Rakefile, .npmrc and .yarnrc, pre-commit config, Justfile and Taskfile, build.sbt, meson.build. `.devcontainer/**` and `.husky/**` are denied at the root.
 
 **Not code changes:** the Semgrep memory figures came from amd64 emulation; CI's `TestRealEnginesUnderLimits` on native runners is the ongoing check, and it passed on #23. The compile CronJob stays suspended until the cluster allows user namespaces under RuntimeDefault seccomp, or a sandboxing runtime such as gVisor is used. `release-please` has failed on every push since at least 2026-10-18 because the repository does not allow GitHub Actions to create pull requests (Settings > Actions > General).
+
+### Quickstart under Guides > Install (2026-10-20)
+
+The quickstart moved from `docs/tutorials/` to `docs/guides/install/quickstart.md` and sits first in the Install section of the Guides nav, as "Quickstart (a trial install)", next to the production install that builds on its steps. The Start here tab keeps the landing and the two tutorials. Old paths (`tutorials/quickstart.md`, `install/`, `install/quickstart.md`) redirect. The landing's primary button now says "Try it: a 20-minute trial install".
