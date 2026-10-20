@@ -146,6 +146,8 @@ func TestTokenFlavors(t *testing.T) {
 		{FlavorConfigWriter, []string{"acme/exemplar-config"}, map[string]any{"contents": "write", "pull_requests": "write", "issues": "write"}},
 		{FlavorIngest, []string{"acme/app"}, map[string]any{"contents": "read", "pull_requests": "read", "members": "read"}},
 		{FlavorGate, []string{"acme/app"}, map[string]any{"administration": "read", "members": "read"}},
+		// Owner actions check rule-owner teams with a gate token on the config repo.
+		{FlavorGate, []string{"acme/exemplar-config"}, map[string]any{"administration": "read", "members": "read"}},
 		{FlavorExport, []string{"acme/app"}, map[string]any{"contents": "write", "pull_requests": "write"}},
 		{FlavorSweep, []string{"acme/app", "acme/web"}, map[string]any{"pull_requests": "read"}},
 	}
@@ -190,6 +192,7 @@ func TestTokenScopeRefusals(t *testing.T) {
 	}{
 		{"worker on two repos", FlavorWorker, []string{"acme/a", "acme/b"}},
 		{"poster on no repo", FlavorPoster, nil},
+		{"poster writing config repo", FlavorPoster, []string{"acme/exemplar-config"}},
 		{"config writer on a PR repo", FlavorConfigWriter, []string{"acme/app"}},
 		{"context reading config repo", FlavorContext, []string{"acme/app", "acme/exemplar-config"}},
 		{"ingest on two repos", FlavorIngest, []string{"acme/a", "acme/b"}},
