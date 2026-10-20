@@ -28,7 +28,7 @@ func runCompile(args []string) error {
 	limit := fs.Int("limit", 20, "candidates to attempt this run")
 	workDir := fs.String("work-dir", "", "scratch directory for checkouts and cases (default: a temp dir)")
 	requireSandbox := fs.Bool("require-sandbox", true, "refuse to run model-written rules without the Linux sandbox (unshare + prlimit)")
-	memLimit := fs.Int64("sandbox-memory", 2<<30, "address-space limit per engine run, bytes")
+	memLimit := fs.Int64("sandbox-memory", compiled.EvalMemoryLimit, "data-segment limit per engine run, bytes")
 	cpuLimit := fs.Int("sandbox-cpu", 120, "CPU-time limit per engine run, seconds")
 	astGrep := fs.String("ast-grep", "ast-grep", "ast-grep binary")
 	semgrep := fs.String("semgrep", "semgrep", "semgrep binary")

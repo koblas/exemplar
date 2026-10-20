@@ -68,7 +68,9 @@ func TestSemgrep(t *testing.T) {
 		t.Fatalf("Run = %+v, %v", got, err)
 	}
 	args, _ := os.ReadFile(argsFile)
-	for _, want := range []string{"--metrics=off", "--json", "--disable-version-check", "svc/a.go"} {
+	// --jobs 1: each Semgrep job reserves its own heap, and the default
+	// is one per CPU of the node, so limits would depend on the node.
+	for _, want := range []string{"--metrics=off", "--json", "--disable-version-check", "--jobs\n1", "svc/a.go"} {
 		if !strings.Contains(string(args), want+"\n") {
 			t.Errorf("semgrep args lack %s:\n%s", want, args)
 		}
@@ -197,8 +199,17 @@ func TestLimitCommand(t *testing.T) {
 	}
 }
 
-// Both engines must still work under mode eval's limits (Linux only;
-// CI runs it).
+func TestSandboxArgs(t *testing.T) {
+	// A data-segment limit, as LimitCommand sets: Semgrep reserves more
+	// address space than it uses, so an --as limit fails it first.
+	want := "unshare --net --map-root-user -- prlimit --data=4294967296 --cpu=120 --"
+	if got := strings.Join(sandboxArgs(EvalMemoryLimit, EvalCPULimit), " "); got != want {
+		t.Fatalf("sandboxArgs = %s, want %s", got, want)
+	}
+}
+
+// Both engines must still work under mode eval's limits and in the
+// compile sandbox, over several files (Linux only; CI runs it).
 func TestRealEnginesUnderLimits(t *testing.T) {
 	lim, ok := LimitCommand(EvalMemoryLimit, EvalCPULimit)
 	if !ok {
@@ -207,13 +218,28 @@ func TestRealEnginesUnderLimits(t *testing.T) {
 	requireEngine(t, "ast-grep")
 	requireEngine(t, "semgrep")
 	dir := writeSource(t)
-	r := Runner{Sandbox: lim, Timeout: 3 * time.Minute}
+	files := make([]string, 0, 13)
+	files = append(files, "svc/a.go")
+	for i := range 12 {
+		name := fmt.Sprintf("svc/b%d.go", i)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(goSource), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, name)
+	}
+	sandboxes := map[string][]string{"limits": lim}
+	if sb, ok := SandboxCommand(EvalMemoryLimit, EvalCPULimit); ok && exec.CommandContext(t.Context(), sb[0], append(sb[1:], "true")...).Run() == nil {
+		sandboxes["sandbox"] = sb
+	}
 	astRule := "id: no-bare-get\nlanguage: go\nrule:\n  pattern:\n    context: \"func _() { http.Get($URL) }\"\n    selector: call_expression\nmessage: m\n"
 	semRule := "rules:\n  - id: no-bare-get\n    languages: [go]\n    message: m\n    severity: WARNING\n    pattern: http.Get(...)\n"
-	for engine, rule := range map[string]string{"ast-grep": astRule, "semgrep": semRule} {
-		got, err := r.Run(t.Context(), dir, engine, rule, []string{"svc/a.go"})
-		if err != nil || len(got) != 1 {
-			t.Errorf("%s under limits = %+v, %v", engine, got, err)
+	for name, sb := range sandboxes {
+		r := Runner{Sandbox: sb, Timeout: 3 * time.Minute}
+		for engine, rule := range map[string]string{"ast-grep": astRule, "semgrep": semRule} {
+			got, err := r.Run(t.Context(), dir, engine, rule, files)
+			if err != nil || len(got) != len(files) {
+				t.Errorf("%s under %s = %d matches, %v", engine, name, len(got), err)
+			}
 		}
 	}
 }

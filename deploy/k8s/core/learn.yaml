@@ -702,9 +702,11 @@ spec:
                 - name: EXEMPLAR_GATEWAY_URL
                   valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
                 - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
+              # Above the 4 GiB per-engine data limit (--sandbox-memory),
+              # so a runaway rule fails alone instead of OOM-killing the job.
               resources:
                 requests: {cpu: "1", memory: 2Gi}
-                limits: {cpu: "2", memory: 4Gi}
+                limits: {cpu: "2", memory: 6Gi}
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
