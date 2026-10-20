@@ -68,6 +68,9 @@ type Prepared struct {
 	Hunks    map[string]string
 	Files    []string // reviewable paths, diff order
 	Excluded []Exclusion
+	// Exclusions are the repo's exclusion rules; the agents' tools apply
+	// them too, so an excluded path reaches no model.
+	Exclusions exclude.Rules
 
 	Scoped   []ScopedRule
 	Deferred []ScopedRule
@@ -126,6 +129,7 @@ func Prepare(ctx context.Context, ws *Workspace, snap *config.Snapshot, pr PRInf
 	p := &Prepared{PR: pr, Effective: eff, Diff: diff, Workspace: ws, Hunks: map[string]string{}, CodeOwners: baseCodeOwners(base)}
 
 	rules := exclude.Load(fileText(base, ".gitattributes"), fileText(base, ".exemplarignore"))
+	p.Exclusions = rules
 	gitleaksIgnore := parseGitleaksIgnore(fileText(base, ".gitleaksignore"))
 
 	for _, f := range diff.Files() {

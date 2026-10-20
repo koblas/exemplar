@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/koblas/exemplar/internal/exclude"
 	"github.com/koblas/exemplar/internal/pathhistory"
 	"github.com/koblas/exemplar/internal/redact"
 )
@@ -42,6 +43,7 @@ var (
 	errSearchTimedOut  = errors.New("search timed out")
 	errSearchFailed    = errors.New("search failed")
 	errCannotList      = errors.New("cannot list")
+	errExcludedPath    = errors.New("is excluded from review")
 )
 
 // ToolCall is one logged tool invocation. Coverage is computed from this
@@ -71,6 +73,9 @@ type toolbox struct {
 	// are every path it touches, whose index hits are stale.
 	overlay, touched []string
 	degraded         bool
+	// exclusions are the repo's review exclusions: no tool returns an
+	// excluded path's content or name.
+	exclusions exclude.Rules
 
 	mu  sync.Mutex
 	log []ToolCall
@@ -79,7 +84,10 @@ type toolbox struct {
 }
 
 func newToolbox(p *Prepared, s *redact.Scanner, h PathHistory) *toolbox {
-	return &toolbox{ws: p.Workspace, hunks: p.Hunks, scanner: s, history: h, repo: p.PR.Repo, baseSHA: p.PR.BaseSHA}
+	return &toolbox{
+		ws: p.Workspace, hunks: p.Hunks, scanner: s, history: h, repo: p.PR.Repo, baseSHA: p.PR.BaseSHA,
+		exclusions: p.Exclusions,
+	}
 }
 
 // PathHistory answers the path_history context tool:
@@ -228,6 +236,20 @@ func (t *toolbox) run(ctx context.Context, name string, input json.RawMessage) (
 	return red, nil
 }
 
+// excluded reports whether rel, a repo-relative file or directory, is
+// excluded from review. A directory is excluded when a file directly in
+// it would be (vendor/** covers vendor).
+func (t *toolbox) excluded(rel string, dir bool) bool {
+	p := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(rel)), "./")
+	if p == "." || p == "" {
+		return false
+	}
+	if t.exclusions.Reason(p) != "" {
+		return true
+	}
+	return dir && t.exclusions.Reason(p+"/_") != ""
+}
+
 // resolve maps a repo-relative path to a file inside the worktree, refusing
 // anything that escapes it, including through symlinks.
 func (t *toolbox) resolve(rel string) (string, error) {
@@ -259,6 +281,9 @@ func (t *toolbox) readFile(ctx context.Context, rel string, start, end int) (str
 	}
 	if end-start+1 > maxReadLines {
 		end = start + maxReadLines - 1
+	}
+	if t.excluded(rel, false) {
+		return "", fmt.Errorf("%s %w", rel, errExcludedPath)
 	}
 	full, err := t.resolve(rel)
 	var data []byte
@@ -311,7 +336,16 @@ func (t *toolbox) grep(ctx context.Context, pattern, glob string) (string, error
 		}
 		return "", errSearchFailed
 	}
-	lines := strings.SplitN(string(out), "\n", maxGrepMatches+1)
+	var lines []string
+	for line := range strings.Lines(string(out)) {
+		path, _, _ := strings.Cut(line, ":")
+		if !t.excluded(path, false) {
+			lines = append(lines, strings.TrimSuffix(line, "\n"))
+		}
+	}
+	if len(lines) == 0 {
+		return "no matches", nil
+	}
 	if len(lines) > maxGrepMatches {
 		lines = append(lines[:maxGrepMatches], "(more matches omitted)")
 	}
@@ -324,6 +358,9 @@ func (t *toolbox) listDir(rel string) (string, error) {
 	}
 	full := t.ws.Dir
 	if rel != "." {
+		if t.excluded(rel, true) {
+			return "", fmt.Errorf("%s %w", rel, errExcludedPath)
+		}
 		var err error
 		if full, err = t.resolve(rel); err != nil {
 			return "", fmt.Errorf("%w %s", errCannotList, rel)
@@ -339,7 +376,7 @@ func (t *toolbox) listDir(rel string) (string, error) {
 			b.WriteString("(more entries omitted)\n")
 			break
 		}
-		if e.Name() == ".git" {
+		if e.Name() == ".git" || t.excluded(filepath.Join(rel, e.Name()), e.IsDir()) {
 			continue
 		}
 		name := e.Name()

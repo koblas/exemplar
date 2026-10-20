@@ -395,6 +395,31 @@ func TestBaselineStoredNotPosted(t *testing.T) {
 	}
 }
 
+// Paths excluded from review (vendored, generated, lockfiles,
+// .exemplarignore) never reach the model through the tools either.
+func TestToolsRespectExclusions(t *testing.T) {
+	e := setup(t, "t", "")
+	tb := newToolbox(e.prep, e.scanner, nil)
+	ctx := t.Context()
+	for _, in := range []string{`{"path":"vendor/lib.go","start":1,"end":3}`, `{"path":"go.sum","start":1,"end":3}`} {
+		if out, err := tb.run(ctx, "read_file", []byte(in)); err == nil {
+			t.Errorf("read_file %s = %q", in, out)
+		}
+	}
+	if out, err := tb.run(ctx, "list_dir", []byte(`{"path":"vendor"}`)); err == nil {
+		t.Errorf("list_dir vendor = %q", out)
+	}
+	out, err := tb.run(ctx, "list_dir", []byte(`{"path":"."}`))
+	if err != nil || strings.Contains(out, "vendor") || strings.Contains(out, "go.sum") || !strings.Contains(out, "main.go") {
+		t.Errorf("list_dir . = %q, %v", out, err)
+	}
+	// "package" is in every Go file, vendored ones included.
+	out, err = tb.run(ctx, "grep", []byte(`{"pattern":"package"}`))
+	if err != nil || strings.Contains(out, "vendor/") || !strings.Contains(out, "main.go") {
+		t.Errorf("grep = %q, %v", out, err)
+	}
+}
+
 func TestToolSandbox(t *testing.T) {
 	e := setup(t, "t", "")
 	tb := newToolbox(e.prep, e.scanner, nil)
