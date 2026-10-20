@@ -232,7 +232,11 @@ func (a *App) checkScope(f Flavor, repos []string) error {
 		if len(repos) != 1 {
 			return fmt.Errorf("%w: %s token must cover exactly one repo, got %d", ErrTokenScope, f, len(repos))
 		}
-		if (f == FlavorIngest || f == FlavorExport) && strings.EqualFold(repos[0], a.cfg.ConfigRepo) {
+		// Only the config writer writes exemplar-config: a poster token
+		// there could approve a change to Exemplar's own rules. Gate
+		// (read-only) is allowed: owner actions check rule-owner teams
+		// with it.
+		if (f == FlavorIngest || f == FlavorExport || f == FlavorPoster) && strings.EqualFold(repos[0], a.cfg.ConfigRepo) {
 			return fmt.Errorf("%w: %s token may not reach the config repo", ErrTokenScope, f)
 		}
 	case FlavorConfigWriter:

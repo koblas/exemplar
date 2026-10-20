@@ -32,6 +32,7 @@ const prQuery = `query($owner: String!, $name: String!, $first: Int!, $after: St
                 diffHunk
                 createdAt
                 author { __typename login }
+                authorAssociation
                 originalCommit { oid }
                 originalLine
                 originalStartLine
@@ -119,7 +120,10 @@ type reviewComment struct {
 	DiffHunk       string    `json:"diffHunk"`
 	CreatedAt      time.Time `json:"createdAt"`
 	Author         Author    `json:"author"`
-	OriginalCommit *struct {
+	// AuthorAssociation is the commenter's relation to the repo (OWNER,
+	// MEMBER, COLLABORATOR, CONTRIBUTOR, NONE, ...).
+	AuthorAssociation string `json:"authorAssociation"`
+	OriginalCommit    *struct {
 		Oid string `json:"oid"`
 	} `json:"originalCommit"`
 	OriginalLine      *int `json:"originalLine"`

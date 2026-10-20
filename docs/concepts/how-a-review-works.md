@@ -26,9 +26,9 @@ Every review ends in one of three outcomes, and the point of the pipeline below 
 |---|---|---|
 | **Approved, no human review needed** | A native `APPROVE` from the App (or a passing `exemplar/merge-policy` check), and a check run saying so | The repository opted in, every deterministic gate passed, the review ran to full coverage with zero candidate findings, and two models from different families both rated the change low-risk |
 | **Routed to humans, with findings** | One review with inline comments, each verified, labelled and budgeted, with a fix where it validated | Any lane produced a finding that survived the verifier and validation |
-| **Routed to humans, nothing to flag** | A neutral check run and no comments | The review found nothing, but the PR was not eligible for approval: the repo is not opted in, a path or author is outside the allow list, coverage was incomplete, the run was degraded, or a Stage 2 check failed |
+| **Routed to humans, nothing to flag** | A neutral check run whose first line says why, and no comments | The review found nothing, but the PR was not eligible for approval: the repo is not opted in, a path or author is outside the allow list, coverage was incomplete, the run was degraded, or a Stage 2 check failed |
 
-The first outcome is what absorbs volume: it removes the PR from the human queue. The other two keep the standard: a human reads the PR, and where Exemplar had something to say, it has already been checked twice. Exemplar never requests changes and never blocks a merge. Each decision and the gate that made it is recorded in `approval_decisions` and shown on the audit page, so a reviewer, or an auditor, can see why a PR landed where it did. [Auto-approve](#auto-approve) below has the gates.
+The first outcome is what absorbs volume: it removes the PR from the human queue. The other two keep the standard: a human reads the PR, and where Exemplar had something to say, it has already been checked twice. Exemplar never requests changes and never blocks a merge. The `exemplar` check run states the verdict in its title and first line: "No human review needed" with the approval, or "Human review needed" with up to three reasons in plain words, such as a denylisted path, a candidate finding, or a merge-safety score below the bar. When auto-approve is off for the repository it says that and nothing else. Each decision and every gate's reason is recorded in `approval_decisions` and shown on the audit page, so a reviewer, or an auditor, can see why a PR landed where it did. [Auto-approve](#auto-approve) below has the gates.
 
 ## Before any model sees anything
 
@@ -70,7 +70,7 @@ Model output is untrusted. Code checks that every finding anchors to lines that 
 
 ## What gets posted
 
-One review per PR head, as `COMMENT`, never `REQUEST_CHANGES`. Each inline comment is a Conventional Comments label and the message, a `suggestion` block when the fix validated, the feedback-link footer, and a line naming the rule and its citation. The `exemplar` check run summarises the run, lists rules that did not complete, and shows the cost. Security findings are also uploaded as SARIF so they appear as code-scanning alerts.
+One review per PR head, as `COMMENT`, never `REQUEST_CHANGES`. Each inline comment is a Conventional Comments label and the message, a `suggestion` block when the fix validated, the feedback-link footer, and a line naming the rule and its citation. The `exemplar` check run leads with the verdict ([above](#who-reviews-this-pr)), summarises the run, lists rules that did not complete, and shows the cost. Security findings are also uploaded as SARIF so they appear as code-scanning alerts.
 
 A run that cannot complete (every provider for a stage down, a diff that cannot be redacted) posts nothing: the check run is neutral with "Review did not complete" and a **Re-run** action. A newer push supersedes a running review; its check run says so and nothing is posted for the old head. In `shadow: true` repos every lane runs and everything is stored, but nothing is written to the PR.
 

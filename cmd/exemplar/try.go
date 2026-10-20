@@ -87,7 +87,7 @@ func newTryCmd() *cobra.Command {
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(out)
 			}
-			fmt.Fprint(cmd.OutOrStdout(), out.Reply)
+			fmt.Fprint(cmd.OutOrStdout(), terminalText(out.Reply))
 			if !strings.HasSuffix(out.Reply, "\n") {
 				fmt.Fprintln(cmd.OutOrStdout())
 			}

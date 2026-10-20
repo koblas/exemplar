@@ -36,7 +36,12 @@ type Config struct {
 	// MaxAttempts before a comment stops at error (default 3).
 	MaxAttempts int
 	MaxTokens   int64
-	Logger      *slog.Logger
+	// Eligible re-checks a comment's repo against the current
+	// exemplar-config (repo opt-in and denylist): a repo can leave
+	// eligibility after it was mined, and nothing from it may then reach
+	// a model. Required.
+	Eligible func(repo string) bool
+	Logger   *slog.Logger
 }
 
 // Driver runs extraction over mined_comments.
@@ -57,6 +62,9 @@ var (
 func New(cfg Config, st *store.Store, sc *redact.Scanner) (*Driver, error) {
 	if cfg.GatewayURL == "" || cfg.GatewayToken == "" {
 		return nil, fmt.Errorf("%w: gateway URL and token are required", errConfig)
+	}
+	if cfg.Eligible == nil {
+		return nil, fmt.Errorf("%w: an eligibility check is required", errConfig)
 	}
 	if cfg.Model == "" {
 		cfg.Model = "claude-sonnet-5-5"
@@ -98,6 +106,9 @@ type SubmitReport struct {
 	Submitted   int    `json:"submitted_comments"`
 	CacheHits   int    `json:"cache_hits"`
 	Unredacted  int    `json:"unredactable"`
+	// Ineligible comments are from repos no longer eligible; they are
+	// marked error and never sent.
+	Ineligible int `json:"ineligible"`
 }
 
 // Submit sends up to one batch of pending comments per kind (review
@@ -112,6 +123,13 @@ func (d *Driver) Submit(ctx context.Context) (*SubmitReport, error) {
 	work := map[string][]Comment{}
 	hashes := map[int64]string{}
 	for _, row := range rows {
+		if !d.cfg.Eligible(row.Repo) {
+			rep.Ineligible++
+			if err := d.store.FailComment(ctx, queries.FailCommentParams{ID: row.ID, ExtractError: strPtr("repo is not eligible")}); err != nil {
+				return nil, fmt.Errorf("mark comment failed: %w", err)
+			}
+			continue
+		}
 		body, hunk := deref(row.Body), deref(row.DiffHunk)
 		// Ingest scans too; redacting again here keeps a missed secret
 		// from failing the whole batch at the gateway's second scan.

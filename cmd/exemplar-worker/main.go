@@ -183,13 +183,13 @@ func runServe(args []string) error {
 		log.Warn("EXEMPLAR_SEARCH_URL not set: agents get no find_references or path_history, and bug.contract is skipped")
 	}
 
-	// Mode eval runs rule bodies from an unmerged config head: cap each
-	// engine run so one cannot take the pod's memory.
+	// Mode eval and the playground run rule bodies nobody merged: cap
+	// each engine run so one cannot take the pod's memory.
 	evalMatcher := compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")}
 	if lim, ok := compiled.LimitCommand(compiled.EvalMemoryLimit, compiled.EvalCPULimit); ok {
 		evalMatcher.Sandbox = lim
 	} else {
-		log.Warn("prlimit unavailable: mode eval runs compiled rules without resource limits")
+		log.Warn("prlimit unavailable: mode eval and the playground run compiled rules without resource limits")
 	}
 	wcfg := worker.Config{
 		GitHub: worker.AppClients{App: app}, Store: st,

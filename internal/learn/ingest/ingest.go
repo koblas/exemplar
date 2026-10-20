@@ -230,6 +230,10 @@ func (j *Job) page(ctx context.Context, repo string, prs []pullRequest, rules ex
 	return w, nil
 }
 
+// trustedAssociations are the author associations whose review comments
+// are mined, as the engine's human dedupe trusts them.
+var trustedAssociations = []string{"OWNER", "MEMBER", "COLLABORATOR"}
+
 // comment applies the pre-filters and data handling to a thread root. It
 // returns a drop reason, or the row to store.
 func (j *Job) comment(repo string, pr pullRequest, resolved bool, c reviewComment, rules exclude.Rules) (queries.UpsertIngestedCommentParams, string, error) {
@@ -239,6 +243,10 @@ func (j *Job) comment(repo string, pr pullRequest, resolved bool, c reviewCommen
 		return p, DropBot, nil
 	case pr.Author.Login != "" && strings.EqualFold(c.Author.Login, pr.Author.Login):
 		return p, DropSelf, nil
+	case !slices.Contains(trustedAssociations, strings.ToUpper(c.AuthorAssociation)):
+		// Anyone can comment on a public repo's PRs; only the repo's own
+		// reviewers teach the rules.
+		return p, DropOutsider, nil
 	case rules.Reason(c.Path) != "":
 		return p, DropExcluded, nil
 	}

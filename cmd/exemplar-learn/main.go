@@ -3,7 +3,7 @@
 //
 //	exemplar-learn ingest --config DIR [--repos a/b,c/d] [--once]
 //	exemplar-learn path-events --config DIR [--incidents FEED.jsonl]
-//	exemplar-learn extract [--once] [--poll 5m]
+//	exemplar-learn extract --config DIR [--once] [--poll 5m]
 //	exemplar-learn evals --config DIR [--no-inject]
 //	exemplar-learn compile --config DIR [--limit 20]
 //	exemplar-learn propose [--dry-run]
@@ -29,8 +29,9 @@
 //
 // extract: each pass collects every finished extraction batch, then submits
 // one new batch of pending comments. --once does a single pass (a CronJob);
-// without it the job loops until stopped. Needs EXEMPLAR_DATABASE_URL,
-// EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN.
+// without it the job loops until stopped. Comments from repos the config
+// no longer makes eligible are marked error and never sent. Needs
+// EXEMPLAR_DATABASE_URL, EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN.
 //
 // evals: generates eval cases for new candidates: positives from source
 // comments, negatives from CODEOWNER-approved PRs, and (unless --no-inject)
@@ -155,6 +156,7 @@ func main() {
 
 func runExtract(args []string) error {
 	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
+	configDir := fs.String("config", "", "exemplar-config checkout: repo eligibility (required)")
 	once := fs.Bool("once", false, "do one collect+submit pass and exit")
 	poll := fs.Duration("poll", 5*time.Minute, "time between passes when looping")
 	perBatch := fs.Int("requests-per-batch", 10_000, "requests per Message Batch (3 comments each)")
@@ -170,6 +172,10 @@ func runExtract(args []string) error {
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
+	eligible, err := eligibility(*configDir)
+	if err != nil {
+		return err
+	}
 	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
 	if dbURL == "" {
 		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w", errRequired)
@@ -192,7 +198,7 @@ func runExtract(args []string) error {
 	}
 	d, err := extract.New(extract.Config{
 		GatewayURL: os.Getenv("EXEMPLAR_GATEWAY_URL"), GatewayToken: gwToken,
-		Model: *model, RequestsPerBatch: *perBatch, Logger: log,
+		Model: *model, RequestsPerBatch: *perBatch, Logger: log, Eligible: eligible,
 	}, st, sc)
 	if err != nil {
 		return fmt.Errorf("create extract driver: %w", err)

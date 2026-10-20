@@ -78,6 +78,10 @@ type Runner struct {
 	// Caller is recorded on every model call: "playground" for PR
 	// comments, "cli" for exemplar try.
 	Caller string
+	// Compiled, when set, runs the draft compiled rules in place of the
+	// engine's runner: a service sets it to a runner with resource limits
+	// (compiled.LimitCommand), since nobody has reviewed a draft's body.
+	Compiled engine.CompiledMatcher
 }
 
 // Request is one try.
@@ -223,7 +227,7 @@ func (r *Runner) RunPR(ctx context.Context, snap *config.Snapshot, ruleIDs []str
 	if p.Incomplete != "" {
 		return Trial{Incomplete: p.Incomplete}, nil
 	}
-	res, err := r.Engine.Review(ctx, p, engine.Options{Caller: r.Caller})
+	res, err := r.Engine.Review(ctx, p, engine.Options{Caller: r.Caller, Compiled: r.Compiled})
 	if err != nil {
 		return Trial{}, fmt.Errorf("playground: review %s: %w", t, err)
 	}

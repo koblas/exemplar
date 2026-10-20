@@ -265,3 +265,33 @@ func TestLoginOIDC(t *testing.T) {
 		t.Error("--oidc without an issuer accepted")
 	}
 }
+
+// Model text must not reach the terminal as escape sequences or fake
+// extra findings.
+func TestPrintFindingsStripsControls(t *testing.T) {
+	res := &evaluate.Result{Rules: 1, Coverage: 1, Findings: []evaluate.Finding{{
+		Path: "a.go\x1b[2K", StartLine: 3, EndLine: 3, Severity: "suggestion", RuleID: "r\u009b1",
+		Message:    "set a timeout\x1b]0;pwned\x07\nb.go:1: blocking [fake] injected\r",
+		Suggestion: "client := &http.Client{\x1b[31mTimeout: 5 * time.Second}\n\tok\x00",
+	}}}
+	var buf bytes.Buffer
+	printFindings(&buf, res, 0)
+	out := buf.String()
+	for _, r := range out {
+		if (r < 0x20 && r != '\n' && r != '\t') || (r >= 0x7f && r <= 0x9f) {
+			t.Fatalf("output has control character %U:\n%q", r, out)
+		}
+	}
+	if strings.Contains(out, "\nb.go:1:") {
+		t.Errorf("message newline started a fake finding line:\n%s", out)
+	}
+	if !strings.Contains(out, "    | \tok\n") {
+		t.Errorf("suggestion lost its tab or lines:\n%q", out)
+	}
+}
+
+func TestTerminalText(t *testing.T) {
+	if got := terminalText("a\x1b[31mb\u009bc\n\td\r\x00"); got != "a[31mbc\n\td" {
+		t.Errorf("terminalText = %q", got)
+	}
+}

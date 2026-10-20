@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/koblas/exemplar/internal/llm"
+	"github.com/koblas/exemplar/internal/schema"
 )
 
 func TestReviewHumanDedupe(t *testing.T) {
@@ -134,5 +135,46 @@ func TestHumanJudgeRedacts(t *testing.T) {
 	}
 	if seen == "" || strings.Contains(seen, tok) {
 		t.Errorf("judge context = %q", seen)
+	}
+}
+
+// Security, blocking and secret findings are never judged duplicates of
+// a reviewer's comment, as with linters: a vague comment from a
+// collaborator must not take a blocking finding off the PR.
+func TestHumanDedupeSkipsUnjudgeable(t *testing.T) {
+	for name, mod := range map[string]func(*schema.Rule){
+		"blocking": func(r *schema.Rule) { r.Severity = schema.SeverityBlocking },
+		"security": func(r *schema.Rule) { r.Category = "Security" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := setup(t, "Fetch inventory", "Adds a fetch.")
+			e.prep.PR.Author = "alice"
+			for i := range e.prep.Effective.Rules {
+				if e.prep.Effective.Rules[i].ID == "propagate-context" {
+					mod(&e.prep.Effective.Rules[i].Rule)
+				}
+			}
+			for i := range e.prep.Scoped {
+				if e.prep.Scoped[i].Rule.ID == "propagate-context" {
+					mod(&e.prep.Scoped[i].Rule.Rule)
+				}
+			}
+			eng, _ := newEngine(e, Script{
+				Generator: contextViolation(""), Quote: func(path string, line int) string { return headLineNoT(e.prep, path, line) },
+				HumanJudge: func(string) bool { t.Error("human judge called"); return true },
+			})
+			res, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval", HumanComments: func(context.Context) ([]HumanComment, error) {
+				return []HumanComment{{
+					ID: 7, Author: "dana", AuthorType: "User", Association: "MEMBER", Path: "main.go", Side: "RIGHT",
+					Start: httpGetLine, End: httpGetLine, Body: "Looks fine to me.",
+				}}, nil
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fs := findByRule(res.Findings, "propagate-context"); len(fs) != 1 || fs[0].Suppressed == SuppressHumanDuplicate {
+				t.Errorf("findings = %+v", fs)
+			}
+		})
 	}
 }

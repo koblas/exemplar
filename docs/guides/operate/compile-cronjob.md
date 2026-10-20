@@ -1,6 +1,6 @@
 # How to enable the compile CronJob
 
-The `exemplar-learn-compile` CronJob asks the high-tier model for an ast-grep or Semgrep pattern per candidate rule and runs that model-written pattern over the candidate's eval cases. Because the pattern was written by a model, it runs only inside a sandbox: `unshare --net --map-root-user` plus `prlimit`. Unprivileged user namespaces are normally refused under RuntimeDefault seccomp at the `restricted` Pod Security level, so the CronJob ships **suspended**.
+The `exemplar-learn-compile` CronJob asks the high-tier model for an ast-grep or Semgrep pattern per candidate rule and runs that model-written pattern over the candidate's eval cases. Because the pattern was written by a model, it runs only inside a sandbox: `unshare --net --map-root-user` plus `prlimit` (4 GiB data and 120 s CPU per engine run by default, `--sandbox-memory` and `--sandbox-cpu`; Semgrep runs one job). Unprivileged user namespaces are normally refused under RuntimeDefault seccomp at the `restricted` Pod Security level, so the CronJob ships **suspended**.
 
 Without it, candidates are proposed as `kind: exemplar` rules only; nothing else depends on it.
 

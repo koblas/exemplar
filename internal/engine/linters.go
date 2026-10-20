@@ -196,9 +196,7 @@ func (d *linterDeduper) duplicate(ctx context.Context, f *Finding) (string, bool
 	if r, ok := d.rules[f.RuleID]; ok && category == "" {
 		category = r.Category // a stored finding has no category
 	}
-	judgeable := f.RuleID != SecretRuleID && f.Lane != LaneSecrets &&
-		f.Severity != schema.SeverityBlocking && !strings.EqualFold(category, "Security")
-	if !judgeable {
+	if !judgeable(f, category) {
 		return "", false
 	}
 	for _, a := range overlapping {
@@ -208,6 +206,14 @@ func (d *linterDeduper) duplicate(ctx context.Context, f *Finding) (string, bool
 		}
 	}
 	return "", false
+}
+
+// judgeable reports whether a model may judge f a duplicate of a linter
+// annotation or a reviewer's comment. Secrets, blocking and Security
+// findings are never dropped on a model's say-so.
+func judgeable(f *Finding, category string) bool {
+	return f.RuleID != SecretRuleID && f.Lane != LaneSecrets &&
+		f.Severity != schema.SeverityBlocking && !strings.EqualFold(category, "Security")
 }
 
 // mappedID reports whether a is from a linter rule r maps to: the

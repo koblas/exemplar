@@ -79,6 +79,8 @@ func (w *PlaygroundWorker) Run(ctx context.Context, id int64) (string, error) {
 	r := &playground.Runner{
 		Engine: w.cfg.Engine, Scanner: w.cfg.Scanner, GitHub: playgroundGitHub{w}, WorkDir: w.cfg.WorkDir,
 		CloneURL: w.cfg.CloneURL, Caller: "playground",
+		// The draft's body is unreviewed: run it under mode eval's limits.
+		Compiled: w.cfg.Matcher,
 	}
 	out, err := r.Try(ctx, playground.Request{
 		Actor: run.Actor, Snapshot: snap, RuleIDs: []string{ruleID},

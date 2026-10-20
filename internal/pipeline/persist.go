@@ -225,9 +225,12 @@ func Post(ctx context.Context, st *store.Store, poster *gh.Poster, p *engine.Pre
 	if err != nil {
 		return nil, fmt.Errorf("post review: %w", err)
 	}
+	// The check run leads with the verdict: who reviews this PR. The
+	// conclusion stays neutral; the verdict informs, it never fails the PR.
+	v := verdict(res)
 	if err := poster.CompleteCheck(ctx, pr, checkID, gh.CheckResult{
-		Conclusion: "neutral", Title: fmt.Sprintf("%d finding(s), coverage %.0f%%", len(comments), res.Coverage*100),
-		Summary: summary, Text: checkText(p, res),
+		Conclusion: "neutral", Title: fmt.Sprintf("%d finding(s) · %s", len(comments), v.Title()),
+		Summary: v.Line() + "\n\n" + summary, Text: checkText(p, res),
 	}); err != nil {
 		return nil, fmt.Errorf("complete check run: %w", err)
 	}
