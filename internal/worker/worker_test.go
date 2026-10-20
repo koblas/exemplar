@@ -475,9 +475,16 @@ func TestReviewPostsCommentsAndCheck(t *testing.T) {
 	if len(comments) != 1 || !strings.Contains(fmt.Sprint(comments[0]), "propagate-context") {
 		t.Errorf("comments = %v", comments)
 	}
-	// The check run starts before the lanes and completes after posting.
+	// The check run starts before the lanes and completes after posting,
+	// and its output leads with the verdict: this PR goes to humans, and why.
 	if len(f.checks) != 1 || f.checks[0]["status"] != "in_progress" || len(f.checkUpdates) != 1 || f.checkUpdates[0]["conclusion"] != "neutral" {
 		t.Errorf("checks = %+v, updates = %+v", f.checks, f.checkUpdates)
+	}
+	output, _ := f.checkUpdates[0]["output"].(map[string]any)
+	title, _ := output["title"].(string)
+	summary, _ := output["summary"].(string)
+	if !strings.HasSuffix(title, "human review needed") || !strings.HasPrefix(summary, "**Human review needed.** Not auto-approved because ") {
+		t.Errorf("check output = %+v", output)
 	}
 }
 

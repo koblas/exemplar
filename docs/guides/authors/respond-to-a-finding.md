@@ -1,6 +1,6 @@
 # How to respond to a finding
 
-Exemplar posts one review per push, as comments, and never requests changes. Each comment is a label and a message, a suggestion block when the fix was validated, a footer of feedback links, and a line naming the rule with a **why** link to its citation. What you do with it is recorded against the rule, so the bot gets quieter where it is wrong.
+Exemplar posts one review per push, as comments, and never requests changes. Its `exemplar` check run says first whether the PR needs a human reviewer and, if so, why (a finding, a path outside the auto-approve list, a failed gate); [How a review works](../../concepts/how-a-review-works.md#who-reviews-this-pr) explains the outcomes. Each comment is a label and a message, a suggestion block when the fix was validated, a footer of feedback links, and a line naming the rule with a **why** link to its citation. What you do with it is recorded against the rule, so the bot gets quieter where it is wrong.
 
 ## Accept it
 
