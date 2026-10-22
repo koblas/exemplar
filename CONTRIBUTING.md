@@ -84,7 +84,9 @@ tags; the first release is `v0.1.0`.
      `SHA256SUMS` to the release (`release.yml`);
    - pushes both images to Docker Hub as `<x.y.z>`, `<x.y>`,
      `learning-<x.y.z>` and `learning-<x.y>` (`images.yml`). Their run
-     summary lists the digests to pin (docs, "Releases and images").
+     summary lists the digests to pin (docs, "Releases and images");
+   - renders `install-tunnel.yaml` and `install-direct.yaml` with those
+     digests and attaches them to the release (`manifests.yml`).
 
 To force a version, put a `Release-As: 0.3.0` footer in a commit on `main`.
 
@@ -95,5 +97,7 @@ runs no CI; it only touches CHANGELOG.md and the manifest.
 
 **By hand.** Pushing a `vx.y.z` tag still runs `release.yml` and `images.yml`
 directly, for a hotfix release outside release-please. It updates neither
-CHANGELOG.md nor the manifest, so record it there afterwards. To rebuild a
-release's CLI archives, run the `release` workflow with its tag.
+CHANGELOG.md nor the manifest, so record it there afterwards, and run the
+`manifests` workflow with the tag once `images.yml` has pushed its images.
+To rebuild a release's CLI archives, run the `release` workflow with its
+tag; to re-render its install manifests, run `manifests` with it.
