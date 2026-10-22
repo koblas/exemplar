@@ -6,6 +6,13 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.2.1](https://github.com/koblas/exemplar/compare/v0.2.0...v0.2.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **engine:** install ripgrep for the agents' grep tool ([aa97ca3](https://github.com/koblas/exemplar/commit/aa97ca37fad99366dcb6ce003e3c055b82b6d332))
+
 ## [0.2.0](https://github.com/koblas/exemplar/compare/v0.1.0...v0.2.0) (2026-10-22)
 
 
