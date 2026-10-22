@@ -3,7 +3,9 @@ package redact
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -73,5 +75,28 @@ func TestCleanTextUnchanged(t *testing.T) {
 	out, matches, err := s.Redact(in)
 	if err != nil || len(matches) != 0 || out != in {
 		t.Fatalf("Redact(clean) = %q, %v, %v", out, matches, err)
+	}
+}
+
+// gitleaks loads its default rules through viper's global instance; New
+// must still be safe to call from parallel tests and concurrent callers.
+func TestNewConcurrent(t *testing.T) {
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for range 8 {
+		wg.Go(func() {
+			sc, err := New()
+			if err == nil && len(sc.Scan("token = "+fakeGitHubToken())) != 1 {
+				err = errors.New("scanner built concurrently missed a token")
+			}
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Error(err)
+		}
 	}
 }
