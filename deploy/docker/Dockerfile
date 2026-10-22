@@ -1,5 +1,5 @@
 # The Go services image: every cmd/ binary, plus the engines and tools they
-# run (git for checkouts and mirrors, universal-ctags for exemplar-search
+# run (git for checkouts and mirrors, ripgrep for the agents' grep tool, universal-ctags for exemplar-search
 # symbols, ast-grep and Semgrep for compiled rules and compile attempts, clang-format
 # for fix validation, unshare and prlimit for the compile sandbox). One image, one Deployment or
 # StatefulSet per binary. Build from the repository root:
@@ -29,7 +29,7 @@ RUN apt-get update -q && apt-get install -y -q --no-install-recommends unzip \
 
 FROM debian:trixie-20260918-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 RUN apt-get update -q \
-    && apt-get install -y -q --no-install-recommends ca-certificates clang-format git openssh-client universal-ctags util-linux python3 python3-venv \
+    && apt-get install -y -q --no-install-recommends ca-certificates clang-format git openssh-client ripgrep universal-ctags util-linux python3 python3-venv \
     && rm -rf /var/lib/apt/lists/*
 # Same Semgrep version as devenv.nix and CI.
 RUN python3 -m venv /opt/semgrep && /opt/semgrep/bin/pip install --no-cache-dir semgrep==1.172.0 \

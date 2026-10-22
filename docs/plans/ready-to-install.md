@@ -394,3 +394,7 @@ Each compiled matcher was run with ast-grep 0.45.1 or Semgrep 1.172 on positive 
 ### Go 1.27.3 (2026-10-22)
 
 govulncheck failed CI on every branch: GO-2026-6809 in `crypto/x509`, found in Go 1.27.2 and fixed in 1.27.3. `go.mod`, the devenv Go override (source tarball and its sha256 from go.dev/dl) and the image's build stage (`golang:1.27.3-trixie`, pinned by index digest) move to 1.27.3; CI follows `go.mod`. With Go 1.27.3, `go build`, `go vet` and `go test ./...` (engines required, Postgres via testcontainers) pass and govulncheck reports no vulnerabilities. Not checked: the devenv shell itself was not rebuilt here, nor was the image built.
+
+### ripgrep for the agents' grep tool (2026-10-22)
+
+`TestToolsRespectExclusions` had failed on main's CI since it landed (234c8fb) with `grep = "", search failed`. The agents' `grep` tool runs `rg`, which devenv provides but neither the CI runner nor the services image installed, so the tool failed on every call outside a dev shell, in production included. CI's engine step and the image's apt line now install `ripgrep`, CI prints its version with the other engines, and the test's grep check skips without `rg` unless `EXEMPLAR_REQUIRE_ENGINES=1`, like the other engine tests. The reference pages that list the image's tools name ripgrep.

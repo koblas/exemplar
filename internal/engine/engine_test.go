@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -421,6 +422,12 @@ func TestToolsRespectExclusions(t *testing.T) {
 	out, err := tb.run(ctx, "list_dir", []byte(`{"path":"."}`))
 	if err != nil || strings.Contains(out, "vendor") || strings.Contains(out, "go.sum") || !strings.Contains(out, "main.go") {
 		t.Errorf("list_dir . = %q, %v", out, err)
+	}
+	if _, err := exec.LookPath("rg"); err != nil {
+		if os.Getenv("EXEMPLAR_REQUIRE_ENGINES") == "1" {
+			t.Fatal("ripgrep is required (EXEMPLAR_REQUIRE_ENGINES=1)")
+		}
+		t.Skip("ripgrep not installed")
 	}
 	// "package" is in every Go file, vendored ones included.
 	out, err = tb.run(ctx, "grep", []byte(`{"pattern":"package"}`))

@@ -118,7 +118,7 @@ Read by `exemplar` subcommands as flag defaults ([The CLI](cli.md)) and by the w
 | Variable | Meaning |
 |---|---|
 | `EXEMPLAR_REQUIRE_DB` | `1` makes the Postgres tests fail instead of skip when no container runtime is available (CI sets it). |
-| `EXEMPLAR_REQUIRE_ENGINES` | `1` makes engine-dependent tests (ast-grep, Semgrep, ctags, git) fail instead of skip (CI sets it). |
+| `EXEMPLAR_REQUIRE_ENGINES` | `1` makes engine-dependent tests (ast-grep, Semgrep, ctags, ripgrep, clang-format, git) fail instead of skip (CI sets it). |
 
 ## Grafana
 

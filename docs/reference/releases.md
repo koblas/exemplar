@@ -4,7 +4,7 @@ Exemplar ships two images in `docker.io/koblas/exemplar`, both running as UID 65
 
 | Image | Tags | What |
 |---|---|---|
-| Services | `<version>`, `<major>.<minor>`, `main`, `sha-<short>` | Every Go service, plus git, universal-ctags, ast-grep, Semgrep and clang-format |
+| Services | `<version>`, `<major>.<minor>`, `main`, `sha-<short>` | Every Go service, plus git, ripgrep, universal-ctags, ast-grep, Semgrep and clang-format |
 | Learning | `learning-<version>`, `learning-<major>.<minor>`, `learning-main`, `learning-sha-<short>` | The Python learning jobs (`cluster`, `rank`) |
 
 `.github/workflows/images.yml` pushes both on every push to `main` and each `v*` tag; its run summary prints each digest and the `images:` entry to paste. Both images share one repository and the base keeps the logical names `exemplar` and `exemplar-learning`: Kustomize matches images by name alone, so renaming them in the base would leave an overlay unable to pin them apart.
