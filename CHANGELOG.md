@@ -6,6 +6,13 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.2.2](https://github.com/koblas/exemplar/compare/v0.2.1...v0.2.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **redact:** make New safe to call concurrently ([00bf9df](https://github.com/koblas/exemplar/commit/00bf9dfba399965bae189ea6d1a157faa79dbcdb))
+
 ## [0.2.1](https://github.com/koblas/exemplar/compare/v0.2.0...v0.2.1) (2026-10-22)
 
 
