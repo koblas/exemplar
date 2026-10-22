@@ -18,6 +18,7 @@ import (
 )
 
 func TestDeviceFlow(t *testing.T) {
+	t.Parallel()
 	polls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
@@ -64,6 +65,7 @@ func TestDeviceFlow(t *testing.T) {
 }
 
 func TestRemoteRepo(t *testing.T) {
+	t.Parallel()
 	for u, want := range map[string]string{
 		"git@github.com:acme/app.git":         "acme/app",
 		"https://github.com/acme/app.git":     "acme/app",
@@ -269,6 +271,7 @@ func TestLoginOIDC(t *testing.T) {
 // Model text must not reach the terminal as escape sequences or fake
 // extra findings.
 func TestPrintFindingsStripsControls(t *testing.T) {
+	t.Parallel()
 	res := &evaluate.Result{Rules: 1, Coverage: 1, Findings: []evaluate.Finding{{
 		Path: "a.go\x1b[2K", StartLine: 3, EndLine: 3, Severity: "suggestion", RuleID: "r\u009b1",
 		Message:    "set a timeout\x1b]0;pwned\x07\nb.go:1: blocking [fake] injected\r",
@@ -291,6 +294,7 @@ func TestPrintFindingsStripsControls(t *testing.T) {
 }
 
 func TestTerminalText(t *testing.T) {
+	t.Parallel()
 	if got := terminalText("a\x1b[31mb\u009bc\n\td\r\x00"); got != "a[31mbc\n\td" {
 		t.Errorf("terminalText = %q", got)
 	}

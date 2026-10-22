@@ -1,14 +1,19 @@
 package calibrate
 
 import (
+	"os"
 	"testing"
 
 	"github.com/koblas/exemplar/internal/store/storetest"
+	"github.com/koblas/exemplar/internal/synth"
 )
 
-func TestMain(m *testing.M) { storetest.Main(m) }
+func TestMain(m *testing.M) {
+	os.Exit(synth.RunCached(func() int { return storetest.Run(m) }))
+}
 
 func TestStoredLabels(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	ctx := t.Context()
 	exec := func(sql string, args ...any) {

@@ -21,6 +21,7 @@ func prevRun(id, lane, status string, cov float32, origin int64, files ...string
 }
 
 func TestPlanCarry(t *testing.T) {
+	t.Parallel()
 	ex := engine.LaneExemplar
 	scoped := []engine.ScopedRule{
 		scopedRule("carry", "v1", ex, "a.go", "b.go"),

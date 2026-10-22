@@ -119,6 +119,7 @@ func paths(r Result) []string {
 }
 
 func TestBuildAndSearch(t *testing.T) {
+	t.Parallel()
 	f := setup(t)
 	ctx := t.Context()
 	m1, err := f.ix.Build(ctx, "acme/app")
@@ -205,6 +206,7 @@ func waitGone(t *testing.T, p string) {
 }
 
 func TestRestartServesAtOnce(t *testing.T) {
+	t.Parallel()
 	f := setup(t)
 	ctx := t.Context()
 	if _, err := f.ix.Build(ctx, "acme/app"); err != nil {
@@ -233,6 +235,7 @@ func TestRestartServesAtOnce(t *testing.T) {
 }
 
 func TestDegradedMode(t *testing.T) {
+	t.Parallel()
 	f := setup(t)
 	ctx := t.Context()
 	// No generation yet: git grep at the mirror commit, same filtering.
@@ -268,6 +271,7 @@ func TestDegradedMode(t *testing.T) {
 }
 
 func TestSearchLimits(t *testing.T) {
+	t.Parallel()
 	f := setup(t)
 	ctx := t.Context()
 	var body strings.Builder
@@ -293,6 +297,7 @@ func TestSearchLimits(t *testing.T) {
 }
 
 func TestSearchDuringSwap(t *testing.T) {
+	t.Parallel()
 	f := setup(t)
 	ctx := t.Context()
 	if _, err := f.ix.Build(ctx, "acme/app"); err != nil {

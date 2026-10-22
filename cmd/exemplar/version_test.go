@@ -7,6 +7,7 @@ import (
 )
 
 func TestVersion(t *testing.T) {
+	t.Parallel()
 	root := newRootCmd()
 	var out bytes.Buffer
 	root.SetOut(&out)

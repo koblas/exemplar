@@ -458,6 +458,7 @@ func args(e env) store.PRReviewArgs {
 }
 
 func TestReviewPostsCommentsAndCheck(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	e.fake.existingApproval = true
 	out, err := e.w.Review(t.Context(), args(e))
@@ -489,6 +490,7 @@ func TestReviewPostsCommentsAndCheck(t *testing.T) {
 }
 
 func TestReviewSkips(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	a := args(e)
 	a.HeadSHA = strings.Repeat("a", 40)
@@ -508,6 +510,7 @@ func TestReviewSkips(t *testing.T) {
 }
 
 func TestReviewIneligibleRepo(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "acme/not-opted-in")
 	out, err := e.w.Review(t.Context(), args(e))
 	if err != nil || out.Status != StatusIneligible {
@@ -521,6 +524,7 @@ func TestReviewIneligibleRepo(t *testing.T) {
 }
 
 func TestApproveRechecksHead(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	reader, _ := e.fake.Reader(t.Context(), inst, repo)
 	poster := gh.NewPoster(e.fake.client())
@@ -545,6 +549,7 @@ func TestApproveRechecksHead(t *testing.T) {
 
 // TestRiverJobPersists runs one job through River into the store.
 func TestRiverJobPersists(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st
@@ -585,6 +590,7 @@ func TestRiverJobPersists(t *testing.T) {
 // A shadow repo is reviewed and stored, and nothing reaches its PRs
 // except revoking an earlier Exemplar approval.
 func TestReviewShadowRepo(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st
@@ -629,6 +635,7 @@ func TestReviewShadowRepo(t *testing.T) {
 }
 
 func TestReviewLinterDuplicate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		wait      int
@@ -642,6 +649,7 @@ func TestReviewLinterDuplicate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := setup(t, repo)
 			e.w.cfg.LinterPoll = 10 * time.Millisecond
 			snap := exampleSnapshot(t)
@@ -672,6 +680,7 @@ func TestReviewLinterDuplicate(t *testing.T) {
 }
 
 func TestReviewHumanDuplicate(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	e.fake.humanComments = `[
 	  {"id": 5, "user": {"login": "dana", "type": "User"}, "author_association": "MEMBER", "path": "main.go", "side": "RIGHT", "line": 9, "body": "same-concern: pass ctx"},
@@ -685,6 +694,7 @@ func TestReviewHumanDuplicate(t *testing.T) {
 // An open code-scanning alert from a configured tool is a linter
 // duplicate too, with no check-run annotation at all.
 func TestReviewCodeScanningDuplicate(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	snap := exampleSnapshot(t)
 	rc := snap.Repos[repo]

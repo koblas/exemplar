@@ -29,6 +29,7 @@ func checkRun(action, identifier, name string) string {
 }
 
 func TestRouteEvent(t *testing.T) {
+	t.Parallel()
 	want := store.PRReviewArgs{InstallationID: 42, Repo: "acme/app", PR: 7, HeadSHA: "abc"}
 	tests := []struct {
 		name, event, payload string
@@ -88,6 +89,7 @@ func TestRouteEvent(t *testing.T) {
 // a review once, and a Re-run enqueues the next attempt only after an
 // incomplete review.
 func TestEventWorkerRoutes(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	ctx := t.Context()
 	w, err := NewEventWorker(st, nil)

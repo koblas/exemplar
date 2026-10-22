@@ -11,6 +11,7 @@ import (
 )
 
 func TestDefiner(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		lang, line string
 		want       bool
@@ -62,6 +63,7 @@ func TestDefiner(t *testing.T) {
 }
 
 func TestSplitName(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"Fetch": "Fetch|", "net.Fetch": "Fetch|net", "a.b.C": "C|a.b", "std::string": "string|std", "Cart#total": "total|Cart",
 	} {
@@ -78,6 +80,7 @@ func TestSplitName(t *testing.T) {
 }
 
 func TestRank(t *testing.T) {
+	t.Parallel()
 	defs := func() []Definition {
 		return []Definition{
 			{Path: "lib/net/fetch.go", Line: 3},
@@ -164,11 +167,13 @@ func checkDefs(t *testing.T, f *fixture, wantDegraded bool) {
 }
 
 func TestFindDefinitionDegraded(t *testing.T) {
+	t.Parallel()
 	f := defFixture(t)
 	checkDefs(t, f, true) // no generation: git grep + regexes
 }
 
 func TestFindDefinitionIndexed(t *testing.T) {
+	t.Parallel()
 	f := defFixture(t)
 	if _, err := f.ix.Build(t.Context(), "acme/app"); err != nil {
 		t.Fatal(err)

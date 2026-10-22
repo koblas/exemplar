@@ -12,6 +12,7 @@ import (
 )
 
 func TestRouteAlertDismissal(t *testing.T) {
+	t.Parallel()
 	payload := func(action, tool, ref string) string {
 		return fmt.Sprintf(`{"action": %q, "installation": {"id": 42}, "repository": {"full_name": "acme/app"},
 			"alert": {"number": 3, "dismissed_reason": "false positive", "dismissed_comment": "test fixture", "dismissed_by": {"login": "sec"},
@@ -43,6 +44,7 @@ func fakeSecret() string {
 }
 
 func TestSARIFAndDismissal(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st

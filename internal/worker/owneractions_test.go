@@ -20,6 +20,7 @@ import (
 // A GitHub failure is retried, and the last attempt records the action as
 // failed so the UI shows it.
 func TestOwnerActionWorker(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	ctx := t.Context()
 	snap := &config.Snapshot{Rules: []config.Rule{{ID: "r", Status: schema.StatusActive, Owner: "@acme/sec", Scope: "global", Path: "rules/r.yaml"}}}

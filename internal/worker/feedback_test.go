@@ -12,6 +12,7 @@ import (
 )
 
 func TestAppliedSuggestion(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st
@@ -63,6 +64,7 @@ func TestAppliedSuggestion(t *testing.T) {
 }
 
 func TestHumanAgreedEvent(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st
@@ -84,6 +86,7 @@ func TestHumanAgreedEvent(t *testing.T) {
 // Fixed without the suggestion: the author changes the code by hand and
 // the light model confirms the change addresses the finding.
 func TestFixedWithoutSuggestion(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st

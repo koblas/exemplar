@@ -20,6 +20,7 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 }
 
 func TestValidateExample(t *testing.T) {
+	t.Parallel()
 	out, _, err := runCLI(t, "validate", "../../examples/exemplar-config")
 	if err != nil {
 		t.Fatalf("validate example: %v", err)
@@ -30,6 +31,7 @@ func TestValidateExample(t *testing.T) {
 }
 
 func TestValidateReportsProblems(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "global.yaml"), []byte("enabled: maybe\n"), 0o644); err != nil {
 		t.Fatal(err)

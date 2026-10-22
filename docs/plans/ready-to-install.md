@@ -398,3 +398,13 @@ govulncheck failed CI on every branch: GO-2026-6809 in `crypto/x509`, found in G
 ### ripgrep for the agents' grep tool (2026-10-22)
 
 `TestToolsRespectExclusions` had failed on main's CI since it landed (234c8fb) with `grep = "", search failed`. The agents' `grep` tool runs `rg`, which devenv provides but neither the CI runner nor the services image installed, so the tool failed on every call outside a dev shell, in production included. CI's engine step and the image's apt line now install `ripgrep`, CI prints its version with the other engines, and the test's grep check skips without `rg` unless `EXEMPLAR_REQUIRE_ENGINES=1`, like the other engine tests. The reference pages that list the image's tools name ripgrep.
+
+### Faster Go tests (2026-10-22)
+
+`go test ./...` took about 55 s locally, set by `internal/engine` (38 s), `internal/worker` (28 s) and `internal/calibrate` (24 s). No test called `t.Parallel()`, and most of each test's time was spent waiting on `git` processes: every fixture repository was built from scratch (`init`, `add`, two `commit`s) and cloned into a workspace.
+
+- **Fixture cache.** `synth.UseCache` keeps one built repository per distinct fixture and copies it for repeat builds into an empty directory; commits have fixed authors and dates, so the copy has the same SHAs. `synth.RunCached` sets it up from `TestMain` in the packages that build fixtures (engine, worker, calibrate, adversarial, evalrun, replay, playground, learn/evalgen, cmd/exemplar). `storetest.Run` is `Main` without the exit, so the two compose. Production callers never turn the cache on.
+- **Parallel tests.** Top-level tests in engine, worker, calibrate, search/index, search/api and cmd/exemplar call `t.Parallel()`, as do the subtests of the nine that have them (each builds its own environment; `tparallel` requires it), except those that set the environment or the working directory, and `TestReviewStage2`, which swaps the package-level `evaluateStage1`. `TestSlotsAcrossReplicas` counts advisory locks in its own database only, since `pg_locks` spans the server.
+- **`redact.New` raced with itself.** gitleaks' `NewDetectorDefaultConfig` loads rules through viper's global instance; two Scanners built at once raced (480 reports under `-race` once tests ran in parallel). Construction is now serialized; each binary builds its Scanner once at startup, so production was exposed only where a binary builds more than one.
+
+Result: 39 s wall locally (from 55 s); engine 14 s, worker under 10 s, calibrate 11 s. The parallel packages pass three times under `-race`. The slowest packages are now `compiled` (real engines), `pathhistory` and `store`, none of them changed here.

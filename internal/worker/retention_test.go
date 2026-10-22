@@ -10,6 +10,7 @@ import (
 )
 
 func TestRetention(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	ctx := t.Context()
 	now := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)

@@ -2,6 +2,7 @@ package evalgen
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,7 +12,9 @@ import (
 	"github.com/koblas/exemplar/internal/synth"
 )
 
-func TestMain(m *testing.M) { storetest.Main(m) }
+func TestMain(m *testing.M) {
+	os.Exit(synth.RunCached(func() int { return storetest.Run(m) }))
+}
 
 func run(t *testing.T, s *store.Store, sql string, args ...any) {
 	t.Helper()

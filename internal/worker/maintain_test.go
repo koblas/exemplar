@@ -29,6 +29,7 @@ func attempt(id int64, guid string, code, minsAgo int) gh.Delivery {
 }
 
 func TestPlanRedeliveries(t *testing.T) {
+	t.Parallel()
 	ds := []gh.Delivery{
 		attempt(1, "a", 502, 30),                           // failed once: redeliver
 		attempt(2, "b", 502, 30), attempt(3, "b", 200, 20), // a redelivery succeeded
@@ -48,6 +49,7 @@ func TestPlanRedeliveries(t *testing.T) {
 }
 
 func TestSearchBatches(t *testing.T) {
+	t.Parallel()
 	repos := make([]string, 0, 41)
 	for i := range 40 {
 		repos = append(repos, "acme/service-number-"+strings.Repeat("x", i%5))
@@ -81,6 +83,7 @@ func exampleSnapshot(t *testing.T) *config.Snapshot {
 }
 
 func TestPlanSweep(t *testing.T) {
+	t.Parallel()
 	snap := exampleSnapshot(t)
 	if got := SweepRepos(snap); !slices.Equal(got, []string{repo}) {
 		t.Fatalf("sweep repos = %v", got)
@@ -140,6 +143,7 @@ func (f *fakeDeliveries) Redeliver(_ context.Context, id int64) error {
 }
 
 func TestReconcileWorker(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	stored, missed := uuid.New(), uuid.New()
 	if _, err := st.InsertGHEvent(t.Context(), queries.InsertGHEventParams{DeliveryID: stored, Event: "pull_request", InstallationID: 1}); err != nil {
@@ -167,6 +171,7 @@ func (f *fakeSearch) SearchOpenPRs(context.Context, int64, []string, time.Time) 
 }
 
 func TestSweepWorker(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	ctx := t.Context()
 	snap := exampleSnapshot(t)

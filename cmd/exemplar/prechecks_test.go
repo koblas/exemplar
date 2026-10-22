@@ -8,6 +8,7 @@ import (
 )
 
 func TestAddedOrActivated(t *testing.T) {
+	t.Parallel()
 	dir := copyConfig(t)
 	// The base has wrap-errors-with-cause in shadow; the PR activates it.
 	p := filepath.Join(dir, "rules/maintainability/wrap-errors-with-cause.yaml")
@@ -40,6 +41,7 @@ func TestAddedOrActivated(t *testing.T) {
 }
 
 func TestPrecheckNoOps(t *testing.T) {
+	t.Parallel()
 	dir := copyConfig(t)
 	base := git(t, dir, "rev-parse", "HEAD")
 	q := filepath.Join(dir, "rules/reliability/propagate-context.yaml")

@@ -38,10 +38,13 @@ var (
 //
 //	func TestMain(m *testing.M) { storetest.Main(m) }
 func Main(m *testing.M) {
-	os.Exit(run(m))
+	os.Exit(Run(m))
 }
 
-func run(m *testing.M) int {
+// Run is Main without the exit, for a TestMain that wraps it:
+//
+//	func TestMain(m *testing.M) { os.Exit(synth.RunCached(func() int { return storetest.Run(m) })) }
+func Run(m *testing.M) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	ctr, err := postgres.Run(ctx, Image,
 		postgres.WithDatabase("postgres"),

@@ -116,6 +116,7 @@ func get(t *testing.T, url string) int {
 }
 
 func TestHealthAndReadiness(t *testing.T) {
+	t.Parallel()
 	e := setup(t, false)
 	if get(t, e.srv.URL+"/healthz") != 200 {
 		t.Error("healthz not ok")
@@ -138,6 +139,7 @@ func TestHealthAndReadiness(t *testing.T) {
 }
 
 func TestAuth(t *testing.T) {
+	t.Parallel()
 	e := setup(t, true)
 	bad, _ := NewClient(e.srv.URL, strings.Repeat("x", 32), nil)
 	var apiErr *Error
@@ -153,6 +155,7 @@ func TestAuth(t *testing.T) {
 }
 
 func TestReadAndLog(t *testing.T) {
+	t.Parallel()
 	e := setup(t, true)
 	ctx := t.Context()
 	sha, err := e.client.Snapshot(ctx, "acme/app", "acme/app")
@@ -175,6 +178,7 @@ func TestReadAndLog(t *testing.T) {
 }
 
 func TestRefusals(t *testing.T) {
+	t.Parallel()
 	e := setup(t, true)
 	ctx := t.Context()
 	openHead, _ := e.m.Snapshot(ctx, "acme/open")
@@ -210,6 +214,7 @@ func TestRefusals(t *testing.T) {
 }
 
 func TestFetchRequest(t *testing.T) {
+	t.Parallel()
 	e := setup(t, true)
 	if err := e.client.Fetch(t.Context(), "acme/app"); err != nil {
 		t.Errorf("in-scope fetch: %v", err)
@@ -220,6 +225,7 @@ func TestFetchRequest(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
+	t.Parallel()
 	for _, bad := range []string{"", "ftp://x", "exemplar-search:8080", "http://"} {
 		if _, err := NewClient(bad, token, nil); err == nil {
 			t.Errorf("NewClient(%q) accepted", bad)
@@ -231,6 +237,7 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestSearchText(t *testing.T) {
+	t.Parallel()
 	e := setup(t, true)
 	ctx := t.Context()
 	// Before any build: answered by git grep, flagged degraded.
@@ -257,6 +264,7 @@ func TestSearchText(t *testing.T) {
 }
 
 func TestFindDefinition(t *testing.T) {
+	t.Parallel()
 	e := setup(t, true)
 	ctx := t.Context()
 	res, err := e.client.FindDefinition(ctx, "acme/app", "acme/app", "", "A", "svc/b.go")
@@ -272,6 +280,7 @@ func TestFindDefinition(t *testing.T) {
 }
 
 func TestFindReferencesAndDependents(t *testing.T) {
+	t.Parallel()
 	e := setup(t, true)
 	ctx := t.Context()
 	// Not indexed yet: degraded, and the snapshot says so.

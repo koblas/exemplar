@@ -12,6 +12,7 @@ import (
 )
 
 func TestParseCommand(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		body, cmd, reason string
 		ok                bool
@@ -35,6 +36,7 @@ func TestParseCommand(t *testing.T) {
 }
 
 func TestRouteFeedbackCommand(t *testing.T) {
+	t.Parallel()
 	payload := func(action, body string, replyTo int, userType string) string {
 		return fmt.Sprintf(`{"action": %q, "installation": {"id": 42}, "repository": {"full_name": "acme/app"}, "pull_request": {"number": 7},
 			"comment": {"id": 55, "in_reply_to_id": %d, "body": %q, "created_at": "2026-10-14T10:00:00Z", "user": {"login": "dana", "type": %q}}}`,
@@ -60,6 +62,7 @@ func TestRouteFeedbackCommand(t *testing.T) {
 }
 
 func TestFeedbackCommands(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st

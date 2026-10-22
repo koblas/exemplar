@@ -13,6 +13,7 @@ import (
 )
 
 func TestRepoLimit(t *testing.T) {
+	t.Parallel()
 	snap := exampleSnapshot(t)
 	snap.Global.Queues.PerRepoConcurrency = 4
 	snap.Global.Queues.LargeRepos = []string{"acme/monorepo"}
@@ -39,6 +40,7 @@ func otherReplica(t *testing.T, st *store.Store) *pgxpool.Pool {
 }
 
 func TestSlotsAcrossReplicas(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	ctx := t.Context()
 	a, b := NewSlots(st.Pool), NewSlots(otherReplica(t, st))
@@ -67,14 +69,18 @@ func TestSlotsAcrossReplicas(t *testing.T) {
 	r2()
 	r3()
 	// Everything is free again, and no connection is left holding a lock.
+	// pg_locks spans the server, where parallel tests hold locks in their
+	// own databases, so count only this test's.
 	var locks int
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'`).Scan(&locks); err != nil || locks != 0 {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'
+		AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`).Scan(&locks); err != nil || locks != 0 {
 		t.Errorf("advisory locks left = %d, %v", locks, err)
 	}
 }
 
 // A repo at its limit: the review job snoozes without touching GitHub.
 func TestWorkWaitsForSlot(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st
