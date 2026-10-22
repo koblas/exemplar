@@ -68,8 +68,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only this workflow's archives: called from release-please.yml, the
+      # run also holds images.yml's Docker build records, which do not
+      # download as plain artifacts and would fail the job.
       - uses: actions/download-artifact@v4
         with:
+          pattern: exemplar-*
           merge-multiple: true
       # Attach to the release release-please made, keeping its notes; create
       # one only for a tag pushed by hand.

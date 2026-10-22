@@ -408,3 +408,12 @@ govulncheck failed CI on every branch: GO-2026-6809 in `crypto/x509`, found in G
 - **`redact.New` raced with itself.** gitleaks' `NewDetectorDefaultConfig` loads rules through viper's global instance; two Scanners built at once raced (480 reports under `-race` once tests ran in parallel). Construction is now serialized; each binary builds its Scanner once at startup, so production was exposed only where a binary builds more than one.
 
 Result: 39 s wall locally (from 55 s); engine 14 s, worker under 10 s, calibrate 11 s. The parallel packages pass three times under `-race`. The slowest packages are now `compiled` (real engines), `pathhistory` and `store`, none of them changed here.
+
+### Release assets (2026-10-22)
+
+No release had assets: v0.1.0, v0.2.0 and v0.2.1 carried no CLI archives, `SHA256SUMS` or install manifests, so the quickstart's `install-tunnel.yaml` and `install-direct.yaml` links returned 404. In release-please.yml's run, `release.yml`'s `release` job downloaded every artifact of the run, including the Docker build records `images.yml` uploads (`*.dockerbuild`); those failed to download after five retries, the job failed, and `manifests` was skipped. The CLI builds and both images succeeded.
+
+- `release.yml` downloads only `exemplar-*`, its own archives.
+- The manifests job moves to `manifests.yml`, called by release-please.yml as before and runnable by hand with a tag, so a release's manifests can be re-rendered without cutting a new one. CONTRIBUTING.md says when to run it.
+
+**Not done here:** backfilling the existing releases. Once merged, running `release` and `manifests` with `v0.2.1` attaches its archives and manifests; earlier tags can be done the same way if their images are on Docker Hub.

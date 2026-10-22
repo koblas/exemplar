@@ -1,0 +1,46 @@
+name: manifests
+
+# A release's install manifests (install-tunnel.yaml, install-direct.yaml),
+# rendered from the tag's deploy/ with both images pinned to the digests
+# Docker Hub holds for that version (docs/reference/releases.md).
+# release-please.yml calls this after images.yml has pushed the release's
+# images and release.yml has made sure the GitHub release exists. Run it by
+# hand with a tag to (re)attach the manifests to an existing release.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag, such as v0.2.0
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to (re)render, such as v0.2.0
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - name: Render with the release's digests
+        run: |
+          version=${TAG#v}
+          digest() { docker buildx imagetools inspect "koblas/exemplar:$1" --format '{{json .Manifest.Digest}}' | tr -d '"'; }
+          deploy/render-release.sh "$TAG" "$(digest "$version")" "$(digest "learning-$version")" dist
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/install-tunnel.yaml dist/install-direct.yaml

@@ -66,21 +66,8 @@ jobs:
   manifests:
     needs: [release-please, images, cli]
     if: needs.release-please.outputs.release_created == 'true'
-    runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      TAG: ${{ needs.release-please.outputs.tag_name }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: refs/tags/${{ env.TAG }}
-      - name: Render with the release's digests
-        run: |
-          version=${TAG#v}
-          digest() { docker buildx imagetools inspect "koblas/exemplar:$1" --format '{{json .Manifest.Digest}}' | tr -d '"'; }
-          deploy/render-release.sh "$TAG" "$(digest "$version")" "$(digest "learning-$version")" dist
-      - name: Attach to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/install-tunnel.yaml dist/install-direct.yaml
+    uses: ./.github/workflows/manifests.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
