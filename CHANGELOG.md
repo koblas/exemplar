@@ -6,6 +6,13 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.2.0](https://github.com/koblas/exemplar/compare/v0.1.0...v0.2.0) (2026-10-22)
+
+
+### Features
+
+* **examples:** language-agnostic starter rules ([f5a7ebc](https://github.com/koblas/exemplar/commit/f5a7ebc6e4107502a228ecc5f842b5ba053cc851))
+
 ## 0.1.0 (2026-10-20)
 
 
