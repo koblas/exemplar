@@ -2,7 +2,7 @@
 
 Use the repository's devenv environment: `devenv shell`, or its direnv setup. It provides:
 
-- Go 1.27.2, golangci-lint, ast-grep, Semgrep and universal-ctags;
+- Go 1.27.2, golangci-lint, ast-grep, Semgrep, universal-ctags and ripgrep;
 - Postgres 16 with pgvector;
 - Python 3.13 with uv.
 

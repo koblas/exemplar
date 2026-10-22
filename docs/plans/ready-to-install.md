@@ -376,3 +376,7 @@ The items left after #22, #23 and #27, from the hunt's Low findings and the foll
 ### Quickstart under Guides > Install (2026-10-20)
 
 The quickstart moved from `docs/tutorials/` to `docs/guides/install/quickstart.md` and sits first in the Install section of the Guides nav, as "Quickstart (a trial install)", next to the production install that builds on its steps. The Start here tab keeps the landing and the two tutorials. Old paths (`tutorials/quickstart.md`, `install/`, `install/quickstart.md`) redirect. The landing's primary button now says "Try it: a 20-minute trial install".
+
+### ripgrep for the agents' grep tool (2026-10-22)
+
+`TestToolsRespectExclusions` had failed on main's CI since it landed (234c8fb) with `grep = "", search failed`. The agents' `grep` tool runs `rg`, which devenv provides but neither the CI runner nor the services image installed, so the tool failed on every call outside a dev shell, in production included. CI's engine step and the image's apt line now install `ripgrep`, CI prints its version with the other engines, and the test's grep check skips without `rg` unless `EXEMPLAR_REQUIRE_ENGINES=1`, like the other engine tests. The reference pages that list the image's tools name ripgrep.

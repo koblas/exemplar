@@ -6,7 +6,7 @@ The Kubernetes manifests in [`deploy/`](https://github.com/koblas/exemplar/tree/
 
 | Path | What |
 |---|---|
-| `docker/Dockerfile` | The Go services image: every `cmd/` binary, plus git, universal-ctags, ast-grep 0.45.1, Semgrep 1.172.0, unshare and prlimit. Base images are pinned by digest, ast-grep by checksum. Built for linux/amd64 only. |
+| `docker/Dockerfile` | The Go services image: every `cmd/` binary, plus git, ripgrep, universal-ctags, ast-grep 0.45.1, Semgrep 1.172.0, unshare and prlimit. Base images are pinned by digest, ast-grep by checksum. Built for linux/amd64 only. |
 | `docker/learning.Dockerfile` | The Python learning image (`learning/`: cluster, rank), with dependencies from `uv.lock`. |
 | `k8s/core/` | Plain manifests for everything but inbound, with a `kustomization.yaml` (and the image pins). Not built alone. |
 | `k8s/components/cloudflare-tunnel/` | Inbound through a Cloudflare Tunnel: the `exemplar-cloudflared` Deployment, its routes, and the NetworkPolicies that let it reach the webhook and the API. |

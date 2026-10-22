@@ -30,10 +30,10 @@ jobs:
       # Same versions as devenv.nix.
       - name: Install engines
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q universal-ctags clang-format
+          sudo apt-get update -q && sudo apt-get install -y -q universal-ctags clang-format ripgrep
           npm install -g @ast-grep/cli@0.45.1
           pipx install semgrep==1.172.0
-          ast-grep --version && semgrep --version && ctags --version | head -1 && clang-format --version
+          ast-grep --version && semgrep --version && ctags --version | head -1 && clang-format --version && rg --version | head -1
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...
