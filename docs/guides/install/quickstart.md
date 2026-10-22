@@ -18,6 +18,8 @@ Pick how GitHub reaches the cluster. Both are first-class, and the steps differ 
 
 Make a repository, for example `acme/exemplar-config`, from [`examples/exemplar-config`](https://github.com/koblas/exemplar/tree/main/examples/exemplar-config) (including `.github/workflows/`; only its `validate` job runs until you add the variables in [How to set up config CI](../rules/config-ci.md)).
 
+Its `rules/` are a starter set for most codebases: secrets in logs, injection, missing timeouts and unsafe migrations in common languages, unpinned container images, and three Go rules. Committed keys need no rule: every review scans for them. Replace the owner teams in the rules (`@platform/exemplar`, `@security/appsec`) and in `CODEOWNERS` with teams of yours.
+
 Rename `repos/exemplar-sandbox/playground.yaml` to `repos/<owner>/<repo>.yaml` for a first repo, and set `shadow: true` in it: Exemplar reviews and records, but posts nothing. `global.yaml` routes to Claude; leave Bedrock commented out unless the gateway's service account has AWS identity.
 
 ## 2. Open the way in

@@ -1,0 +1,25 @@
+id: tests-for-behavior-change
+kind: exemplar
+category: Maintainability
+severity: suggestion
+owner: "@platform/exemplar"
+status: shadow
+review_by: 2027-10-01
+file_patterns: ["**/*.{go,py,js,jsx,mjs,cjs,ts,tsx,java,kt,kts,scala,rb,php,cs,rs,swift,c,cc,cpp,h,hpp,ex,exs,sh}", "!**/{test,tests,__tests__,spec,testdata,fixtures}/**", "!**/*{_test,.test,.spec,_spec}.*", "!**/test_*.py"]
+description: |
+  A change that alters what code does (a new branch, a fixed bug, a new
+  input it accepts or rejects) should come with a test that would fail
+  without it, so the behavior is pinned and the next change cannot quietly
+  undo it.
+preferred_approach: |
+  Add or update a test next to the existing tests for that code that
+  exercises the new or fixed path, including the error case.
+what_to_flag: |
+  - A bug fix with no test that reproduces the bug.
+  - New conditional behavior or a new error path with no test touching it,
+    when the repository has tests for the surrounding code.
+  Do not flag refactors that keep behavior, logging, comments, generated
+  code, configuration, or code in a repository or package with no tests.
+fix_policy: describe
+export:
+  agents: false

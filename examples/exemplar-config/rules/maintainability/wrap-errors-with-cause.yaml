@@ -2,7 +2,7 @@ id: wrap-errors-with-cause
 kind: exemplar
 category: Maintainability
 severity: suggestion
-owner: "@platform/backend"
+owner: "@platform/exemplar"
 status: active
 review_by: 2027-10-01
 file_patterns: ["**/*.go"]

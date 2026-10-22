@@ -1,0 +1,34 @@
+id: untrusted-input-to-sink
+kind: exemplar
+category: Security
+severity: blocking
+owner: "@security/appsec"
+status: active
+review_by: 2027-10-01
+file_patterns: ["**/*.{go,py,js,jsx,mjs,cjs,ts,tsx,java,kt,kts,scala,rb,php,cs,rs,swift,c,cc,cpp,h,hpp,ex,exs,sh}", "!**/{test,tests,__tests__,spec,testdata,fixtures}/**", "!**/*{_test,.test,.spec,_spec}.*", "!**/test_*.py"]
+description: |
+  Data from outside the process (request parameters, headers, bodies, files,
+  queue messages, environment of another tenant) must not reach an
+  interpreter or a privileged operation without being parameterized or
+  validated against an allowlist.
+preferred_approach: |
+  Use the safe API of the sink: query placeholders for SQL, an argument list
+  instead of a shell string for processes, path joining plus a check that the
+  result stays under the intended root, auto-escaping templates for HTML, and
+  an allowlist of hosts for outbound requests built from user input.
+what_to_flag: |
+  - Untrusted input concatenated, interpolated or formatted into SQL or
+    another query language, a shell command, a file path, raw HTML, a
+    template source, or a deserializer (pickle, YAML load, Java
+    serialization, eval).
+  - An outbound HTTP request whose host or full URL comes from untrusted
+    input without an allowlist (server-side request forgery).
+  Only flag when the input can be traced to an untrusted source in the
+  change or its callers. Do not flag constants, values from trusted config,
+  or input already passed through a validator in the shown code.
+fix_policy: suggest
+citation:
+  doc: https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html
+export:
+  agents: true
+  summary: "Pass untrusted input to SQL, shells, paths, HTML and URLs only through parameterized or allowlisted APIs."

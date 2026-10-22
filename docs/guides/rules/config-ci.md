@@ -16,6 +16,8 @@ The workflows in `exemplar-config` (`.github/workflows/eval.yml`, `nightly.yml`,
 2. In Auth0, create a machine-to-machine client for that audience with the `evaluate:` permissions above.
 3. In the config repository's settings, add the three variables and the two secrets.
 
+The starter rules in `rules/` ship without eval cases, because a case must point at a commit in one of your repositories. Once `eval` is on, a PR that edits a starter rule fails until that rule has `eval_thresholds.min_cases` cases ([How to write eval cases](eval-cases.md)); a PR that leaves them alone is not evaluated.
+
 The job sends the PR's merge-base and head (both pushed) to `/v1/evaluate` and the evaluation runs in exemplar-worker, so CI holds no model or GitHub credentials. It writes the summary to the job summary and uploads the JSON report.
 
 ## 2. Turn on the gateway jobs

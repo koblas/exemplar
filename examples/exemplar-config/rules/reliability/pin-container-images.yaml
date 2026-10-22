@@ -1,0 +1,27 @@
+id: pin-container-images
+kind: compiled
+category: Reliability
+severity: important
+owner: "@platform/exemplar"
+status: active
+review_by: 2027-10-01
+file_patterns: ["**/Dockerfile", "**/Dockerfile.*", "**/*.Dockerfile", "**/Containerfile", "**/*.{yaml,yml}"]
+matcher:
+  engine: semgrep
+  rule: |
+    rules:
+      - id: pin-container-images
+        languages: [regex]
+        severity: WARNING
+        message: The image is not pinned to a version.
+        pattern-either:
+          - pattern-regex: (?m)^\s*FROM\s+(--platform=\S+\s+)?[^\s:@]+:latest\b
+          - pattern-regex: (?m)^\s*-?\s*image:\s*["']?[^\s"'@]+:latest["']?\s*$
+description: |
+  An image tagged latest changes under you: two pods of the same release
+  can run different code, and a rollback does not roll back. Pin a version
+  tag, or a digest for anything security-sensitive.
+fix_policy: describe
+export:
+  agents: true
+  summary: "Pin container images to a version or digest, never :latest."

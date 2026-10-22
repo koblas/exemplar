@@ -74,12 +74,21 @@ type env struct {
 	scanner *redact.Scanner
 }
 
+// goRulesOnly keeps the example config's three Go rules, so tests that
+// count runs or model calls don't change when starter rules are added.
+func goRulesOnly(snap *config.Snapshot) {
+	snap.Rules = slices.DeleteFunc(snap.Rules, func(r config.Rule) bool {
+		return !slices.Contains([]string{"no-raw-sql-concat", "propagate-context", "wrap-errors-with-cause"}, r.ID)
+	})
+}
+
 func setup(t *testing.T, title, body string) env {
 	t.Helper()
 	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
 	}
+	goRulesOnly(snap)
 	src := filepath.Join(t.TempDir(), "src")
 	repo, err := synth.Build(t.Context(), src,
 		map[string]string{
@@ -1051,6 +1060,7 @@ func TestReviewCarry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	goRulesOnly(snap)
 	repo, err := synth.Build(t.Context(), filepath.Join(t.TempDir(), "src"),
 		map[string]string{"svc/a.go": "package svc\n"}, map[string]string{"svc/a.go": "package svc\n\nfunc A() {}\n"}, nil)
 	if err != nil {
