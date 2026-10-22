@@ -8,6 +8,7 @@ import (
 )
 
 func TestCalibrateCmd(t *testing.T) {
+	t.Parallel()
 	dir := copyConfig(t)
 	base := git(t, dir, "rev-parse", "HEAD")
 	// Nothing verifier-related changed: not run.

@@ -38,13 +38,21 @@ type Scanner struct {
 	det *detect.Detector
 }
 
-var silenceOnce sync.Once
+var (
+	silenceOnce sync.Once
+	// newDetectorMu serializes detect.NewDetectorDefaultConfig, which loads
+	// its rules through viper's package-level instance and so races with
+	// itself when two Scanners are built at once.
+	newDetectorMu sync.Mutex
+)
 
 // New builds a Scanner. gitleaks' own logging is silenced so matched text
-// can never reach a log stream.
+// can never reach a log stream. It is safe to call concurrently.
 func New() (*Scanner, error) {
 	silenceOnce.Do(func() { logging.Logger = zerolog.Nop() })
+	newDetectorMu.Lock()
 	det, err := detect.NewDetectorDefaultConfig()
+	newDetectorMu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("redact: build detector: %w", err)
 	}

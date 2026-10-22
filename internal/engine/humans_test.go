@@ -10,6 +10,7 @@ import (
 )
 
 func TestReviewHumanDedupe(t *testing.T) {
+	t.Parallel()
 	reviewer := HumanComment{
 		ID: 7, Author: "dana", AuthorType: "User", Association: "MEMBER", Path: "main.go", Side: "RIGHT",
 		Start: httpGetLine, End: httpGetLine, Body: "This should use the request's context.",
@@ -36,6 +37,7 @@ func TestReviewHumanDedupe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := setup(t, "Fetch inventory", "Adds a fetch.")
 			e.prep.PR.Author = "alice"
 			eng, tr := newEngine(e, Script{
@@ -85,6 +87,7 @@ func TestReviewHumanDedupe(t *testing.T) {
 // A finding both a reviewer and a linter raised is the reviewer's: it
 // counts as agreement.
 func TestHumanDuplicateBeforeLinter(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	e.prep.PR.Author = "alice"
 	e.prep.Effective.RepoConfig.Linters = []string{"golangci-lint"}
@@ -116,6 +119,7 @@ func TestHumanDuplicateBeforeLinter(t *testing.T) {
 
 // A reviewer comment is redacted before the judge sees it.
 func TestHumanJudgeRedacts(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	e.prep.PR.Author = "alice"
 	tok := fakeToken()
@@ -142,11 +146,13 @@ func TestHumanJudgeRedacts(t *testing.T) {
 // a reviewer's comment, as with linters: a vague comment from a
 // collaborator must not take a blocking finding off the PR.
 func TestHumanDedupeSkipsUnjudgeable(t *testing.T) {
+	t.Parallel()
 	for name, mod := range map[string]func(*schema.Rule){
 		"blocking": func(r *schema.Rule) { r.Severity = schema.SeverityBlocking },
 		"security": func(r *schema.Rule) { r.Category = "Security" },
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			e := setup(t, "Fetch inventory", "Adds a fetch.")
 			e.prep.PR.Author = "alice"
 			for i := range e.prep.Effective.Rules {

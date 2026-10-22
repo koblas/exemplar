@@ -156,6 +156,7 @@ func findByRule(fs []Finding, id string) []Finding {
 }
 
 func TestPrepareExclusionsAndSecrets(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	p := e.prep
 	excluded := map[string]string{}
@@ -185,6 +186,7 @@ func TestPrepareExclusionsAndSecrets(t *testing.T) {
 }
 
 func TestReviewEndToEnd(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	eng, tr := newEngine(e, Script{Generator: contextViolation(""), Quote: func(path string, line int) string { return headLineNoT(e.prep, path, line) }})
 	ms := gates.MergeSafety(gates.MergeSafetyInput{ForcePush: true}, gates.DefaultWeights)
@@ -249,6 +251,7 @@ func headLineNoT(p *Prepared, path string, line int) string {
 }
 
 func TestFabricatedProvenanceIsRejected(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	eng, _ := newEngine(e, Script{Generator: contextViolation(`, "rule_id": "no-raw-sql-concat", "citation": "https://evil.example"`)})
 	res, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval"})
@@ -271,6 +274,7 @@ func TestFabricatedProvenanceIsRejected(t *testing.T) {
 }
 
 func TestUnopenedFilesAreZeroCoverage(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	eng, _ := newEngine(e, Script{Generator: func(string, []string) ([]string, string) {
 		return nil, `{"violations": []}` // claims a clean review without opening anything
@@ -290,6 +294,7 @@ func TestUnopenedFilesAreZeroCoverage(t *testing.T) {
 }
 
 func TestRefutedFindingStillBlocksApproval(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	eng, _ := newEngine(e, Script{Generator: contextViolation(""), Verdict: VerdictRefuted})
 	res, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval"})
@@ -306,6 +311,7 @@ func TestRefutedFindingStillBlocksApproval(t *testing.T) {
 }
 
 func TestConfirmedWithoutEvidenceIsDropped(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	eng, _ := newEngine(e, Script{Generator: contextViolation("")}) // no Quote: evidence cannot resolve
 	res, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval"})
@@ -321,6 +327,7 @@ func TestConfirmedWithoutEvidenceIsDropped(t *testing.T) {
 // Evidence must be about the finding: its file, near its lines, and a
 // quote long enough not to match anywhere.
 func TestEvidenceBoundToFinding(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	eng, _ := newEngine(e, Script{})
 	f := &Finding{Anchor: scope.Anchor{Path: "main.go", Side: scope.SideRight, StartLine: httpGetLine, EndLine: httpGetLine}}
@@ -352,6 +359,7 @@ func TestEvidenceBoundToFinding(t *testing.T) {
 }
 
 func TestBadAnchorDropped(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	eng, _ := newEngine(e, Script{Generator: func(task string, files []string) ([]string, string) {
 		if !strings.Contains(task, "deadlines reach them") {
@@ -371,6 +379,7 @@ func TestBadAnchorDropped(t *testing.T) {
 }
 
 func TestInjectionInPRBodyIsDataOnly(t *testing.T) {
+	t.Parallel()
 	// The PR body contains an instruction; the scripted model obeys it and
 	// reports nothing without opening files. Code still refuses to treat
 	// that as a clean, approvable review.
@@ -389,6 +398,7 @@ func TestInjectionInPRBodyIsDataOnly(t *testing.T) {
 }
 
 func TestBaselineStoredNotPosted(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	eng, _ := newEngine(e, Script{Generator: func(_ string, files []string) ([]string, string) {
 		return files, fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d, "explanation": "unbounded fetch"}]}`, httpGetLine, httpGetLine)
@@ -408,6 +418,7 @@ func TestBaselineStoredNotPosted(t *testing.T) {
 // Paths excluded from review (vendored, generated, lockfiles,
 // .exemplarignore) never reach the model through the tools either.
 func TestToolsRespectExclusions(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	tb := newToolbox(e.prep, e.scanner, nil)
 	ctx := t.Context()
@@ -437,6 +448,7 @@ func TestToolsRespectExclusions(t *testing.T) {
 }
 
 func TestToolSandbox(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	tb := newToolbox(e.prep, e.scanner, nil)
 	ctx := t.Context()
@@ -464,6 +476,7 @@ func TestToolSandbox(t *testing.T) {
 }
 
 func TestFingerprintOccurrenceIndex(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	fp := newFingerprinter(e.prep.Workspace)
 	a := fp.next(t.Context(), "r", anchorAt("main.go", httpGetLine))
@@ -491,6 +504,7 @@ func (f *fakeHistory) History(_ context.Context, repo, path, rev string) (pathhi
 }
 
 func TestPathHistoryTool(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	ctx := t.Context()
 	has := func(tb *toolbox) bool {
@@ -532,6 +546,7 @@ func TestPathHistoryTool(t *testing.T) {
 }
 
 func TestCategorize(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fix a typo in the README", "Docs only.")
 	answers := map[string]string{
 		"categorizer-a": `{"risk": "low", "p_low": 0.93, "reasons": ["documentation only"]}`,
@@ -580,6 +595,7 @@ func TestCategorize(t *testing.T) {
 }
 
 func TestPreparedCheckOwners(t *testing.T) {
+	t.Parallel()
 	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
@@ -627,6 +643,7 @@ func TestPreparedCheckOwners(t *testing.T) {
 	}
 }
 
+// Not parallel: it swaps the package-level evaluateStage1.
 func TestReviewStage2(t *testing.T) {
 	// The approval checks run only after the deterministic gates pass;
 	// first check that they do not here, then stand in a pass.
@@ -737,6 +754,7 @@ func TestReviewStage2(t *testing.T) {
 }
 
 func TestReviewStage1Policy(t *testing.T) {
+	t.Parallel()
 	// The setup PR changes main.go, config.go, go.sum and vendor/lib.go.
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	e.prep.Effective.Global.AutoApprove = true
@@ -805,6 +823,7 @@ func bugScript(e env, answer string) Script {
 }
 
 func TestReviewBugLane(t *testing.T) {
+	t.Parallel()
 	nilDeref := fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d,
 		"explanation": "resp is used when err is non-nil.", "trigger": "the inventory host is unreachable", "impact": "the handler panics"}]}`, httpGetLine, httpGetLine)
 	critical := func(e env) {
@@ -812,6 +831,7 @@ func TestReviewBugLane(t *testing.T) {
 	}
 
 	t.Run("not triggered", func(t *testing.T) {
+		t.Parallel()
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
 		eng, _ := newEngine(e, bugScript(e, nilDeref))
 		res, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval"})
@@ -827,6 +847,7 @@ func TestReviewBugLane(t *testing.T) {
 	})
 
 	t.Run("critical path", func(t *testing.T) {
+		t.Parallel()
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
 		critical(e)
 		eng, tr := newEngine(e, bugScript(e, nilDeref))
@@ -871,6 +892,7 @@ func TestReviewBugLane(t *testing.T) {
 	})
 
 	t.Run("bug importance bar", func(t *testing.T) {
+		t.Parallel()
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
 		critical(e)
 		s := bugScript(e, nilDeref)
@@ -886,6 +908,7 @@ func TestReviewBugLane(t *testing.T) {
 	})
 
 	t.Run("no trigger in the answer", func(t *testing.T) {
+		t.Parallel()
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
 		critical(e)
 		noTrigger := fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d,
@@ -902,6 +925,7 @@ func TestReviewBugLane(t *testing.T) {
 	})
 
 	t.Run("shed first", func(t *testing.T) {
+		t.Parallel()
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
 		critical(e)
 		e.prep.Effective.Global.Concurrency.AgentsPerReview = 1 // rule agents finish before any class starts
@@ -920,6 +944,7 @@ func TestReviewBugLane(t *testing.T) {
 	})
 
 	t.Run("bug.contract skipped", func(t *testing.T) {
+		t.Parallel()
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
 		critical(e)
 		e.prep.Effective.Global.BugLane.Classes = map[string]schema.BugLaneFlag{buglane.Contract: {Enabled: true}}
@@ -949,6 +974,7 @@ func (f *fakeRefs) FindReferences(_ context.Context, prRepo, repo, snapshot, nam
 }
 
 func TestFindReferencesTool(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "t", "")
 	ctx := t.Context()
 	f := &fakeRefs{refs: []index.Reference{
@@ -1000,6 +1026,7 @@ func TestFindReferencesTool(t *testing.T) {
 }
 
 func TestBugContractWithReferences(t *testing.T) {
+	t.Parallel()
 	nilDeref := `{"violations": []}`
 	run := func(f *fakeRefs) RunResult {
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
@@ -1030,6 +1057,7 @@ func TestBugContractWithReferences(t *testing.T) {
 }
 
 func TestPrepareForks(t *testing.T) {
+	t.Parallel()
 	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
@@ -1063,6 +1091,7 @@ func TestPrepareForks(t *testing.T) {
 }
 
 func TestReviewCarry(t *testing.T) {
+	t.Parallel()
 	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
@@ -1154,6 +1183,7 @@ func TestReviewCarry(t *testing.T) {
 }
 
 func TestReviewRepoShadow(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	e.prep.Effective.RepoConfig.Shadow = true
 	eng, _ := newEngine(e, Script{Generator: contextViolation(""), Quote: func(path string, line int) string { return headLineNoT(e.prep, path, line) }})
@@ -1179,6 +1209,7 @@ func TestReviewRepoShadow(t *testing.T) {
 // A bug class may post on critical paths; elsewhere it stays in
 // shadow.
 func TestBugLanePostsOnCriticalPaths(t *testing.T) {
+	t.Parallel()
 	nilDeref := fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d,
 		"explanation": "resp is used when err is non-nil.", "trigger": "the inventory host is unreachable", "impact": "the handler panics"}]}`, httpGetLine, httpGetLine)
 	tests := []struct {
@@ -1193,6 +1224,7 @@ func TestBugLanePostsOnCriticalPaths(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := setup(t, "Fetch inventory", "Adds a fetch.")
 			// Large enough to run the bug lane whatever the critical paths.
 			e.prep.Effective.Global.BugLane.MinChangedLines = 1

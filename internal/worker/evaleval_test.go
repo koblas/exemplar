@@ -16,6 +16,7 @@ import (
 
 // Mode eval evaluates a config PR's changed rules at its head.
 func TestEvaluateEvalMode(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st

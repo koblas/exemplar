@@ -106,6 +106,7 @@ func (e *env) state(t *testing.T) []string {
 // TestReReviewAcrossPushes follows one finding over three pushes: posted
 // once, found again but not reposted, then fixed and resolved with a reply.
 func TestReReviewAcrossPushes(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	e.w.cfg.Store = storetest.New(t)
 	review := func() Outcome {
@@ -182,6 +183,7 @@ func (c *countingModel) RoundTrip(r *http.Request) (*http.Response, error) {
 // change carry forward with no model call, linked to the run that did the
 // work; a change to their files re-runs them.
 func TestInterdiffCarries(t *testing.T) {
+	t.Parallel()
 	model := &countingModel{}
 	e := setupWith(t, repo, func(next http.RoundTripper) http.RoundTripper { model.next = next; return model })
 	e.w.cfg.Store = storetest.New(t)
@@ -268,6 +270,7 @@ func TestInterdiffCarries(t *testing.T) {
 // moved is re-anchored (not reposted); one whose code is gone is outdated
 // with "No longer present after rebase".
 func TestRebaseReanchors(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	st := storetest.New(t)
 	e.w.cfg.Store = st

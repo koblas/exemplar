@@ -22,6 +22,7 @@ func lightCalls(tr *ScriptedTransport) int {
 }
 
 func TestReviewLinterDedupe(t *testing.T) {
+	t.Parallel()
 	noctx := LinterAnnotation{Check: "golangci-lint", Path: "main.go", Start: httpGetLine, End: httpGetLine, Title: "noctx", Message: "should rewrite http.NewRequestWithContext"}
 	secret := LinterAnnotation{Check: "golangci-lint", Path: "config.go", Start: 3, End: 3, Title: "gosec", Message: "G101: potential hardcoded credentials"}
 	tests := []struct {
@@ -50,6 +51,7 @@ func TestReviewLinterDedupe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := setup(t, "Fetch inventory", "Adds a fetch.")
 			e.prep.Effective.RepoConfig.Linters = tt.linters
 			for i := range e.prep.Effective.Rules {
@@ -107,6 +109,7 @@ func TestReviewLinterDedupe(t *testing.T) {
 }
 
 func TestLinterJudgeCached(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	e.prep.Effective.RepoConfig.Linters = []string{"golangci-lint"}
 	eng, tr := newEngine(e, Script{
@@ -131,6 +134,7 @@ func TestLinterJudgeCached(t *testing.T) {
 }
 
 func TestLinterDedupeNotLoadedWithoutFindings(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	e.prep.Effective.RepoConfig.Linters = []string{"golangci-lint"}
 	e.prep.Secrets = nil
@@ -145,6 +149,7 @@ func TestLinterDedupeNotLoadedWithoutFindings(t *testing.T) {
 }
 
 func TestLinterDuplicatesLate(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	rules := e.prep.Effective.Rules
 	for i := range rules {

@@ -47,6 +47,7 @@ func goodVerifier(task string) string {
 }
 
 func TestVerifierCalibrationPasses(t *testing.T) {
+	t.Parallel()
 	r, tr, labels := setup(t, goodVerifier)
 	rep, err := r.Verifier(t.Context(), labels, thresholds)
 	if err != nil {
@@ -67,6 +68,7 @@ func TestVerifierCalibrationPasses(t *testing.T) {
 }
 
 func TestVerifierCalibrationFails(t *testing.T) {
+	t.Parallel()
 	// Refutes everything: perfect on known-wrong, unacceptable on known-true.
 	r, _, labels := setup(t, func(string) string { return engine.VerdictRefuted })
 	rep, _ := r.Verifier(t.Context(), labels, thresholds)
@@ -93,6 +95,7 @@ func TestVerifierCalibrationFails(t *testing.T) {
 }
 
 func TestVerifierCalibrationErrors(t *testing.T) {
+	t.Parallel()
 	r, _, labels := setup(t, goodVerifier)
 	labels[0].Candidate.RuleID = "no-such-rule"
 	rep, err := r.Verifier(t.Context(), labels, thresholds)

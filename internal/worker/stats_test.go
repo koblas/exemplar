@@ -18,6 +18,7 @@ type ev struct {
 }
 
 func TestFeedbackOutcomes(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	ctx := t.Context()
 	posted := time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)

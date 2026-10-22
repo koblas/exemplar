@@ -15,6 +15,7 @@ import (
 const goodFix = "\treq, err := http.NewRequestWithContext(ctx, http.MethodGet, \"https://inventory.internal/items\", nil)"
 
 func TestCheckFix(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	eng, _ := newEngine(e, Script{})
 	policy := map[string]string{"propagate-context": schema.FixSuggest, "other-rule": schema.FixDescribe}
@@ -53,6 +54,7 @@ func TestCheckFix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			f := Finding{RuleID: cmpOrStr(tt.rule, "propagate-context"), Lane: cmpOrStr(tt.lane, LaneExemplar), Anchor: tt.anchor, Fix: tt.fix}
 			if f.Anchor.Path == "" {
 				f.Anchor = anchorAt("main.go", httpGetLine)
@@ -73,6 +75,7 @@ func cmpOrStr(a, b string) string {
 }
 
 func TestCheckSyntaxOtherLanguages(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	eng, _ := newEngine(e, Script{})
 	tests := []struct {
@@ -100,6 +103,7 @@ func TestCheckSyntaxOtherLanguages(t *testing.T) {
 }
 
 func TestReviewPostsValidFix(t *testing.T) {
+	t.Parallel()
 	e := setup(t, "Fetch inventory", "Adds a fetch.")
 	for i := range e.prep.Effective.Rules {
 		if e.prep.Effective.Rules[i].ID == "propagate-context" {
@@ -131,6 +135,7 @@ func TestReviewPostsValidFix(t *testing.T) {
 }
 
 func TestCheckFormatClang(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("clang-format"); err != nil {
 		if os.Getenv("EXEMPLAR_REQUIRE_ENGINES") == "1" {
 			t.Fatal("clang-format is required (EXEMPLAR_REQUIRE_ENGINES=1)")

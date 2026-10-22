@@ -40,6 +40,7 @@ func checkTitle(c map[string]any) string {
 }
 
 func TestMergePolicyCheckName(t *testing.T) {
+	t.Parallel()
 	if gh.MergePolicyCheckName != gates.MergePolicyCheck {
 		t.Fatalf("%q != %q", gh.MergePolicyCheckName, gates.MergePolicyCheck)
 	}
@@ -48,6 +49,7 @@ func TestMergePolicyCheckName(t *testing.T) {
 // A merge_policy_check repo's review never approves; it reports
 // exemplar/merge-policy, waiting for people while the gates do not pass.
 func TestReviewMergePolicy(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	snap := mergePolicySnapshot(t)
 	e.w.cfg.Snapshot = func(context.Context) (*config.Snapshot, error) { return snap, nil }
@@ -78,6 +80,7 @@ func TestReviewMergePolicy(t *testing.T) {
 }
 
 func TestMergePolicyWorker(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st
@@ -143,6 +146,7 @@ func insertReview(t *testing.T, st *store.Store, head string) int64 {
 }
 
 func TestRouteReviewEvents(t *testing.T) {
+	t.Parallel()
 	payload := func(action, userType, state string) []byte {
 		return fmt.Appendf(nil, `{"action": %q, "installation": {"id": 42}, "repository": {"full_name": "acme/app"},
 			"pull_request": {"number": 7, "state": %q}, "review": {"id": 99, "user": {"type": %q}}}`, action, state, userType)

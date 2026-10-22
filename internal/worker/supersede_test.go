@@ -21,6 +21,7 @@ import (
 // A push lands while the review runs: nothing is posted, and the check
 // on the old head is completed as superseded rather than left running.
 func TestReviewSupersededBeforePosting(t *testing.T) {
+	t.Parallel()
 	e := setup(t, repo)
 	e.fake.headAfterCheck = strings.Repeat("c", 40)
 	out, err := e.w.Review(t.Context(), args(e))
@@ -56,6 +57,7 @@ func (b *blockingModel) RoundTrip(r *http.Request) (*http.Response, error) {
 // on the pod holding it, and the review records itself superseded and
 // completes its check.
 func TestRunningReviewCancelled(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	ctx := t.Context()
 	model := &blockingModel{started: make(chan struct{})}

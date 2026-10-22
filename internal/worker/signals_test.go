@@ -12,6 +12,7 @@ import (
 )
 
 func TestRouteSignals(t *testing.T) {
+	t.Parallel()
 	merged := `{"action": "closed", "number": 7, "installation": {"id": 42}, "repository": {"full_name": "acme/app"},
 		"pull_request": {"state": "closed", "merged": true, "merged_at": "2026-10-14T09:00:00Z", "user": {"login": "alice"}, "head": {"sha": "abc"}}}`
 	r, err := RouteEvent("pull_request", []byte(merged))
@@ -51,6 +52,7 @@ func TestRouteSignals(t *testing.T) {
 }
 
 func TestFeedbackSignals(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st
@@ -114,6 +116,7 @@ func TestFeedbackSignals(t *testing.T) {
 
 // Findings untouched at merge were ignored.
 func TestIgnoredAtMerge(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st
@@ -158,6 +161,7 @@ func TestIgnoredAtMerge(t *testing.T) {
 }
 
 func TestReactions(t *testing.T) {
+	t.Parallel()
 	st := storetest.New(t)
 	e := setup(t, repo)
 	e.w.cfg.Store = st

@@ -62,8 +62,10 @@ func refsFixture(t *testing.T, indexed bool) *fixture {
 }
 
 func TestDependents(t *testing.T) {
+	t.Parallel()
 	for _, indexed := range []bool{true, false} {
 		t.Run(fmt.Sprintf("indexed=%v", indexed), func(t *testing.T) {
+			t.Parallel()
 			f := refsFixture(t, indexed)
 			tests := []struct {
 				file  string
@@ -105,8 +107,10 @@ func refSites(r RefResult) []string {
 }
 
 func TestFindReferences(t *testing.T) {
+	t.Parallel()
 	for _, indexed := range []bool{true, false} {
 		t.Run(fmt.Sprintf("indexed=%v", indexed), func(t *testing.T) {
+			t.Parallel()
 			f := refsFixture(t, indexed)
 			res, err := f.ix.FindReferences(t.Context(), "acme/app", RefQuery{Name: "svc.Fetch", DefinedIn: "svc/fetch.go"})
 			if err != nil {
@@ -142,6 +146,7 @@ func TestFindReferences(t *testing.T) {
 }
 
 func TestFindReferencesNeedsDefinedIn(t *testing.T) {
+	t.Parallel()
 	f := setup(t)
 	files := map[string]string{}
 	for i := range 12 {

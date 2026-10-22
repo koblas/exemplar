@@ -9,6 +9,7 @@ import (
 )
 
 func TestApplyPatch(t *testing.T) {
+	t.Parallel()
 	repo, err := synth.Build(t.Context(), filepath.Join(t.TempDir(), "src"), map[string]string{"a.go": "package a\n\nfunc A() {}\n"}, map[string]string{"a.go": "package a\n\nfunc A() {}\n"}, nil)
 	if err != nil {
 		t.Fatal(err)

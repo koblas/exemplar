@@ -60,6 +60,7 @@ func git(t *testing.T, dir string, args ...string) string {
 }
 
 func TestChangedRules(t *testing.T) {
+	t.Parallel()
 	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "x")
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +79,7 @@ func TestChangedRules(t *testing.T) {
 }
 
 func TestEvalChangedSince(t *testing.T) {
+	t.Parallel()
 	dir := copyConfig(t)
 	base := git(t, dir, "rev-parse", "HEAD")
 	// Nothing changed: nothing to evaluate.

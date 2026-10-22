@@ -37,6 +37,7 @@ func goodCategorizer(_, pr string) string {
 }
 
 func TestCategorizerCalibrationPasses(t *testing.T) {
+	t.Parallel()
 	r, tr, labels := categorizerSetup(t, goodCategorizer)
 	rep, err := r.Categorizer(t.Context(), labels, catThresholds)
 	if err != nil {
@@ -56,6 +57,7 @@ func TestCategorizerCalibrationPasses(t *testing.T) {
 }
 
 func TestCategorizerCalibrationFails(t *testing.T) {
+	t.Parallel()
 	// Approves everything: fails on the risky PRs.
 	r, _, labels := categorizerSetup(t, func(string, string) string { return lowAnswer })
 	rep, _ := r.Categorizer(t.Context(), labels, catThresholds)
@@ -84,6 +86,7 @@ func TestCategorizerCalibrationFails(t *testing.T) {
 }
 
 func TestCategorizerCalibrationErrors(t *testing.T) {
+	t.Parallel()
 	// A side that breaks the schema is an unreplayable label, not a "not
 	// approved" that would pass the risky half.
 	r, _, labels := categorizerSetup(t, func(stage, pr string) string {
