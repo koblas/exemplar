@@ -7,20 +7,21 @@
 }:
 
 let
-  # Go 1.27.2 fixes the stdlib vulnerabilities govulncheck reports in 1.27.1
-  # (net/http, http2, crypto/tls, html/template, net/textproto). nixpkgs
-  # channels still ship 1.27.1, so build the official source release. Drop
-  # this override once go_1_27 is 1.27.2 there.
+  # Go 1.27.3 fixes the stdlib vulnerabilities govulncheck reports in earlier
+  # 1.27 releases (1.27.2: crypto/x509, GO-2026-6809; 1.27.1: net/http, http2,
+  # crypto/tls, html/template, net/textproto). nixpkgs channels lag behind,
+  # so build the official source release. Drop this override once go_1_27 is
+  # 1.27.3 there.
   go = pkgs.go_1_27.overrideAttrs (old: rec {
-    version = "1.27.2";
+    version = "1.27.3";
     src = pkgs.fetchurl {
       url = "https://go.dev/dl/go${version}.src.tar.gz";
-      sha256 = "03495da2ba64894d40f5c4992e49454fa78b50690604ff92b6afff5081b76e62"; # published on go.dev/dl
+      sha256 = "6e7749035cf360f06b2575d162ea79df9fda8ef671889e5c375f8e50777f26bb"; # published on go.dev/dl
     };
   });
 
   # golangci-lint must be built with a Go whose export data it can read;
-  # nixpkgs' 2.13.2 (x/tools 0.49) cannot read Go 1.27.2's. 2.14.0 (x/tools
+  # nixpkgs' 2.13.2 (x/tools 0.49) cannot read Go 1.27's. 2.14.0 (x/tools
   # 0.50) can. Matches the version pinned in .github/workflows/ci.yml.
   golangci-lint =
     (pkgs.golangci-lint.override {
@@ -63,7 +64,7 @@ in
 
   # Go is set up here rather than with languages.go: that module rebuilds
   # its editor tools with the chosen Go, and the packaged staticcheck
-  # (go-tools 2026.2.1) cannot read Go 1.27.2's export data. These are the
+  # (go-tools 2026.2.1) cannot read Go 1.27's export data. These are the
   # settings languages.go would make; gopls and delve are nixpkgs' builds.
   env.GOROOT = "${go}/share/go/";
   env.GOPATH = config.env.DEVENV_STATE + "/go";

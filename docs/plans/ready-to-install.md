@@ -390,3 +390,7 @@ The example config's `rules/` should give a quickstart findings on whatever the 
 Each compiled matcher was run with ast-grep 0.45.1 or Semgrep 1.172 on positive and negative files, and the shared `file_patterns` on sample paths. Cost per PR: every rule whose patterns match runs one agent, shadow rules included, three at a time. A source change in a Go repo runs six (four language-agnostic, two Go) and a migration adds one. `untrusted-input-to-sink` is a blocking Security rule, so it starts on the high model tier and is posted over the comment budget.
 
 **Not done:** no eval cases ship, since a case needs a commit in the installer's repositories; How to set up config CI says editing a starter rule fails `eval` until it has them. The model rules have not been run against real PRs; their precision is unknown until a shadow week.
+
+### Go 1.27.3 (2026-10-22)
+
+govulncheck failed CI on every branch: GO-2026-6809 in `crypto/x509`, found in Go 1.27.2 and fixed in 1.27.3. `go.mod`, the devenv Go override (source tarball and its sha256 from go.dev/dl) and the image's build stage (`golang:1.27.3-trixie`, pinned by index digest) move to 1.27.3; CI follows `go.mod`. With Go 1.27.3, `go build`, `go vet` and `go test ./...` (engines required, Postgres via testcontainers) pass and govulncheck reports no vulnerabilities. Not checked: the devenv shell itself was not rebuilt here, nor was the image built.
