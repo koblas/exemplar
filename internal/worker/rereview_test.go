@@ -234,7 +234,14 @@ func TestInterdiffCarries(t *testing.T) {
 	if got["propagate-context"] != runID(1, "propagate-context") || got["wrap-errors-with-cause"] != runID(1, "wrap-errors-with-cause") {
 		t.Fatalf("push 2 carried_from = %v", got)
 	}
-	if s := fmt.Sprint(e.fake.checkUpdates[len(e.fake.checkUpdates)-1]["output"]); !strings.Contains(s, "2 rule(s) carried forward") {
+	// Every example rule scoped to main.go carries, not only the two Go ones.
+	carried := 0
+	for _, from := range got {
+		if from != "" {
+			carried++
+		}
+	}
+	if s := fmt.Sprint(e.fake.checkUpdates[len(e.fake.checkUpdates)-1]["output"]); carried != len(got) || !strings.Contains(s, fmt.Sprintf("%d rule(s) carried forward", carried)) {
 		t.Errorf("check text = %s", s)
 	}
 

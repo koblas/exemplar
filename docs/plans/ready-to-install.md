@@ -377,6 +377,24 @@ The items left after #22, #23 and #27, from the hunt's Low findings and the foll
 
 The quickstart moved from `docs/tutorials/` to `docs/guides/install/quickstart.md` and sits first in the Install section of the Guides nav, as "Quickstart (a trial install)", next to the production install that builds on its steps. The Start here tab keeps the landing and the two tutorials. Old paths (`tutorials/quickstart.md`, `install/`, `install/quickstart.md`) redirect. The landing's primary button now says "Try it: a 20-minute trial install".
 
+### Starter rules for any codebase (2026-10-20)
+
+The example config's `rules/` should give a quickstart findings on whatever the first repo is written in. They held three Go rules. Six more, scoped to source in about twenty common languages (tests, `testdata` and fixtures excluded) or to file types most stacks have:
+
+- **Model rules (`exemplar`).** `no-secrets-in-logs` (important), `untrusted-input-to-sink` (blocking: SQL, shell, paths, HTML, deserializers, SSRF), `external-call-timeouts` (important: timeouts and bounded retries), `migration-backward-compatible` (important, scoped to migration directories and `*.sql`), and `tests-for-behavior-change` (suggestion, `shadow`: expected to be noisy, so its findings are stored but not posted).
+- **Compiled rule.** `pin-container-images`: Semgrep `languages: [regex]` for `:latest` in Dockerfiles and YAML, no model cost.
+- **No committed-key rule.** A Semgrep key-pattern rule was written and dropped: the built-in `possible-secret-in-diff` lane (gitleaks) already reports keys, and redacts them before any model sees the diff.
+- **`no-raw-sql-concat` never matched.** In Go, ast-grep parses a bare `$DB.Query(...)` pattern ambiguously, and `, $$$` does not match zero trailing arguments, so the rule found nothing. It is now a structural rule over `Query`, `QueryRow`, `Exec`, `Prepare` and their `Context` variants: concatenation or `fmt.Sprintf` in the query argument, not in later arguments. The `docs.internal` citation is an OWASP link. The rule reference and How to write a rule carry the working form. The guide says to run a matcher on a sample file, since `exemplar validate` checks only the schema.
+- **Owners.** The two Go rules move from `@platform/backend` to `@platform/exemplar`, so the rules name only teams CODEOWNERS already does; the quickstart says to replace them.
+
+Each compiled matcher was run with ast-grep 0.45.1 or Semgrep 1.172 on positive and negative files, and the shared `file_patterns` on sample paths. Cost per PR: every rule whose patterns match runs one agent, shadow rules included, three at a time. A source change in a Go repo runs six (four language-agnostic, two Go) and a migration adds one. `untrusted-input-to-sink` is a blocking Security rule, so it starts on the high model tier and is posted over the comment budget.
+
+**Not done:** no eval cases ship, since a case needs a commit in the installer's repositories; How to set up config CI says editing a starter rule fails `eval` until it has them. The model rules have not been run against real PRs; their precision is unknown until a shadow week.
+
+### Go 1.27.3 (2026-10-22)
+
+govulncheck failed CI on every branch: GO-2026-6809 in `crypto/x509`, found in Go 1.27.2 and fixed in 1.27.3. `go.mod`, the devenv Go override (source tarball and its sha256 from go.dev/dl) and the image's build stage (`golang:1.27.3-trixie`, pinned by index digest) move to 1.27.3; CI follows `go.mod`. With Go 1.27.3, `go build`, `go vet` and `go test ./...` (engines required, Postgres via testcontainers) pass and govulncheck reports no vulnerabilities. Not checked: the devenv shell itself was not rebuilt here, nor was the image built.
+
 ### ripgrep for the agents' grep tool (2026-10-22)
 
 `TestToolsRespectExclusions` had failed on main's CI since it landed (234c8fb) with `grep = "", search failed`. The agents' `grep` tool runs `rg`, which devenv provides but neither the CI runner nor the services image installed, so the tool failed on every call outside a dev shell, in production included. CI's engine step and the image's apt line now install `ripgrep`, CI prints its version with the other engines, and the test's grep check skips without `rg` unless `EXEMPLAR_REQUIRE_ENGINES=1`, like the other engine tests. The reference pages that list the image's tools name ripgrep.

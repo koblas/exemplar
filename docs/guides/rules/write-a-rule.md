@@ -26,8 +26,12 @@ A rule is one YAML file under `rules/<category>/<id>.yaml` in `exemplar-config`.
         id: no-raw-sql-concat
         language: go
         rule:
-          pattern: $DB.Query($A + $B, $$$)
+          pattern:
+            context: "func _() { $DB.Query($A + $B) }"
+            selector: call_expression
     ```
+
+    In Go, give a call pattern a `context` and `selector` as above: a bare `$DB.Query(...)` parses ambiguously and matches nothing. Check a pattern on a small file with `ast-grep scan --rule` or `semgrep scan --config` before you merge it; `exemplar validate` checks the rule file's schema, not the pattern. For a pattern that holds in any language, such as a key format, use Semgrep with `languages: [regex]`.
 
     `matcher` is required for `compiled` and forbidden otherwise. The learning plane's `compile` job tries to turn every candidate into one of these.
 

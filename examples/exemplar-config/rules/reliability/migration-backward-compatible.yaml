@@ -1,0 +1,30 @@
+id: migration-backward-compatible
+kind: exemplar
+category: Reliability
+severity: important
+owner: "@platform/exemplar"
+status: active
+review_by: 2027-10-01
+file_patterns: ["**/{migrations,migration,migrate,alembic,flyway,liquibase,schema}/**", "**/*.sql"]
+description: |
+  During a rolling deploy old and new code run against the same schema. A
+  migration must work with the version of the code still running, and must
+  not lock a busy table for long.
+preferred_approach: |
+  Expand, then contract: add the new column or table, deploy code that
+  writes both, backfill in batches, switch reads, and drop the old one in a
+  later release. Add columns as nullable or with a default, and build
+  indexes without blocking writes where the database supports it.
+what_to_flag: |
+  - Dropping or renaming a column or table that the currently deployed code
+    may still read or write.
+  - Adding a NOT NULL column with no default to an existing table, or
+    narrowing a column's type.
+  - A backfill or index build on a large table in the same transaction as
+    the schema change, or one that blocks writes.
+  Do not flag migrations that create new tables, or that only touch tables
+  the change itself introduces.
+fix_policy: describe
+export:
+  agents: true
+  summary: "Keep migrations backward compatible with running code: expand, migrate, then contract."

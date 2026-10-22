@@ -2,7 +2,7 @@ id: propagate-context
 kind: exemplar
 category: Reliability
 severity: important
-owner: "@platform/backend"
+owner: "@platform/exemplar"
 status: active
 review_by: 2027-10-01
 file_patterns: ["**/*.go", "!**/*_test.go"]
