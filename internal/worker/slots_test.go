@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/store"
 	"github.com/koblas/exemplar/internal/store/storetest"
 )
@@ -78,12 +80,11 @@ func TestSlotsAcrossReplicas(t *testing.T) {
 	}
 }
 
-// A repo at its limit: the review job snoozes without touching GitHub.
-func TestWorkWaitsForSlot(t *testing.T) {
+// A repo at its limit: the dispatcher snoozes the review without
+// launching a runner.
+func TestDispatchWaitsForSlot(t *testing.T) {
 	t.Parallel()
 	st := storetest.New(t)
-	e := setup(t, repo)
-	e.w.cfg.Store = st
 	slots := NewSlots(otherReplica(t, st))
 	snap := exampleSnapshot(t)
 	for range RepoLimit(snap, repo) {
@@ -93,12 +94,20 @@ func TestWorkWaitsForSlot(t *testing.T) {
 		}
 		defer release()
 	}
-	err := e.w.Work(t.Context(), &river.Job[store.PRReviewArgs]{Args: args(e)})
+	launched := 0
+	d, err := NewReviewDispatcher(DispatchConfig{
+		Launcher: launchFunc(func(context.Context, Task) (Exit, error) { launched++; return ExitDone, nil }),
+		Snapshot: func(context.Context) (*config.Snapshot, error) { return snap, nil }, Store: st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = d.Work(t.Context(), &river.Job[store.PRReviewArgs]{JobRow: &rivertype.JobRow{ID: 1}, Args: store.PRReviewArgs{Repo: repo, PR: 1}})
 	var snooze *rivertype.JobSnoozeError
 	if !errors.As(err, &snooze) || snooze.Duration != SlotWait {
 		t.Fatalf("work = %v", err)
 	}
-	if len(e.fake.reviews)+len(e.fake.checks) != 0 {
-		t.Error("a waiting review touched GitHub")
+	if launched != 0 {
+		t.Error("a waiting review launched a runner")
 	}
 }

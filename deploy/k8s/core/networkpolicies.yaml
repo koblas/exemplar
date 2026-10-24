@@ -72,7 +72,7 @@ spec:
     - ports:
         - {protocol: TCP, port: 5432}
 ---
-# exemplar-gateway: in from the worker and the learning jobs; out to the
+# exemplar-gateway: in from the worker, its runners and the learning jobs; out to the
 # model providers and GitHub (HTTPS), and Postgres.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -89,6 +89,8 @@ spec:
         - podSelector:
             matchLabels: {app.kubernetes.io/name: exemplar-worker}
         - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-runner}
+        - podSelector:
             matchLabels: {app.kubernetes.io/name: exemplar-learn}
       ports:
         - {protocol: TCP, port: 8080}
@@ -102,8 +104,11 @@ spec:
     - ports:
         - {protocol: TCP, port: 5432}
 ---
-# exemplar-worker: out to the gateway, exemplar-search, GitHub and Jira
-# (HTTPS), and Postgres. Nothing in.
+# exemplar-worker (control): out to the gateway, exemplar-search, GitHub and
+# Jira (HTTPS), Postgres, and the Kubernetes API for runner Jobs. Nothing in.
+# The API server's address is the cluster's: the private ranges on 443 and
+# 6443 (k3d, kind) cover it anywhere; narrow them to the endpoint of
+# `kubectl get endpoints kubernetes -n default` in an overlay.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -130,8 +135,44 @@ spec:
         - {protocol: TCP, port: 443}
     - ports:
         - {protocol: TCP, port: 5432}
+    - to:
+        - ipBlock: {cidr: 10.0.0.0/8}
+        - ipBlock: {cidr: 172.16.0.0/12}
+        - ipBlock: {cidr: 192.168.0.0/16}
+      ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 6443}
 ---
-# exemplar-search: in from workers only; out to GitHub (HTTPS fetches and
+# exemplar-runner: one review. Out to the gateway, exemplar-search, GitHub
+# (HTTPS) and Postgres. Nothing in, and no Kubernetes API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-runner
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-runner, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-runner}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-gateway}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-search}
+      ports:
+        - {protocol: TCP, port: 8080}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
+    - ports:
+        - {protocol: TCP, port: 5432}
+---
+# exemplar-search: in from the worker and its runners only; out to GitHub (HTTPS fetches and
 # its config). No database.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -147,6 +188,8 @@ spec:
     - from:
         - podSelector:
             matchLabels: {app.kubernetes.io/name: exemplar-worker}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-runner}
       ports:
         - {protocol: TCP, port: 8080}
   egress:

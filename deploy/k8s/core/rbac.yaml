@@ -1,0 +1,36 @@
+# exemplar-worker (control) is the only identity that calls the Kubernetes
+# API: with --launcher=kubernetes it reads the runner PodTemplate, makes
+# and deletes a Job per review, and reads the Job's pod for the runner's
+# exit code. Namespaced; runners get no token and no role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: exemplar-worker-runners
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-worker, app.kubernetes.io/part-of: exemplar}
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, get, list, delete]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [podtemplates]
+    resourceNames: [exemplar-runner]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: exemplar-worker-runners
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-worker, app.kubernetes.io/part-of: exemplar}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: exemplar-worker-runners
+subjects:
+  - kind: ServiceAccount
+    name: exemplar-worker
+    namespace: exemplar

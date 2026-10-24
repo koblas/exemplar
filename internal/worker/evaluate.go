@@ -49,7 +49,9 @@ func NewEvaluateWorker(cfg Config) (*EvaluateWorker, error) {
 }
 
 // Timeout bounds one evaluation (mode eval runs many cases).
-func (w *EvaluateWorker) Timeout(*river.Job[store.EvaluateArgs]) time.Duration { return time.Hour }
+func (w *EvaluateWorker) Timeout(*river.Job[store.EvaluateArgs]) time.Duration {
+	return EvaluateTimeout
+}
 
 // Work implements river.Worker. An error is retried once; after the last
 // attempt the evaluation is marked failed so the caller stops waiting.

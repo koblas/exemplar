@@ -1,0 +1,92 @@
+# exemplar-runner: the pod of one review. exemplar-worker (control, with
+# --launcher=kubernetes) makes a Job per review from this template, adding
+# `run-job --job ID --config-version V` to the runner container's args;
+# the runner loads that config version from Postgres (config_snapshots),
+# so it has no config checkout. It reviews, posts with the App's tokens
+# for that one repository, and exits: 0 done, 10 cancelled, 11
+# superseded, anything else retried by River.
+#
+# Until single-use token claims (spec §2.4 C2) the runner still mints its
+# own tokens, so it mounts the App private key.
+apiVersion: v1
+kind: PodTemplate
+metadata:
+  name: exemplar-runner
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-runner, app.kubernetes.io/part-of: exemplar}
+template:
+  metadata:
+    labels:
+      app.kubernetes.io/name: exemplar-runner
+      app.kubernetes.io/part-of: exemplar
+  spec:
+    serviceAccountName: exemplar-runner
+    automountServiceAccountToken: false
+    restartPolicy: Never
+    # A deleted Job (a superseded review) gets SIGTERM: the runner checks
+    # River for the cancel (5 s) and posts the superseded notice (30 s).
+    terminationGracePeriodSeconds: 60
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+      seccompProfile: {type: RuntimeDefault}
+    containers:
+      - name: runner
+        image: exemplar
+        command: ["/usr/local/bin/exemplar-worker"]
+        args:
+          - --work-dir=/var/lib/exemplar/work
+        # OTel destinations (internal/telemetry): optional, set per installation.
+        envFrom:
+          - configMapRef: {name: exemplar-otel, optional: true}
+          - secretRef: {name: exemplar-otel, optional: true}
+        env:
+          - name: EXEMPLAR_DATABASE_URL
+            valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+          - name: EXEMPLAR_GH_APP_ID
+            valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id}}
+          - name: EXEMPLAR_GH_API_URL
+            valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL, optional: true}}
+          - name: EXEMPLAR_GH_WEB_URL
+            valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_WEB_URL, optional: true}}
+          - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
+          - name: EXEMPLAR_CONFIG_REPO
+            valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
+          - name: EXEMPLAR_GATEWAY_URL
+            valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
+          - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
+          - name: EXEMPLAR_SEARCH_URL
+            valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_SEARCH_URL}}
+          - {name: EXEMPLAR_AST_GREP, value: /usr/local/bin/ast-grep}
+          # Signed feedback links in comments.
+          - name: EXEMPLAR_API_URL
+            valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
+        # One review: a checkout plus git, ast-grep and Semgrep runs.
+        # Re-size from the monorepo benchmark; per-review volumes are C6.
+        resources:
+          requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 5Gi}
+          limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 12Gi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: [ALL]}
+        volumeMounts:
+          - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
+          - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
+          - {name: work, mountPath: /var/lib/exemplar/work}
+          - {name: tmp, mountPath: /tmp}
+    volumes:
+      - name: root-key
+        secret: {secretName: exemplar-root-key, defaultMode: 0400}
+      - name: github-app
+        secret:
+          secretName: exemplar-github-app
+          items: [{key: private-key, path: private-key}]
+          defaultMode: 0400
+      # The review's checkout.
+      - name: work
+        emptyDir: {sizeLimit: 8Gi}
+      - name: tmp
+        emptyDir: {sizeLimit: 2Gi}

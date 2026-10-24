@@ -117,6 +117,9 @@ func (w *RetentionWorker) Run(ctx context.Context) (RetentionResult, error) {
 		{"playground_runs", r.FindingsDays, func(ctx context.Context, c pgtype.Timestamptz, n int32) (int64, error) {
 			return w.st.DeleteExpiredPlaygroundRuns(ctx, queries.DeleteExpiredPlaygroundRunsParams{Cutoff: c, Batch: n})
 		}},
+		{"config_snapshots", SnapshotRetentionDays, func(ctx context.Context, c pgtype.Timestamptz, n int32) (int64, error) {
+			return w.st.DeleteExpiredConfigSnapshots(ctx, queries.DeleteExpiredConfigSnapshotsParams{Cutoff: c, Keep: snap.Version, Batch: n})
+		}},
 		{"evaluations.diff", staleDiffDays, func(ctx context.Context, c pgtype.Timestamptz, n int32) (int64, error) {
 			return w.st.NullStaleEvaluationDiffs(ctx, queries.NullStaleEvaluationDiffsParams{Cutoff: c, Batch: n})
 		}},

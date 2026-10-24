@@ -86,12 +86,13 @@ From a clone of this repository, `go test ./deploy` also checks every build agai
 
 ## Sizing
 
-Worker, search and storage requests are starting points. Re-size from your own monorepo benchmark: shallow sparse clone time, zoekt full-index time and size, query latency, ctags coverage of the main languages.
+The core manifests run each review as a Kubernetes Job of its own (`--launcher=kubernetes`, [Runners](../../reference/workloads.md#runners)): the runner template's requests are one review's, and each worker pod's `--concurrency` caps the Jobs it keeps in flight. The worker pod's own requests are still sized for reviews in process and can come down. Worker, runner, search and storage requests are starting points. Re-size from your own monorepo benchmark: shallow sparse clone time, zoekt full-index time and size, query latency, ctags coverage of the main languages.
 
 ## What the manifests cannot do
 
 - **Egress by host name.** NetworkPolicy matches addresses, so "HTTPS out" is any public address on 443 (and 22 for git-sync). Per-host lists (GitHub only for search, providers only for the gateway) need an FQDN-aware policy from the CNI, such as Cilium `toFQDNs`, on top.
 - **The tunnel's egress** is any public address on 7844. Cloudflare's edge ranges (or an FQDN policy for `region1.v2.argotunnel.com` and `region2.v2.argotunnel.com`) would narrow it.
 - **The tunnel's edge rules are outside the repo.** Without the WAF rule, anyone can post to `/webhook`, though deliveries are still HMAC-checked. Without Access, the API's own sign-in is the only gate. Nothing in the cluster can check them.
+- **The Kubernetes API's address.** The worker's NetworkPolicy reaches the API server on 443 and 6443 at any private address. Narrow it to the address and port of `kubectl get endpoints kubernetes -n default` in an overlay.
 - **The ingress namespace.** In Ingress builds, `exemplar-webhook-from-ingress` and `exemplar-api-from-ingress` admit the `ingress-nginx` namespace; change it to match the cluster's controller.
 - **Debian packages** float within the pinned base snapshot. Rebuild on a new base digest to update them.

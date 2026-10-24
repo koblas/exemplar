@@ -7,11 +7,13 @@ resources:
   - namespace.yaml
   - settings.yaml
   - serviceaccounts.yaml
+  - rbac.yaml
   - networkpolicies.yaml
   - webhook.yaml
   - api.yaml
   - gateway.yaml
   - worker.yaml
+  - runner.yaml
   - search.yaml
   - learn.yaml
 # Manifests name the two images by family, and an overlay maps each to its

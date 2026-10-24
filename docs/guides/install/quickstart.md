@@ -132,7 +132,7 @@ Then open a pull request in the shadow repo: the review appears in the web UI. C
 
 ## What you have
 
-For a trial that's enough. The quickstart's Postgres has no backups or replication, nothing but Exemplar's own sign-in is in front of the API, `/webhook` is open to any source (deliveries are still signature-checked), and everything runs one replica. [How to install for production](production.md) adds the edge rules.
+For a trial that's enough. Reviews run inside the worker pod (`--launcher=in-process`); production runs each one as a Kubernetes Job of its own. The quickstart's Postgres has no backups or replication, nothing but Exemplar's own sign-in is in front of the API, `/webhook` is open to any source (deliveries are still signature-checked), and everything runs one replica. [How to install for production](production.md) adds the edge rules.
 
 The install grows in three steps, each adding one component and one promise:
 

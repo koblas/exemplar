@@ -1,8 +1,12 @@
-# exemplar-worker: routes events and reviews live PRs (orchestrator, worker
-# and poster in one process), and runs the periodic jobs on
-# River's leader. Agents run in this process with read-only tools, so it
-# never holds a config-writer token; its config checkout comes from a
-# git-sync sidecar with a read-only deploy key.
+# exemplar-worker: control. Routes events, runs the cheap queues (linter
+# checks, feedback, owner actions, merge policy) and the periodic jobs on
+# River's leader, and dispatches each review, evaluation and playground run
+# to a runner: with --launcher=kubernetes a Job per review from the
+# exemplar-runner PodTemplate (runner.yaml), which needs this pod's service
+# account token (mounted in the worker container only) and rbac.yaml. Its
+# config checkout comes from a git-sync sidecar; every version it loads is
+# stored for the runners. It never holds a config-writer token outside the
+# owner-action job.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -102,6 +106,7 @@ spec:
             - --concurrency=4
             - --drain=5s
             - --stop-timeout=60s
+            - --launcher=kubernetes
           ports:
             - {name: http, containerPort: 8080}
           # OTel destinations (internal/telemetry): optional, set per installation.
@@ -136,8 +141,9 @@ spec:
             httpGet: {path: /readyz, port: http}
             periodSeconds: 5
             failureThreshold: 2
-          # Four concurrent reviews, each a checkout plus git, ast-grep and
-          # Semgrep runs. Re-size from the monorepo benchmark.
+          # Sized for --launcher=in-process (the quickstart): four concurrent
+          # reviews, each a checkout plus git, ast-grep and Semgrep runs.
+          # With runner Jobs control needs far less (resized with C5/C6).
           resources:
             requests: {cpu: "1", memory: 2Gi, ephemeral-storage: 20Gi}
             limits: {cpu: "4", memory: 8Gi, ephemeral-storage: 40Gi}
@@ -151,6 +157,9 @@ spec:
             - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
             - {name: work, mountPath: /var/lib/exemplar/work}
             - {name: tmp, mountPath: /tmp}
+            # The Kubernetes API, for runner Jobs (rbac.yaml); git-sync
+            # gets no token.
+            - {name: kube-api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
       volumes:
         - name: root-key
           secret: {secretName: exemplar-root-key, defaultMode: 0400}
@@ -168,7 +177,18 @@ spec:
             secretName: exemplar-github-app
             items: [{key: private-key, path: private-key}]
             defaultMode: 0400
-        # One checkout per running review, removed when it ends.
+        - name: kube-api
+          projected:
+            defaultMode: 0444
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3607}
+              - configMap:
+                  name: kube-root-ca.crt
+                  items: [{key: ca.crt, path: ca.crt}]
+              - downwardAPI:
+                  items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]
+        # One checkout per review run in this pod (--launcher=in-process),
+        # removed when it ends.
         - name: work
           emptyDir: {sizeLimit: 32Gi}
         - name: tmp

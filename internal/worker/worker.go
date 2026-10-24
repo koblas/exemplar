@@ -117,26 +117,11 @@ func New(cfg Config) (*Worker, error) {
 }
 
 // Timeout bounds one review job; River cancels its context after it.
-func (w *Worker) Timeout(*river.Job[store.PRReviewArgs]) time.Duration { return 30 * time.Minute }
+func (w *Worker) Timeout(*river.Job[store.PRReviewArgs]) time.Duration { return ReviewTimeout }
 
-// Work implements river.Worker. A bad job is cancelled, not retried.
+// Work runs one review job in a runner (the dispatcher holds the per-repo
+// slot). A bad job is cancelled, not retried.
 func (w *Worker) Work(ctx context.Context, job *river.Job[store.PRReviewArgs]) error {
-	// Per-repo fairness: wait for one of the repo's slots.
-	if w.cfg.Store != nil {
-		snap, err := w.cfg.Snapshot(ctx)
-		if err != nil {
-			return err
-		}
-		release, ok, err := NewSlots(w.cfg.Store.Pool).Acquire(ctx, job.Args.Repo, RepoLimit(snap, job.Args.Repo))
-		if err != nil {
-			return err
-		}
-		if !ok {
-			w.cfg.Log.Debug("repo at its review limit; waiting", "repo", job.Args.Repo, "pr", job.Args.PR)
-			return river.JobSnooze(SlotWait)
-		}
-		defer release()
-	}
 	start := time.Now()
 	out, err := w.Review(ctx, job.Args)
 	outcome := out.Status
