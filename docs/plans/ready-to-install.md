@@ -428,3 +428,13 @@ Search is the one stateful service besides Postgres (local SSD, a mirror and ind
 - **Operate:** the troubleshooting entry distinguishes search-off on purpose from search missing; the auto-approve note lists search as a prerequisite.
 
 **Not done (code):** answering `find_references` and `path_history` from the runner's own checkout (ripgrep, ctags, `git log` over the touched paths) would close most of the gap for single-repository installs, and the check run could name the missing search explicitly. Both are in the hosting design doc's section 9.
+
+### Technical spec Draft 1.4 (2026-10-24)
+
+`docs/spec/technical-spec.md` is reviewed against PRD v0.9 (it implemented v0.6) and the hosting design of the same day.
+- **PRD v0.7–v0.9 carried into the spec:** verifier quorum (§6.8), round cap and class-of-bug grouping (§6.2, §6.10), the clean-PR set and the change gate (§8.8, §8.9), the clean-run definition, author experience, blast radius, base binding and system accountability in Stage 1 and its trace (§6.13, schema), the `same_family` calibration rule with `calibration_results`, rules per agent and overflow by expected value (§6.3), importance priors (§8.11), owner seeds and merged-change clusters as co-equal sources (§8.1, §8.5), `review_by_defaults` (§8.10), severity-weighted acceptance and the adjudicated shadow exit (§9.2, §11, §12.6, §16).
+- **Hosting:** new §2.4 with the host requirements (R1–R15), the elastic changes (C1–C11: control/runner split, single-use token claims, config snapshots, advisory locks, queue-driven autoscaling, per-review volumes, pooling, search and gateway scaling, the sandbox in the task boundary, the small-install overlay), the GKE Autopilot recommendation with the alternatives, trial paths, the hosted-trial gap and the cost picture; the runner boundary in §13; §14, §15, §16 (an H1–H5 order of work) and §17 (inputs 22–25) follow.
+- **Search optional:** §6.4.6 specifies search-off as an install mode: what the checkout gives, `LocalReferences` and a local `PathHistory` behind the same tool names, `bug.contract` running on single-repository installs (so they may auto-approve) and staying `degraded_skip` with `extra_repos`, the check-run scope line, and the install ladder. The backlog item stays until the code lands.
+- **As built** recorded: the worker's roles and token flavors (§2.2, §5), the blob-less depth-1 checkout (§6.4.2), the tunnel (§13), the code layout (§3), tree-sitter's module path (§14).
+
+**Not done:** the PRD does not yet say search is optional (constraint 6, FR-E12); a v0.10 should. None of the newly specified behaviour is built; the backlog's gate and search rows still hold the briefs.
