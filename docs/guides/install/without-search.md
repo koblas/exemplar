@@ -1,9 +1,9 @@
 # How to run without exemplar-search
 
-`exemplar-search` holds a git mirror and a code index for every opted-in repository, and answers the agents' `find_references` and `path_history` tools. It needs local SSD and is the one stateful service besides Postgres. An installation can leave it out: reviews still run over the pull request's own checkout, and what they lose is bounded ([How a review works](../../concepts/how-a-review-works.md#without-exemplar-search)). Run without it for a trial, for a single repository, or until the cross-repository context is worth a search volume.
+Exemplar reviews without `exemplar-search`. Every rule runs over the pull request's own checkout, findings are verified and posted, and feedback, budgets and shadow mode work as usual. Search adds two things: `find_references` across the installation's other repositories, and `path_history`. It needs local SSD and is the one stateful service besides Postgres, so leave it out for a trial or a single repository, and add it when cross-repository context is worth a search volume ([How a review works](../../concepts/how-a-review-works.md#without-exemplar-search)).
 
-!!! note "Auto-approve needs search"
-    Without search the bug lane's contract class is skipped, and a review with a skipped class never auto-approves. Shadow mode and routed-to-humans outcomes work as usual. Add search before turning on [auto-approve](../operate/auto-approve.md).
+!!! note "Auto-approve, today"
+    The bug lane's contract check currently needs search even on a single repository, and a review with that class skipped is routed to humans, never auto-approved. Reviews and posted findings are not affected. Add search before turning on [auto-approve](../operate/auto-approve.md); a change to answer references from the checkout on single-repository installs is in progress and will lift this for them.
 
 ## 1. Leave the search workload out
 
@@ -46,7 +46,7 @@ The worker logs one warning at start:
 EXEMPLAR_SEARCH_URL not set: agents get no find_references or path_history, and bug.contract is skipped
 ```
 
-Reviews run. On a PR the bug lane would have covered, the check run routes to humans with "the bug lane did not run to full coverage" among its reasons, and the rule page in the web UI shows the contract class as skipped.
+Open a pull request: the review runs and its findings appear in the web UI (and on the PR once the repository leaves shadow). On a PR the bug lane covers, the check run's reasons include "the bug lane did not run to full coverage", which is the contract class above, not a fault.
 
 ## Adding search later
 

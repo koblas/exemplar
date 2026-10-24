@@ -52,7 +52,9 @@ The first outcome is what absorbs volume: it removes the PR from the human queue
 
 ### Without exemplar-search
 
-An installation may run without the search service. Every lane still runs over the pull request's checkout, and the verifier, dedupe, budgets and feedback are unchanged. What the agents lose is knowledge of code the PR did not touch: `find_references` and `path_history` are not offered, so a rule about callers sees only this repository, through `grep`, and nothing of other repositories; and the bug lane's contract class is skipped. A skipped class makes the run degraded, and a degraded run is never auto-approved: the PR is routed to humans with the reason. For one repository, or a monorepo, the loss is small; across many repositories it is the cross-repository view. The check run's reasons say so ("the bug lane did not run to full coverage", "the review ran degraded").
+An installation may run without the search service, and reviews are complete without it: every lane runs over the pull request's checkout, and the verifier, dedupe, budgets, posting and feedback are unchanged. What the agents lose is knowledge of code outside this repository. `find_references` and `path_history` are not offered, so a rule about callers finds them inside the repository with `grep` and sees nothing of other repositories. For one repository, or a monorepo, that costs little; across many repositories it is the cross-repository view.
+
+One consequence reaches the outcome: the bug lane's contract class needs `find_references` and is skipped without it, today even on a single repository. A skipped class makes the run degraded, and a degraded run is never auto-approved: the PR is routed to humans, with "the bug lane did not run to full coverage" among the reasons. Findings are posted as usual.
 
 ## The verifier
 
