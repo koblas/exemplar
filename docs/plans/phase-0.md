@@ -312,13 +312,7 @@ go run ./cmd/exemplar-search bench --repo <monorepo url> --work-dir /mnt/ssd/ben
 
 ### Still blocked
 
-| Test or exit item | Blocked on |
-|---|---|
-| T-0.1, T-0.2 live | Sandbox org with both apps installed, recorded sandbox PRs as fixtures, a running gateway with a provider key |
-| T-0.3 | Sandbox org with target ruleset shapes |
-| T-0.4 | Monorepo access and a benchmark host with zoekt and universal-ctags |
-| T-0.5 live | Running gateway; provider B for a cross-family verifier |
-| Security sign-off | §2 inputs #4, #16 and #17 |
+Work tracked in beads — see epic exemplar-bnt.
 
 ### Decisions taken (§6)
 

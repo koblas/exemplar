@@ -51,10 +51,7 @@ Phases are from spec §16. Work has gone past Phase 0 in "head starts", each log
 
 Built; see [plan §9](phase-0.md#9-status-2026-10-12).
 
-Waiting on outside inputs:
-- the sandbox GitHub org and App registration (T-0.1, T-0.3);
-- the monorepo benchmark run (T-0.4);
-- Security sign-off of eligibility and retention.
+Waiting on outside inputs: work tracked in beads — see epic exemplar-bnt.
 
 ### Phase 1 — Mine and curate
 
@@ -86,8 +83,7 @@ Waiting on outside inputs:
 - [Kubernetes manifests and images](phase-0.md#head-start-kubernetes-manifests-and-images-2026-10-14);
 - [Grafana boards](phase-0.md#head-start-grafana-boards-2026-10-14) over the SQL views.
 
-**Not built:**
-- OTEL-backed panels (latency, rate limits) and alerting.
+**Not built:** work tracked in beads — see epic exemplar-vtb.
 
 ### Phase 3 — Comment
 
@@ -110,8 +106,7 @@ Waiting on outside inputs:
 - [fixed-without-suggestion and reactions](phase-0.md#head-start-fixed-without-suggestion-and-reactions-2026-10-14), completing the §9.1 signals but teach-the-bot;
 - [SARIF and alert dismissals](phase-0.md#head-start-sarif-and-alert-dismissals-2026-10-14).
 
-**Not built:**
-- the Homebrew tap and internal mirror for the CLI.
+**Not built:** work tracked in beads — see epic exemplar-ffj.
 
 ### Phase 4 — Shift left and bug lane
 
@@ -141,9 +136,7 @@ Waiting on outside inputs:
 - [audit and counter-metric boards with alerts](phase-0.md#head-start-counter-metrics-and-alerts-2026-10-14);
 - compliance constants and kill switches.
 
-**Not built:**
-- the counter-metrics on unviewed owned paths and on human comment volume;
-- the red-team exercise (an activity, not code).
+**Not built:** work tracked in beads — see epics exemplar-vtb and exemplar-bnt.
 
 Auto-approve stays off in config.
 
@@ -158,11 +151,7 @@ Auto-approve stays off in config.
 
 - the [playground](phase-0.md#head-start-the-web-ui-playground-2026-10-14), with save-as-draft-PR (which also edits a rule);
 
-**Not built:**
-- the transcript viewer;
-- opt-in rollout waves (operations, not code);
-- the Fixer for human comments;
-- editor integration.
+**Not built:** work tracked in beads — see epics exemplar-653 and exemplar-bnt.
 
 ## Open questions
 

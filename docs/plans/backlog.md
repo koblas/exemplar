@@ -2,9 +2,11 @@
 
 Two kinds of item live here. **Ideas** are potential enhancements that are not in the [PRD](../spec/prd.md) or any plan yet: each says where it came from, what it would change, roughly what it costs, and what would make it worth doing; one leaves when it is adopted into the PRD (noted in the PRD's "What changed") or declined, in which case it moves to [Declined](#declined) with the reason. **Adopted requirements not yet built** are PRD requirements and spec sections (Draft 1.4) that the code does not implement yet; each row is a brief another agent can start from, and leaves when built and logged in [`ready-to-install.md`](ready-to-install.md) §7. Spec §16 gives their order (H1–H5), repeated under [Order of work](#order-of-work). The [plans index](README.md) explains how this fits the other documents.
 
-Status as of 2026-10-24, checked against spec Draft 1.4 and the code on that date. Items are grouped by the area they touch, not by priority; for ideas the **Worth it when** column is the trigger to pick one up.
+Status is tracked in beads (`bd`): one issue per row, backlinked here; ideas are `deferred` with the `idea` label. Items are grouped by the area they touch, not by priority; for ideas the **Worth it when** column is the trigger to pick one up.
 
 ## Review pipeline
+
+Work tracked in beads — see epics exemplar-uww (engine) and exemplar-s83 (lifecycle).
 
 | Item | Source | What it would change | Cost | Worth it when |
 |---|---|---|---|---|
@@ -16,6 +18,8 @@ Status as of 2026-10-24, checked against spec Draft 1.4 and the code on that dat
 
 ## Feedback and measurement
 
+Work tracked in beads — see epics exemplar-vtb and exemplar-o2r (circuit breaker).
+
 | Item | Source | What it would change | Cost | Worth it when |
 |---|---|---|---|---|
 | **"Unanswered at merge" as a first-class state** | PRD §16 question 16; Anthropic requires every finding to be fixed or resolved with a reason. | Today an untouched finding is *ignored* (§13). Record *unanswered* separately when the PR merges with the thread open and unreplied, show it per rule in the owner digest and per PR in the check-run summary, and let a repo opt into a `neutral` check until every finding has an answer. Never a blocking check. | Small for the state and digest; medium for the opt-in. | Acceptance rate is hard to read because ignored findings dominate the denominator. |
@@ -24,17 +28,11 @@ Status as of 2026-10-24, checked against spec Draft 1.4 and the code on that dat
 
 ## Order of work
 
-Spec §16 (Draft 1.4) orders everything below that is adopted and not built. H2 and H4 rows are independent of the platform and of each other; H1 comes first because it takes the App key out of the review process and makes search-off a mode.
-
-| Step | Rows | Why this order |
-|---|---|---|
-| H1 | Local `find_references` and `path_history` (C1–C3 are built, ready-to-install log 2026-10-24) | Search-off becomes a mode; the rest of H1 gave per-review isolation and took the App key out of the review process. On today's cluster. |
-| H2 | FR-A13, FR-E10 with `calibration_results`, FR-V7, FR-C8, FR-C9 | What a pilot feels first; small to medium and independent. |
-| H3 | Hosting C4–C7, then the Autopilot overlay and its verification list | Only after H1 proves the Job-per-review path. |
-| H4 | FR-A9, FR-A10/A11, FR-X12 and the change gate, FR-B9, FR-L1.8/L1.9, FR-E3/E16, FR-A12, `review_by_defaults`, the goal metric and the adjudicated shadow exit | Before any repo leaves shadow for auto-approve, and as the learning plane meets real data. |
-| H5 | Hosting C8–C10 | Follow load. |
+Work tracked in beads — the order is `order:H1`…`order:H5` labels and `blocks` dependencies (`bd list -l order:H2`, `bd ready`).
 
 ## Auto-approve gates (adopted, not built)
+
+Work tracked in beads — see epic exemplar-o2r (FR-E3/E16 in exemplar-uww, FR-B9 and FR-L1.x in exemplar-wlg).
 
 PRD v0.8 and v0.9 requirements. The gates are `internal/gates` (Stage 1 in `stage1.go`, its inputs assembled in `internal/engine/review.go` around the `evaluateStage1` call); the check-run wording is `internal/pipeline/verdict.go`; the guide is `docs/guides/operate/auto-approve.md` and the reference `docs/reference/config/repo.md`. Spec §6.13 and §16.1 (gate invariants) are the acceptance criteria for every row.
 
@@ -51,6 +49,8 @@ PRD v0.8 and v0.9 requirements. The gates are `internal/gates` (Stage 1 in `stag
 
 ## Convergence and verification controls (adopted, not built)
 
+Work tracked in beads — see epics exemplar-s83 (FR-C8, FR-C9), exemplar-o2r (FR-V7) and exemplar-wlg (FR-X12).
+
 PRD v0.7 requirements, specified in spec §6.2, §6.8 and §6.10. They change what the poster does across pushes and how the bug lane's findings are confirmed. Nothing in `schema/global.schema.json` or `schema/repo.schema.json` carries their settings yet.
 
 | Item | What it changes | Where | Cost |
@@ -62,6 +62,8 @@ PRD v0.7 requirements, specified in spec §6.2, §6.8 and §6.10. They change wh
 
 ## Learning plane and measurement (adopted, not built)
 
+Work tracked in beads — see epics exemplar-wlg and exemplar-vtb.
+
 PRD v0.9 changes to the rule lifecycle and to how success is measured (spec §8.10, §9.2, §11, §12.5, §16).
 
 | Item | What it changes | Where | Cost |
@@ -71,6 +73,8 @@ PRD v0.9 changes to the rule lifecycle and to how success is measured (spec §8.
 | **Adjudicated shadow exit** | Spec §11: the Phase 2 exit is precision on a random 200 shadow findings labelled by owners as right, wrong or unimportant, not against human comments. The finding page (`internal/web`, today only `POST /ui/findings/{id}/false-positive`) gets the three labels, written to `verifier_labels` with `source='human_review'`; a sample view lists a repo's unlabelled shadow findings in random order with how many of 200 are done; a SQL view computes precision on the labels per repo and rule, on the adjudication board. Labels are owner actions (`internal/owneract` authorization: rule-owner teams, or the repo's write access for shadow findings). Injected-violation recall per active rule (FR-X6, built in eval generation) is the other half and already has a number per rule in eval CI; the board shows both. | `internal/web`, `internal/owneract`, `db/migrations`, `dashboards/adjudication.json`, docs (web UI reference, adjudicate how-to, first-review tutorial's "shadow → live" step) | Small to medium. |
 
 ## Elastic hosting (adopted, not built)
+
+Work tracked in beads — see epic exemplar-ceb.
 
 Spec §2.4.2, C1–C11, in build order (C1–C3 are built: ready-to-install log, "Reviews run as Jobs" and "Runner claims", 2026-10-24); the figures and the platform scoring are in the hosting design of 2026-10-24. Reviews now run as a Job per review (`internal/worker/kubelaunch`), with `--concurrency` capping runners in flight per worker pod. `Worker.Review`, the webhook, the API, River, Postgres and the way in do not change. Requirement R1–R15 (§2.4.1) are the acceptance criteria for the platform; §16.1 "Runners" is the conformance suite.
 
@@ -87,6 +91,8 @@ Spec §2.4.2, C1–C11, in build order (C1–C3 are built: ready-to-install log,
 | — | **GKE Autopilot overlay and the §2.4.3 verification list** | A production overlay for Autopilot: a compute class with local SSD for search, generic ephemeral volumes for runners (C6), FQDN network policies for the four egress lists (§13), GKE Sandbox for runners and compile. Before committing, the eight half-day checks in §2.4.3 on a trial cluster: search on a local-SSD compute class against a Standard NVMe node; GKE Sandbox available to Autopilot pods with the engines inside CI's memory figures; a 120 s termination grace for runners, and `hostUsers: false` without gVisor; FQDN policy for the egress lists and `go test ./deploy` checking it; runner cold start with and without image streaming on `QueueToPost` p50/p95 against the always-on worker; cost per review at the three profiles; Cloud SQL or AlloyDB connection limits with pooling at the quota; Security's answer on Cloudflare Sandboxes (input #23). Record the answers in `ready-to-install.md` §7 and required input #6. | `examples/k8s/` (a new overlay), `deploy/manifests_test.go`, docs (production install, a hosting how-to) | Medium, after C1–C7. Needs a real GKE project; nothing here can be verified without one. |
 
 ## Operations
+
+Work tracked in beads — see epic exemplar-ffj.
 
 | Item | Source | What it would change | Cost | Worth it when |
 |---|---|---|---|---|

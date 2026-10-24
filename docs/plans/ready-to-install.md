@@ -145,32 +145,13 @@ Before: 9 required Secrets, 13 keys, about 15 values, about 30 App fields. After
 
 ## 5. Work items
 
-| # | Item | Section | Status |
-|---|---|---|---|
-| 1 | Fix GHES env wiring and the optional exports-app mount | §2 | done (2026-10-17) |
-| 2 | Reject placeholder settings at startup | §4.4 | done (2026-10-17) |
-| 3 | Root key with HKDF derivation; explicit files still win | §4.2 | done (2026-10-17) |
-| 4 | Setup mode and the GitHub App manifest flow in exemplar-api | §4.3 | done (2026-10-17); not run against real GitHub |
-| 5 | Installation id discovered from the App | §4.3 | done (2026-10-17) |
-| 6 | Derive URLs from one hostname; config git URL from the repo | §4.4 | done (2026-10-17) |
-| 7 | Config repo sync through the GitHub App | §4.4 | done (2026-10-17) |
-| 8 | `/ui/setup` checks and `/ui/setup.json` | §4.5 | done (2026-10-17), GitHub checks only |
-| 9 | First tag with rendered install manifests | §4.6 | workflow done (2026-10-17); not run in CI; the tag waits for the release PR |
-| 10 | Quickstart overlay and sizing patches | §4.6 | done (2026-10-17) |
-| 11 | Docs split into quickstart, production, upgrades, reference | §4.7 | done (2026-10-17) |
-| 12 | Confirm goose locks concurrent migrations | §2 | done (2026-10-17): it didn't; Migrate now takes an advisory lock |
-| 13 | GHES clone URLs for worker, search and learn evals | §7 | done (2026-10-17) |
-
-Items 1, 2 and 12 are small and independent. Item 4 depends on 6 for the manifest's URLs. Item 11 goes last.
+Work tracked in beads — see epic exemplar-ffj (items 1–13 are closed issues).
 
 ## 6. Open questions
 
+Work tracked in beads — see epic exemplar-ffj (decisions) and exemplar-bnt.1 (the Security question).
+
 - Rename the image `koblas/exemplar-server` before the first tag? And does anything in the cluster run the CLI from the image?
-- ~~One hostname or two?~~ Decided 2026-10-17: one host routed by path by default, `EXEMPLAR_WEBHOOK_URL` for a separate one (§7).
-- **For Security, together:** is a root key that gateway and search can use to derive the session and pseudonym keys acceptable, or should the pseudonym key stay a separate Secret? And the gateway pod's git-sync sidecar now holds the review App's private key where it held a read-only deploy key (§7, config sync as the App).
-- Store the App credentials in Postgres (no restart) in a later cut, or stay with show-and-apply?
-- Does the manifest flow accept a `localhost` redirect for the port-forwarded setup page, and can the manifest turn on the device flow? Both need a real org to confirm.
-- Setup state lives in one exemplar-api pod. With two replicas, a dropped and restarted `port-forward deployment/exemplar-api` can land on the other pod between "Create" and GitHub's redirect, leaving an App on GitHub whose code was never exchanged. Today's recovery is to delete that App on GitHub and start again; the docs say to port-forward one pod. Running setup with one replica, or keeping the state in Postgres, would remove it.
 
 ## 7. Log
 
