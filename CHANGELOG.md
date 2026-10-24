@@ -6,6 +6,16 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.3.0](https://github.com/koblas/exemplar/compare/v0.2.2...v0.3.0) (2026-10-24)
+
+
+### Features
+
+* **worker:** hand runners single-use token claims instead of the App key ([4950556](https://github.com/koblas/exemplar/commit/4950556b7733d29941ffad62452063ab8b958b65))
+* **worker:** hand runners single-use token claims instead of the App key ([5b634b4](https://github.com/koblas/exemplar/commit/5b634b423bb6ac5d219c262dcd50e82cdc60212c))
+* **worker:** run reviews as Kubernetes Jobs with stored config snapshots ([6ec7743](https://github.com/koblas/exemplar/commit/6ec7743baa3ad107ea75d5a312c4ca52a8012ead))
+* **worker:** run reviews as Kubernetes Jobs with stored config snapshots ([e67589c](https://github.com/koblas/exemplar/commit/e67589c2607d7e8f9ff2a6a47e8595784adbebb6))
+
 ## [0.2.2](https://github.com/koblas/exemplar/compare/v0.2.1...v0.2.2) (2026-10-22)
 
 
