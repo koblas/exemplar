@@ -6,7 +6,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 
 | Document | What it is |
 |---|---|
-| [`docs/spec/technical-spec.md`](../spec/technical-spec.md) | **The technical specification** (Draft 1.3), and the **canonical copy**: change the spec here. It covers architecture, pipeline, data model, security and the delivery plan, and is the source for every `§` reference. |
+| [`docs/spec/technical-spec.md`](../spec/technical-spec.md) | **The technical specification** (Draft 1.4), and the **canonical copy**: change the spec here. It covers architecture, pipeline, data model, security and the delivery plan, and is the source for every `§` reference. |
 | [`docs/spec/prd.md`](../spec/prd.md) | **The PRD** (v0.9), and the **canonical copy**: change the PRD here. It covers the problem, goals, personas, and the functional requirements (`FR-…`) the spec implements, with sample interactions (§17). |
 | [`docs/plans/phase-0.md`](phase-0.md) | The Phase 0 implementation plan (§1–§8), its status (§9), and a dated log of the head starts up to 2026-10-17. Each "head start" section records what was built, the decisions taken, how it is tested, and what is still missing. No new sections go here. |
 | [`docs/plans/ready-to-install.md`](ready-to-install.md) | **The current plan**: making a first installation short and checkable (setup in the cluster, the GitHub App manifest flow, one root key, a setup page, release manifests). New work is logged in its §7. |

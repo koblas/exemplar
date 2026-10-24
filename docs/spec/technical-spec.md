@@ -4,14 +4,23 @@ on 2026-10-13 from the claude.ai artifact "Exemplar — Technical
 Specification" (https://claude.ai/artifact/CoxFmpRouQvgeAXNY8C8jt, version
 1791800349-fc89), which is no longer maintained. Section numbers (§) in
 code comments, commits and docs/plans refer to this document. Bracketed ids such as [FR-D6] refer to
-the PRD ("Exemplar — Self-Correcting AI Code Review" v0.6), in
+the PRD ("Exemplar — Self-Correcting AI Code Review" v0.9), in
 docs/spec/prd.md; docs/plans/README.md maps each id family to its
 sections in both.
 -->
 
 # Exemplar — Technical Specification
 
-**Status:** Draft 1.3 · October 2026 **Implements:** PRD "Exemplar — Self-Correcting AI Code Review" v0.6. Requirement IDs in brackets (e.g. [FR-V1]) refer to the PRD. **Audience:** the engineers building and operating Exemplar, security, and platform leadership.
+**Status:** Draft 1.4 · October 2026 **Implements:** PRD "Exemplar — Self-Correcting AI Code Review" v0.9. Requirement IDs in brackets (e.g. [FR-V1]) refer to the PRD. **Audience:** the engineers building and operating Exemplar, security, and platform leadership.
+
+### What changed in Draft 1.4 (review against PRD v0.9; hosting design of 2026-10-24)
+
+- **PRD v0.7:** verifier quorum for the bug lane (§6.8); round cap and class-of-bug grouping across pushes (§6.2, §6.10); the clean-PR false-alarm set as a change gate beside the incident set (§8.8, §8.9); rounds, human approvals and time waiting on a person as informational metrics (§12.5).
+- **PRD v0.8:** author experience and blast radius as Stage 1 gates, with their config and gate-trace fields (§6.13); an auto-approved failure is recorded against the gate trace, never the author (§6.13, §12.5).
+- **PRD v0.9:** a clean run is no `blocking`, `important` or Security candidate, so `suggestion` findings post beside an approval (§1.2 rule 6, §6.1, §6.13, §16.1); `same_family` stops gating approval once the verifier calibration has passed for the configured providers, recorded in `calibration_results` (§6.8, §6.13); the approval is bound to the base SHA (§6.13); rules per agent and overflow by expected value (§6.3, §6.5); learned importance priors (§8.11, §9.3); owner-written seeds and merged-change clusters as co-equal sources (§8.1, §8.5, §8.7); `review_by_defaults` per category (§8.10); the goal metric is severity-weighted acceptance plus incident-set recall, and the shadow exit is an adjudicated sample plus injected recall (§12.6, §16).
+- **Hosting:** a new §2.4 carries the deployment design: the hosting requirements the code imposes, the eleven changes that make one install elastic (control/runner split, single-use token claims, config snapshots, queue-driven autoscaling), the platform recommendation (Kubernetes on GKE Autopilot, Cloudflare at the edge), the trial paths, and the cost picture. §13 gains the runner boundary; §14, §15, §16 and §17 follow.
+- **Search is optional:** §6.4.6 specifies running without `exemplar-search` as an install mode rather than a degraded state, with `find_references` and `path_history` answered from the review's own checkout on single-repository installs, and what the check run says. The install ladder is shadow without search, posting with search, auto-approve.
+- **As built:** §2.2 records that the orchestrator, poster and feedback roles run as River jobs inside `exemplar-worker` with distinct token flavors, that the worker's checkout is a blob-less depth-1 clone (§6.4.2), and that the default way in is a Cloudflare Tunnel (§13). The services table is the binaries that exist.
 
 ### What changed in Draft 1.3
 
@@ -42,22 +51,24 @@ Based on the PRD's goals (G1–G7), constraints (PRD §2.1) and functional requi
 |---|---|
 | Review every PR on GitHub with org-specific rules; never block [FR-E8] | A GitHub App backed by an in-cluster Go control plane (§2, §5). Reviews post as `COMMENT` ; the verdict type has no `REQUEST_CHANGES` value (§6.12). |
 | Learn offline, enforce online, one human gate [PRD §5 invariants] | Learning plane writes candidate rules as draft PRs to `exemplar-config` ; only merged config is enforced (§8). |
-| One agent per rule, ≤ 3 concurrent [FR-E3, FR-E4] | Orchestrator fans out with a bounded `errgroup` (§6.5). |
+| One agent per rule, ≤ 3 concurrent; rules per agent and overflow by expected value [FR-E3, FR-E4, FR-E16] | The engine fans out with a bounded `errgroup`; `concurrency.rules_per_agent` may group same-category rules after a golden-set run; overflow past the fan-out cap is ranked by precision × severity weight × hit rate (§6.3, §6.5). |
 | Three lanes: compiled, exemplar, bug [PRD §8.1] | ast-grep/Semgrep runners, exemplar agents, gated bug-class agents (§6.6–6.7). |
-| Verification with model diversity [FR-V1–V6, FR-E10–E11] | Verifier on a second model provider; evidence resolved in code; importance check for Lane 1 Performance/Style/Nit (§6.6, §6.8). |
+| Verification with model diversity and a bug-lane quorum [FR-V1–V7, FR-E10–E11] | Independent verifier in a fresh context, on a second family where one exists; `n`-of-`k` quorum for Lane 3; evidence resolved in code; importance check for Lane 1 Performance/Style/Nit; `same_family` gates approval only until the calibration passes (§6.6, §6.8). |
 | Model output is untrusted and checked by code [FR-T1–T6] | Validation in code; provenance attached by code; read-only tools; no write tokens in model-facing processes (§6.9, §13). |
-| Self-contained repository context, no builds [constraint 6, FR-E12–E14] | `exemplar-search` : one container embedding zoekt with ctags symbols and the only git mirror; import-based scoping (§6.4). |
-| Comment budget, labels, SARIF, dedupe [FR-P1–P6, FR-E7, FR-E15] | Ranking and budget with Security/blocking exemptions; human-comment and late-CI linter dedupe; Conventional Comments labels; SARIF for Security (§6.10, §6.12). |
+| Self-contained repository context, no builds [constraint 6, FR-E12–E14] | `exemplar-search` : one container embedding zoekt with ctags symbols and the only git mirror; import-based scoping (§6.4). Search is an optional install: without it, references and history come from the review's own checkout (§6.4.6). |
+| Comment budget, labels, SARIF, dedupe, class-of-bug grouping [FR-P1–P6, FR-E7, FR-E15, FR-C9] | Ranking and budget with Security/blocking exemptions; one grouped comment when a rule or class matches many places; human-comment and late-CI linter dedupe; Conventional Comments labels; SARIF for Security (§6.10, §6.12). |
 | Validated one-click fixes [FR-F1–F3] | Suggestion blocks validated by apply + parse + format checks (§6.11). |
-| Structured, Tricorder-style feedback [FR-B1–B8] | Signed links and slash commands; role-weighted eFP; owner adjudication; human agreement as evidence; automated demotion (§9). |
-| Auto-approve behind deterministic gates [FR-A1–A9] | Strictly deterministic Stage 1 over harness-measured coverage and the pre-verification candidate count, path denylist and author policy in code, forced bug lane, two-model Stage 2, revocation on push (§6.13). |
-| PR lifecycle [FR-C1–C7] | Incremental re-review, stable finding identity, self-resolving threads, dismissed-stays-dismissed, rebase re-anchoring, stacked-PR bases (§6.2). |
-| Degraded operation [FR-D1–D6] | Fixed shedding order, fan-out cap, provider failover, explicit coverage, incomplete runs post nothing (§6.15). |
+| Structured, Tricorder-style feedback; learned importance priors [FR-B1–B9] | Signed links and slash commands; role-weighted eFP; owner adjudication; human agreement as evidence; automated demotion; path-level importance priors proposed from *Not important here* dismissals (§8.11, §9). |
+| Auto-approve behind deterministic gates [FR-A1–A13] | Strictly deterministic Stage 1 over harness-measured coverage and the pre-verification count of `blocking`, `important` and Security candidates, author experience and blast radius from stored history and CODEOWNERS, path denylist and author policy in code, forced bug lane, two-model Stage 2, revocation on push and on base drift; failures attributed to the system (§6.13). |
+| PR lifecycle, convergence across pushes [FR-C1–C9] | Incremental re-review, stable finding identity, self-resolving threads, dismissed-stays-dismissed, rebase re-anchoring, stacked-PR bases, a round cap with one summary comment (§6.2). |
+| Degraded operation [FR-D1–D6] | Fixed shedding order, fan-out cap, provider failover, explicit coverage, incomplete runs post nothing; queue-driven capacity (§6.15, §2.4). |
 | Data handling and eligibility [FR-H1–H8] | Platform denylist, path exclusions, pre-call secret redaction, per-call data logging, pseudonymized mining, Security-owned retention (§13.1). |
 | Shift left [FR-S1–S7] | Rule exports (weekly and on promotion/kill, auto-merge for generated-only PRs, drift tracking) via a separate least-privilege GitHub App; pre-PR checks through the CLI (§10.1, §10.3). MCP server deferred (Appendix C). |
-| Evaluation before rollout [FR-X1–X11] | Eval CI, replay harness, injected and mutation cases, adversarial set on every change, verifier calibration, sampled baseline reviewer (§8.8–8.9). |
+| Learning from every source [FR-L1–L6] | Review comments, incidents and reverts, owner-written seeds and merged-change clusters enter one pipeline behind one human gate (§8). |
+| Evaluation before rollout [FR-X1–X12] | Eval CI, replay harness, injected and mutation cases, adversarial set on every change, verifier calibration, sampled baseline reviewer, incident set and clean-PR set as the change gate (§8.8–8.9). |
 | Cost and latency visible, not optimized for [G5, PRD §13.2] | Recorded per call, run and PR; shown as informational; soft per-run ceiling triggers degradation (§6.14). |
 | Per-rule visibility and audit | Grafana on a Postgres replica backed by SQL views; Go web UI in Phase 6 (§12). |
+| Deployable from a laptop trial to many teams on one install [PRD personas, R11–R12 in §2.4] | One set of manifests; capacity follows the queue with a job per review; the platform choice and its reasons in §2.4. |
 
 ### 1.2 System-wide rules
 
@@ -68,7 +79,7 @@ These hold for every component and are tested in CI where possible.
 3. **Models never hold write access.** Only `exemplar-poster` and the config writer hold write tokens, and neither sees model input.
 4. **Provenance is attached by code.** Rule ids, citations, lanes and severities never come from model output.
 5. **Zero coverage is a failure,** never a clean result. Coverage is measured by the harness from the files an agent actually opened, never from anything the model says. "No findings" is claimed only at 100% coverage; degraded runs cannot approve and incomplete runs post nothing.
-6. **Verification filters what humans see; it never widens what the bot may approve.** Auto-approve looks at candidate findings before the verifier, so a refuted finding still blocks approval.
+6. **Verification filters what humans see; it never widens what the bot may approve.** Auto-approve looks at candidate findings before the verifier, so a refuted `blocking`, `important` or Security finding still blocks approval. A `suggestion` candidate does not block [FR-A13]; severity comes from the rule, never from the model (rule 4), so the model cannot downgrade a finding into the non-blocking class.
 7. **Nothing reaches a model provider before eligibility, exclusion and secret-redaction checks pass.**
 8. **No builds.** No component runs a build tool or depends on build artifacts.
 9. **Everything is idempotent on a natural key** so any job can be retried (§7).
@@ -121,7 +132,7 @@ flowchart TB
   E -. context .-> ZO[("exemplar-search")]
 ```
 
-Reading top to bottom is the order of work for one review. Only `exemplar-poster` holds a write token; workers and the verifier hold read-only tokens and reach models only through the gateway.
+Reading top to bottom is the order of work for one review. Only the poster role holds a write token; workers and the verifier hold read-only tokens and reach models only through the gateway. **As built,** the orchestrator, worker and poster boxes are three roles of one binary, `exemplar-worker`, separated by the token flavor each mints (§2.2, §5); the elastic design in §2.4 splits that binary into a control process and a per-review runner along the same line.
 
 **View 2 — Learning rules and the human gate (offline path)**
 
@@ -167,21 +178,20 @@ For the network view — what can reach the cluster and what the cluster calls �
 
 ### 2.2 Services
 
-All services are Go binaries built from one module (`cmd/*`) and shipped in one image; each runs as its own Kubernetes Deployment so it scales and is permissioned independently.
+All services are Go binaries built from one module (`cmd/*`) and shipped in one image; each runs as its own Kubernetes workload so it scales and is permissioned independently. The table is the binaries as built. The orchestrator, poster and feedback roles of earlier drafts are River jobs inside `exemplar-worker`; what keeps them separate is the token each job mints (§5), not a process boundary. §2.4 adds the process boundary where it matters, between the control process and the per-review runner.
 
 | Service (binary) | Responsibility | Scaling | Key Go pieces |
 |---|---|---|---|
-| `exemplar-webhook` | Verify `X-Hub-Signature-256` , persist raw event to `gh_events` with `X-GitHub-Delivery` as idempotency key, enqueue in the same transaction, return 202 within GitHub's 10 s window. No business logic. | Stateless, 2+ replicas | `net/http` , `go-github` `ValidatePayload` / `ParseWebHook` , River `InsertTx` |
-| `exemplar-orchestrator` | Turn events into reviews: load effective config, compute deterministic scope, create `rule_runs` , schedule agents (≤3 per PR), validate, compute gates, hand results to poster. Cancels superseded reviews. | River workers | River, `errgroup` , `internal/scope` , `internal/gates` |
-| `exemplar-worker` | Prepare git worktree (partial clone); run **Lane 1** engines (ast-grep, Semgrep), **Lane 2** exemplar agents, **Lane 3** bug-class agents, and the **verifier** ; validate fixes. Read-only token only. | Horizontal; goroutine per agent, bounded by semaphore | `os/exec` ( `git` , `rg` , `ast-grep` , `semgrep` ), `anthropic-sdk-go` + provider-B SDK via gateway, `go-tree-sitter` |
-| `exemplar-poster` | Submit the GitHub review (one call, many comments), create/update check runs, submit APPROVE when gates pass. Only component with write scopes. | Small | `go-github` , scoped installation tokens |
-| `exemplar-api` | Public engine API (PRD §8.8) for playground, CLI, other agents and eval; **signed feedback-link endpoint** (§6.12); later the Phase 6 web UI. AuthN via OIDC for humans, signed JWT for services. | Stateless | `net/http` , `go-oidc` |
-| `exemplar-gateway` | Holds keys for the approved providers (hardcoded list), routes each stage (generator, verifier, light, categorizer) through an ordered provider list with **failover** , runs a second secret-scan on every request, tracks per-run spend against the soft ceiling, rate-limits per provider/model and per caller, and writes every call to `model_calls` . | Stateless | `httputil.ReverseProxy` , `x/time/rate` , gitleaks, pgx |
-| `exemplar-feedback` | Poll reactions and thread state, classify replies, detect fixes, write `feedback_events` ; nightly rule metrics and auto-demotion PRs. | River periodic jobs | `githubv4` , River |
-| `exemplar-learn` | Subcommands: `ingest` , `path-events` (incidents/reverts), `extract` (Message Batches driver), `compile` (rule synthesis + sandbox eval), `candidates` , `evalgen` (history, injected, mutation), `export` (rule exports via the exports app), `expiry` . | Kubernetes Jobs/CronJobs | Shares `internal/gh` rate limiter and token minting |
-| `learning/` (Python) | `embed` , `cluster` , `rank` — reads/writes Postgres tables only, no API surface. | CronJob | numpy, faiss/hnswlib, scikit-learn |
-| `exemplar-search` | Holds the system's only git mirror of the monorepo (and `context.extra_repos` ), builds a **zoekt** index of the default branch with ctags symbols in the background after each fetch, and answers the repo-context tools and `read_file` over an internal HTTP API (§6.4). | StatefulSet, 2 independent replicas, local SSD | zoekt (embedded Go library), `os/exec` ( `git` , `universal-ctags` ) |
-| `exemplar` (CLI) | Local pre-PR review, rule try, eval. | Laptops/CI | Cobra; single static binary via GoReleaser |
+| `exemplar-webhook` | Verify `X-Hub-Signature-256` , persist raw event to `gh_events` with `X-GitHub-Delivery` as idempotency key, enqueue in the same transaction, return 202 within GitHub's 10 s window. No business logic, no GitHub credentials. | Stateless, 2+ replicas | `net/http` , `go-github` `ValidatePayload` / `ParseWebHook` , River `InsertTx` |
+| `exemplar-worker` — **control** (`serve`) | Routes events into jobs; runs the cheap queues (linter checks, feedback, owner actions, merge policy), the periodic jobs (reconcile, sweep, retention, stats refresh) on its leader, and the **dispatcher** for `pr_review`, `evaluate` and `playground_run`: takes the per-repo slot, snapshots the config version, mints the review's tokens into a single-use claim, launches a runner through the `Launcher` interface and maps its exit back to River. Holds the App private key; never runs model-facing code when `--dispatch` is on. | 2 replicas, always on | River, `internal/worker`, `internal/gh` |
+| `exemplar-worker` — **runner** (`run-job`) | One review: checkout (blob-less depth-1 clone), eligibility and redaction, deterministic scope, **Lane 1** engines, **Lane 2** exemplar agents, **Lane 3** bug-class agents, the **verifier** and quorum, validation, fix checks, dedupe, ranking, gates, and the post (one review, check run, SARIF, APPROVE) with the poster token from its claim. Exits when done. | One process per review: in the control pod (`serve` without `--dispatch`, the quickstart) or a Kubernetes Job per review (production); other launchers in §2.4 | `errgroup`, `internal/engine`, `internal/pipeline`, `internal/gates`, `os/exec` ( `git` , `rg` , `ast-grep` , `semgrep` ), `anthropic-sdk-go` via the gateway, `go-tree-sitter` |
+| `exemplar-api` | Sign-in (GitHub OAuth and/or OIDC), the **signed feedback-link endpoint** (§6.12), `/v1/evaluate` for the CLI, config CI and services (PRD §8.8), and the `/ui/` web UI (§12.8). Enqueues work for the worker; holds no installation credentials. Without `EXEMPLAR_GH_APP_ID` it runs setup mode and registers the App from a manifest. | Stateless, 2 replicas | `net/http` , `internal/oidc`, `internal/web` |
+| `exemplar-gateway` | Holds keys for the approved providers (hardcoded list), routes each stage (generator, verifier, light, categorizer) through an ordered provider list with **failover** , runs a second secret-scan on every request, tracks per-run spend against the soft ceiling, rate-limits per provider/model and per caller, and writes every call to `model_calls` . | Stateless; horizontal on request rate | `httputil.ReverseProxy` , `x/time/rate` , gitleaks, pgx |
+| `exemplar-learn` | CronJobs: `ingest` , `path-events` (incidents/reverts), `extract` (Message Batches driver), `evals` , `compile` (rule synthesis + sandbox eval), `propose` , `change-clusters` (§8.1), `priors` (§8.11), `demote` , `expiry` , `teach` , `digest` , `export` (via the exports app). | CronJobs, one run at a time (`Forbid` plus an advisory lock) | Shares `internal/gh` rate limiter and token minting |
+| `learning/` (Python) | `cluster` , `rank` (and `embed` once a provider is approved) — reads/writes Postgres tables only, no API surface. | CronJobs | numpy, faiss/hnswlib, scikit-learn |
+| `exemplar-search` | Holds the system's only git mirror of the opted-in repositories (the monorepo and `context.extra_repos` ), builds a **zoekt** index of the default branch with ctags symbols in the background after each fetch, and answers `search_text`, `find_definition`, `find_references`, `dependents`, `path_history` and `read_file` over an internal HTTP API (§6.4). **Optional** (§6.4.6). | StatefulSet, 2 independent replicas, local SSD; read replicas as load grows | zoekt (embedded Go library), `os/exec` ( `git` , `universal-ctags` ) |
+| `exemplar-cloudflared` | The default way in: a Cloudflare Tunnel connector that dials out, so nothing in the cluster is public. Replaced or joined by an Ingress (`deploy/k8s/direct`). | 2 replicas | cloudflared, pinned by digest |
+| `exemplar` (CLI) | Local pre-PR review (`login`, `review`), rule try, validate, eval, replay, mutations, calibration. | Laptops/CI | Cobra; native builds per platform (cgo for tree-sitter) |
 
 ### 2.3 Implementation languages
 
@@ -190,45 +200,171 @@ All services are Go binaries built from one module (`cmd/*`) and shipped in one 
 - **Contracts** shared by both are JSON Schema files in `schema/`. Go types are validated against them in tests; Python models are generated with `datamodel-code-generator`. CI fails on drift.
 - **Git** operations shell out to the `git` binary (`exec.CommandContext` with timeouts) for partial clone and sparse checkout. Large GitHub GraphQL queries use `genqlient`-generated clients.
 
+### 2.4 Deployment and elastic hosting
+
+Exemplar is a self-hosted product: a customer's platform team runs it in its own GitHub org, and code never leaves that boundary except to the model provider through the gateway. This section fixes what any hosting of it must provide, how one installation scales from a laptop trial to many teams, and which platform to run it on. It condenses the hosting design of 2026-10-24 ("Exemplar Elastic Hosting"); the figures there were checked against vendor documentation on that date.
+
+#### 2.4.1 What the code requires of a host
+
+| # | Requirement | Must / should | Comes from |
+|---|---|---|---|
+| R1 | Postgres 16 with pgvector, reachable privately. It holds all state and the River queue; there is no other data store. | Must | every binary but search |
+| R2 | Fast local disk that survives restarts for `exemplar-search` (mirror and zoekt index, 2 replicas on different hosts). Network file systems are too slow for it. **Waived when search is left out** (§6.4.6). | Must, when search runs | `cmd/exemplar-search`, `deploy/k8s/core/search.yaml` |
+| R3 | Two public HTTPS endpoints: GitHub to the webhook, people to the API. GitHub's hook ranges only on the webhook; org SSO in front of the API. | Must | §13 IN-1, IN-2 |
+| R4 | Per-workload network isolation: default deny, an explicit egress list per binary. Per-host egress (GitHub only, providers only) is the intent. | Must | §13 |
+| R5 | Only the gateway holds model-provider keys; only the poster flavor writes to GitHub; secrets come from an external store, never the repo. | Must | §5, §13 |
+| R6 | Code never leaves the installation except to the model provider through the gateway. | Must | §13.1 |
+| R7 | Model-written and unmerged rule bodies run in a sandbox: no network, CPU and memory caps. Today `unshare --net` plus `prlimit`; the compile job is suspended until a platform allows it. | Must | `internal/compiled`, `exemplar-learn compile` |
+| R8 | A review is one job: up to 30 minutes, at most 3 attempts, unique by its arguments, cancelled when the PR's head moves. Per-repo fairness (§6.15). | Must | `internal/worker`, `internal/store/jobs.go` |
+| R9 | Graceful shutdown: readiness drops, running work finishes or returns to the queue, within a grace period longer than the shutdown (worker 80 s under 120 s). | Must | every `cmd/`, `go test ./deploy` |
+| R10 | 13 scheduled learning jobs, none overlapping itself; the periodic maintenance jobs on exactly one process. | Must | `deploy/k8s/core/learn.yaml`, `internal/worker/maintain.go` |
+| R11 | Small installs are cheap: a trial runs one replica of everything and an in-cluster Postgres; nothing idles expensively between PRs. | Should | quickstart, `components/postgres` |
+| R12 | Enterprise installs scale on four axes: PRs per hour, repositories, monorepo size, and teams sharing one install (one `exemplar-config`, CODEOWNERS-owned rules, per-repo fairness). | Should | PRD personas, §6.15 |
+| R13 | Non-root, read-only root filesystem, no capabilities, RuntimeDefault seccomp; images pinned by digest. | Should | `deploy/README.md`, `go test ./deploy` |
+| R14 | The deploy is checkable without a cluster: rendered manifests are tested against the code. | Should | `deploy/manifests_test.go` |
+| R15 | GitHub Enterprise Server works as well as GitHub.com. | Should | `EXEMPLAR_GH_API_URL`, `EXEMPLAR_GH_WEB_URL` |
+
+R2 rules out any host without persistent local disk for the search tier; R7 with R12 asks for per-review isolation that scales with load.
+
+#### 2.4.2 From fixed-size to elastic: the changes
+
+Today the review path is fixed-size: 2 worker pods, 4 reviews each, always running. The changes below make capacity follow the queue and isolation per review, in build order. C1–C3 are the core and are useful on any platform; nothing in the pipeline itself changes (`Worker.Review` is reused as is), nor the webhook, the API, River, Postgres or the way in.
+
+| # | Change | Why | Size |
+|---|---|---|---|
+| C1 | **Split the worker into control and runner.** `exemplar-worker serve --dispatch` keeps River, the cheap queues and the periodic jobs. `exemplar-worker run-job --job <id>` does one `pr_review`, `evaluate` or `playground_run` and exits. The dispatcher is the River worker for those kinds: it takes the per-repo slot, launches a task through a small `Launcher` interface and waits, mapping the exit code to River (done, cancel, snooze on capacity, error for retry). River keeps timeouts, retries, uniqueness and supersede. **Launchers:** in-process (`serve` without `--dispatch`: the quickstart, where a review runs inside the control pod as today), Kubernetes Job (production), and later ECS or Cloud Run tasks. One binary, one set of manifests, a flag between trial and production. | Capacity per review instead of per pod; a kernel- or VM-level boundary per review; control stays small and always on; the trial stays as light as today. | Medium |
+| C2 | **Scoped tokens through a single-use claim.** The dispatcher mints the four tokens a review needs (worker, gate, poster, clone), scoped to one repository, into a `runner_claims` row with a one-time nonce. The runner claims the row, reads the tokens, and the row is cleared on exit. The App private key never enters a runner. | Closes the §13 risk that the review process could mint any token flavor, config-writer included. Lets untrusted rule bodies run in the same task as the review. | Small |
+| C3 | **Config snapshot by version.** Control writes each validated `exemplar-config` version to `config_snapshots`; the runner loads the version the job was dispatched with. | Runners may not read the config repo (worker tokens exclude it on purpose) and must review with the config the dispatcher chose (FR-C6). | Small |
+| C4 | **Advisory lock in every scheduled job entrypoint** (Go and Python). | Schedulers outside Kubernetes have no `concurrencyPolicy: Forbid`; even on Kubernetes a manual run can overlap a scheduled one (R10). | Small |
+| C5 | **Queue-driven autoscaling.** The `reviews` queue's `MaxWorkers` becomes the number of runners in flight, bounded by a platform quota, not one pod's CPU. River queue depth and age are exported as metrics (FR-D6) with alerts. | Small installs run zero runners between PRs; a monorepo's rebase storm fans out to the quota. | Small |
+| C6 | **Per-review disk as an ephemeral volume**, sized per job (today 32 GiB on the worker pod for 4 reviews). | A runner needs its own checkout; per-pod-billed platforms request disk per pod. | Small |
+| C7 | **Connection pooling in front of Postgres** (PgBouncer or the cloud's pooler), transaction mode for runners. Control's slot locks need session mode and stay direct. | Hundreds of concurrent runners would exhaust Postgres connections. | Small |
+| C8 | **Search scales by read replicas.** `exemplar-search` is read-only to reviews; add replicas behind the Service, each with its own mirror and index. Sharding by repository is the step after, for very large orgs only. | More reviews means more `find_references` calls; one StatefulSet of 2 is the current ceiling. | Medium |
+| C9 | **Gateway scales horizontally** behind its Service with an HPA on request rate. Provider rate limits become the ceiling; failover and per-repo budgets stay. | Reviews fan out to many model calls at once. | Small |
+| C10 | **Compile and playground run in the per-task boundary.** A `--sandbox=microvm` mode: `prlimit` for limits, the task's own network policy (Postgres and gateway only) for egress, scrubbed environment for engine children. Where the platform allows unprivileged user namespaces or a gVisor/Kata runtime, `unshare --net` stays. | Un-suspends the compile job without weakening `--require-sandbox` (R7). | Small |
+| C11 | **The small-install overlay stays first-class:** one replica of everything, in-cluster Postgres, in-process launcher, a low quota. Same manifests, different numbers. | R11. | Done for replicas; the quota is new |
+
+**Multi-team operation** needs no new tenancy model: one install per GitHub org, one `exemplar-config` with CODEOWNERS-owned rules, per-repo fairness so one team's burst cannot starve another, and the existing per-repo budgets and kill switches. Many teams change only capacity (C5, C7, C8, C9) and visibility (queue depth per repo on the operations board).
+
+```mermaid
+flowchart LR
+  subgraph ON["Always on, 1–2 replicas"]
+    WH["exemplar-webhook"]
+    API["exemplar-api"]
+    CTL["exemplar-worker serve --dispatch<br/>River · dispatcher · periodic jobs"]
+    GW["exemplar-gateway"]
+    SE[("exemplar-search<br/>optional")]
+  end
+  subgraph RUN["Per review, exists only while it runs"]
+    R1["runner: run-job<br/>tokens for one repo"]
+    R2["runner"]
+    R3["runner"]
+  end
+  PG[("Postgres<br/>+ River · claims · snapshots")]
+  GH["GitHub"]
+  MP["Model providers"]
+
+  GH -- webhooks --> WH --> PG
+  API --> PG
+  CTL <--> PG
+  CTL -- "Launcher: Job per review" --> RUN
+  RUN -- "claim tokens, load snapshot" --> PG
+  RUN -- "clone, post" --> GH
+  RUN --> GW --> MP
+  RUN -.-> SE
+```
+
+#### 2.4.3 Platform
+
+Six ways to host were scored against R1–R15: Kubernetes on own nodes, GKE Autopilot, EKS Auto Mode, ECS Fargate with EC2 for search, Cloud Run with GCE for search, and Cloudflare (Workers, Containers, Sandboxes). Kubernetes in any form meets every must-row on one platform; the native services meet them only as two platforms, because neither Fargate nor Cloud Run can host `exemplar-search`, and each discards the manifests, the per-workload policies and `go test ./deploy`. Cloudflare cannot be the host (no Postgres with pgvector, 20 GB disk caps) and stays what it is today, the edge.
+
+**Recommendation: build on Kubernetes, run it on GKE Autopilot, keep Cloudflare at the edge.**
+
+- Kubernetes is the only option where one platform meets every must-row, search included; the deploy work exists and is tested against the code; the elastic model is a Kubernetes Job per review, the mechanism GitHub uses for its own runners; and the same manifests run on EKS, GKE, k3s or on-prem, so a GitHub Enterprise Server customer behind a firewall takes the same artifact.
+- Autopilot bills per pod, not per node: a small install pays for one replica of each service and nothing between PRs, a busy org pays for the runners it ran (R11 and R12 with the same manifests). FQDN network policies give the per-host egress lists of §13 that plain NetworkPolicy cannot express. GKE Sandbox (gVisor) gives each runner and the compile job a separate kernel, which un-suspends compile without weakening `--require-sandbox`. Google runs the nodes and upgrades.
+- What Autopilot costs: a cluster management fee, a 10 GiB cap on plain ephemeral storage (runners use a generic ephemeral volume, C6), and a compute class with local SSD for `exemplar-search`. None of it touches the code.
+
+| Situation | Choose |
+|---|---|
+| Standardized on AWS, or routing models to Bedrock | **EKS Auto Mode.** Same manifests and Job-per-review model; Karpenter scales the review pool to zero; Bedrock through the task's IAM role. Add Cilium or Route 53 DNS Firewall for per-host egress and a gVisor or Kata node pool for the sandbox. Second choice overall. |
+| No Kubernetes allowed at all | ECS Fargate for everything but search, EC2 for search. A new deploy target with its own checks; budget for it. |
+| On-prem or air-gapped (GHES) | Kubernetes on own nodes (k3s or the distribution in use), NVMe for search, Cilium for egress. Same manifests. |
+| Security wants rule bodies off the cluster entirely | Add Cloudflare Sandboxes (`enableInternet: false`) for compile and the playground only, after a data-handling review under R6. Not instead of Kubernetes. |
+
+**Order of work:** C1–C3 with the Kubernetes Job launcher first, on the cluster that exists today; they give per-review isolation and take the App key out of the review process before any cloud decision is final. Then C4–C7, then the Autopilot overlay (compute class, ephemeral volumes, FQDN policies). C8–C10 follow load. The §6.4.6 local references and history ship with this work.
+
+**Verify before committing** (each a half-day on a trial cluster): Autopilot runs `exemplar-search` on a local-SSD compute class at the sizes an installation needs, measured against a GKE Standard NVMe node; GKE Sandbox is available to Autopilot pods and the engines run under it within the memory figures CI checks; Autopilot allows a 120 s termination grace for runners, and `hostUsers: false` if gVisor is not used; FQDN policy expresses the four egress lists and `go test ./deploy` can check it; runner cold start with and without image streaming, compared on `QueueToPost` p50 and p95 against the always-on worker; cost per review at trial, team and monorepo load; Cloud SQL or AlloyDB connection limits with pooling at the target runner quota; and, if Cloudflare Sandboxes are wanted for compile, Security's answer on repository files leaving the cluster (R6).
+
+#### 2.4.4 Trials and conversion
+
+The trial is the 20-minute quickstart: one Kubernetes node, in-cluster Postgres, one replica of everything, in-process launcher, one repository in shadow, search optional. It needs a GitHub org, a model key and one public host name. The Cloudflare Tunnel makes a laptop a valid trial host: a k3d, kind or OrbStack cluster behind a tunnel receives GitHub's webhooks with no public IP, no ingress controller and no cloud account, and it should be the first path in the trial guide.
+
+| The prospect has | Trial path | Cost to them |
+|---|---|---|
+| A laptop and a GitHub org | Quickstart on a local cluster behind a tunnel, in-process reviews | Model spend only |
+| A Kubernetes cluster (any cloud, on-prem, GHES) | Quickstart overlay in a namespace; tunnel or their Ingress | One small node's worth plus model spend |
+| GCP, no cluster | A GKE Autopilot cluster from the quickstart overlay | Cluster fee (the free tier covers one) plus a few small pods, plus model spend |
+| AWS, no cluster | EKS Auto Mode, same overlay | Control-plane fee plus one small node, plus model spend |
+| No infrastructure for a trial | A trial hosted by us (below) | None; we carry the model spend |
+
+In every self-hosted row the production install is the same manifests with a different overlay: managed Postgres (dump and restore the trial's), two replicas, `--dispatch` on, Access and the WAF rule at the edge, FQDN egress policies. `exemplar-config` and the rules the trial tuned carry over unchanged.
+
+**A hosted trial** (we run Exemplar; they install our GitHub App on their org) is not in the design and would need three things: tenancy (one namespace per trial tenant from the same manifests, with its own database and `exemplar-config`; on Autopilot an idle tenant costs almost nothing), data-handling terms of its own (their code is cloned into our cluster, which breaks R6 for the prospect: short retention, shadow mode enforced, one or two repositories), and our provider keys and budget (the per-repo budgets and kill switches cap exposure per tenant). Security-minded prospects will refuse it; it exists for the others. Whether to offer it is required input #22 (§17).
+
+#### 2.4.5 Cost picture
+
+Model spend dominates every approach by 5 to 20 times; infrastructure differences between the viable platforms are tens to a few hundred dollars a month. The platform is chosen on fit; cost is managed through the per-repo budgets. Approximate list prices, US regions, on-demand, as of 2026-10-24:
+
+| Profile | Reviews / month | Model spend (about $0.60 a review: rule agents on the standard tier, verifier on high, light-model checks) | Infrastructure, GKE Autopilot | Infrastructure, other viable platforms |
+|---|---|---|---|---|
+| Trial (1–3 repos, search off or one small replica, in-cluster Postgres) | 150 | about $90 | $0–$60 | $0 on a laptop; $100–$350 on EKS, Fargate or Cloud Run |
+| Team (10–30 repos, 2 search replicas, managed Postgres) | 1,500 | about $900 | $600–$800 | $150–$300 on own nodes; $600–$1,000 elsewhere |
+| Enterprise (100–500 repos with a monorepo, 4 search replicas, Postgres with a replica) | 30,000 | about $18,000 | $2,500–$3,500 | $1,000–$2,000 on own nodes; $2,500–$4,500 elsewhere |
+
+Runner compute is about one cent a review on per-pod billing and under 2% of the total at every profile; search replicas and the Postgres tier are the lines to size from the monorepo benchmark (T-0.4). Where the elastic design saves money is small in dollars (no idle node held for bursts; no 2 × 4 review slots paid for around the clock) and large in reach: the same install serves every profile. Committed-use discounts, Spot for runners (retries cover preemption), prompt caching on the shared rule prompts and model tiering (§6.5) move the figures; model choice moves them by an order of magnitude in either direction, so precision is measured before trading down.
+
 ---
 
 ## 3. Repositories and code layout
 
 ```
-exemplar/                          # one Go module: github.com/acme/exemplar
+exemplar/                          # one Go module: github.com/koblas/exemplar
   cmd/
-    exemplar-webhook/  exemplar-orchestrator/  exemplar-worker/  exemplar-poster/
-    exemplar-api/      exemplar-gateway/       exemplar-feedback/ exemplar-learn/
-    exemplar-search/
+    exemplar-webhook/  exemplar-worker/   exemplar-api/   exemplar-gateway/
+    exemplar-learn/    exemplar-search/
     exemplar/                      # CLI (cobra)
   internal/
     schema/      # CodeReviewRule, Finding, RepoConfig types + validation against schema/
-    config/      # layering global/repo config; base-branch resolution; cache + invalidation
+    config/      # layering global/repo config; base-branch resolution; cache + invalidation; snapshots (§2.4 C3)
     scope/       # doublestar globs, diff parsing, hunk index, anchor validation
-    engine/      # agent harness, tools, prompt assembly, output parsing, validation
-    compiled/    # Lane 1: ast-grep / Semgrep runners and output parsers
+    engine/      # agent harness, tools, prompt assembly, output parsing, validation, References and PathHistory interfaces
+    pipeline/    # the review's stages and the check-run verdict text
+    compiled/    # Lane 1: ast-grep / Semgrep runners, output parsers, the rule sandbox
     buglane/     # Lane 3: class prompts, eligibility gate
-    verify/      # verifier stage, evidence resolution, calibration replay
-    rank/        # linter dedupe, scoring, comment budget
-    fix/         # suggestion validation (apply, tree-sitter parse, formatter checks)
-    ctxprov/     # worker-side context tools + PR overlay; langs/ holds per-language package and import patterns
-    search/      # exemplar-search: mirror management, zoekt index generations, query API, degraded mode
-    export/      # AGENTS.md / CLAUDE.md / Copilot / Cursor renderers
-    llm/         # gateway client, budgets, pricing table, cost calc
+    verify/      # verifier stage, quorum, evidence resolution
+    calibrate/   # verifier and categorizer calibration; calibration_results
+    rank/        # dedupe, class grouping, scoring, comment budget
+    syntax/      # suggestion validation (apply, go/parser, tree-sitter, formatter checks) and mutation operators
+    search/      # exemplar-search: mirror, zoekt index generations, query API, degraded mode; local/ for the checkout-backed References (§6.4.6)
+    pathhistory/ # path_events + git log, from the mirror or the checkout
+    exports/     # AGENTS.md / CLAUDE.md / Copilot / Cursor renderers; upstream/ for effectiveness
+    llm/, redact/ # gateway client, budgets, pricing, providers.go; gitleaks scanning
     gh/          # App JWT, scoped installation tokens, throttled clients, GraphQL, posting
-    gates/       # stage 1/2, compliance constants
-    feedback/    # signal detection, acceptance math, Wilson bound, demotion
-    store/       # sqlc-generated queries; River job args + workers
+    gates/       # stage 1/2, denylist, policy (author experience, blast radius), compliance constants
+    worker/      # River jobs: events, dispatcher and Launcher, runner entry, interdiff, merge policy, maintenance
+    learn/       # the learning-plane jobs behind exemplar-learn
+    store/       # sqlc-generated queries; River job args
+    api/, web/, oidc/, setup/   # /v1/evaluate, sign-in, /ui/, setup mode
     telemetry/   # OTEL + slog setup
-    web/         # Phase 6 UI (templ components, handlers)
   schema/        # JSON Schema: source of truth for Go + Python contracts
   db/
-    migrations/  # goose (or Atlas) SQL migrations
+    migrations/  # goose SQL migrations
     queries/     # sqlc .sql files
-  learning/      # Python (uv project): embed/ cluster/ rank/
-  dashboards/    # Grafana dashboards as JSON (provisioned, version-controlled)
-  deploy/        # Kustomize manifests, images
-  .goreleaser.yaml
+  learning/      # Python (uv project): cluster/ rank/ (embed/ pending a provider)
+  dashboards/    # Grafana boards and alert rules as JSON/YAML (provisioned, version-controlled)
+  deploy/        # Kustomize manifests (core, components, base, direct), images, manifests_test.go
+  examples/      # exemplar-config starter, k8s overlays (acme, quickstart, quickstart-direct)
+  docs/          # spec, PRD, plans, security notes, and the user documentation site
 
 exemplar-config/                   # the human gate (separate repo, CODEOWNERS-protected)
   global.yaml                      # global defaults, model tiers, budgets
@@ -320,11 +456,29 @@ CREATE TABLE reviews (
   incomplete_reason text,
   verdict        text,                              -- APPROVE | NO_OP
   bug_lane       boolean NOT NULL DEFAULT false,
+  round          int,                               -- 1.. when this run posted a new finding; NULL otherwise (FR-C8, §6.2)
+  round_capped   boolean NOT NULL DEFAULT false,    -- inline posting suppressed by rounds.max
   cost_usd       numeric(10,4) NOT NULL DEFAULT 0,
   started_at     timestamptz,
   finished_at    timestamptz,
   attempt        int NOT NULL DEFAULT 1,            -- incremented by Re-run of an incomplete review
   UNIQUE (repo, pr_number, head_sha, config_version, caller, attempt)
+);
+
+-- ---------- Runners (§2.4 C1–C3) ----------
+CREATE TABLE config_snapshots (
+  version      text PRIMARY KEY,                    -- exemplar-config commit
+  effective    jsonb NOT NULL,                      -- validated global + repo config as loaded
+  loaded_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE runner_claims (                        -- one row per dispatched review; tokens for one repo
+  job_id       bigint PRIMARY KEY,
+  review_id    bigint REFERENCES reviews(id),
+  nonce        text NOT NULL,                       -- one-time; the runner presents it once
+  tokens       bytea,                               -- worker, gate, poster, clone; encrypted at rest; NULLed on claim exit
+  config_version text NOT NULL REFERENCES config_snapshots(version),
+  claimed_at   timestamptz, released_at timestamptz,
+  expires_at   timestamptz NOT NULL                 -- ≤ the installation tokens' own expiry
 );
 
 CREATE TABLE rule_runs (
@@ -337,6 +491,8 @@ CREATE TABLE rule_runs (
   status         text NOT NULL,                     -- ok|zero_coverage|schema_error|timeout|shed|deferred|degraded_skip
   coverage       real,
   context_degraded boolean NOT NULL DEFAULT false,
+  candidates_by_severity jsonb,                     -- {blocking, important, suggestion, security} before verification; carried runs feed Stage 1 (FR-A13)
+  expected_value real,                              -- the FR-E16 score at scope time; NULL for Lane 1 and 3
   model text, input_tokens int, cached_tokens int, output_tokens int,
   cost_usd       numeric(10,4),
   latency_ms     int,
@@ -364,11 +520,14 @@ CREATE TABLE findings (
   verify_model      text,
   verify_same_family boolean NOT NULL DEFAULT false,
   verify_evidence   jsonb,
+  verify_quorum_n   int,                            -- FR-V7: verifiers asked (NULL = single verifier)
+  verify_quorum_agreed int,                         -- how many returned confirmed; share = agreed / n
+  group_key         text,                           -- FR-C9: set on every occurrence of a class-of-bug group; one thread per key
   suggested_fix     text,
   fix_valid         boolean,
   rank_score        real,
-  state             text NOT NULL,                  -- posted | shadow | dropped | outdated | resolved | minimized
-  suppressed_reason text,                           -- refuted|uncertain|unimportant|bad_evidence|linter_duplicate|human_duplicate|dismissed|budget|duplicate
+  state             text NOT NULL,                  -- posted | shadow | dropped | outdated | resolved | minimized | summarized
+  suppressed_reason text,                           -- refuted|uncertain|unimportant|bad_evidence|linter_duplicate|human_duplicate|dismissed|budget|duplicate|quorum|quorum_shed|round_cap|importance_prior
   gh_comment_id     bigint,
   gh_thread_id      text,
   sarif_alert_number int,
@@ -398,10 +557,33 @@ CREATE TABLE feedback_events (
 
 CREATE TABLE approval_decisions (
   review_id    bigint PRIMARY KEY REFERENCES reviews(id),
-  stage1       jsonb NOT NULL,
+  stage1       jsonb NOT NULL,  -- every input and reason, incl. candidates by severity, author merges per area, owner areas, suggestion findings posted (FR-A13)
   stage2       jsonb,
   decision     text NOT NULL,  -- approved|ineligible|blocked_compliance|killed
+  base_sha     text NOT NULL,  -- the base the gates were judged against (FR-A9); drift re-runs them
+  revoked_at   timestamptz, revoked_reason text,   -- push | base_drift | base_touched_paths | config
   gh_review_id bigint
+);
+
+CREATE TABLE approval_failures (   -- FR-A12: an incident, revert or confirmed bug on an auto-approved PR, charged to the system
+  id bigserial PRIMARY KEY,
+  review_id   bigint NOT NULL REFERENCES approval_decisions(review_id),
+  kind        text NOT NULL,     -- incident | revert | confirmed_bug
+  ref         text NOT NULL,     -- incident id, reverting PR, or issue
+  should_have_caught text,       -- gate | lane | rule:<id> | class:<id> | verifier | unknown, set at triage
+  fix_ref     text,              -- config PR, eval case or code change that closed it
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (review_id, kind, ref)
+);
+
+CREATE TABLE calibration_results (  -- verifier and categorizer calibration runs (FR-X9); gates same_family (§6.13)
+  id bigserial PRIMARY KEY,
+  kind         text NOT NULL,       -- verifier | categorizer
+  config_sha   text NOT NULL,
+  providers    text[] NOT NULL,     -- provider:model per side, as configured
+  known_wrong_refuted real, known_true_refuted real,
+  passed       boolean NOT NULL,
+  ran_at       timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE path_events (     -- incidents and reverts
@@ -435,6 +617,7 @@ CREATE INDEX ON extractions USING hnsw (embedding halfvec_cosine_ops);
 CREATE TABLE candidates (
   id bigserial PRIMARY KEY,
   ext text NOT NULL, title text, description text,
+  source_kind text NOT NULL DEFAULT 'comments',     -- comments | incident | revert | owner_seed | change_cluster (FR-L1.7–L1.9, co-equal)
   cluster_size int, distinct_reviewers int, score real,
   owner text, status text NOT NULL,                 -- new|pr_open|promoted|killed
   config_pr_url text, kill_reason text
@@ -454,6 +637,18 @@ CREATE TABLE eval_cases (
   adversarial boolean NOT NULL DEFAULT false,
   ref text NOT NULL, patch text, expect jsonb NOT NULL,
   PRIMARY KEY (rule_id, case_id)
+);
+
+CREATE TABLE clean_prs (           -- FR-X12: PRs known to be clean; every finding on them is a false alarm
+  repo text, pr_number int, head_sha text NOT NULL,
+  confirmed_by text NOT NULL, confirmed_at timestamptz NOT NULL,   -- an engineer who knows the code
+  PRIMARY KEY (repo, pr_number)
+);
+CREATE TABLE clean_pr_runs (
+  id bigserial PRIMARY KEY, ran_at timestamptz NOT NULL DEFAULT now(),
+  config_sha text NOT NULL, prompts_sha text NOT NULL, providers text[] NOT NULL,
+  false_alarms int NOT NULL, harmful int NOT NULL,                -- harmful: a false alarm carrying a suggested fix
+  by_rule jsonb NOT NULL                                            -- {rule_or_class: {false_alarms, harmful}}
 );
 
 CREATE TABLE verifier_labels (
@@ -522,6 +717,8 @@ On `exemplar-config` only, the review app is installed with **Contents: write** 
 | Poster | the one PR repo | `pull_requests:write` , `checks:write` , `security_events:write` |
 | Config writer | `exemplar-config` only | `contents:write` , `pull_requests:write` , `issues:write` |
 
+**As built,** one process, `exemplar-worker`, mints the first three flavors per job (a clone token, a gate token for CODEOWNERS and branch-rule lookups, a poster token) and the config-writer token only in the learn jobs and owner-action job, so the App private key is in the worker. With the control/runner split (§2.4 C1–C2) the key stays in the control process, which mints a review's tokens into a single-use claim; the runner, the only process that runs model-facing code, receives tokens for one repository and can mint nothing. Minting a poster or config-writer token for `exemplar-config` from a review path is refused in code either way.
+
 **Subscribed events:** `pull_request` (opened, synchronize, reopened, ready_for_review, edited, closed), `pull_request_review`, `pull_request_review_comment`, `pull_request_review_thread`, `issue_comment` (slash commands), `check_run` (completed — for late linter dedupe; rerequested; requested_action — Re-run), `code_scanning_alert` (closed_by_user, reopened_by_user — feedback), `push`, `installation`, `installation_repositories`.
 
 **Rate limits:** an installation on a GitHub Enterprise Cloud org gets 15,000 REST requests/hour; outside Enterprise Cloud the floor is 5,000 and scales with users and repos. Wrap the `go-github` HTTP client with `gofri/go-github-ratelimit` (secondary limits) and a shared `x/time/rate` limiter per installation, prefer GraphQL for thread/reaction reads, and keep per-review API calls to roughly 15–25 (the extra over v0.2 is check-run annotation reads and one SARIF upload; see §6.12). Content-creation endpoints have stricter secondary limits — another reason to post one review with many comments rather than many single comments.
@@ -544,13 +741,14 @@ flowchart TB
   SC -. sampled shadow .-> BL[Baseline reviewer]
   L1 --> IM[Importance check<br/>Perf / Style / Nit]
   L2 --> VF[Verifier<br/>refute + importance]
-  L3 --> VF
+  L3 --> VQ[Verifier quorum<br/>k of n confirm]
   IM --> VC[Validate in code<br/>provenance · anchors · evidence · coverage]
   VF --> VC
+  VQ --> VC
   VC --> FX[Fix validation<br/>apply · parse · format]
-  FX --> RK[Human-comment dedupe · linter dedupe<br/>fingerprint · rank · budget]
+  FX --> RK[Human-comment dedupe · linter dedupe<br/>fingerprint · class grouping · rank · budget · round cap]
   RK --> PO[Post review + check run<br/>SARIF for Security]
-  RK --> GT{100% coverage and<br/>zero findings?}
+  RK --> GT{100% coverage and no blocking,<br/>important or Security candidate?}
   GT -- yes --> AA[Auto-approve gates]
   AA --> PO
 ```
@@ -559,15 +757,18 @@ flowchart TB
 sequenceDiagram
   participant GH as GitHub
   participant WH as exemplar-webhook
-  participant OR as orchestrator
-  participant W as workers (lanes)
-  participant V as verifier
+  participant CT as control (dispatcher)
+  participant OR as runner: orchestrate
+  participant W as runner: lanes
+  participant V as runner: verifier
   participant GW as gateway
-  participant PO as poster
+  participant PO as runner: post
 
   GH->>WH: pull_request.synchronize
-  WH->>OR: River job (per-repo queue, unique by repo#pr)
-  OR->>OR: config (base), eligibility, kill switches, supersede, dismiss prior approval
+  WH->>CT: River job (per-repo queue, unique by repo#pr)
+  CT->>CT: supersede older heads, take the repo slot, snapshot config, mint claim
+  CT->>OR: launch runner (in-process or Job) with job id
+  OR->>OR: claim tokens; config (snapshot), eligibility, kill switches, dismiss prior approval
   OR->>PO: check run in_progress
   par Lane 1
     OR->>W: compiled rules on scoped files
@@ -579,13 +780,14 @@ sequenceDiagram
     W->>GW: generator stage
   end
   W-->>OR: candidate findings
-  OR->>V: verify candidates (grouped by file)
+  OR->>V: verify candidates (grouped by file; n calls per Lane 3 finding)
   V->>GW: verifier stage (provider B, failover A)
-  V-->>OR: confirmed / refuted / uncertain + evidence + importance
-  OR->>OR: validate, fix-check, dedupe, rank, budget, coverage
+  V-->>OR: confirmed / refuted / uncertain + evidence + importance (+ quorum share)
+  OR->>OR: validate, fix-check, dedupe, group, rank, budget, round cap, coverage
   OR->>PO: findings + held-back counts + coverage + verdict
   PO->>GH: one review (COMMENT), check run complete, SARIF upload
   PO->>GH: APPROVE only if gates pass
+  PO-->>CT: exit code → River (done · cancel · snooze · retry); claim cleared
   Note over OR,GH: Later CI results can still mark a posted finding as a linter duplicate (§6.10)
 ```
 
@@ -607,6 +809,9 @@ A PR is a sequence of pushes, rebases and conversations. The orchestrator implem
 | Rebase / force-push | Detected when `before` is not an ancestor of `after` . Open findings are re-anchored by searching the new head for the fingerprint's normalized code; matches move, non-matches are marked `outdated` and their threads resolved with "No longer present after rebase". The review continues incrementally from the re-anchored state. | FR-C4 |
 | Config changed mid-PR | Each review records `config_version` . On the next review, open findings from rules that are now `killed` or `shadow` are resolved with "Rule `<id>` was retired"; rules added since apply from this review on. | FR-C6 |
 | Accounting | Cost and duration are recorded per run and summed per PR for reporting; there is no shared per-PR budget. The soft ceiling applies per run (§6.15). | FR-C7 |
+| **Round cap** | A *round* is a production run that posts at least one new finding; `reviews.round` numbers them per PR. Once a PR has had `rounds.max` rounds (default 3, `global.yaml`, a repo may lower it), later runs still review (incremental, FR-C1) and still resolve addressed threads (FR-C2), but post no new inline findings except Security-category and `blocking` ones (FR-P6). Instead the run posts, or updates, **one summary comment** (hidden marker `exemplar:round-summary`) listing every still-open finding with its line link and the new ones held back (`state='summarized'`, `suppressed_reason='round_cap'`), and says that the change may need a different approach; the check run stays `neutral`. The counter resets when a human submits a review or a review comment on the PR, or the PR leaves draft; the reset is recorded in the trace. Rounds per PR feed §12.5. | FR-C8 |
+| **Class-of-bug grouping** | When one rule or one bug class has more than `posting.class_threshold` (default 3) surviving occurrences in one run, they post as **one grouped comment** anchored at the first occurrence, naming the pattern and listing every occurrence with a line link, whatever the rule's `posting_mode`. The group has one `group_key` (`sha256(rule_id | review_id | sorted member fingerprints)`), one thread and one set of feedback controls; a signal on the thread applies to every member, and members are re-verified individually on later pushes, the group resolving when the last one is addressed. A grouped comment counts once against the comment budget and once as a round. | FR-C9 |
+| Base moved after approval | See §6.13 "Base binding": an approval records its `base_sha`; drift beyond `base_drift_commits` or a base commit touching the PR's paths or imports turns `exemplar/merge-policy` pending and re-runs the gates on the new merge result. | FR-A9 |
 | Kill switch or repo not eligible | No review; a neutral check run says why (none for a repo in shadow, §6.9). | FR-H1 |
 
 ### 6.3 Eligibility, scope and lane selection
@@ -616,10 +821,11 @@ A PR is a sequence of pushes, rebases and conversations. The orchestrator implem
 3. **Path exclusions** (FR-H2): drop removed files, binaries, files over 1 MB, minified assets, lockfiles, and paths marked `linguist-generated` or `linguist-vendored` in `.gitattributes`, plus patterns from the repo's `.exemplarignore` (read from the base branch). Excluded paths are listed in the check run as "not reviewed".
 4. **Secret scan** (FR-H3): the diff is scanned with the embedded gitleaks detector before any model call. Matches are replaced in all model inputs with `‹redacted:secret›`, and a deterministic finding `possible-secret-in-diff` (lane `secrets`, Security, blocking) is created for each match — no model involved. Matches covered by the repo's `.gitleaksignore` or `.gitleaks.toml` allowlist (read from the base branch) are still redacted from model inputs but produce no finding, so test fixtures do not generate blocking Security comments. The same scan runs on every context snippet, ticket body and file read returned to an agent. If redaction fails for any input, the run is `incomplete` (§6.15).
 5. **Rule scope:** match each active rule's `file_patterns` with `doublestar`. Rules with zero matches never run.
-6. **Fan-out cap** (FR-D2): at most `max_exemplar_rules` (default 40) exemplar rules run. If more are in scope, the lowest-precision rules are deferred (`rule_runs.status='deferred'`), listed in the check run as "not run on this review", and the run's coverage is below 100%.
-7. **Auto-approve pre-check:** the deterministic parts of Stage 1 that don't depend on findings (eligibility, scope, denylist, author policy, fork, size) are evaluated now. A PR that passes is an **auto-approve candidate**.
-8. **Bug lane:** runs if the risk gate passes (§6.7) **or** the PR is an auto-approve candidate (FR-A7).
-9. **Baseline reviewer** (FR-X8): a stratified random 10% of production PRs (strata: repo × size bucket of ≤ 50 / ≤ 300 / > 300 changed lines) get a shadow run with `caller=baseline`. Its findings are stored, never posted.
+6. **Fan-out cap and overflow by expected value** (FR-D2, FR-E16): at most `max_exemplar_rules` (default 40) exemplar rules run. If more are in scope, each is scored `expected_value = precision_28d × severity_weight × hit_rate(paths)`, where `severity_weight` is 3/2/1 for blocking/important/suggestion and `hit_rate(paths)` is the rule's findings per run over the last 90 days on runs whose scoped files share a directory prefix with this diff (floored at a small prior so a new rule is not starved). The lowest expected values are deferred (`rule_runs.status='deferred'`), listed in the check run as "not run on this review", and the run's coverage is below 100%. The score and the cut are written to the trace.
+7. **Rules per agent** (FR-E3): `concurrency.rules_per_agent` (default 1, at most 5) may pack in-scope rules of the same category whose `file_patterns` overlap into one agent, which reads the code once and reports per rule; provenance is still attached per rule by code, and coverage is measured per rule from the shared tool log. A value above 1 is adopted only after a golden-set run (FR-X5) with that value shows no loss of precision or recall against 1; config CI refuses the change without that run's artifact.
+8. **Auto-approve pre-check:** the deterministic parts of Stage 1 that don't depend on findings (eligibility, scope, denylist, author policy, author experience, blast radius, fork, size) are evaluated now. A PR that passes is an **auto-approve candidate**.
+9. **Bug lane:** runs if the risk gate passes (§6.7) **or** the PR is an auto-approve candidate (FR-A7).
+10. **Baseline reviewer** (FR-X8): a stratified random 10% of production PRs (strata: repo × size bucket of ≤ 50 / ≤ 300 / > 300 changed lines) get a shadow run with `caller=baseline`. Its findings are stored, never posted.
 
 ### 6.4 Repository context — `exemplar-search`
 
@@ -649,16 +855,15 @@ flowchart LR
 
 #### 6.4.2 Worker checkout
 
-Workers clone only what a review needs:
+Workers clone only what a review needs. **As built,** the checkout is a blob-less depth-1 clone of the head (and a fetch of the base), without a sparse cone:
 
 ```
-git clone --filter=blob:none --depth=1 --no-checkout --sparse <repo> wt
+git clone --filter=blob:none --depth=1 --no-checkout <repo> wt
 git -C wt fetch --depth=1 origin <head_sha> <base_sha>
-git -C wt sparse-checkout set --cone <dirs of changed files> <rule context_paths>
 git -C wt checkout <head_sha>
 ```
 
-Files outside the sparse cone are read from `exemplar-search` `read_file` at the snapshot commit.
+The whole head tree is listed, and a file's contents are fetched from GitHub the first time a tool opens it, so `read_file`, `grep` and `list_dir` see the repository under review in full, not only the diff, at the cost of a blob fetch per first read. The sparse cone of earlier drafts is kept as an option for monorepos where even the tree listing is large (`checkout.sparse: true` in the repo file), and then files outside the cone are read from `exemplar-search` `read_file` at the snapshot commit. Either way the checkout is the runner's own ephemeral volume (§2.4 C6) and is discarded with it.
 
 #### 6.4.3 Package scoping by imports
 
@@ -694,6 +899,8 @@ Patterns live in `internal/ctxprov/langs/` with golden tests per language. Langu
 
 All results are untrusted text. Context tools make no model calls.
 
+**As built,** the engine offers `find_references` only when it holds a `References` implementation and `path_history` only when it holds a `PathHistory`; both are bound per review, and today both come from `exemplar-search` when `EXEMPLAR_SEARCH_URL` is set. §6.4.6 adds the checkout-backed implementations.
+
 #### 6.4.5 v1 language support (PRD FR-H8)
 
 | Language | Lane 1 engines | ctags symbols | Import patterns (§6.4.3) |
@@ -706,6 +913,30 @@ All results are untrusted text. Context tools make no model calls.
 | Other languages | — | where ctags supports them | directory proximity only |
 
 Exemplar rules whose `file_patterns` target only languages outside the first five rows run with text-only context; the candidate PR and rule file carry `context: text-only`, and the check run labels their findings accordingly. The list is confirmed against the monorepo's actual language mix in T-0.4.
+
+#### 6.4.6 Running without `exemplar-search`
+
+Search is the one stateful service besides Postgres (local SSD, a mirror and an index per repository, R2 in §2.4), and a trial or a single-repository install can do without it. This section makes search-off an **install mode** with defined behavior rather than a degraded state: `EXEMPLAR_SEARCH_URL` empty, the StatefulSet and its Services left out of the overlay, no search Secret (the token derives from the root key and is read only when the URL is set). The worker logs one warning at start. Adding search later is the reverse: set the URL, give the StatefulSet storage, restart the worker; nothing else changes.
+
+**What is the same.** The diff, hunks, exclusions and redaction, Lane 1, Lane 2 over the checkout, the verifier and quorum, dedupe against linters and human comments, the comment budget, the check run, feedback, exports and the learning plane (its ingest reads GitHub directly). Every agent has `get_hunk`, `read_file`, `grep` and `list_dir` over the whole head tree (§6.4.2). On a monorepo that is nearly all the context there is.
+
+**What search adds, and how the checkout stands in for it.**
+
+| Capability | With search | Without search, as built today | Without search, specified |
+|---|---|---|---|
+| `find_references(name, defined_in)` | Word-boundary search across the indexed repositories, scoped by imports (§6.4.3) | Tool not offered; a rule about callers finds them with `grep` inside the repository | **`LocalReferences`**: `rg -w` over the head tree (ripgrep is in the image), definitions told from uses with universal-ctags, ranked by path proximity to `defined_in`, capped like the remote answer (≤ 50 sites), and the result **says that other repositories were not searched**. Bound per review from the review's checkout. |
+| `find_definition`, `dependents`, `search_text` across repositories | zoekt and import patterns | In-repo `grep` and `read_file` | Unchanged: in-repo only. Multi-repository orgs lose the cross-repository view; that is what search is for. |
+| `path_history(path)` | `path_events` plus `git log` from the mirror | Tool not offered; the merge-safety score loses its recency term | **Local `PathHistory`**: deepen the checkout once for the touched paths (`git fetch --filter=blob:none --deepen=N` on base and head, N = 200 commits) and read `git log` over them through `pathhistory.Dir`; incidents and reverts still come from `path_events` in Postgres. |
+| `bug.contract` (the bug lane's contract-change class) | Runs on `find_references` | Skipped as `degraded_skip`; the run is degraded and **never auto-approved** | On a repository with no `context.extra_repos`, every caller is in the checkout, so the class runs on the local answers and the run is not degraded: the review **may auto-approve**. With `extra_repos` set, the class stays `degraded_skip` with a detail naming the unsearched repositories, which keeps auto-approve blocked. |
+| Snapshot pinning, index freshness, degraded-mode signalling | §6.4.1 | Nothing to report | Unchanged on the remote path; the local path has no snapshot (it is the head itself) and no degraded state. |
+
+**What the reader is told.** The check-run summary already lists degraded runs; on a search-off install it says so in plain words: "Cross-repository callers were not checked (search is not configured)", and, where the contract class was skipped for `extra_repos`, names the repositories. An honest scope statement is worth more than a missing finding nobody notices.
+
+**Auto-approve.** The gate is unchanged: a degraded run cannot approve (FR-D5). What this section changes is which runs are degraded: single-repository installs without search are not, once the local implementations exist. Until they do, the auto-approve guide lists search as a prerequisite. Shadow mode, the trial default, never approves anyway.
+
+**The install ladder.** Shadow without search; posting with search once cross-repository context is worth a search volume; auto-approve once the Phase 5 criteria hold. Each step adds one component and one promise. Search is started small when it is added: one replica, a modest disk, only the opted-in repositories indexed; a few repositories fit in tens of gigabytes. The trial and the small-team tier are priced without it (§2.4.5).
+
+**Status:** the mode is documented and the manifests support it; `LocalReferences`, the local `PathHistory` and the explicit check-run line are in the backlog and ship with the elastic work (§2.4.3). The PRD's constraint 6 and FR-E12 describe search as the context provider and do not yet say it is optional; a PRD revision should add that.
 
 ### 6.5 Agent harness (Go)
 
@@ -738,12 +969,13 @@ func (e *Engine) Review(ctx context.Context, r *Review) (*Result, error) {
 [system]   harness instructions + output contract           ← cached org-wide
 [user #1]  <untrusted_pr_context> title, body, file list,     ← cached per review,
            diff hunks </untrusted_pr_context>                    shared by every rule agent
-[user #2]  <rule> description, preferred approach,
-           what to flag; file subset in scope </rule>          ← per agent (no id/citation)
+[user #2]  <rule n="1"> description, preferred approach,
+           what to flag; file subset in scope </rule>          ← per agent (no id/citation);
+           <rule n="2"> … </rule>                                 one block per rule when rules_per_agent > 1
 [tools]    read_file, grep, list_dir, get_hunk + repo-context tools (§6.4.4)
 ```
 
-The diff block carries a `cache_control` breakpoint so agents 2..N of the same review read it from cache. The rule text deliberately contains no rule id or citation; code attaches those (FR-T1).
+The diff block carries a `cache_control` breakpoint so agents 2..N of the same review read it from cache. The rule text deliberately contains no rule id or citation; code attaches those (FR-T1). When an agent carries more than one rule (§6.3 step 7), each rule is numbered in the prompt and each violation names the number; code maps the number back to the rule id and refuses a number outside the set, so a packed agent cannot attribute a finding to a rule it was not given. The errgroup fans out over agents, not rules; `AgentsPerReview` still bounds concurrency.
 
 **Tools (Go functions, read-only, sandboxed to the worktree; the repo-context tools from §6.4.4 are added for Lanes 2–3 and the verifier, and `read_file` falls back to `exemplar-search` outside the sparse checkout):**
 
@@ -760,6 +992,7 @@ No shell for the model, no network, no write, no code execution. Max 12 tool tur
 
 ```go
 type Violation struct {
+	Rule         int    `json:"rule" jsonschema:"minimum=1,maximum=5"` // index into the agent's rules; code maps it to the id
 	Path         string `json:"path"`
 	Side         string `json:"side" jsonschema:"enum=RIGHT,enum=LEFT"`
 	StartLine    int    `json:"start_line" jsonschema:"minimum=1"`
@@ -821,9 +1054,11 @@ Rules with `kind: compiled` carry a `matcher` block (PRD §7). The worker runs t
 | `bug.concurrency` | Data races, lock ordering, unguarded shared state, goroutine/thread leaks |
 | `bug.resource-leak` | Unclosed handles, connections, files; missing `defer` /RAII |
 | `bug.off-by-one` | Boundary errors in loops, slices, pagination |
-| `bug.contract` | Changed function behavior that breaks callers found via `find_references` (skipped when `exemplar-search` is in degraded mode, §6.4.4) |
+| `bug.contract` | Changed function behavior that breaks callers found via `find_references` (skipped when `exemplar-search` is in degraded mode, §6.4.4, or absent on a repository with `extra_repos`, §6.4.6) |
 
 **Prompt restriction.** The bug-lane system prompt forbids style, naming, performance-preference and "consider" comments; the output schema requires `trigger` (concrete input or path that causes the bug) and `impact`. Findings without a concrete trigger fail schema validation.
+
+**Verification.** Every Lane 3 candidate goes to the verifier **quorum** (§6.8), not a single verifier: `k` of `n` independent verifiers must confirm it, and the agreeing share travels with the finding into ranking.
 
 **Posting.** The lane starts in shadow. A class with `post_on_critical_paths: true` in `global.yaml` posts its findings that fall in the repo's `bug_lane.critical_paths`, through the usual budget, dedupe and repo-shadow rules; its other findings stay in shadow (Phase 4: "in shadow, then commenting on critical paths").
 
@@ -833,8 +1068,9 @@ Rules with `kind: compiled` carry a `matcher` block (PRD §7). The worker runs t
 
 Every candidate from Lanes 2 and 3 is verified before validation.
 
-- **Provider diversity.** The gateway routes verifier calls to **provider B** (a different model family from the generator) by default. Configuration: `verifier.provider`, `verifier.model`, and a per-rule override. The gateway records the provider family actually used for the generator call and for the verifier call of each finding; `verify_same_family` is set whenever the two match, whichever side failed over (generator to B while the verifier is on B is the common case). A same-family finding still posts but blocks auto-approve (§6.13); if no provider is available the run is incomplete (§6.15).
-- **Grouping.** Candidates are grouped by file into one verifier call per file (max 8 candidates per call), which keeps cost proportional to findings rather than rules.
+- **Independence, then diversity** (FR-E10, v0.9). A verifier is *independent* when it runs in a fresh context with only the finding, the rule or class prompt and the code, never the generator's reasoning, and, for the bug lane, when the quorum below agrees. Independence is the requirement; a second model family is a preference that makes blind spots less correlated. The gateway routes verifier calls to **provider B** (a different family from the generator) when one is configured: `verifier.provider`, `verifier.model`, and a per-rule override. It records the family actually used for the generator call and for each verifier call; `verify_same_family` is set whenever the two match, whichever side failed over (generator to B while the verifier is on B is the common case). A same-family finding always posts. Whether it blocks auto-approve depends on calibration: **until the verifier calibration (below) has passed for the configured providers, any same-family verification makes the run ineligible; after it has, `same_family` is recorded on the finding and in the trace and no longer gates** (§6.13). A single-provider installation, which is every installation at the time of writing, therefore cannot auto-approve until its calibration run passes. If no provider is available the run is incomplete (§6.15).
+- **Quorum for the bug lane** (FR-V7). A Lane 3 candidate is sent to `verifier.quorum.n` verifiers (default 3), each a separate call in a fresh context, spread across the configured providers and models in a fixed rotation so that no two of the three share a model where the configuration allows it; it is `confirmed` only when at least `verifier.quorum.k` (default 2) return `confirmed`, and its importance is the median of the confirming verdicts. `verify_quorum_n` and `verify_quorum_agreed` are stored; the agreeing share (`agreed / n`) is a ranking input after severity (§6.10). A Lane 2 rule keeps the single verifier unless it sets `verify: quorum`. Quorum calls count toward the soft ceiling and are the first thing shed (§6.15). A candidate that fails the quorum is stored with `suppressed_reason='quorum'`, and its share is kept so a class with many 1-of-3s shows up on the lanes board.
+- **Grouping.** Candidates are grouped by file into one verifier call per file (max 8 candidates per call), which keeps cost proportional to findings rather than rules. Quorum calls are grouped the same way, per verifier.
 - **Inputs:** the candidate(s), the rule text (Lane 2) or class prompt (Lane 3), the hunk plus ±60 lines, worktree tools and the repo-context tools (§6.4.4). The verifier never sees the generator's reasoning — only its claim — so it cannot be talked into agreement.
 - **Instruction:** "Your job is to show this finding is wrong. Look for awaits, guards, validation, callers, tests, or configuration that make it incorrect. Then, separately, rate whether it matters in this code."
 - **Output schema:**
@@ -855,7 +1091,7 @@ type Cite struct {
 
 - **Decision in code:** post only if `verdict == "confirmed"`, every `Evidence` cite resolves to an existing line in the worker's checkout or via `exemplar-search` `read_file` at the cited commit, and `importance ≥ threshold` (rule `importance_min`, default 0.5; bug lane default 0.6). Otherwise the finding is stored with `suppressed_reason = refuted | uncertain | unimportant | bad_evidence`.
 - **Auto-approve interaction:** Stage 2's low-risk categorization is produced independently by provider A and provider B (§6.13).
-- **Calibration** (PRD FR-X9): a labeled set in `verifier_labels` is replayed nightly and on every change to the verifier prompt, model or provider; CI fails the change if fewer than 90% of known-wrong findings are refuted or more than 10% of known-true findings are refuted (`eval_thresholds.verifier` in `global.yaml`). The Stage 2 categorizer has the same gate on its labeled PR set. Dashboards show both trends.
+- **Calibration** (PRD FR-X9): a labeled set in `verifier_labels` is replayed nightly and on every change to the verifier prompt, model or provider; CI fails the change if fewer than 90% of known-wrong findings are refuted or more than 10% of known-true findings are refuted (`eval_thresholds.verifier` in `global.yaml`). The Stage 2 categorizer has the same gate on its labeled PR set. Dashboards show both trends. **Every run writes a `calibration_results` row** keyed by config SHA and the provider set it ran with; Stage 1 reads the latest row for the deployed config and providers to decide whether `same_family` gates (above, §6.13). A run `exemplar calibrate` makes from a laptop writes the same row through `/v1/evaluate`, so the nightly job and the CLI agree.
 
 ### 6.9 Validation in code
 
@@ -896,11 +1132,16 @@ type Cite struct {
   - **A repo in shadow** posted nothing, so there is nothing to minimize.
 - Linter duplicates count against neither the rule's precision nor the author's feedback.
 
+**Importance priors** (PRD FR-B9). Before ranking, a finding's importance threshold is the rule's or lane's `importance_min` adjusted by any matching **path-level prior** in the effective config: `importance_priors` entries in the repo file (`{prefix, category, importance_min | suppress}`), proposed by `exemplar-learn priors` from clustered *Not important here* dismissals (§8.11) and merged by an owner. `suppress` stores the finding with `suppressed_reason='importance_prior'`; a raised threshold applies to the verifier's per-finding importance, which stays (FR-V2). Priors never lower a threshold for Security or `blocking` findings. The prior that applied is recorded on the finding for the owner digest.
+
+**Class-of-bug grouping** (FR-C9) runs after dedupe and before ranking: occurrences of one rule or class above `posting.class_threshold` become one grouped finding (§6.2), scored once at the highest member's score.
+
 **Ranking.** Each surviving finding is scored:
 
 ```
 score = severity_weight            // blocking 100, important 30, suggestion 10
       + 20 · importance            // verifier or Lane 1 importance check; 0 when not scored
+      + 10 · quorum_share          // Lane 3 (and quorum-opted rules): agreed / n; 0 for single-verifier findings
       + 15 · rule_precision_28d    // from finding_outcomes
       +  5 · has_valid_fix
 ```
@@ -909,7 +1150,8 @@ score = severity_weight            // blocking 100, important 30, suggestion 10
 
 - **Exempt:** Security-category and blocking-severity findings are never dropped by the budget. If exempt findings alone exceed `comment_budget.per_pr`, they are posted as **one grouped comment per file** listing every occurrence with line links, and the check run summary says so.
 - **Competing:** important and suggestion findings fill the remaining slots, up to `comment_budget.per_pr` (default 7) in total and `comment_budget.per_file` (default 3).
-- Findings that don't fit are stored with `suppressed_reason='budget'` and listed in the check run. Incremental reviews count previously posted, still-open findings against the budget.
+- Findings that don't fit are stored with `suppressed_reason='budget'` and listed in the check run. Incremental reviews count previously posted, still-open findings against the budget. A grouped comment (FR-C9) counts once.
+- **Round cap** (FR-C8) applies after the budget: on a PR past `rounds.max`, competing findings that would have posted go to the summary comment instead (§6.2); exempt findings still post inline.
 
 **Pre-launch volume estimate** (PRD FR-P2) is a replay job: on any config PR that adds or activates a rule, run it over the last 30 days of PRs in scope (from the replay harness's stored `(repo, base, head)` tuples), and post expected comments per PR and the share of PRs affected to the config PR's check.
 
@@ -965,7 +1207,7 @@ score = severity_weight            // blocking 100, important 30, suggestion 10
      - **Responses:** a recorded command gets a 👍 reaction rather than a reply. A command in a thread that isn't Exemplar's is ignored silently. An unknown command gets a one-line list of the commands.
      - Until the signed links exist, each comment's footer names the commands.
   3. 👍/👎 reactions remain a secondary signal, polled as before.
-- **Check run `Exemplar review`:** findings per lane; held-back counts by `suppressed_reason`; **coverage** with every shed, deferred and excluded item and its reason; the "no findings" wording rule of §6.15; cost and duration labelled "(informational)"; config SHA and search snapshot (PRD §17.4). Conclusion `neutral` with findings or on degraded/incomplete runs, `success` only when clean at 100% coverage; never `failure`, never required. Incomplete runs carry a **Re-run** requested action.
+- **Check run `Exemplar review`:** findings per lane; held-back counts by `suppressed_reason`; **coverage** with every shed, deferred and excluded item and its reason; the "no findings" wording rule of §6.15; the search-off scope line of §6.4.6 where it applies; the round number and, past the cap, a pointer to the summary comment; the human-review verdict (approved with no human needed, or routed to humans with the Stage 1 reasons) and, beside an approval, the `suggestion` findings posted with it (FR-A13); cost and duration labelled "(informational)"; config SHA and search snapshot (PRD §17.4). Conclusion `neutral` with findings or on degraded/incomplete runs, `success` only when clean at 100% coverage; never `failure`, never required. Incomplete runs carry a **Re-run** requested action.
 - **SARIF.** Security-category findings are additionally uploaded via `POST /repos/{o}/{r}/code-scanning/sarifs` (gzip+base64 SARIF 2.1.0, built with `go-sarif`) with category `exemplar`, so they appear as code-scanning alerts. `code_scanning_alert` webhooks with `closed_by_user` map the dismissal reason (`false positive` → wrong, `won't fix` → not_important, `used in tests` → not_important) into `feedback_events` with role derived from the dismissing user's PR participation (§9.1); a security-team member who did not participate in the PR is recorded as `owner` only when their team owns the rule, otherwise `reviewer`. The inline comment and the alert share the finding id so feedback isn't double-counted.
   - **The upload:** SARIF 2.1.0, written with `encoding/json` (no go-sarif dependency for a few fields).
     - It is uploaded on `refs/pull/<n>/head` at the head commit, with category `exemplar/` (`runs[].automationDetails.id`).
@@ -988,12 +1230,14 @@ score = severity_weight            // blocking 100, important 30, suggestion 10
 | Repo opted in with `auto_approve.enabled: true` and eligible | FR-H1 |
 | Every changed path matches `auto_approve.paths` and **no** path matches the path denylist | FR-A8 |
 | Author is a human on the repo's `allowed_authors` , or an explicitly allowlisted bot/agent identity within its narrower `paths` | FR-A6 |
+| **Author experience:** the author has at least `auto_approve.min_author_merges` (default 10; config may raise it, never below 1) merged PRs in **each** ownership area the change touches, counted from stored merged-PR history (`pr_merges`, two-year lookback), human-authored PRs only, by GitHub login. An author on `allowed_authors` is exempt; a bot identity is governed by FR-A6 alone. The count per area goes in the trace. | FR-A10 |
+| **Blast radius:** the change touches at most `auto_approve.max_owner_areas` ownership areas (default 1; config may lower it, never raise it above 3), an area being one CODEOWNERS entry's path set on the base branch, and nothing under `auto_approve.shared_paths` (libraries and utilities many areas import; a repo file may extend the list, never narrow it). Paths matching no CODEOWNERS entry count as one area each and refuse approval unless the repo sets `unowned_paths: allow`. | FR-A11 |
 | Not a fork PR | FR-H5 |
 | ≤ 10 files and ≤ 1,000 changed lines | — |
-| Every lane ran to **100% harness-measured coverage, including the bug lane** (forced, §6.3), and produced **zero candidate findings** . Candidates are counted *before* verification, dedupe and budget: a finding the verifier refuted or scored unimportant, a linter duplicate, a human duplicate and a budget-suppressed finding all still count. Verification exists to spare humans noise, not to clear PRs for approval; otherwise a verifier talked into `refuted` is an approval path. | FR-A7, FR-D4, PRD §2.1 constraint 3 |
-| The run was not degraded or incomplete (§6.15), and no finding on it was verified by a same-family model (§6.8) | FR-D5 |
+| Every lane ran to **100% harness-measured coverage, including the bug lane** (forced, §6.3), and the run is **clean: zero candidate findings of `blocking` or `important` severity, and zero Security-category candidates of any severity.** Candidates are counted *before* verification, dedupe and budget: a finding the verifier refuted or scored unimportant, a linter duplicate, a human duplicate and a budget-suppressed finding all still count. Verification exists to spare humans noise, not to clear PRs for approval; otherwise a verifier talked into `refuted` is an approval path. `suggestion` candidates do not block: their posted survivors go out beside the approval and are listed in the trace and the check run. Severity and category come from the rule or class, never from the model (§1.2 rule 4), so this is still a count of model-independent facts. The trace keeps both counts (`candidates_blocking_important_security`, `candidates_all`). | FR-A7, FR-A13, FR-D4, PRD §2.1 constraint 3 |
+| The run was not degraded or incomplete (§6.15); and, **until the verifier calibration has passed for the configured providers** (`calibration_results`, §6.8), no finding on it was verified by a same-family model. Once it has passed, `same_family` is recorded and does not gate. | FR-D5, FR-E10 |
 
-`title_pattern` is evaluated and recorded as informational only; the title is author-controlled and never gates.
+`title_pattern` is evaluated and recorded as informational only; the title is author-controlled and never gates. Carried-forward runs on an incremental review (§6.2) contribute their candidates with the same severity split, which is why `rule_runs` keep a per-severity candidate count.
 
 **Stage 2 — only if Stage 1 passes:**
 
@@ -1034,6 +1278,10 @@ Floored at 0. Each term is logged in `approval_decisions.stage1`. Weights live i
 
 **Revocation** (FR-A9). On any new push the orchestrator dismisses Exemplar's approval before re-running the gates; an approval never carries forward.
 
+**Base binding** (FR-A9, v0.9). An approval records the base branch SHA it was judged against (`approval_decisions.base_sha`). The control process watches `push` events on the base branch of every repo with an open Exemplar approval. When the base has moved by more than `auto_approve.base_drift_commits` (default 20) since that SHA, or any base commit since it touched a path the PR touches or a path the PR's changed files import (`dependents` at depth 1, or the local references in §6.4.6), the approval is **revoked** with `revoked_reason = base_drift | base_touched_paths`: on a `native_approve` repo the review is dismissed; on a `merge_policy_check` repo the `exemplar/merge-policy` check turns `pending` with the reason. The gates then re-run against the new merge result (`refs/pull/<n>/merge`), as an incremental review whose interdiff is the base's movement, and a fresh approval is issued only if they pass. Two PRs each approved against an old main cannot merge into a broken one. The merge-policy check also re-evaluates binding at check time, so a stale approval never satisfies a required check.
+
+**System accountability** (FR-A12). An incident, revert or confirmed bug on a PR that Exemplar auto-approved is a defect in the gates, the reviewer or verification, never a finding against the author. The path-events job and the incident feed write such cases to `approval_failures` against the approval's gate trace; triage sets `should_have_caught` (a gate, a lane, a rule, a class, the verifier) and `fix_ref` (the config PR, eval case or code change that closes it). The audit board lists them, the counter-metric alerts fire on them (§12.5), and the owner digest shows the ones in the owner's paths. Nothing about them is written to the PR or to the author.
+
 **Compliance.** `internal/gates/compliance.go` holds `complianceRepos` and `const maxBotApprovals = 1`; `internal/llm/providers.go` holds the approved provider list (FR-H4). Both are CODEOWNERS-protected by Security and change only by code review and deploy. Compliance repos keep native two-approval rules; the bot counts as at most one.
 
 **Kill switches.** `repos/<org>/<repo>.yaml: { enabled: false }` or `auto_approve.enabled: false`; `global.yaml: { auto_approve: false }`. A push to `exemplar-config` invalidates the config cache immediately; the 15-minute TTL is the backstop.
@@ -1052,8 +1300,9 @@ Cost and latency are **informational** (PRD G5, §13.2): recorded on every run, 
 
 Implements PRD §8.10.
 
-**Shedding order** (FR-D1). When the gateway signals 80% of the soft ceiling, or a stage's p95 latency exceeds `degrade.stage_timeout_seconds` (default 300), the orchestrator sheds in this fixed order and records each step on the review:
+**Shedding order** (FR-D1, FR-V7). When the gateway signals 80% of the soft ceiling, or a stage's p95 latency exceeds `degrade.stage_timeout_seconds` (default 300), the orchestrator sheds in this fixed order and records each step on the review:
 
+0. Extra quorum verifier calls not yet made. A Lane 3 candidate whose quorum was cut short is **not posted** (`suppressed_reason='quorum_shed'`): a bug-lane finding without its quorum is below the lane's bar, and holding it is the precision-preserving choice. The run is degraded.
 1. Bug lane classes not yet started.
 2. Exemplar rules not yet started, lowest 28-day precision first.
 3. Verifier importance scoring (findings that passed refutation default to posting; Lane 1 importance checks are skipped and Performance/Style/Nit compiled findings post unscored).
@@ -1071,6 +1320,8 @@ Refutation and deterministic validation are **never** shed for anything that is 
 **Approval** (FR-D5): any shedding, deferral, failover to a same-family verifier, or incomplete stage disqualifies the run from auto-approve.
 
 **Backpressure** (FR-D6). Reviews are enqueued on a per-repo River queue key. Concurrency is limited per *PR* (one running review per PR, enforced by supersession) and per repo (`queues.per_repo_concurrency`), but the per-repo default of 4 is a fairness limit for small repos, not a capacity limit: repos listed in `queues.large_repos` (the monorepo) get `per_repo_concurrency` of 32 by default, sized from §6.16 so the monorepo's peak hour drains without queueing. Bursts drain in order, and incremental review keeps repeat work small. Queue depth and wait time per repo are exported as metrics. No latency SLO in v1.
+
+**Capacity** (§2.4 C5). Total concurrency is the dispatcher's `reviews` queue `MaxWorkers`, which is the number of runners in flight, bounded by `launcher.max_runners` (a platform quota) rather than by a pod's CPU. With the Kubernetes Job launcher, zero runners exist between PRs and a burst fans out to the quota; when the quota is full the dispatcher snoozes the job, which keeps the per-repo order. With the in-process launcher (the quickstart) the bound is the control pod's own slots, as today. Runners in flight, queue depth and age per repo are on the operations board and alert on age.
 
 ### 6.16 Capacity (planning example)
 
@@ -1098,7 +1349,9 @@ Reviews are minutes long and cheap to redo, learning jobs are table-driven batch
 | Transactional enqueue | Business writes and the next job's insert share one `pgx.Tx` (River `InsertTx` ). |
 | Side-effect idempotency | Before posting, the poster looks for an existing review on `head_sha` carrying the review's hidden marker. Export PRs are idempotent on `content_hash` ; teach proposals on `(rule_id, teach_class, window)` . |
 | Batch pipelines | Every mined comment carries `extract_status` ; Message Batches ids are recorded; drivers resume `pending` and `in_batch` rows. |
-| Cancellation | Superseded reviews are cancelled with River's `JobCancel` , which propagates to the running job's `context.Context` on any pod. |
+| Cancellation | Superseded reviews are cancelled with River's `JobCancel` , which propagates to the running job's `context.Context` on any pod. With the Job launcher the dispatcher holds the job's context and deletes the Job on cancel; the runner also watches its claim row and exits when it is marked cancelled. |
+| Runners | A runner that dies leaves a River job that times out or errors and is retried by a new runner, which skips completed rule runs. A claim is single-use: a retry gets a new claim with new tokens, and the old row expires. |
+| Scheduled jobs | `concurrencyPolicy: Forbid` on Kubernetes **and** a Postgres advisory lock in every job entrypoint, Go and Python (§2.4 C4), so a manual run cannot overlap a scheduled one on any platform. |
 | Search index | New generations are built beside the serving one and swapped atomically; a crash leaves the previous generation serving. |
 | Step structure | Each step is `func(ctx, Input) (Output, error)` with side effects behind injected interfaces. |
 
@@ -1114,7 +1367,9 @@ Reviews are minutes long and cheap to redo, learning jobs are table-driven batch
 - **Eligibility and data handling:** only eligible repos are mined; excluded paths are skipped; bodies and hunks are secret-scanned; identities are pseudonymized on ingest (§13.1).
 - **Accepted bot findings** enter with `source='accepted_bot_finding'` and are down-weighted in ranking (PRD FR-L1.2).
 - **Doc-linked comments** (PRD FR-L1.6): extract URLs from comment bodies with a regex, normalize them, and keep those matching the internal docs allowlist (`docs.internal`, wiki hosts, the style-guide repo). Store in `mined_comments.doc_urls`; they boost ranking and become the rule's `citation.doc`.
-- **Incidents and reverts** (PRD FR-L1.7): a Go job populates `path_events(repo, path, kind, ref, at)` from (a) revert commits on default branches (`This reverts commit <sha>` trailer, or GitHub-generated "Revert "…"" PRs), and (b) the incident tool's API (PagerDuty, incident.io, or a postmortem repo) for incidents linking a PR or commit. Reverted PRs with no review comment on the reverted lines become **seed candidates** for Blocker rules: the extractor is given the diff and the revert reason instead of a comment. The same table backs `path_history` (§6.4) and `merge_safety_score`.
+- **Incidents and reverts** (PRD FR-L1.7): a Go job populates `path_events(repo, path, kind, ref, at)` from (a) revert commits on default branches (`This reverts commit <sha>` trailer, or GitHub-generated "Revert "…"" PRs), and (b) the incident tool's API (PagerDuty, incident.io, or a postmortem repo) for incidents linking a PR or commit. Reverted PRs with no review comment on the reverted lines become **seed candidates** for Blocker rules: the extractor is given the diff and the revert reason instead of a comment. The same table backs `path_history` (§6.4) and `merge_safety_score`. *(v0.9)* These are a **co-equal source**, not a supplement: `candidates.source_kind` records `incident` or `revert`, and ranking (§8.5) floors such a candidate at the score of a sizeable comment cluster, because comments record what reviewers caught and incidents record what they missed.
+- **Owner-written seeds** (PRD FR-L1.8): a rule owner writes a candidate by hand, either in the playground (**Save as candidate PR**, §12.8, which is the owner action `propose_rule`) or directly as a rule file with `status: candidate` in a config PR. It becomes a `candidates` row with `source_kind='owner_seed'`, its citation the owner plus any doc they link, and it goes through exactly the mined path from there: eval cases before merge (§8.8 generates history and injected cases for it; the owner may add their own), the volume estimate and linter-overlap checks (§8.7), shadow first (FR-X4), and the same feedback, expiry and demotion lifecycle. Nothing about a seed skips the gate; what it skips is the wait for a mining run.
+- **Merged-change clusters** (PRD FR-L1.9): `exemplar-learn change-clusters`, weekly, takes the last 30 days of merged PRs per ownership area and groups them three ways: by area and the files they share, by what the bug lane flagged on them (posted or shadow), and by which were later reverted or incident-linked (`pr_links`). For each cluster above a size floor (5 PRs, or 2 with a revert) it asks the high-tier model one question, "what deterministic check or review rule would have caught the pattern these share", with the diffs' hunks as untrusted input, and writes the answer as a `candidates` row with `source_kind='change_cluster'` citing the PRs. It then enters the compile attempt (§8.6) like any candidate, so a cluster that compiles lands as a Lane 1 rule. As review volume rises and comments per PR fall, merged changes carry judgment that comments no longer do.
 
 ### 8.2 Extract
 
@@ -1140,6 +1395,8 @@ Two thresholds apply: **0.65** groups near-duplicate extractions into clusters; 
 ### 8.5 Rank and route
 
 `score = log(1 + cluster_size) · (1 + distinct_reviewers) · recency_weight · resolution_weight · doc_boost · incident_boost`, where resolution weight favors threads that were resolved (signal the comment was acted on), `doc_boost` is 1.5 when any source comment links internal documentation (PRD FR-L1.6) and `incident_boost` is 2.0 when any source is incident- or revert-linked (PRD FR-L1.7); both from PRD FR-L4.1. Owner = majority CODEOWNERS of the source files; ties go to the platform team.
+
+**Co-equal sources** (v0.9). A candidate whose `source_kind` is `incident`, `revert`, `owner_seed` or `change_cluster` has no cluster of comments to score, so its score is **floored at the score a ten-comment, one-reviewer, resolved, recent cluster would get** (`log(11) · 2 · 1 · resolution_weight · 1 · 1`), then multiplied by its own boosts (2.0 for incident and revert; a change cluster's size in PRs stands in for `cluster_size`). An owner seed also skips the per-team throttle of §8.7, since the owner asked for it. The ranked queue therefore interleaves the four sources instead of listing comment clusters first.
 
 ### 8.6 Compile to deterministic
 
@@ -1190,6 +1447,8 @@ For every candidate (and quarterly for every active exemplar):
 - **Verifier labels** (PRD FR-X9): every finding where an author gave an explicit Wrong or Fixed signal is copied into `verifier_labels` as ground truth; a monthly sample of 100 is human-labeled for "unimportant".
 - **Incident-derived rules** (PRD FR-X11): for rules seeded from reverts or incidents, the reverted or incident-linked diff is the positive case, supplemented by injected-violation cases; the rule file and candidate PR carry `eval: synthetic` until a real PR provides a positive.
 - **Adversarial set** (PRD FR-X10): `exemplar-config/evals/_adversarial/` holds PRs with prompt injection in diffs, comments, PR descriptions, file names and linked tickets, each with the attacker's goal (false approval, suppressed finding, fabricated citation). Maintained from Phase 0; the Phase 5 red team adds to it.
+- **Clean-PR set** (PRD FR-X12): `exemplar-config/evals/_clean/cases.yaml` lists PRs known to be clean: merged, never reverted, no incident within 90 days, and confirmed by a named engineer who knows the code (`clean_prs`). `exemplar-learn evals --clean`, weekly and on every change to prompts, tools, models or providers, reviews them with the current config through the replay harness (`caller=eval`); **every finding is a false alarm**, and a false alarm that carries a validated suggested fix is a *harmful* one, counted separately, because applying it would change behavior. Rates are stored per rule and class in `clean_pr_runs` and shown on the lanes board next to the incident-set recall. A new clean PR enters the set by a config PR with the confirming engineer as reviewer; a PR later reverted or incident-linked leaves it automatically.
+- **The change gate:** the incident set (FR-X11, replayed as the recall side) and the clean-PR set (the false-alarm side) are run together on every prompt, tool, model or provider change; the change is kept only if incident-set recall does not fall and neither the clean false-alarm rate nor the harmful rate rises, each judged against the previous run with the thresholds in `eval_thresholds.change_gate`. §8.9 step 6 runs it in CI.
 - **Baseline comparison** (PRD FR-X8): the baseline reviewer's shadow findings (stratified 10% sample, §6.3) are matched to human comments and to Exemplar's findings on the same PRs; §12 shows precision and accepted-equivalent findings per PR side by side.
 
 Cases reference code by `repo@sha:path#Lstart-Lend` (plus `patch` for synthetic cases); no code is copied into `exemplar-config`.
@@ -1203,9 +1462,9 @@ Cases reference code by `repo@sha:path#Lstart-Lend` (plus `patch` for synthetic 
 3. Post precision / recall / F1 (historical and synthetic reported separately) as a check; block merge below thresholds in `global.yaml`.
 4. Post the volume estimate and linter-overlap results as separate checks.
 5. Run the **adversarial set** on every config, prompt or model change (config PRs here; prompt and model changes in the `exemplar` repo's CI). Any attacker success fails the build.
-6. Run verifier and Stage 2 categorizer calibration on every change to their prompts, models or providers; fail below the FR-X9 thresholds (§6.8).
-7. Config PRs that change a rule's `export:` block (summary or `agents` flag) require an approval from `@platform/devex` in addition to the rule owner, enforced by a CODEOWNERS-style check on the YAML path (§10.2).
-8. Nightly: full golden set, verifier calibration, Stage 2 categorizer calibration, baseline comparison.
+6. Run verifier and Stage 2 categorizer calibration on every change to their prompts, models or providers; fail below the FR-X9 thresholds (§6.8). Run the **change gate** (incident set and clean-PR set, §8.8) on the same triggers and on any tool change; fail if recall falls or either false-alarm rate rises.
+7. Config PRs that change a rule's `export:` block (summary or `agents` flag) require an approval from `@platform/devex` in addition to the rule owner, enforced by a CODEOWNERS-style check on the YAML path (§10.2). A PR that raises `concurrency.rules_per_agent` must attach the golden-set run that justifies it (§6.3 step 7).
+8. Nightly: full golden set, verifier calibration, Stage 2 categorizer calibration, baseline comparison. Weekly: the clean-PR set and incident-set recall, reported on the lanes board.
 
 **As implemented** (step 2, `mode: eval`, migration 00025):
 - **CI side.** `exemplar eval --remote --changed-since <base>` sends exemplar-config's merge-base and pushed HEAD (plus any `--rules`) to `/v1/evaluate`. It polls, writes the same JSON and summary table as a local `exemplar eval`, and fails below `eval_thresholds`.
@@ -1219,13 +1478,25 @@ Cases reference code by `repo@sha:path#Lstart-Lend` (plus `patch` for synthetic 
 
 ### 8.10 Rule expiry
 
-A daily job finds rules whose `review_by` date has passed. If the rule's eval still passes **on cases drawn from the last 90 days** and its effective FP is under the bar, it opens a PR extending `review_by` by 12 months for the owner to merge. Otherwise it opens a PR setting `status: shadow`, which **auto-merges after 14 days** if the owner hasn't responded (demotion is a safe direction). The digest lists both.
+A daily job finds rules whose `review_by` date has passed. If the rule's eval still passes **on cases drawn from the last 90 days** and its effective FP is under the bar, it opens a PR extending `review_by` for the owner to merge. Otherwise it opens a PR setting `status: shadow`, which **auto-merges after 14 days** if the owner hasn't responded (demotion is a safe direction). The digest lists both.
+
+**Per-category defaults** (PRD §7, v0.9). The default `review_by` at promotion, and the extension period, come from `global.yaml` `review_by_defaults` per category: a Security rule and a Performance rule written against one library version have half-lives an order of magnitude apart. Defaults: Security and Blocker 6 months, Performance 6, Correctness 12, Style and Nit 18; `expiry.default_months` is the fallback for a category without an entry. A rule file may set its own `review_by`; the candidate PR writer fills it from the category default when the rule has none.
 
 **As implemented** (`exemplar-learn expiry`, daily):
 - **Evidence:** the rule's last 90 days of production outcomes (`finding_outcomes`) stand in for an eval on recent cases. It needs at least one judged finding and weighted eFP within `feedback.efp_bar` to extend.
-- **Extension:** `review_by` moves `expiry.default_months` past today. The owner merges it; Exemplar never does.
+- **Extension:** `review_by` moves the category's default (today `expiry.default_months`) past today. The owner merges it; Exemplar never does.
 - **Shadow PR:** it merges after `expiry.auto_demote_after_days` unless a person comments, reviews or closes it.
 - **Repeats:** there is one branch per rule version and decision.
+
+### 8.11 Learned importance priors
+
+Implements PRD FR-B9: the second false-positive class of PRD §2.2 (right, but not important here) gets the same feedback loop the first has.
+
+- **Signal.** *Not important here* dismissals (`fb_not_important`, and code-scanning dismissals mapped to it) from authors, reviewers and owners (never observers), with the finding's path, category and rule.
+- **Job.** `exemplar-learn priors`, weekly. For each repo it aggregates the last 90 days of such dismissals by `(path prefix, category)`, trying prefixes from the file's directory upward and keeping the deepest prefix that meets the floor: **at least 5 dismissals from at least 3 distinct people**. Rules whose findings are all under one prefix are reported to their owner instead, since that is a scope problem for §8.7's teach path, not an importance prior.
+- **Proposal.** One config PR per repo and week adding or raising an `importance_priors` entry in `repos/<org>/<repo>.yaml`: `{prefix, category, importance_min: <raised threshold>}` by default, or `suppress` when more than 80% of the prefix's findings in that category were dismissed as unimportant. The PR cites the dismissals (finding links and counts, never people's words), shows the findings the prior would have withheld in the last 90 days, and lists any accepted findings it would also have withheld, so the owner sees the trade. Security and `blocking` findings are never subject to a prior, and the schema refuses one.
+- **Effect.** Merged priors apply in ranking (§6.10) and are recorded on each finding they touch; the owner digest shows priors in force under the owner's paths and what they withheld. A prior is config, so it expires and is removed like any config: the job proposes removal when a prefix has had no finding of that category in 180 days.
+- **Scope.** Repo files only; a global prior is a rule change and goes through the rule's owner.
 
 ---
 
@@ -1271,6 +1542,7 @@ The bot's own seeded reactions are excluded by actor id (FR-T4). Each event reco
 - **Acceptance rate** = accepted ÷ (accepted + rejected + ignored), over posted findings. Findings withheld as human duplicates are not in this rate (no one saw them).
 - **Effective false-positive rate (eFP), role-weighted** (FR-B7). Negatives are `fb_wrong`, `fb_not_important`, `fb_disagree`; positives are accepted findings and `human_agreed`. Reactions are secondary signals (PRD §9): `react_down` counts as a rejection for the acceptance rate at weight 0.5 but does not enter eFP, and `react_up` is reported but counts for nothing. Each event's weight is its actor's role weight — author 1, reviewer 2, owner 4. If an owner has adjudicated a finding, only the adjudication counts for it (owner weight; `uphold` = positive, `overturn` = negative). `eFP = Σ w·negative ÷ Σ w·(positive + negative)`
 - **Rule precision** (used for ranking, shedding and demotion) = positives ÷ (positives + negatives), unweighted counts of findings, including `human_agreed` (FR-B8). Reactions are excluded.
+- **Severity-weighted acceptance** (PRD G1, §13, v0.9) = Σ w(severity) over accepted ÷ Σ w(severity) over accepted + rejected + ignored, with `blocking` 3, `important` 2, `suggestion` 1, over posted findings. This is the goal metric and the Phase 3 and 5 exit criterion; the unweighted acceptance rate stays as an informational metric for comparability with other tools' figures.
 - **Ignored rate** = ignored ÷ posted; reported alongside, since a rising ignored rate with flat eFP means the bot is being tuned out.
 - `fb_handled` is a rejection for acceptance purposes and a context gap for routing (§9.3), not an eFP negative.
 
@@ -1281,7 +1553,7 @@ Human-comment baselines use the same definitions on human review comments.
 | Reason | Goes to | Automated action |
 |---|---|---|
 | Wrong | Verifier and rule prompt | Add to `verifier_labels` (an author's as `author_signal`, anyone else's as `human_review`; an owner's uphold/overturn is a `human_review` label `true`/`wrong` that replaces author signals); if per-rule wrong-rate > 15%, flag prompt for owner |
-| Not important here | Scope and importance | Path clustering of dismissals → suppression proposal (§8.7) |
+| Not important here | Scope and importance | Path clustering of dismissals → importance-prior proposal (§8.11) or, when one rule's findings cluster under one prefix, a scope proposal (§8.7) |
 | Already handled | Context providers | Logged with free text; weekly review by the platform team for missing context (e.g. wrappers outside the default `dependents` scope) |
 | Disagree with rule | Rule owner | Counted per rule; ≥ 3 in 30 days opens an owner review issue |
 
@@ -1432,7 +1704,7 @@ Other agents call `exemplar-api` with a service JWT (`caller=agent`). The baseli
 
 ## 11. Evaluation
 
-Evaluation is specified with the learning plane: eval generation (§8.8), eval CI (§8.9), the replay harness and baseline comparison (§8.8, §16.1), and verifier calibration (§6.8).
+Evaluation is specified with the learning plane: eval generation (§8.8), eval CI (§8.9), the replay harness and baseline comparison (§8.8, §16.1), verifier calibration (§6.8), and the change gate made of the incident set and the clean-PR set (§8.8, FR-X11–X12). The shadow exit (§16) is an **adjudicated sample**: owners label a random 200 shadow findings as right, wrong or unimportant through the web UI's finding page (the labels land in `verifier_labels` with `source='human_review'`), and precision is computed on those labels, not against human comments, since a correct finding no reviewer made would otherwise count against the bot; injected-violation recall (FR-X6) per active rule is the other half.
 
 ---
 
@@ -1483,10 +1755,10 @@ Per-rule visibility and an auto-approve audit trail are required by the PRD's fe
     - "Webhook to first comment" is measured from the review job's enqueue, which the router does right after receipt.
     - `dashboards/telemetry.json` reads them from a Prometheus-compatible datasource.
     - Per-stage engine timing is not split out yet. Review duration is whole-job.
-- **Informational metrics** (PRD §13.2): cost per run and per PR lifetime by lane and stage; time to first comment and run duration; coverage per run and share of degraded or incomplete runs, with shed reasons; queue depth and wait time per repo; usage and cost by caller; failover rate per provider. No targets are drawn on these panels.
-- **Auto-approve audit:** approvals per day; table of every decision with each Stage 1 value against threshold, the Stage 2 categorization and reasons, links to PR and transcript key; reverts and incident-linked PRs among auto-approved merges; kill-switch state per repo.
-- **Program:** weekly acceptance (bot vs. human baseline, same definitions per §9.2), LGTM recall from the nightly golden-set run, share of merged PRs that were fully AI-reviewed, median time-to-merge for auto-approve-eligible vs. other PRs.
-- **Lanes and verifier:** findings and acceptance by lane; verifier refutation rate per rule (a rule refuted > 50% of the time needs a better prompt); verifier calibration accuracy on known-wrong vs. known-true findings; held-back counts by `suppressed_reason`; share of findings with a valid fix and suggestion-applied rate.
+- **Informational metrics** (PRD §13.2): cost per run and per PR lifetime by lane and stage; time to first comment and run duration; coverage per run and share of degraded or incomplete runs, with shed reasons; queue depth, wait time and runners in flight per repo; usage and cost by caller; failover rate per provider; **raw (unweighted) acceptance** beside the weighted goal metric; **review rounds to merge per PR** (mean, and the share needing five or more, from `reviews.round`) and how often the round cap engaged; **human approvals per PR** (median and p95) and **time waiting on a person** (from the first review submission to the merge, less time the PR waited on CI), paired with the counter-metrics. No targets are drawn on these panels.
+- **Auto-approve audit:** approvals per day; table of every decision with each Stage 1 value against threshold (author merges per area, owner areas touched, candidates by severity, the `suggestion` findings posted with the approval), the Stage 2 categorization and reasons, links to PR and transcript key; revocations by reason, base drift included; reverts and incident-linked PRs among auto-approved merges, each with its `approval_failures` row and `should_have_caught`; kill-switch state per repo.
+- **Program:** weekly **severity-weighted** acceptance (bot vs. human baseline, same definitions per §9.2), **incident-set recall** and the clean-PR false-alarm and harmful rates (§8.8), LGTM recall from the nightly golden-set run, share of merged PRs that were fully AI-reviewed, median time-to-merge for auto-approve-eligible vs. other PRs.
+- **Lanes and verifier:** findings and acceptance by lane; verifier refutation rate per rule (a rule refuted > 50% of the time needs a better prompt); **quorum agreement per bug class** (share of candidates confirmed 3-of-3, 2-of-3, 1-of-3, 0) and the `quorum_shed` count; verifier calibration accuracy on known-wrong vs. known-true findings, with the pass/fail that gates `same_family`; held-back counts by `suppressed_reason`, importance priors in force and what they withheld; share of findings with a valid fix and suggestion-applied rate.
 - **Baseline comparison:** Exemplar vs. the in-house baseline reviewer on the same PRs — precision against human comments, accepted-equivalent findings per PR, cost per accepted finding.
 - **Shift left:** exports per repo, their PR state and config-SHA drift; CLI `exemplar review` calls by user and declared agent; per exported rule, violations per in-scope PR before vs. after export and agent-authored vs. other PRs.
 - **Counter-metrics** (PRD §13.1): revert and change-failure rate of auto-approved vs. human-approved PRs; incidents linked to PRs with zero findings and quick approval; per team, share of owned paths changed with no team member viewing the PR; human substantive-comment volume over time.
@@ -1522,6 +1794,7 @@ WITH adj AS (                              -- owner adjudication overrides other
          bool_or(kind = 'adjudicated_overturn') AS overturned
   FROM feedback_events WHERE kind LIKE 'adjudicated_%' GROUP BY finding_id)
 SELECT f.id, f.rule_id, f.lane, f.repo, f.created_at,
+       CASE f.severity WHEN 'blocking' THEN 3 WHEN 'important' THEN 2 ELSE 1 END AS sev_w,
        (f.state IN ('posted','resolved','minimized'))                           AS seen,
        bool_or(e.kind IN ('applied_suggestion','fb_fixed','fixed'))             AS accepted,
        bool_or(e.kind IN ('fb_wrong','fb_not_important','fb_handled',
@@ -1542,7 +1815,7 @@ LEFT JOIN feedback_events e ON e.finding_id = f.id
 LEFT JOIN adj a ON a.finding_id = f.id
 WHERE f.state IN ('posted','resolved','minimized')
    OR f.suppressed_reason = 'human_duplicate'
-GROUP BY f.id, a.finding_id, a.upheld, a.overturned;
+GROUP BY f.id, f.severity, a.finding_id, a.upheld, a.overturned;
 
 CREATE MATERIALIZED VIEW rule_weekly_stats AS
 SELECT rule_id, lane,
@@ -1555,6 +1828,9 @@ SELECT rule_id, lane,
        count(*) FILTER (WHERE human_agreed)                           AS human_agreed,
        round(count(*) FILTER (WHERE seen AND accepted)::numeric
              / nullif(count(*) FILTER (WHERE seen AND (accepted OR rejected OR ignored)), 0), 3) AS acceptance_rate,
+       -- severity-weighted acceptance (PRD G1, v0.9): blocking 3, important 2, suggestion 1
+       round(sum(sev_w) FILTER (WHERE seen AND accepted)::numeric
+             / nullif(sum(sev_w) FILTER (WHERE seen AND (accepted OR rejected OR ignored)), 0), 3) AS acceptance_weighted,
        round(sum(neg_w)::numeric / nullif(sum(neg_w + pos_w), 0), 3) AS effective_fp_weighted,
        sum(non_author_negatives)                                      AS non_author_negatives,
        count(*) FILTER (WHERE owner_overturned)                       AS owner_overturns
@@ -1752,7 +2028,7 @@ flowchart LR
   NS -. "traces, metrics" .-> OTEL
 ```
 
-**Default-deny NetworkPolicy.** Each Deployment has an explicit egress list and nothing else: `exemplar-webhook` → Postgres only; `exemplar-worker` → gateway, exemplar-search, GitHub, Jira, Postgres; `exemplar-gateway` → providers A/B, embedding provider, KMS, Postgres; `exemplar-search` → GitHub, nothing inbound except from workers and the API; `exemplar-poster` → GitHub, Postgres; `exemplar-api` → Postgres, object storage, gateway, GitHub, SSO; `exemplar-feedback` and `exemplar-learn` → GitHub, incident tool, gateway, Postgres. Only `exemplar-webhook` and `exemplar-api` have an Ingress. **As implemented:** they're reached through a Cloudflare Tunnel by default (`exemplar-cloudflared` dials out, so nothing in the cluster is public), through an Ingress, or both (`deploy/README.md`, *Inbound*). With the tunnel, IN-1's CIDR restriction is a Cloudflare WAF rule on the webhook host, and IN-2's SSO is Cloudflare Access on the API host. The model's tools (§6.5) make no network calls at all; the worker process does, only to the hosts listed.
+**Default-deny NetworkPolicy.** Each Deployment has an explicit egress list and nothing else: `exemplar-webhook` → Postgres only; `exemplar-worker` → gateway, exemplar-search, GitHub, Jira, Postgres; `exemplar-gateway` → providers A/B, embedding provider, KMS, Postgres; `exemplar-search` → GitHub, nothing inbound except from workers and the API; `exemplar-poster` → GitHub, Postgres; `exemplar-api` → Postgres, object storage, gateway, GitHub, SSO; `exemplar-feedback` and `exemplar-learn` → GitHub, incident tool, gateway, Postgres. With the control/runner split, the **runner** Job's policy is Postgres (through the pooler), gateway, `exemplar-search` and GitHub, and the **control** process drops GitHub clone and the gateway, keeping Postgres and the GitHub API for event handling and token minting. Only `exemplar-webhook` and `exemplar-api` have an Ingress. **As implemented:** they're reached through a Cloudflare Tunnel by default (`exemplar-cloudflared` dials out, so nothing in the cluster is public), through an Ingress, or both (`deploy/README.md`, *Inbound*). With the tunnel, IN-1's CIDR restriction is a Cloudflare WAF rule on the webhook host, and IN-2's SSO is Cloudflare Access on the API host. The model's tools (§6.5) make no network calls at all; the worker process does, only to the hosts listed.
 
 | Edge | From → to | Protocol and authentication | Data that crosses | Enforcement |
 |---|---|---|---|---|
@@ -1795,8 +2071,14 @@ The threat table below maps each row to one or more of these edges.
 | Lane 1 engines executing untrusted rule content | Rules come only from merged config; engines run with no network, CPU/memory limits and timeouts; compile attempts run in a separate sandbox |
 | Authors game feedback to demote rules they dislike | Role-weighted eFP; author signals flag but never demote alone; demotion needs an owner adjudication or two distinct non-author actors (§9.4) |
 | Secrets or sensitive code sent to a model provider | Repo denylist, path exclusions, two-layer secret redaction (worker and gateway), hardcoded provider list, per-call data-class logging (§13.1) |
-| Partial review mistaken for a clean review | Explicit coverage; "no findings" only at 100%; degraded runs cannot approve; incomplete runs post nothing (§6.15) |
-| Auto-approve reaching control files through a broad scope | Hardcoded path denylist that config can only extend; bot/agent author policy; forced bug lane; approval dismissed on every push (§6.13) |
+| Partial review mistaken for a clean review | Explicit coverage; "no findings" only at 100%; degraded runs cannot approve; incomplete runs post nothing (§6.15); a search-off install says in the check run what was not checked (§6.4.6) |
+| Auto-approve reaching control files through a broad scope | Hardcoded path denylist that config can only extend; bot/agent author policy; forced bug lane; approval dismissed on every push and on base drift (§6.13) |
+| Auto-approve of a trivially clean change by an author new to the area, or across many areas at once | Author experience per ownership area and blast radius as deterministic Stage 1 inputs from stored history and CODEOWNERS; config can only tighten them (§6.13) |
+| A model downgrades a finding's severity so it falls in the non-blocking class | Severity and category come from the rule or class and are attached by code; the model-facing schema has no severity field (§1.2 rule 4, §6.13) |
+| The review process mints a token it should not have (config-writer, exports) | With the control/runner split the App private key lives only in the control process; a runner receives four repository-scoped tokens through a single-use claim and can mint nothing (§2.4 C2). Until the split ships, the worker holds the key and the risk is open, as `deploy/README.md` records |
+| A runner is reused or reaches another review's data | One runner per review, its own ephemeral volume, exits on completion; claims are single-use with a nonce and expire; the runner's network policy is Postgres, gateway, search and GitHub only (§2.4) |
+| Model-written rule bodies escape the sandbox | `--require-sandbox` is never turned off; `unshare --net` plus `prlimit` where user namespaces exist, a gVisor or Kata runtime or the per-task microVM boundary where they do not (§2.4 C10, R7); the compile job stays suspended on a platform that offers neither |
+| A hosted trial exposes a prospect's code | A hosted trial is outside the design until it has its own tenancy, data-handling terms, short retention and enforced shadow mode (§2.4.4); the self-hosted paths keep R6 |
 
 The adversarial eval set (§8.8) runs in CI from Phase 0; the Phase 5 red team extends it.
 
@@ -1852,7 +2134,7 @@ Pin exact versions at implementation time (Go modules via `go.mod`; Python via `
 | Second provider SDK | The chosen provider's official Go SDK, behind the gateway's provider interface |
 | SARIF | `github.com/owenrumney/go-sarif/v2` |
 | Secret scanning | `github.com/zricethezav/gitleaks/v8` detect package, embedded in worker, gateway and learning ingest |
-| Parse checks, mutation operators | `github.com/smacker/go-tree-sitter` (+ grammars per language in use) |
+| Parse checks, mutation operators | `github.com/tree-sitter/go-tree-sitter` (+ grammars per language in use; cgo), `go/parser` and `go/ast` for Go |
 | Jira (linked tickets) | `github.com/andygrunwald/go-jira` (read-only service account) |
 | Git | git ≥ 2.40 in worker and `exemplar-search` images (sparse-checkout cone mode, partial clone) |
 | Tests | stdlib `testing` + native fuzzing (anchor validation, glob scope, diff parsing), `github.com/stretchr/testify` , `github.com/testcontainers/testcontainers-go` (real Postgres + pgvector), `gopkg.in/dnaeon/go-vcr.v4` (recorded GitHub and Anthropic traffic) |
@@ -1872,13 +2154,15 @@ Pin exact versions at implementation time (Go modules via `go.mod`; Python via `
 
 | System | Choice |
 |---|---|
-| Compute | Kubernetes; one image, one Deployment per binary; CronJobs for learning jobs |
-| Database | Managed PostgreSQL 16+ with `pgvector` , plus one read replica (dashboards, playground) |
+| Compute | Kubernetes 1.29+ (native sidecars); one image, one Deployment per binary, a StatefulSet for search, CronJobs for learning jobs, and a **Job per review** once the control/runner split ships. **Recommended platform: GKE Autopilot**; EKS Auto Mode second; own nodes (k3s, on-prem) for GHES and air-gapped installs; a laptop cluster behind a tunnel for trials (§2.4) |
+| Way in | Cloudflare Tunnel by default (nothing public in the cluster; WAF rule and Access at the edge), or an Ingress controller, or both |
+| Database | PostgreSQL 16 with `pgvector` : managed (Cloud SQL / AlloyDB, RDS / Aurora) with one read replica for dashboards and the playground and a pooler in front for runners; the in-cluster component for trials |
 | Object storage | S3 / GCS |
-| Secrets | Cloud KMS + External Secrets / Vault |
-| Model access | Anthropic API (provider A) and provider B, both through `exemplar-gateway` |
-| Gateway | `exemplar-gateway` (in-house Go reverse proxy, two providers) |
-| Repo context | `exemplar-search` StatefulSet (our Go binary embedding zoekt), 2 replicas with local SSD — the only additional container for context |
+| Secrets | External secret store (Cloud KMS + External Secrets / Vault); one root key derives the internal tokens |
+| Model access | Anthropic API or Bedrock (provider A) and provider B, both through `exemplar-gateway` |
+| Gateway | `exemplar-gateway` (in-house Go reverse proxy, two providers), scaled on request rate |
+| Repo context | `exemplar-search` StatefulSet (our Go binary embedding zoekt), 2 replicas with local SSD, read replicas as load grows — **optional**; without it, references and history come from the checkout (§6.4.6) |
+| Rule sandbox | `unshare --net` + `prlimit`; GKE Sandbox (gVisor) or a Kata pool where available; Cloudflare Sandboxes only for compile and the playground, after a data-handling review (§2.4) |
 | Lane 1 engines | `ast-grep` CLI (MIT) and Semgrep Community Edition (LGPL-2.1 engine) in the worker image |
 | Observability | OTEL collector → existing APM; Grafana |
 | CI for config | GitHub Actions (eval workflow), OIDC to `exemplar-api` |
@@ -1903,6 +2187,13 @@ Pin exact versions at implementation time (Go modules via `go.mod`; Python via `
 | Feedback links failing | Slash commands and reactions continue to work; fix `exemplar-api` ; no data loss beyond the outage window |
 | `exemplar-search` index behind or missing | Responses switch to degraded mode ( `git grep` , tighter caps); `bug.contract` skipped (no auto-approve); check fetch/index logs; delete the replica's volume to force a clean rebuild — the other replica keeps serving |
 | Both `exemplar-search` replicas down | Context tools return errors the agents see; bug lane skipped; exemplar lane continues with the PR checkout only; reviews are not blocked |
+| Reviews route to humans for "the bug lane did not run to full coverage" on an install without search | Expected on a repo with `extra_repos` (§6.4.6): add search, or drop `extra_repos` if the cross-repo context isn't needed. On a single-repository install it means the local references are not yet shipped; nothing is wrong |
+| Search is off and someone thinks it's broken | `EXEMPLAR_SEARCH_URL` empty and the start-up warning mean off on purpose; a set URL with connection errors means missing. The check run says which |
+| A PR keeps getting the same findings push after push | The round cap engaged (summary comment, `neutral` check); a human review resets it. If it engages often for one rule, the rule's fix or summary is unclear: flag it for the owner |
+| Approval turned `pending` without a push | Base drift (§6.13): the base moved past `base_drift_commits` or touched the PR's paths; the gates re-run on the new merge result and re-approve if they pass. Nothing to do unless it stays pending, then check the merge-policy job |
+| Runner quota saturated, queue age alert | Raise `launcher.max_runners` within the platform quota; check provider rate-limit headroom first, since runners waiting on 429s hold slots; a monorepo rebase storm drains on its own |
+| A runner died mid-review | River retries the job in a new runner, which skips completed rule runs; the old claim expires. A review that keeps dying is incomplete after 3 attempts and says so on the check run |
+| Scheduled job overlapping itself | The advisory lock makes the second run exit at once with a log line; no action |
 
 ---
 
@@ -1910,14 +2201,24 @@ Pin exact versions at implementation time (Go modules via `go.mod`; Python via `
 
 Assumes a core team of **5 engineers** (2 backend Go on the online path; 1 ML/data with Python and Go on the learning plane, evals and verifier calibration; 1 Go engineer on context providers, Lane 1 engines and the bug lane; 1 Go/DevEx owning CLI, exports, dashboards and later the web UI), plus a part-time security partner and 3–5 domain-expert rule owners in pilot teams. Phases follow the PRD rollout order (PRD §14): auto-approve follows shift-left and the bug lane.
 
+**Status (2026-10-24).** The code for Phases 0–6 is largely built in the repository as head starts, logged in `docs/plans/phase-0.md` and `docs/plans/ready-to-install.md`; `docs/plans/README.md` is the map. **Built** means implemented and tested here; nothing has run against a real GitHub org, real providers or production data, so no phase's exit criteria have been met, and the phases below are now read as rollout stages over a built system. Not built, and tracked in `docs/plans/backlog.md`: the PRD v0.8–v0.9 gates (FR-A9 base binding, A10, A11, A13, E10's calibration rule, E3/E16, B9, L1.8/L1.9), the v0.7 convergence controls (FR-C8, C9, V7, X12), the local references and history of §6.4.6, and the elastic hosting changes of §2.4. Their order:
+
+| Step | Work | Why this order |
+|---|---|---|
+| H1 | §2.4 C1–C3: control/runner split with the in-process and Kubernetes Job launchers, single-use claims, config snapshots; §6.4.6 local references and history | Per-review isolation and the App key out of the review process before any cloud decision is final; search-off becomes a mode. On today's cluster. |
+| H2 | FR-A13 clean run, FR-E10 calibration rule with `calibration_results`, FR-V7 quorum, FR-C8 round cap, FR-C9 grouping | The gates and convergence controls the pilot will feel first; all small to medium and independent of the platform. |
+| H3 | §2.4 C4–C7, then the Autopilot overlay (compute class, ephemeral volumes, FQDN policies), with the §2.4.3 verification list | Only after H1 proves the Job-per-review path. |
+| H4 | FR-A9 base binding, FR-A10/A11 gates, FR-X12 clean-PR set and the change gate, FR-B9 priors, FR-L1.8/L1.9 sources, FR-E3/E16 | Before any repo leaves shadow for auto-approve (A9–A11), and as the learning plane meets real data (B9, L1.x). |
+| H5 | §2.4 C8–C10 | Follow load. |
+
 | Phase | Weeks | Deliverables | Exit criteria |
 |---|---|---|---|
 | **0. Foundations** | 1–4 | **Monorepo benchmark** (shallow sparse clone time, zoekt full-index time and size, query latency, ctags coverage of the main languages); Go module and core packages; sqlc + goose; River; Postgres; both GitHub Apps in a sandbox org; `exemplar-config` with schema CI; **gateway with two providers, failover** , soft ceiling and OTEL; **replay harness** ; **baseline reviewer** ; **adversarial eval set in CI** ; secret scanning; data-handling review with Security (eligibility denylist, retention). | Engine and baseline review recorded PRs end-to-end; acceptance tests T-0.1–T-0.5 pass; eligibility list and retention signed off by Security |
 | **1. Mine & curate** | 3–8 | Ingest (+ doc links, incidents, reverts); extractor calibration; embeddings; clustering; ranking; **compile-to-deterministic** ; candidate PRs with volume and linter-overlap checks; `/exemplar try` ; eval generation incl. **injected violations** ; eval CI | ≥ 30 active rules with passing evals; extractor in the 10–15% band; ≥ 15% of promoted rules compiled |
-| **2. Shadow** | 7–11 | Webhook, orchestrator, workers and a first `exemplar-search` (mirror, index, `read_file` , `search_text` ) on pilot repos in **shadow** : Lanes 1–2 + **verifier** , validation, linter dedupe, ranking and comment budget; Grafana rule-health, ops, cost, lane/verifier and baseline boards | Shadow precision ≥ 0.7 vs. human comments; ≥ 2× baseline precision; PR lifecycle and degraded-mode behavior exercised in shadow; acceptance baselines re-measured |
-| **3. Comment** | 11–15 | Poster with Conventional Comments labels, **suggestions + fix validation** , **signed feedback links and slash commands** , SARIF for Security; PR lifecycle (incremental review, self-resolving threads, rebase re-anchoring); human-comment and late-CI linter dedupe; role-weighted feedback and owner adjudication; feedback poller; teach-the-bot proposals; digests; auto-demotion; rule expiry; CLI release | ≥ 50% acceptance for 4 consecutive weeks; every active rule ≤ 10% eFP |
-| **4. Shift left + bug lane** | 15–20 | **`exemplar-search`** completed: import-pattern scoping, `find_definition` / `find_references` / `dependents` , degraded mode (stood up in Phase 2 for `read_file` and `search_text` ); **bug lane** in shadow, then commenting on critical paths; mutation evals; **rule exports** with auto-merge and drift tracking; `exemplar review` documented as the pre-PR check for coding agents; upstream-effectiveness metrics. MCP server deferred (Appendix C) | Each bug class ≤ 10% eFP; exported-rule violations per PR falling in pilot repos |
-| **5. Auto-approve** | 20–24 | Strictly deterministic Stage 1, path denylist, author policy, forced bug lane, approval revocation, two-provider Stage 2; compliance constants; kill switches tested; auto-approve audit and counter-metric boards; red-team exercise extending the adversarial set; enable on 1–2 repos with narrow path scope | Zero red-team approvals; zero approvals from degraded runs in shadow; no counter-metric alarms over 4 weeks; ≥ 65% acceptance |
+| **2. Shadow** | 7–11 | Webhook, orchestrator, workers and a first `exemplar-search` (mirror, index, `read_file` , `search_text` ) on pilot repos in **shadow** : Lanes 1–2 + **verifier** , validation, linter dedupe, ranking and comment budget; Grafana rule-health, ops, cost, lane/verifier and baseline boards. Search is optional for the pilot (§6.4.6) | *(v0.9)* Precision ≥ 0.7 on an **adjudicated sample** of 200 shadow findings labelled by owners (§11), not against human comments; injected-violation recall ≥ 0.7 per active rule; ≥ 2× baseline precision; PR lifecycle and degraded-mode behavior exercised in shadow; acceptance baselines re-measured |
+| **3. Comment** | 11–15 | Poster with Conventional Comments labels, **suggestions + fix validation** , **signed feedback links and slash commands** , SARIF for Security; PR lifecycle (incremental review, self-resolving threads, rebase re-anchoring, **round cap and class-of-bug grouping**); human-comment and late-CI linter dedupe; role-weighted feedback and owner adjudication; feedback poller; teach-the-bot proposals; **importance priors**; digests; auto-demotion; rule expiry with per-category defaults; CLI release | ≥ 50% **severity-weighted** acceptance for 4 consecutive weeks; every active rule ≤ 10% eFP; incident-set recall measured and rising |
+| **4. Shift left + bug lane** | 15–20 | **`exemplar-search`** completed: import-pattern scoping, `find_definition` / `find_references` / `dependents` , degraded mode (stood up in Phase 2 for `read_file` and `search_text` ); **bug lane** in shadow with the **verifier quorum**, then commenting on critical paths; mutation evals; **clean-PR set** and the change gate; **rule exports** with auto-merge and drift tracking; `exemplar review` documented as the pre-PR check for coding agents; upstream-effectiveness metrics. MCP server deferred (Appendix C) | Each bug class ≤ 10% eFP; exported-rule violations per PR falling in pilot repos; clean-PR harmful rate at zero for the posting classes |
+| **5. Auto-approve** | 20–24 | Strictly deterministic Stage 1 with the **clean-run** definition, **author experience and blast radius**, path denylist, author policy, forced bug lane, approval revocation **and base binding**, two-provider Stage 2 with the calibration rule for `same_family`; compliance constants; kill switches tested; auto-approve audit and counter-metric boards with **system-accountability** records; red-team exercise extending the adversarial set; enable on 1–2 repos with narrow path scope | Zero red-team approvals; zero approvals from degraded runs in shadow; no counter-metric alarms over 4 weeks; ≥ 65% severity-weighted acceptance and ≥ 50% incident-set recall |
 | **6. Platform** | 24+ | Org-wide rollout by opt-in waves; engine as judge for other agents; Fixer for human comments; editor integration; Go web UI (§12.8) | Second internal caller in production |
 
 **Phase 0 acceptance tests**
@@ -1938,7 +2239,9 @@ Assumes a core team of **5 engineers** (2 backend Go on the online path; 1 ML/da
 - **Contract tests** against recorded GitHub, Anthropic and provider-B traffic (`go-vcr`) and real Postgres via `testcontainers-go`.
 - **Race detector** (`go test -race`) in CI for orchestrator and worker packages.
 - **Chaos:** kill workers mid-review and during verification; confirm no double posts and correct resumption.
-- **Gate invariants:** property tests over the Stage 1 evaluator asserting that no input derived from model text (verdicts, messages, importance, dedupe decisions) can change its result, and that any candidate finding, any coverage below 1.0 and any same-family verification each force `ineligible`.
+- **Gate invariants:** property tests over the Stage 1 evaluator asserting that no input derived from model text (verdicts, messages, importance, dedupe decisions) can change its result; that any `blocking`, `important` or Security-category candidate, any coverage below 1.0, any author below `min_author_merges` in any touched area, any count of owner areas above `max_owner_areas`, any shared or unowned path, and any same-family verification while the calibration has not passed each force `ineligible`; and that a `suggestion` candidate alone, or a same-family verification once the calibration has passed, does not. A second property: no sequence of base pushes can leave an approval standing past `base_drift_commits` or past a base commit touching the PR's paths.
+- **Runners:** a runner given a claim for repo A cannot read repo B's claim, cannot present a nonce twice, and holds no token after exit; the in-process and Job launchers pass the same conformance suite; a killed runner's job is retried once with no double post.
+- **Search-off:** the engine's test suite runs with and without a `References` and `PathHistory`; a single-repository review without search runs `bug.contract` from the local answers and is not degraded; a review with `extra_repos` and no search is degraded and names the repositories.
 - **Fingerprints:** two identical violations in one file produce two findings; a renamed file re-anchors by content; playground and production runs on the same PR never collide.
 - **Adversarial (from Phase 0):** the `_adversarial/` set runs on every config, prompt and model change; the Phase 5 red team adds injected-instruction PRs, poisoned ticket text and poisoned search results to it. No case may produce an approval, a suppressed true finding, or a posted finding with forged provenance.
 
@@ -1955,7 +2258,7 @@ These inputs configure the system and are needed before the end of Phase 0.
 | 3 | Whether any public/fork PRs are in scope | Fork handling, visibility tiers |
 | 4 | Second model provider and its data-processing terms | Gateway provider B, verifier, Stage 2 cross-check |
 | 5 | Model access path (direct API or a cloud marketplace) | Gateway endpoints |
-| 6 | Compute platform | Kustomize manifests and node pools |
+| 6 | Compute platform (recommended: GKE Autopilot; see §2.4.3 for when to choose otherwise) and the answers to the §2.4.3 verification list | The production overlay: compute class for search, ephemeral volumes, FQDN policies, runner quota |
 | 7 | Rule ownership map (platform-owned global rules, team-owned `.exemplar/` rules) | CODEOWNERS of `exemplar-config` and target repos |
 | 8 | Compliance repo list | `internal/gates/compliance.go` |
 | 9 | Grafana instance and Postgres replica access | §12 |
@@ -1971,6 +2274,10 @@ These inputs configure the system and are needed before the end of Phase 0.
 | 19 | Confirmation of the v1 language list against the monorepo | §6.4.5 |
 | 20 | Whether GitHub Enterprise Server is in scope alongside GitHub.com | GitHub feature matrix (SARIF, rulesets, suggestions) |
 | 21 | `merge_safety_score` weights and threshold owner | `merge_safety.weights` (§6.13) |
+| 22 | Whether a hosted trial is offered at all, and on what data-handling terms | §2.4.4; tenancy, retention and shadow enforcement for trial tenants |
+| 23 | Security's answer on running compile and the playground in Cloudflare Sandboxes (repository files leaving the cluster, R6) | §2.4 C10; the rule-sandbox choice |
+| 24 | Whether search is run from day one, or added at the posting step of the install ladder | §6.4.6; the overlay, storage class and size |
+| 25 | The engineer(s) who confirm clean PRs, and the first set | `evals/_clean/` (§8.8) |
 
 ---
 
@@ -1986,12 +2293,13 @@ budgets:
   # mcp_check_usd: 1             # Appendix C (deferred)
 degrade:
   stage_timeout_seconds: 300
-max_exemplar_rules: 40
+max_exemplar_rules: 40          # overflow is ranked by expected value (§6.3 step 6)
 queues:
   per_repo_concurrency: 4         # fairness limit for small repos
   large_repos: [acme/game-engine] # monorepo(s): per_repo_concurrency 32
 concurrency:
   agents_per_review: 3          # shared by Lanes 2 and 3
+  rules_per_agent: 1            # 1–5; above 1 only with a golden-set run attached to the config PR (§6.3 step 7)
 providers:                      # ordered lists = failover order; providers must be in internal/llm/providers.go
   generator:   [{ provider: anthropic, standard: claude-sonnet-5-5, high: claude-opus-5-5 }, { provider: provider-b, model: "<approved model id>" }]
   verifier:    [{ provider: provider-b, model: "<approved model id>" }, { provider: anthropic, model: claude-opus-5-5 }]
@@ -2002,10 +2310,22 @@ merge_safety:
 verifier:
   importance_min: 0.5
   max_candidates_per_call: 8
+  quorum: { n: 3, k: 2 }        # Lane 3 always; a rule opts in with `verify: quorum` (§6.8)
+rounds:
+  max: 3                        # review rounds per PR before inline posting stops (§6.2, FR-C8)
+posting:
+  class_threshold: 3            # occurrences of one rule or class that post as one grouped comment (FR-C9)
 comment_budget:
   per_pr: 7
   per_file: 3
 linter_wait_seconds: 120
+review_by_defaults:             # months from promotion, per category (§8.10)
+  Security: 6
+  Blocker: 6
+  Performance: 6
+  Correctness: 12
+  Style: 18
+  Nit: 18
 bug_lane:
   min_changed_lines: 80
   importance_min: 0.6
@@ -2023,7 +2343,11 @@ eval_thresholds:
   min_cases: 10
   precision: 0.80
   recall: 0.50
-  verifier: { known_wrong_refuted_min: 0.90, known_true_refuted_max: 0.10 }   # FR-X9, gates prompt/model changes
+  verifier: { known_wrong_refuted_min: 0.90, known_true_refuted_max: 0.10 }   # FR-X9, gates prompt/model changes and same_family (§6.13)
+  change_gate:                  # FR-X11 + FR-X12 (§8.8): a prompt, tool, model or provider change must hold both
+    incident_recall_drop_max: 0.0
+    clean_false_alarm_rise_max: 0.0
+    clean_harmful_rise_max: 0.0
 feedback:
   efp_bar: 0.10
   role_weights: { author: 1, reviewer: 2, owner: 4, observer: 0 }
@@ -2052,13 +2376,17 @@ exports:
   targets: [agents_md, claude_md, copilot]
   auto_merge_generated: true
 context:
-  extra_repos: [acme/engine-shared]       # mirrored + indexed in exemplar-search; same visibility tier only
+  extra_repos: [acme/engine-shared]       # mirrored + indexed in exemplar-search; same visibility tier only.
+                                          # Without search, this keeps bug.contract skipped and auto-approve off (§6.4.6)
   include_roots: ["src/"]                 # C/C++ package identity for import patterns
   dependents_depth: 1                     # max 2
+importance_priors:                        # proposed by exemplar-learn priors from "Not important here" (§8.11); never Security or blocking
+  - { prefix: "tools/scripts/", category: Performance, importance_min: 0.8 }
+  - { prefix: "examples/", category: Style, suppress: true }
 auto_approve:
   enabled: true
   paths: ["docs/**", "**/*.md", "config/feature-flags/**"]
-  allowed_authors: ["@acme/engine-team"]          # humans
+  allowed_authors: ["@acme/engine-team"]          # humans; exempt from min_author_merges
   bot_authors:                                    # FR-A6: explicit, narrower scope
     - identity: "renovate[bot]"
       paths: ["config/feature-flags/**"]
@@ -2066,6 +2394,11 @@ auto_approve:
   title_pattern: "^(docs|chore|flags)(\\(.+\\))?: "  # informational only
   max_files: 10
   max_changed_lines: 1000
+  min_author_merges: 10          # FR-A10: merged PRs by this author in each touched ownership area; never below 1
+  max_owner_areas: 1             # FR-A11: CODEOWNERS entries touched; never above 3
+  shared_paths: ["src/common/**", "lib/**"]   # FR-A11: touching these is never auto-approvable; may extend, never narrow
+  unowned_paths: refuse          # refuse | allow (paths with no CODEOWNERS entry)
+  base_drift_commits: 20         # FR-A9: approval re-judged when the base moves further than this
   min_review_confidence: 0.8     # Stage 2, two-model agreement
   min_merge_safety_score: 0.7    # Stage 2, deterministic
 ```
@@ -2126,6 +2459,9 @@ cases:
 
 - GitHub Docs: REST API rate limits; GitHub Apps installation tokens; Checks API; code scanning SARIF upload; repository rulesets.
 - GitHub Changelog, 18 June 2026: safer `pull_request_target` defaults for `actions/checkout`.
+- "Exemplar Elastic Hosting" (hosting design, 2026-10-24): the full scoring of the six hosting options, provider facts as checked that day, and the cost tables condensed in §2.4. Vendor sources: GKE Autopilot pricing and compute classes, GKE Sandbox, EKS Auto Mode, ECS Fargate, Cloud Run Jobs, Cloudflare Containers and Sandboxes limits.
+- Will Larson, "Speeding up code review with `small-change`" (October 2026): author experience, blast radius and the system-accountability norm (PRD v0.8).
+- Anthropic, "How the Claude Code team does code review" (October 2026): verifier quorum, round cap, class-of-bug findings and the clean-PR false-alarm rate (PRD v0.7).
 - zoekt (Sourcegraph) and GitLab Exact Code Search documentation.
 - Anthropic API documentation: Messages, Message Batches, prompt caching, structured outputs.
 - Model Context Protocol Go SDK.
