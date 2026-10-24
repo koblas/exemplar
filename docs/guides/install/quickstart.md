@@ -133,3 +133,9 @@ Then open a pull request in the shadow repo: the review appears in the web UI. C
 ## What you have
 
 For a trial that's enough. The quickstart's Postgres has no backups or replication, nothing but Exemplar's own sign-in is in front of the API, `/webhook` is open to any source (deliveries are still signature-checked), and everything runs one replica. [How to install for production](production.md) adds the edge rules.
+
+The install grows in three steps, each adding one component and one promise:
+
+1. **Shadow, this install.** Reviews are recorded and shown in the web UI; nothing is posted. The one search replica can be left out for a smaller trial ([How to run without exemplar-search](without-search.md)).
+2. **Posting, with search.** `shadow: false` on a repository posts findings. Search gives the agents references across the opted-in repositories and the bug lane its contract check.
+3. **Auto-approve.** Gated on search, the Grafana boards and a shadow period ([How to turn on auto-approve](../operate/auto-approve.md)).

@@ -417,3 +417,14 @@ No release had assets: v0.1.0, v0.2.0 and v0.2.1 carried no CLI archives, `SHA25
 - The manifests job moves to `manifests.yml`, called by release-please.yml as before and runnable by hand with a tag, so a release's manifests can be re-rendered without cutting a new one. CONTRIBUTING.md says when to run it.
 
 **Not done here:** backfilling the existing releases. Once merged, running `release` and `manifests` with `v0.2.1` attaches its archives and manifests; earlier tags can be done the same way if their images are on Docker Hub.
+
+### Running without exemplar-search as an install mode (2026-10-24)
+
+Search is the one stateful service besides Postgres (local SSD, a mirror and index per repository), and a trial or a single-repository install can do without it: the worker already treats `EXEMPLAR_SEARCH_URL` as optional. What was missing was the documentation that makes it a mode rather than a degraded state.
+- **New how-to** `docs/guides/install/without-search.md`: three overlay patches (`$patch: delete` on the StatefulSet and its Services, an empty `EXEMPLAR_SEARCH_URL`), what to check, and how to add search later. The quickstart overlay carries the same patches commented out. Rendered with `kubectl kustomize` on the quickstart: 54 resources, no search StatefulSet, the settings key empty.
+- **The install ladder** in the quickstart's "What you have": shadow (search optional), posting with search, auto-approve.
+- **Concept:** How a review works now lists the agents' tools as the code offers them (four over the checkout, `find_references` and `path_history` from search) and has a "Without exemplar-search" paragraph: what is lost, that a skipped bug class is never auto-approved, and what the check run says.
+- **Reference:** the `EXEMPLAR_SEARCH_URL` row and the search workload row say what empty means and that it is optional.
+- **Operate:** the troubleshooting entry distinguishes search-off on purpose from search missing; the auto-approve note lists search as a prerequisite.
+
+**Not done (code):** answering `find_references` and `path_history` from the runner's own checkout (ripgrep, ctags, `git log` over the touched paths) would close most of the gap for single-repository installs, and the check run could name the missing search explicitly. Both are in the hosting design doc's section 9.

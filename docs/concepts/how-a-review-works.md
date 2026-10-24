@@ -44,11 +44,17 @@ The first outcome is what absorbs volume: it removes the PR from the human queue
 
 **Lane 1, compiled rules.** A rule with `kind: compiled` carries an ast-grep or Semgrep rule and runs as a pattern, with no model. These are the cheapest and most precise findings, and the learning plane tries to compile every candidate it can.
 
-**Lane 2, exemplar rules.** A rule with `kind: exemplar` gets its own agent: a model call that sees the rule's text, the hunks in scope and read-only tools over the repository through `exemplar-search` (`search_text`, `find_definition`, `find_references`, `dependents`, `read_file`). A rule's `context: text-only` denies those tools. The agent can only say a location, a message and an optional fix; rule ids, severities, citations and lanes are attached by code. Rules start on the `standard` model tier and move to `high` when their eval precision falls short; blocking and security rules start on `high`.
+**Lane 2, exemplar rules.** A rule with `kind: exemplar` gets its own agent: a model call that sees the rule's text, the hunks in scope and read-only tools. Four read the pull request's own checkout (`get_hunk`, `read_file`, `grep`, `list_dir`); two come from `exemplar-search` when it is configured (`find_references` across the opted-in repositories, and `path_history`: a file's incidents, reverts and recent commits). A rule's `context: text-only` denies those tools. The agent can only say a location, a message and an optional fix; rule ids, severities, citations and lanes are attached by code. Rules start on the `standard` model tier and move to `high` when their eval precision falls short; blocking and security rules start on `high`.
 
 **Lane 3, the bug lane.** Agents look for common bug classes (nil dereference, error handling, concurrency, resource leaks, off-by-one, contract) independent of any rule. They run on risky PRs: critical paths, at least `bug_lane.min_changed_lines` changed non-test lines, a low merge-safety score, or an incident or revert in the last 90 days, and always on a PR being considered for auto-approve. Findings are posted only for classes with `post_on_critical_paths` and only inside a repo's `bug_lane.critical_paths`; otherwise they stay in shadow.
 
 `concurrency.agents_per_review` bounds how many lane 2 and 3 agents run at once.
+
+### Without exemplar-search
+
+An installation may run without the search service, and reviews are complete without it: every lane runs over the pull request's checkout, and the verifier, dedupe, budgets, posting and feedback are unchanged. What the agents lose is knowledge of code outside this repository. `find_references` and `path_history` are not offered, so a rule about callers finds them inside the repository with `grep` and sees nothing of other repositories. For one repository, or a monorepo, that costs little; across many repositories it is the cross-repository view.
+
+One consequence reaches the outcome: the bug lane's contract class needs `find_references` and is skipped without it, today even on a single repository. A skipped class makes the run degraded, and a degraded run is never auto-approved: the PR is routed to humans, with "the bug lane did not run to full coverage" among the reasons. Findings are posted as usual.
 
 ## The verifier
 
