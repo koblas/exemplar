@@ -937,7 +937,7 @@ Search is the one stateful service besides Postgres (local SSD, a mirror and an 
 
 **The install ladder.** Shadow without search; posting with search once cross-repository context is worth a search volume; auto-approve once the Phase 5 criteria hold. Each step adds one component and one promise. Search is started small when it is added: one replica, a modest disk, only the opted-in repositories indexed; a few repositories fit in tens of gigabytes. The trial and the small-team tier are priced without it (§2.4.5).
 
-**Status:** the mode is documented and the manifests support it; `LocalReferences`, the local `PathHistory` and the explicit check-run line are in the backlog and ship with the elastic work (§2.4.3). The PRD's constraint 6 and FR-E12 describe search as the context provider and do not yet say it is optional; a PRD revision should add that.
+**Status:** the mode is documented and the manifests support it, and the check-run line is built (it names `context.extra_repos` as not searched whenever search is off); `LocalReferences` and the local `PathHistory` are in the backlog and ship with the elastic work (§2.4.3). The PRD's constraint 6 and FR-E12 describe search as the context provider and do not yet say it is optional; a PRD revision should add that.
 
 ### 6.5 Agent harness (Go)
 

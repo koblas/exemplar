@@ -4,8 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/engine"
 	"github.com/koblas/exemplar/internal/feedbacklink"
+	"github.com/koblas/exemplar/internal/schema"
 )
 
 func TestCommentBodySuggestion(t *testing.T) {
@@ -60,5 +62,29 @@ func TestCommentBodyLinks(t *testing.T) {
 	f.ID = 0
 	if body := commentBody(f, links); strings.Contains(body, "/f/") {
 		t.Errorf("unpersisted body = %s", body)
+	}
+}
+
+func TestScopeNote(t *testing.T) {
+	t.Parallel()
+	withExtra := &engine.Prepared{Effective: &config.Effective{RepoConfig: schema.RepoConfig{
+		Context: &schema.RepoContext{ExtraRepos: []string{"acme/lib", "acme/sdk"}},
+	}}}
+	plain := &engine.Prepared{Effective: &config.Effective{}}
+	for name, tc := range map[string]struct {
+		p    *engine.Prepared
+		res  *engine.Result
+		want string
+	}{
+		"search configured": {withExtra, &engine.Result{}, ""},
+		"search off":        {plain, &engine.Result{SearchOff: true}, "\n\nCross-repository callers were not checked (search is not configured)."},
+		"search off, extra repos": {
+			withExtra, &engine.Result{SearchOff: true},
+			"\n\nCross-repository callers were not checked (search is not configured). Not searched: acme/lib, acme/sdk.",
+		},
+	} {
+		if got := scopeNote(tc.p, tc.res); got != tc.want {
+			t.Errorf("%s: %q, want %q", name, got, tc.want)
+		}
 	}
 }

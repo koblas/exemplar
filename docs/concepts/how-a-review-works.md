@@ -54,7 +54,7 @@ The first outcome is what absorbs volume: it removes the PR from the human queue
 
 An installation may run without the search service, and reviews are complete without it: every lane runs over the pull request's checkout, and the verifier, dedupe, budgets, posting and feedback are unchanged. What the agents lose is knowledge of code outside this repository. `find_references` and `path_history` are not offered, so a rule about callers finds them inside the repository with `grep` and sees nothing of other repositories. For one repository, or a monorepo, that costs little; across many repositories it is the cross-repository view.
 
-One consequence reaches the outcome: the bug lane's contract class needs `find_references` and is skipped without it, today even on a single repository. A skipped class makes the run degraded, and a degraded run is never auto-approved: the PR is routed to humans, with "the bug lane did not run to full coverage" among the reasons. Findings are posted as usual.
+One consequence reaches the outcome: the bug lane's contract class needs `find_references` and is skipped without it, today even on a single repository. A skipped class makes the run degraded, and a degraded run is never auto-approved: the PR is routed to humans, with "the bug lane did not run to full coverage" among the reasons. Findings are posted as usual. The check run also states the review's scope on every PR: "Cross-repository callers were not checked (search is not configured)", followed by the repository's `context.extra_repos`, when it has any, as the repositories not searched.
 
 ## The verifier
 

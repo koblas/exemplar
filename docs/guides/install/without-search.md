@@ -46,7 +46,7 @@ The worker logs one warning at start:
 EXEMPLAR_SEARCH_URL not set: agents get no find_references or path_history, and bug.contract is skipped
 ```
 
-Open a pull request: the review runs and its findings appear in the web UI (and on the PR once the repository leaves shadow). On a PR the bug lane covers, the check run's reasons include "the bug lane did not run to full coverage", which is the contract class above, not a fault.
+Open a pull request: the review runs and its findings appear in the web UI (and on the PR once the repository leaves shadow). Every check run ends with "Cross-repository callers were not checked (search is not configured)". On a PR the bug lane covers, its reasons also include "the bug lane did not run to full coverage", which is the contract class above, not a fault.
 
 ## Adding search later
 
