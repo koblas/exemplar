@@ -104,6 +104,12 @@ type CompileAttempt struct {
 	Metrics           []byte
 }
 
+type ConfigSnapshot struct {
+	Version  string
+	Files    []byte
+	LoadedAt pgtype.Timestamptz
+}
+
 type EffectiveEvent struct {
 	ID         int64
 	FindingID  int64

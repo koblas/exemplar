@@ -15,6 +15,7 @@ flowchart LR
     WH["exemplar-webhook"]
     API["exemplar-api"]
     WK["exemplar-worker"]
+    RN["runners<br/>one review each"]
     GW["exemplar-gateway"]
     SE["exemplar-search"]
     LN["exemplar-learn<br/>+ learning/ (Python)"]
@@ -28,9 +29,12 @@ flowchart LR
   WH --> PG
   API --> PG
   PG <--> WK
-  WK -- "reviews, check runs, approvals" --> GH
+  WK -- "a Job per review" --> RN
+  RN <--> PG
+  RN -- "reviews, check runs, approvals" --> GH
+  RN --> GW
+  RN --> SE
   WK --> GW
-  WK --> SE
   LN --> GW
   LN <--> PG
   LN -- "candidate rule PRs, exports" --> GH
@@ -46,7 +50,8 @@ Every service is a Go binary from one module (`cmd/*`), shipped in one image. Th
 | Binary | Kubernetes kind | Role | Talks to |
 |---|---|---|---|
 | [`exemplar-webhook`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-webhook) | Deployment | Verifies `X-Hub-Signature-256`, stores the raw delivery in `gh_events` keyed by `X-GitHub-Delivery`, and enqueues a `gh_event` job in the same transaction. No business logic. | Postgres only |
-| [`exemplar-worker`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-worker) | Deployment | Runs every River job: routes events, reviews PRs, posts results, records feedback, and runs `/v1/evaluate`, playground and owner-action jobs plus the periodic jobs. The only component that writes to PRs. | Postgres, GitHub, gateway, search |
+| [`exemplar-worker`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-worker) `serve` | Deployment | Control: runs River. Routes events, records feedback, runs owner-action jobs and the periodic jobs, and dispatches each review, `/v1/evaluate` run and playground run to a runner. | Postgres, GitHub, gateway, Kubernetes API |
+| [`exemplar-worker`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-worker) `run-job` | A Job per review, or inside control | One review: checkout, lanes, verification, gates, and the post. Exits when done. With control, the only component that writes to PRs. | Postgres, GitHub, gateway, search |
 | [`exemplar-gateway`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-gateway) | Deployment | The only holder of model-provider credentials. Routes each stage through an ordered provider list with failover, scans requests for secrets, enforces spend and rate limits, and records every call in `model_calls`. | Providers, Postgres; accepts traffic from worker and learn only |
 | [`exemplar-search`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-search) | StatefulSet | Holds the git mirror and a zoekt index with ctags symbols, and answers `search_text`, `find_definition`, `find_references`, `dependents` and `read_file` over an internal API. | GitHub (fetch); accepts traffic from worker only |
 | [`exemplar-api`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-api) | Deployment | Sign-in (GitHub OAuth and/or OIDC), signed feedback links, the `/ui/` web UI, and `/v1/evaluate` for the CLI and services. Enqueues work for the worker instead of running the engine itself. | Postgres, GitHub (OAuth) |
@@ -55,10 +60,12 @@ Every service is a Go binary from one module (`cmd/*`), shipped in one image. Th
 | [`exemplar`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar) | CLI | Config validation, evals, replay, mutations, calibration, `try`, and `login`/`review` against `/v1/evaluate`. | `exemplar-api` |
 | `exemplar-cloudflared` | Deployment | The default way in: a Cloudflare Tunnel connector, so the cluster needs no public ingress. Replaced or joined by an Ingress in [`deploy/k8s/direct`](https://github.com/koblas/exemplar/tree/main/deploy/k8s/direct). | Cloudflare edge, webhook, api |
 
-The worker, gateway, search and learn pods read `exemplar-config` through a git-sync sidecar that clones it as the GitHub App. Until the App exists, `exemplar-api` runs in setup mode: a page reached with `kubectl port-forward` registers the App from a manifest ([`internal/setup`](https://github.com/koblas/exemplar/blob/main/internal/setup/setup.go)). Manifests are in [`deploy/k8s`](https://github.com/koblas/exemplar/tree/main/deploy/k8s) and described in [Workloads, ports and probes](../reference/workloads.md).
+The worker, gateway, search and learn pods read `exemplar-config` through a git-sync sidecar that clones it as the GitHub App. Runners don't: the worker stores every config version it loads in Postgres, and each review runs with the version it was dispatched with, so a config change mid-review never splits one review across two versions.
+
+Reviews are isolated from each other and from control. In production each one is a Kubernetes Job of its own, made from a pod template, so capacity follows the queue rather than the number of worker pods, and a review's checkout, memory and model-facing code end with its pod. The quickstart runs the same runner inside the worker pod instead; it is one flag. The worker alone may call the Kubernetes API, and only to make, read and delete those Jobs. Until the App exists, `exemplar-api` runs in setup mode: a page reached with `kubectl port-forward` registers the App from a manifest ([`internal/setup`](https://github.com/koblas/exemplar/blob/main/internal/setup/setup.go)). Manifests are in [`deploy/k8s`](https://github.com/koblas/exemplar/tree/main/deploy/k8s) and described in [Workloads, ports and probes](../reference/workloads.md).
 
 !!! note "Design vs. as built"
-    The design describes separate `exemplar-orchestrator`, `exemplar-poster` and `exemplar-feedback` services. Today those roles run as River jobs inside `exemplar-worker` (see the package doc in [`internal/worker/worker.go`](https://github.com/koblas/exemplar/blob/main/internal/worker/worker.go)). Write access is still separated: the worker mints a distinct GitHub token flavor for reading, for gate lookups, and for posting.
+    The design describes separate `exemplar-orchestrator`, `exemplar-poster` and `exemplar-feedback` services. Today those roles run as River jobs inside `exemplar-worker` and its runners (see the package docs in [`internal/worker/worker.go`](https://github.com/koblas/exemplar/blob/main/internal/worker/worker.go) and [`internal/worker/runner.go`](https://github.com/koblas/exemplar/blob/main/internal/worker/runner.go)). Write access is still separated: each mints a distinct GitHub token flavor for reading, for gate lookups, and for posting. Runners still hold the App key and mint their own tokens; the design has the worker mint one review's tokens for its runner.
 
 ## Reviewing a pull request (online path)
 
@@ -138,9 +145,9 @@ What a coding agent is told, what it can check locally, and what the PR bot enfo
 ## Trust boundaries
 
 - **Inbound:** only the webhook and api are reachable from outside, through the tunnel or an Ingress. NetworkPolicies default-deny everything else ([`deploy/k8s/core/networkpolicies.yaml`](https://github.com/koblas/exemplar/blob/main/deploy/k8s/core/networkpolicies.yaml)).
-- **Model access:** only the gateway holds provider keys, and only the worker and learn may call it. It runs a second secret scan on every request.
-- **Repository context:** only the worker may call `exemplar-search`.
-- **GitHub write:** only the worker posts, using a poster token separate from its read-only clone and read tokens. The webhook has no GitHub access at all.
+- **Model access:** only the gateway holds provider keys, and only the worker, its runners and learn may call it. It runs a second secret scan on every request.
+- **Repository context:** only the worker and its runners may call `exemplar-search`.
+- **GitHub write:** only the worker and its runners post, using a poster token separate from its read-only clone and read tokens. The webhook has no GitHub access at all.
 - **Data handling:** what the code does with repository data is on [Trust and data handling](trust-and-data.md).
 
 ## Code map

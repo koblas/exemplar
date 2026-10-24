@@ -71,6 +71,9 @@ type Snapshot struct {
 	// CategorizerLabels is the auto-approve risk categorizer calibration seed
 	// set (evals/_categorizer).
 	CategorizerLabels []CategorizerLabel
+	// Files is the tree the snapshot was loaded from (the playground adds a
+	// draft rule to it; config_snapshots stores it).
+	Files fs.FS
 }
 
 // CategorizerLabel is a labeled PR and the file it came from.
@@ -132,6 +135,7 @@ const (
 func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 	s := &Snapshot{
 		Version: version,
+		Files:   fsys,
 		Repos:   map[string]schema.RepoConfig{},
 		Evals:   map[string]schema.EvalCases{},
 	}

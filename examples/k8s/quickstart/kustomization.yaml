@@ -56,8 +56,11 @@ patches:
   # - target: {kind: ConfigMap, name: exemplar-settings}
   #   patch: |-
   #     - {op: replace, path: /data/EXEMPLAR_SEARCH_URL, value: ""}
+  # Reviews run inside the worker pod (no runner Jobs): args/7 is
+  # --launcher (deploy/manifests_test.go checks the index).
   - target: {kind: Deployment, name: exemplar-worker}
     patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/args/7, value: --launcher=in-process}
       - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 5Gi}, limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 20Gi}}}
   - target: {kind: StatefulSet, name: exemplar-postgres}
     patch: |-

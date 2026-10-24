@@ -1,8 +1,18 @@
-// Command exemplar-worker reviews live pull requests (the orchestrator,
-// worker and poster, run as one process for now).
+// Command exemplar-worker reviews live pull requests: serve is control
+// (River, routing, the cheap queues and the periodic jobs) and dispatches
+// each review to a runner; run-job is one runner.
 //
-//	exemplar-worker serve --config DIR --work-dir /var/lib/exemplar/work [--addr :8080] [--concurrency 4]
+//	exemplar-worker serve --config DIR --work-dir /var/lib/exemplar/work [--addr :8080] [--concurrency 4] [--launcher in-process|kubernetes]
+//	exemplar-worker run-job --job ID --config-version V --work-dir /var/lib/exemplar/work
 //	exemplar-worker enqueue --repo org/repo --pr 123 --head SHA --installation ID
+//
+// serve dispatches pr_review, evaluate and playground_run jobs through a
+// launcher: in-process (the default, the quickstart) runs them in this
+// process; kubernetes runs `run-job` as a Kubernetes Job per review from
+// the exemplar-runner PodTemplate. Every config version serve loads is
+// stored (config_snapshots), and a runner reviews with the version its
+// job was dispatched with. run-job exits 0 when done, 10 when the job is
+// cancelled, 11 when it was superseded, and anything else to be retried.
 //
 // serve also runs periodic jobs on River's leader: every 5 minutes it
 // requests redelivery of failed webhook deliveries, every 10 it sweeps
@@ -49,26 +59,21 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
-	"github.com/koblas/exemplar/internal/compiled"
 	"github.com/koblas/exemplar/internal/config"
-	"github.com/koblas/exemplar/internal/engine"
 	"github.com/koblas/exemplar/internal/envcfg"
-	"github.com/koblas/exemplar/internal/feedbacklink"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/owneract"
-	"github.com/koblas/exemplar/internal/pathhistory"
-	"github.com/koblas/exemplar/internal/playground"
-	"github.com/koblas/exemplar/internal/redact"
-	"github.com/koblas/exemplar/internal/search/api"
 	"github.com/koblas/exemplar/internal/store"
 	"github.com/koblas/exemplar/internal/telemetry"
 	"github.com/koblas/exemplar/internal/worker"
+	"github.com/koblas/exemplar/internal/worker/kubelaunch"
 )
 
 var (
 	// errRequired marks a missing flag or environment setting.
 	errRequired       = errors.New("required")
 	errBadConcurrency = errors.New("--concurrency must be at least 1")
+	errBadLauncher    = errors.New("--launcher must be in-process or kubernetes")
 )
 
 func main() {
@@ -79,10 +84,15 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		err = runServe(os.Args[2:])
+	case "run-job":
+		err = runJob(os.Args[2:])
 	case "enqueue":
 		err = runEnqueue(os.Args[2:])
 	default:
 		usage()
+	}
+	if exit, ok := errors.AsType[exitError](err); ok {
+		os.Exit(int(exit.code))
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -91,7 +101,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: exemplar-worker serve|enqueue [flags]")
+	fmt.Fprintln(os.Stderr, "usage: exemplar-worker serve|run-job|enqueue [flags]")
 	os.Exit(2)
 }
 
@@ -100,7 +110,9 @@ func runServe(args []string) error {
 	configDir := fs.String("config", "", "exemplar-config checkout, kept current by a sidecar (required)")
 	workDir := fs.String("work-dir", "", "scratch space for checkouts (required)")
 	addr := fs.String("addr", ":8080", "health endpoint address")
-	concurrency := fs.Int("concurrency", 4, "reviews run at once by this process")
+	concurrency := fs.Int("concurrency", 4, "reviews run at once: in this process, or as runners in flight")
+	launcherName := fs.String("launcher", launcherInProcess, "where reviews run: in-process, or kubernetes (a Job per review)")
+	runnerTemplate := fs.String("runner-template", kubelaunch.RunnerName, "the PodTemplate runner Jobs are made from (--launcher=kubernetes)")
 	platformTeam := fs.String("platform-team", "@platform/devex", "team that may take every web UI owner action")
 	reload := fs.Duration("reload", time.Minute, "how often to re-read --config")
 	drain := fs.Duration("drain", 5*time.Second, "how long readiness reports false before stopping")
@@ -114,17 +126,10 @@ func runServe(args []string) error {
 	if *concurrency < 1 {
 		return errBadConcurrency
 	}
-	dbURL := os.Getenv("EXEMPLAR_DATABASE_URL")
-	gwURL := os.Getenv("EXEMPLAR_GATEWAY_URL")
-	if dbURL == "" || gwURL == "" {
-		return fmt.Errorf("EXEMPLAR_DATABASE_URL and EXEMPLAR_GATEWAY_URL are %w", errRequired)
+	if *launcherName != launcherInProcess && *launcherName != launcherKubernetes {
+		return errBadLauncher
 	}
-	keys := envcfg.NewKeys(os.Getenv, os.ReadFile)
-	gwToken, err := keys.Token("EXEMPLAR_GATEWAY_TOKEN", envcfg.LabelGatewayToken)
-	if err != nil {
-		return fmt.Errorf("gateway token: %w", err)
-	}
-	app, err := appFromEnv()
+	env, err := envFromOS()
 	if err != nil {
 		return err
 	}
@@ -141,7 +146,7 @@ func runServe(args []string) error {
 	defer func() { _ = shutdown(context.Background()) }()
 
 	// Fail at startup on an invalid config; later reloads keep the last good one.
-	first, err := config.LoadSnapshot(os.DirFS(*configDir), *configDir)
+	first, err := config.LoadDir(*configDir)
 	if err != nil {
 		return fmt.Errorf("load config snapshot: %w", err)
 	}
@@ -149,9 +154,13 @@ func runServe(args []string) error {
 	snap.Store(first)
 
 	// Each running review holds a connection for its per-repo queue slot,
-	// besides what the review itself, River, the event, linter-check and
-	// feedback workers and the periodic jobs use.
-	st, err := store.OpenWithConns(ctx, dbURL, int32(*concurrency)*2+14)
+	// besides what the review itself (in-process), River, the event,
+	// linter-check and feedback workers and the periodic jobs use.
+	conns := int32(*concurrency) + 14
+	if *launcherName == launcherInProcess {
+		conns += int32(*concurrency)
+	}
+	st, err := store.OpenWithConns(ctx, env.dbURL, conns)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
@@ -159,61 +168,16 @@ func runServe(args []string) error {
 	if err := st.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate store: %w", err)
 	}
-	sc, err := redact.New()
+	if err := worker.PutSnapshot(ctx, st, first); err != nil {
+		return fmt.Errorf("store config: %w", err)
+	}
+	snapshot := func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil }
+	wcfg, err := env.workerConfig(st, *workDir, log)
 	if err != nil {
-		return fmt.Errorf("create redaction scanner: %w", err)
+		return err
 	}
-	eng := engine.New(engine.NewHarness(engine.HarnessConfig{GatewayURL: gwURL, GatewayToken: gwToken}), sc,
-		compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")})
-	if url := os.Getenv("EXEMPLAR_SEARCH_URL"); url != "" {
-		tok, err := keys.Token("EXEMPLAR_SEARCH_TOKEN", envcfg.LabelSearchToken)
-		if err != nil {
-			return fmt.Errorf("search token: %w", err)
-		}
-		search, err := api.NewClient(url, tok, nil)
-		if err != nil {
-			return fmt.Errorf("create search client: %w", err)
-		}
-		hist, err := pathhistory.New(st, pathhistory.Remote(search))
-		if err != nil {
-			return fmt.Errorf("create path history: %w", err)
-		}
-		eng.WithReferences(search).WithPathHistory(hist)
-	} else {
-		log.Warn("EXEMPLAR_SEARCH_URL not set: agents get no find_references or path_history, and bug.contract is skipped")
-	}
-
-	// Mode eval and the playground run rule bodies nobody merged: cap
-	// each engine run so one cannot take the pod's memory.
-	evalMatcher := compiled.Runner{ASTGrep: os.Getenv("EXEMPLAR_AST_GREP")}
-	if lim, ok := compiled.LimitCommand(compiled.EvalMemoryLimit, compiled.EvalCPULimit); ok {
-		evalMatcher.Sandbox = lim
-	} else {
-		log.Warn("prlimit unavailable: mode eval and the playground run compiled rules without resource limits")
-	}
-	wcfg := worker.Config{
-		GitHub: worker.AppClients{App: app}, Store: st,
-		Snapshot: func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil },
-		Engine:   eng, Scanner: sc, WorkDir: *workDir, Log: log,
-		// Mode eval (config CI) evaluates exemplar-config's changed rules.
-		CloneURL:   gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL")),
-		ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO"), Matcher: evalMatcher,
-	}
-	// Feedback links need exemplar-api's URL and the key it
-	// verifies with; without them comments name the slash commands only.
-	if apiURL := os.Getenv("EXEMPLAR_API_URL"); apiURL != "" {
-		key, err := keys.File("EXEMPLAR_LINK_KEY_FILE", envcfg.LabelLink)
-		if err != nil {
-			return fmt.Errorf("feedback links: %w", err)
-		}
-		if wcfg.Links, err = feedbacklink.New(key, apiURL); err != nil {
-			return fmt.Errorf("create feedback link signer: %w", err)
-		}
-	}
-	w, err := worker.New(wcfg)
-	if err != nil {
-		return fmt.Errorf("create review worker: %w", err)
-	}
+	wcfg.Snapshot = snapshot
+	app := env.app
 	linterChecks, err := worker.NewLinterCheckWorker(wcfg)
 	if err != nil {
 		return fmt.Errorf("create linter check worker: %w", err)
@@ -234,17 +198,29 @@ func runServe(args []string) error {
 	if err != nil {
 		return fmt.Errorf("create merge policy worker: %w", err)
 	}
-	evaluations, err := worker.NewEvaluateWorker(wcfg)
-	if err != nil {
-		return fmt.Errorf("create evaluate worker: %w", err)
+
+	// Reviews, evaluations and playground runs go to runners.
+	runner := &worker.Runner{Config: wcfg, Snapshot: worker.Snapshots(st, snapshot)}
+	var launch worker.Launcher = worker.InProcess{Runner: runner}
+	if *launcherName == launcherKubernetes {
+		if launch, err = kubeLauncher(ctx, *runnerTemplate, log); err != nil {
+			return err
+		}
+	} else if _, err := worker.New(wcfg); err != nil {
+		return fmt.Errorf("create review worker: %w", err)
 	}
-	// The web UI's playground: the deployed config with the
-	// draft rule file added.
-	tries, err := worker.NewPlaygroundWorker(wcfg, func(ruleYAML []byte) (*config.Snapshot, string, error) {
-		return playground.RuleFileSnapshot(os.DirFS(*configDir), ruleYAML, snap.Load().Version)
-	})
+	dcfg := worker.DispatchConfig{Launcher: launch, Snapshot: snapshot, Store: st, Log: log}
+	reviews, err := worker.NewReviewDispatcher(dcfg)
 	if err != nil {
-		return fmt.Errorf("create playground worker: %w", err)
+		return fmt.Errorf("create review dispatcher: %w", err)
+	}
+	evaluations, err := worker.NewEvaluateDispatcher(dcfg)
+	if err != nil {
+		return fmt.Errorf("create evaluate dispatcher: %w", err)
+	}
+	tries, err := worker.NewPlaygroundDispatcher(dcfg)
+	if err != nil {
+		return fmt.Errorf("create playground dispatcher: %w", err)
 	}
 	// Owner actions from the web UI write exemplar-config with the
 	// config-writer token and check teams with the gate token, both
@@ -299,7 +275,6 @@ func runServe(args []string) error {
 	if err != nil {
 		return fmt.Errorf("create event worker: %w", err)
 	}
-	snapshot := func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil }
 	reconcile, err := worker.NewReconcileWorker(st, app, log)
 	if err != nil {
 		return fmt.Errorf("create reconcile worker: %w", err)
@@ -313,7 +288,7 @@ func runServe(args []string) error {
 		return fmt.Errorf("create retention worker: %w", err)
 	}
 	workers := river.NewWorkers()
-	river.AddWorker(workers, w)
+	river.AddWorker(workers, reviews)
 	river.AddWorker(workers, events)
 	river.AddWorker(workers, reconcile)
 	river.AddWorker(workers, sweep)
@@ -345,6 +320,7 @@ func runServe(args []string) error {
 	if err != nil {
 		return fmt.Errorf("create river client: %w", err)
 	}
+	runner.Jobs = client
 
 	var draining atomic.Bool
 	mux := http.NewServeMux()
@@ -375,10 +351,10 @@ func runServe(args []string) error {
 	}
 	workCtx, cancelWork := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	wg.Go(func() { ; reloadConfig(workCtx, *configDir, *reload, &snap, log) })
+	wg.Go(func() { reloadConfig(workCtx, *configDir, *reload, st, &snap, log) })
 	errc := make(chan error, 1)
 	go func() {
-		log.Info("exemplar-worker serving", "addr", *addr, "concurrency", *concurrency)
+		log.Info("exemplar-worker serving", "addr", *addr, "concurrency", *concurrency, "launcher", *launcherName, "config", first.Version)
 		if err := hs.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
 		}
@@ -416,8 +392,9 @@ func runServe(args []string) error {
 
 // reloadConfig re-reads exemplar-config so kill switches and eligibility
 // changes apply without a restart; an invalid config keeps the last good
-// one.
-func reloadConfig(ctx context.Context, dir string, every time.Duration, snap *atomic.Pointer[config.Snapshot], log *slog.Logger) {
+// one. A new version is stored before it is used, so a runner can always
+// load the version it is dispatched with.
+func reloadConfig(ctx context.Context, dir string, every time.Duration, st *store.Store, snap *atomic.Pointer[config.Snapshot], log *slog.Logger) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -426,11 +403,19 @@ func reloadConfig(ctx context.Context, dir string, every time.Duration, snap *at
 			return
 		case <-t.C:
 		}
-		s, err := config.LoadSnapshot(os.DirFS(dir), dir)
+		s, err := config.LoadDir(dir)
 		if err != nil {
 			log.Error("config reload failed; keeping the previous config", "err", err)
 			continue
 		}
+		if s.Version == snap.Load().Version {
+			continue
+		}
+		if err := worker.PutSnapshot(ctx, st, s); err != nil {
+			log.Error("storing the new config failed; keeping the previous config", "version", s.Version, "err", err)
+			continue
+		}
+		log.Info("config loaded", "version", s.Version)
 		snap.Store(s)
 	}
 }

@@ -63,14 +63,14 @@ func as[T any](t *testing.T, v any, what string) T {
 var variants = []struct {
 	name      string
 	roots     []string
-	workloads int      // long-running services and CronJobs
+	workloads int      // long-running services, CronJobs and the runner PodTemplate
 	ingresses int      // Ingress objects
 	inbound   []string // who may reach the webhook and the API
 }{
-	{"tunnel", []string{"k8s/base"}, 19, 0, []string{"pod exemplar-cloudflared"}},
-	{"direct", []string{"k8s/direct"}, 18, 2, []string{"namespace ingress-nginx"}},
-	{"both", []string{"k8s/base", "k8s/components/ingress"}, 19, 2, []string{"namespace ingress-nginx", "pod exemplar-cloudflared"}},
-	{"postgres", []string{"k8s/base", "k8s/components/postgres"}, 20, 0, []string{"pod exemplar-cloudflared"}},
+	{"tunnel", []string{"k8s/base"}, 20, 0, []string{"pod exemplar-cloudflared"}},
+	{"direct", []string{"k8s/direct"}, 19, 2, []string{"namespace ingress-nginx"}},
+	{"both", []string{"k8s/base", "k8s/components/ingress"}, 20, 2, []string{"namespace ingress-nginx", "pod exemplar-cloudflared"}},
+	{"postgres", []string{"k8s/base", "k8s/components/postgres"}, 21, 0, []string{"pod exemplar-cloudflared"}},
 }
 
 // load reads every document of every manifest the kustomizations under
@@ -175,8 +175,11 @@ func workloads(docs []obj) []workload {
 	var out []workload
 	for _, d := range docs {
 		tmpl := get(d, "spec", "template")
-		if str(d, "kind") == "CronJob" {
+		switch str(d, "kind") {
+		case "CronJob":
 			tmpl = get(d, "spec", "jobTemplate", "spec", "template")
+		case "PodTemplate": // runner Jobs, made by exemplar-worker
+			tmpl = get(d, "template")
 		}
 		if tmpl == nil {
 			continue
@@ -335,6 +338,69 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 		}
 	}
 	checkServices(t, docs, ws)
+	checkKubeAPI(t, docs, ws)
+}
+
+// checkKubeAPI checks that only exemplar-worker (control) can call the
+// Kubernetes API: it alone mounts a service account token, in its worker
+// container only, and it alone is bound to a Role, which reaches Jobs,
+// pods and the runner PodTemplate in the namespace. The runner template
+// mounts no token and no config checkout.
+func checkKubeAPI(t *testing.T, docs []obj, ws []workload) {
+	t.Helper()
+	for _, w := range ws {
+		tokens := map[string]bool{}
+		for _, v := range list(w.spec, "volumes") {
+			for _, src := range list(v, "projected", "sources") {
+				if get(src, "serviceAccountToken") != nil {
+					tokens[str(v, "name")] = true
+				}
+			}
+		}
+		if len(tokens) > 0 && w.name != "exemplar-worker" {
+			t.Errorf("%s mounts a service account token", w.name)
+		}
+		for _, c := range containers(t, w.spec) {
+			for _, m := range list(c, "volumeMounts") {
+				if tokens[str(m, "name")] && str(c, "name") != "worker" {
+					t.Errorf("%s/%s mounts the service account token", w.name, str(c, "name"))
+				}
+			}
+		}
+		if w.kind == "PodTemplate" {
+			if w.name != "exemplar-runner" || str(w.spec, "restartPolicy") != "Never" {
+				t.Errorf("runner template %s: name or restartPolicy", w.name)
+			}
+			for _, v := range list(w.spec, "volumes") {
+				if str(v, "name") == "config" {
+					t.Errorf("%s mounts a config checkout; runners load config_snapshots", w.name)
+				}
+			}
+		}
+	}
+	for _, d := range docs {
+		switch str(d, "kind") {
+		case "RoleBinding", "ClusterRoleBinding":
+			for _, s := range list(d, "subjects") {
+				if str(s, "name") != "exemplar-worker" {
+					t.Errorf("%s %s binds %s", str(d, "kind"), str(d, "metadata", "name"), str(s, "name"))
+				}
+			}
+			if str(d, "roleRef", "kind") != "Role" {
+				t.Errorf("%s %s is not a namespaced Role", str(d, "kind"), str(d, "metadata", "name"))
+			}
+		case "ClusterRole":
+			t.Errorf("ClusterRole %s: control needs only its namespace", str(d, "metadata", "name"))
+		case "Role":
+			for _, r := range list(d, "rules") {
+				for _, res := range list(r, "resources") {
+					if !slices.Contains([]any{"jobs", "pods", "podtemplates"}, res) {
+						t.Errorf("Role %s reaches %v", str(d, "metadata", "name"), res)
+					}
+				}
+			}
+		}
+	}
 }
 
 // shutdown is each long-running binary's worst-case shutdown, from its
@@ -396,7 +462,7 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 	t.Helper()
 	long := map[string]workload{}
 	for _, w := range ws {
-		if w.kind == "CronJob" {
+		if w.kind == "CronJob" || w.kind == "PodTemplate" {
 			continue
 		}
 		long[w.name] = w
@@ -683,6 +749,23 @@ func TestExampleOverlays(t *testing.T) {
 	}
 }
 
+// workerArgs is the exemplar-worker container's args in core.
+func workerArgs(t *testing.T) []string {
+	t.Helper()
+	docs, _ := load(t, core)
+	for _, w := range workloads(docs) {
+		if w.name == "exemplar-worker" {
+			var out []string
+			for _, a := range list(as[obj](t, list(w.spec, "containers")[0], "worker"), "args") {
+				out = append(out, as[string](t, a, "arg"))
+			}
+			return out
+		}
+	}
+	t.Fatal("no exemplar-worker in core")
+	return nil
+}
+
 func checkOverlay(t *testing.T, dir string) {
 	t.Helper()
 	read := func(dir string) obj {
@@ -715,6 +798,15 @@ func checkOverlay(t *testing.T, dir string) {
 	slices.Sort(got)
 	if !slices.Equal(want, got) {
 		t.Errorf("example maps images %v, the base names %v", got, want)
+	}
+
+	for _, p := range list(example, "patches") {
+		if !strings.Contains(str(p, "patch"), "--launcher=") {
+			continue
+		}
+		if args := workerArgs(t); len(args) < 8 || !strings.HasPrefix(args[7], "--launcher=") {
+			t.Errorf("example patches args/7 as --launcher, but the worker's args are %v", args)
+		}
 	}
 
 	paths := list(example, "resources")

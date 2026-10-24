@@ -12,6 +12,13 @@
 
 ## Changes that need action
 
+### Reviews run as Jobs (2026-10-24)
+
+- The core manifests now run each review, `exemplar review` evaluation and playground run as a Kubernetes Job (`--launcher=kubernetes`). They add `rbac.yaml` (a Role and RoleBinding for `exemplar-worker`), the `exemplar-runner` ServiceAccount, PodTemplate and NetworkPolicy, and mount a service account token in the worker container. Your cluster must allow the namespace's Role and the Jobs it creates; to keep reviews inside the worker pod, patch `--launcher=in-process` as the quickstart overlays do.
+- An overlay that patches the worker's args must keep `--launcher` at the end (the quickstart patches `args/7`).
+- A NetworkPolicy of your own around the worker must let it reach the Kubernetes API, and the in-cluster Postgres, gateway and search must admit `app.kubernetes.io/name: exemplar-runner` pods (the shipped policies do).
+- A review's `config_version` is now the `exemplar-config` commit instead of the checkout's path, so a head reviewed before the upgrade and reviewed again after it is stored as a new review rather than reusing the old row.
+
 ### Security fixes of 2026-10-19
 
 - Config CI's Auth0 client needs `evaluate:` permissions for every repo its eval cases reference, not only exemplar-config ([How to set up config CI](../rules/config-ci.md)).
