@@ -120,6 +120,9 @@ func (w *RetentionWorker) Run(ctx context.Context) (RetentionResult, error) {
 		{"config_snapshots", SnapshotRetentionDays, func(ctx context.Context, c pgtype.Timestamptz, n int32) (int64, error) {
 			return w.st.DeleteExpiredConfigSnapshots(ctx, queries.DeleteExpiredConfigSnapshotsParams{Cutoff: c, Keep: snap.Version, Batch: n})
 		}},
+		{"runner_claims", claimRetentionDays, func(ctx context.Context, c pgtype.Timestamptz, n int32) (int64, error) {
+			return w.st.ClearExpiredRunnerClaims(ctx, queries.ClearExpiredRunnerClaimsParams{Cutoff: c, Batch: n})
+		}},
 		{"evaluations.diff", staleDiffDays, func(ctx context.Context, c pgtype.Timestamptz, n int32) (int64, error) {
 			return w.st.NullStaleEvaluationDiffs(ctx, queries.NullStaleEvaluationDiffsParams{Cutoff: c, Batch: n})
 		}},

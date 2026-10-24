@@ -55,6 +55,9 @@ const (
 	// FlavorSweep is for the PR sweeper: list open PRs (pull requests
 	// read) across one owner's opted-in repos, never the config repo.
 	FlavorSweep
+	// FlavorEval is for mode eval (config CI) in a review runner: read the
+	// contents of the eligible repos one owner's eval cases may name.
+	FlavorEval
 )
 
 func (f Flavor) String() string {
@@ -75,6 +78,8 @@ func (f Flavor) String() string {
 		return "export"
 	case FlavorSweep:
 		return "sweep"
+	case FlavorEval:
+		return "eval"
 	}
 	return fmt.Sprintf("flavor(%d)", int(f))
 }
@@ -100,6 +105,8 @@ func (f Flavor) Permissions() *github.InstallationPermissions {
 		return &github.InstallationPermissions{Contents: write, PullRequests: write}
 	case FlavorSweep:
 		return &github.InstallationPermissions{PullRequests: read}
+	case FlavorEval:
+		return &github.InstallationPermissions{Contents: read}
 	}
 	return nil
 }
@@ -243,6 +250,9 @@ func (a *App) checkScope(f Flavor, repos []string) error {
 		if len(repos) != 1 || !strings.EqualFold(repos[0], a.cfg.ConfigRepo) {
 			return fmt.Errorf("%w: config-writer token may only name %s", ErrTokenScope, a.cfg.ConfigRepo)
 		}
+	case FlavorEval:
+		// Read-only, across one owner (checked above); exemplar-config's
+		// own clone uses a worker token.
 	case FlavorContext, FlavorSweep:
 		if slices.ContainsFunc(repos, func(r string) bool { return strings.EqualFold(r, a.cfg.ConfigRepo) }) {
 			return fmt.Errorf("%w: %s token may not read the config repo", ErrTokenScope, f)
@@ -263,12 +273,27 @@ func (a *App) Client(ctx context.Context, installationID int64, f Flavor, repos 
 }
 
 func (a *App) clientWithToken(installationID int64, token string) (*github.Client, error) {
-	lim := a.limiter(installationID)
+	return tokenClient(a.base, a.limiter(installationID), installationID, token, a.cfg.BaseURL)
+}
+
+// NewTokenClient is a REST client on an installation token minted
+// elsewhere (a review runner's claim), throttled by its own limiter of
+// requestsPerHour (5000 when zero) and GitHub's secondary rate-limit
+// signals. baseURL overrides https://api.github.com/ (GHES).
+func NewTokenClient(installationID int64, token, baseURL string, requestsPerHour int) (*github.Client, error) {
+	if requestsPerHour <= 0 {
+		requestsPerHour = 5000
+	}
+	lim := rate.NewLimiter(rate.Limit(float64(requestsPerHour)/3600), 50)
+	return tokenClient(http.DefaultTransport, lim, installationID, token, baseURL)
+}
+
+func tokenClient(base http.RoundTripper, lim *rate.Limiter, installationID int64, token, baseURL string) (*github.Client, error) {
 	throttled := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if err := lim.Wait(req.Context()); err != nil {
 			return nil, fmt.Errorf("gh: rate limiter: %w", err)
 		}
-		resp, err := a.base.RoundTrip(req)
+		resp, err := base.RoundTrip(req)
 		status, resource, remaining := 0, "", ""
 		if resp != nil {
 			status, resource, remaining = resp.StatusCode, resp.Header.Get("X-Ratelimit-Resource"), resp.Header.Get("X-Ratelimit-Remaining")
@@ -284,8 +309,8 @@ func (a *App) clientWithToken(installationID int64, token string) (*github.Clien
 		github.WithAuthToken(token),
 		github.WithTimeout(30 * time.Second),
 	}
-	if a.cfg.BaseURL != "" {
-		opts = append(opts, github.WithURLs(&a.cfg.BaseURL, &a.cfg.BaseURL))
+	if baseURL != "" {
+		opts = append(opts, github.WithURLs(&baseURL, &baseURL))
 	}
 	c, err := github.NewClient(opts...)
 	if err != nil {

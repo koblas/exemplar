@@ -41,7 +41,11 @@ func runJob(args []string) error {
 	if *jobID < 1 || *version == "" || *workDir == "" {
 		return fmt.Errorf("--job, --config-version and --work-dir are %w", errRequired)
 	}
-	env, err := envFromOS()
+	nonce := os.Getenv("EXEMPLAR_RUNNER_NONCE")
+	if nonce == "" {
+		return fmt.Errorf("EXEMPLAR_RUNNER_NONCE is %w", errRequired)
+	}
+	env, err := envFromOS(false)
 	if err != nil {
 		return err
 	}
@@ -67,12 +71,16 @@ func runJob(args []string) error {
 	if err != nil {
 		return fmt.Errorf("create river client: %w", err)
 	}
-	wcfg, err := env.workerConfig(st, *workDir, log)
+	wcfg, err := env.workerConfig(st, *workDir, nil, log)
+	if err != nil {
+		return err
+	}
+	claims, err := env.claims(st)
 	if err != nil {
 		return err
 	}
 	r := &worker.Runner{
-		Config: wcfg, Jobs: jobs, CancelPoll: runnerCancelPoll,
+		Config: wcfg, Jobs: jobs, CancelPoll: runnerCancelPoll, Claims: claims, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL"),
 		Snapshot: func(ctx context.Context, v string) (*config.Snapshot, error) {
 			return worker.StoredSnapshot(ctx, st, v)
 		},
@@ -80,7 +88,7 @@ func runJob(args []string) error {
 
 	ctx, stop := cancelOnSignal(base, jobs, *jobID, log)
 	defer stop()
-	exit := r.Run(ctx, *jobID, *version)
+	exit := r.Run(ctx, *jobID, *version, nonce)
 	log.Info("runner done", "exit", int(exit))
 	if exit != worker.ExitDone {
 		return exitError{exit}

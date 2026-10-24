@@ -142,7 +142,7 @@ func TestRunnerRefuses(t *testing.T) {
 		"undecodable args":  {5, snap.Version, ExitCancel},
 		"unknown config":    {4, "nope", ExitError},
 	} {
-		if got := r.Run(t.Context(), tc.id, tc.version); got != tc.want {
+		if got := r.Run(t.Context(), tc.id, tc.version, ""); got != tc.want {
 			t.Errorf("%s: exit %d, want %d", name, got, tc.want)
 		}
 	}

@@ -27,10 +27,12 @@ const (
 type workerEnv struct {
 	dbURL, gwURL, gwToken string
 	keys                  *envcfg.Keys
-	app                   *gh.App
+	// app is control's only: a runner never reads the App private key.
+	app *gh.App
 }
 
-func envFromOS() (*workerEnv, error) {
+// envFromOS reads the shared settings, and the App when withApp.
+func envFromOS(withApp bool) (*workerEnv, error) {
 	e := &workerEnv{dbURL: os.Getenv("EXEMPLAR_DATABASE_URL"), gwURL: os.Getenv("EXEMPLAR_GATEWAY_URL")}
 	if e.dbURL == "" || e.gwURL == "" {
 		return nil, fmt.Errorf("EXEMPLAR_DATABASE_URL and EXEMPLAR_GATEWAY_URL are %w", errRequired)
@@ -40,15 +42,35 @@ func envFromOS() (*workerEnv, error) {
 	if e.gwToken, err = e.keys.Token("EXEMPLAR_GATEWAY_TOKEN", envcfg.LabelGatewayToken); err != nil {
 		return nil, fmt.Errorf("gateway token: %w", err)
 	}
+	if !withApp {
+		if err := envcfg.Check(os.Getenv, "EXEMPLAR_CONFIG_REPO", "EXEMPLAR_GH_API_URL", "EXEMPLAR_GH_WEB_URL", "EXEMPLAR_API_URL"); err != nil {
+			return nil, fmt.Errorf("settings: %w", err)
+		}
+		return e, nil
+	}
 	if e.app, err = appFromEnv(); err != nil {
 		return nil, err
 	}
 	return e, nil
 }
 
+// claims seals runner claims with the key both control and runners derive.
+func (e *workerEnv) claims(st *store.Store) (*worker.Claims, error) {
+	key, err := e.keys.File("EXEMPLAR_CLAIM_KEY_FILE", envcfg.LabelRunnerClaims)
+	if err != nil {
+		return nil, fmt.Errorf("runner claim key: %w", err)
+	}
+	c, err := worker.NewClaims(st, key)
+	if err != nil {
+		return nil, fmt.Errorf("runner claims: %w", err)
+	}
+	return c, nil
+}
+
 // workerConfig wires the review engine and everything a review needs but
-// the config snapshot, which the caller sets.
-func (e *workerEnv) workerConfig(st *store.Store, workDir string, log *slog.Logger) (worker.Config, error) {
+// the config snapshot, which the caller sets. github is control's App
+// clients, or nil in a runner, which uses its claim's.
+func (e *workerEnv) workerConfig(st *store.Store, workDir string, github worker.GitHub, log *slog.Logger) (worker.Config, error) {
 	sc, err := redact.New()
 	if err != nil {
 		return worker.Config{}, fmt.Errorf("create redaction scanner: %w", err)
@@ -82,7 +104,7 @@ func (e *workerEnv) workerConfig(st *store.Store, workDir string, log *slog.Logg
 		log.Warn("prlimit unavailable: mode eval and the playground run compiled rules without resource limits")
 	}
 	wcfg := worker.Config{
-		GitHub: worker.AppClients{App: e.app}, Store: st,
+		GitHub: github, Store: st,
 		Engine: eng, Scanner: sc, WorkDir: workDir, Log: log,
 		// Mode eval (config CI) evaluates exemplar-config's changed rules.
 		CloneURL:   gh.CloneURL(os.Getenv("EXEMPLAR_GH_WEB_URL")),

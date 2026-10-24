@@ -117,7 +117,7 @@ func (c *cluster) launch(ctx context.Context, task worker.Task) <-chan result {
 }
 
 func task(id int64, attempt int) worker.Task {
-	return worker.Task{JobID: id, Kind: "pr_review", Attempt: attempt, ConfigVersion: "abc123", Timeout: worker.ReviewTimeout}
+	return worker.Task{JobID: id, Kind: "pr_review", Attempt: attempt, ConfigVersion: "abc123", Timeout: worker.ReviewTimeout, Nonce: "n0nce"}
 }
 
 func TestJobSpec(t *testing.T) {
@@ -140,6 +140,9 @@ func TestJobSpec(t *testing.T) {
 	want := []string{"run-job", "--job=7", "--config-version=abc123", "--work-dir=/var/lib/exemplar/work"}
 	if got := s.Template.Spec.Containers[0].Args; !slices.Equal(got, want) || s.Template.Spec.RestartPolicy != corev1.RestartPolicyNever {
 		t.Errorf("runner args = %v, restart %s", got, s.Template.Spec.RestartPolicy)
+	}
+	if env := s.Template.Spec.Containers[0].Env; len(env) != 1 || env[0].Name != NonceEnv || env[0].Value != "n0nce" {
+		t.Errorf("runner env = %v", env)
 	}
 	// The template itself is untouched.
 	if got := c.l.tmpl.Spec.Containers[0].Args; len(got) != 1 {
@@ -289,7 +292,7 @@ func TestNewChecksTemplate(t *testing.T) {
 // fakeRunner is an in-process runner that exits as told.
 type fakeRunner struct{ exit worker.Exit }
 
-func (f fakeRunner) Run(context.Context, int64, string) worker.Exit { return f.exit }
+func (f fakeRunner) Run(context.Context, int64, string, string) worker.Exit { return f.exit }
 
 // TestConformance runs the same runner outcomes through the dispatcher on
 // both launchers: River sees the same result whichever runs the review.

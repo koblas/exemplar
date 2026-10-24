@@ -63,14 +63,25 @@ The worker (control), gateway, search and learn pods read `exemplar-config` from
 | `--runner-template` | `exemplar-runner` | The PodTemplate runner Jobs are made from (`kubernetes` only) |
 | `--concurrency` | `4` | `pr_review` jobs at once per worker pod: reviews in this process, or runner Jobs in flight |
 
-With `kubernetes`, the worker makes a Job named `exemplar-runner-<job>-<attempt>` from `runner.yaml`'s PodTemplate, adds `run-job --job <id> --config-version <version>` to the `runner` container's args, and polls it. The Job never retries (`backoffLimit: 0`; River retries), has an `activeDeadlineSeconds` of the job's timeout plus 2 minutes (reviews 30 minutes, evaluations 1 hour, playground runs 1 minute), and is deleted 10 minutes after it ends. Before a Job starts, every earlier Job of the same River job is deleted and waited for (up to 60 s, else the job waits 20 s and tries again), so two runners never review the same job at once. A superseded review's runner sees the cancel on its River row within 5 s and posts its notice; past 30 s its Job is deleted. A job past its timeout has its Job deleted at once. When the worker itself stops, running Jobs are left; River retries the job and the retry deletes them, so a rolling update of the worker restarts the reviews in flight.
+With `kubernetes`, the worker makes a Job named `exemplar-runner-<job>-<attempt>` from `runner.yaml`'s PodTemplate, adds `run-job --job <id> --config-version <version>` to the `runner` container's args, and polls it. The Job never retries (`backoffLimit: 0`; River retries), has an `activeDeadlineSeconds` of the job's timeout plus 2 minutes (reviews 30 minutes, evaluations 50 minutes, playground runs 1 minute), and is deleted 10 minutes after it ends. Before a Job starts, every earlier Job of the same River job is deleted and waited for (up to 60 s, else the job waits 20 s and tries again), so two runners never review the same job at once. A superseded review's runner sees the cancel on its River row within 5 s and posts its notice; past 30 s its Job is deleted. A job past its timeout has its Job deleted at once. When the worker itself stops, running Jobs are left; River retries the job and the retry deletes them, so a rolling update of the worker restarts the reviews in flight.
 
-`exemplar-worker run-job --job ID --config-version V --work-dir DIR` reads the same environment as `serve` and no `--config`. Its exit code:
+A runner gets its GitHub access from a **claim**. Before launching, the worker mints the installation tokens the job needs from the App and seals them (AES-GCM) into a `runner_claims` row:
+
+| Job | Tokens |
+|---|---|
+| `pr_review` | The PR repo: worker (read, clone), gate and poster |
+| `evaluate` (`exemplar review`) | The repo: worker |
+| `evaluate`, mode eval (config CI) | `exemplar-config`: worker; and per installation, one read-only token over every eligible repo with a known installation, for the eval cases |
+| `playground_run` | The PR repo: worker |
+
+The Job's `EXEMPLAR_RUNNER_NONCE` redeems the claim once: a second redeem, another job's nonce, or a claim past its tokens' expiry gets nothing, and the runner exits 10. The runner asks GitHub only with those tokens, for those repositories; it never holds the App private key. Its tokens are cleared from the row when it exits, and the retention job deletes claims whose tokens expired. Installation tokens last an hour, so no runner job's timeout is longer than 50 minutes.
+
+`exemplar-worker run-job --job ID --config-version V --work-dir DIR` reads the same environment as `serve` but the App's, and no `--config`. Its exit code:
 
 | Exit | Meaning | River |
 |---|---|---|
 | 0 | Done | Completed |
-| 10 | Not a runnable job, or the job or its data is gone | Cancelled, not retried |
+| 10 | Not a runnable job, the job or its data is gone, or its claim was refused | Cancelled, not retried |
 | 11 | Superseded (cancelled remotely) | Cancelled |
 | anything else, or no code (evicted, out of memory, past the deadline, node lost) | Failed | Retried |
 
@@ -109,7 +120,8 @@ A repo with `approval_mode: merge_policy_check` requires the `exemplar/merge-pol
 - **Kubernetes 1.29 or later**, for native sidecars (written against 1.33).
 - **Egress by host name** needs an FQDN-aware CNI policy on top; the shipped policies match addresses.
 - **The compile CronJob** needs unprivileged user namespaces.
-- **The App private key is in the worker and in every runner.** Each mints scoped tokens per job, but the key could mint any flavor, including config-writer. Handing runners only their review's tokens, minted by the worker, will take the key out of the runner. The model's tools themselves make no network calls.
+- **The App private key is in the worker (control).** It mints scoped tokens per job and hands runners only their job's; the key could mint any flavor, including config-writer, so the worker runs no model-facing code with `--launcher=kubernetes`. With `--launcher=in-process`, reviews run in the worker pod, beside the key.
+- **GitHub rate limiting is per runner.** Each runner throttles its own requests and backs off on GitHub's secondary limits; reviews of one installation in different runners do not share a budget.
 - **The Kubernetes API's address** is the cluster's: the worker's policy allows the private ranges on 443 and 6443; narrow it to the `kubernetes` endpoint in an overlay.
 - **The tunnel's edge rules are outside the repo**, and nothing in the cluster can check them.
 - **Sizing** is a starting point; re-size from your own monorepo benchmark.

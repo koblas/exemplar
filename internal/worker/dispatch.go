@@ -15,9 +15,10 @@ import (
 )
 
 // Dispatcher is the River worker for a job kind a runner does: it takes
-// the per-repo slot (pr_review only), chooses the config version, hands
-// the job to a Launcher and maps the runner's exit back to River. River
-// keeps timeouts, retries, uniqueness and supersede.
+// the per-repo slot (pr_review only), chooses the config version, mints
+// the job's tokens into a single-use claim, hands the job to a Launcher
+// and maps the runner's exit back to River. River keeps timeouts,
+// retries, uniqueness and supersede.
 type Dispatcher[T river.JobArgs] struct {
 	river.WorkerDefaults[T]
 
@@ -27,7 +28,11 @@ type Dispatcher[T river.JobArgs] struct {
 	// slot, when set, names the repo whose per-repo slot the job holds.
 	slot  func(T) string
 	slots *Slots
-	log   *slog.Logger
+	// grant is the job's tokens; claims holds them for the runner. Both
+	// nil only in tests, where the runner uses its own GitHub.
+	grant  func(context.Context, T, *config.Snapshot) (Grant, error)
+	claims *Claims
+	log    *slog.Logger
 }
 
 // DispatchConfig wires the dispatchers.
@@ -38,29 +43,43 @@ type DispatchConfig struct {
 	// Store holds the per-repo slots; nil only in tests, which then take
 	// no slot.
 	Store *store.Store
-	Log   *slog.Logger
+	// Claims and Granter mint each job's tokens for its runner; nil only
+	// in tests.
+	Claims  *Claims
+	Granter *Granter
+	Log     *slog.Logger
 }
 
-func newDispatcher[T river.JobArgs](cfg DispatchConfig, timeout time.Duration) (*Dispatcher[T], error) {
+func newDispatcher[T river.JobArgs](cfg DispatchConfig, timeout time.Duration, grant func(Granter) func(context.Context, T, *config.Snapshot) (Grant, error)) (*Dispatcher[T], error) {
 	if cfg.Launcher == nil || cfg.Snapshot == nil {
 		return nil, fmt.Errorf("%w: a dispatcher needs a launcher and the config", errMissingDependency)
+	}
+	if (cfg.Claims == nil) != (cfg.Granter == nil) {
+		return nil, fmt.Errorf("%w: claims and their granter go together", errMissingDependency)
 	}
 	log := cfg.Log
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Dispatcher[T]{launch: cfg.Launcher, snapshot: cfg.Snapshot, timeout: timeout, log: log}, nil
+	d := &Dispatcher[T]{launch: cfg.Launcher, snapshot: cfg.Snapshot, timeout: timeout, claims: cfg.Claims, log: log}
+	if cfg.Granter != nil {
+		d.grant = grant(*cfg.Granter)
+	}
+	return d, nil
 }
 
-// Job timeouts, as the workers set them.
+// Job timeouts, as the workers set them. A runner's tokens are minted
+// before it starts and last an hour, so no job may run longer.
 const (
 	ReviewTimeout   = 30 * time.Minute
-	EvaluateTimeout = time.Hour
+	EvaluateTimeout = 50 * time.Minute
 )
 
 // NewReviewDispatcher dispatches pr_review jobs, one per-repo slot each.
 func NewReviewDispatcher(cfg DispatchConfig) (*Dispatcher[store.PRReviewArgs], error) {
-	d, err := newDispatcher[store.PRReviewArgs](cfg, ReviewTimeout)
+	d, err := newDispatcher[store.PRReviewArgs](cfg, ReviewTimeout, func(g Granter) func(context.Context, store.PRReviewArgs, *config.Snapshot) (Grant, error) {
+		return g.Review
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -73,14 +92,18 @@ func NewReviewDispatcher(cfg DispatchConfig) (*Dispatcher[store.PRReviewArgs], e
 
 // NewEvaluateDispatcher dispatches `exemplar review` evaluations.
 func NewEvaluateDispatcher(cfg DispatchConfig) (*Dispatcher[store.EvaluateArgs], error) {
-	return newDispatcher[store.EvaluateArgs](cfg, EvaluateTimeout)
+	return newDispatcher[store.EvaluateArgs](cfg, EvaluateTimeout, func(g Granter) func(context.Context, store.EvaluateArgs, *config.Snapshot) (Grant, error) {
+		return g.Evaluate
+	})
 }
 
 // NewPlaygroundDispatcher dispatches web UI playground runs, with River's
 // default timeout as before the split, stated so a runner Job's deadline
 // matches it.
 func NewPlaygroundDispatcher(cfg DispatchConfig) (*Dispatcher[store.PlaygroundArgs], error) {
-	return newDispatcher[store.PlaygroundArgs](cfg, river.JobTimeoutDefault)
+	return newDispatcher[store.PlaygroundArgs](cfg, river.JobTimeoutDefault, func(g Granter) func(context.Context, store.PlaygroundArgs, *config.Snapshot) (Grant, error) {
+		return g.Playground
+	})
 }
 
 // Timeout implements river.Worker.
@@ -105,9 +128,24 @@ func (d *Dispatcher[T]) Work(ctx context.Context, job *river.Job[T]) error {
 		}
 		defer release()
 	}
-	exit, err := d.launch.Launch(ctx, Task{
-		JobID: job.ID, Kind: job.Kind, Attempt: job.Attempt, ConfigVersion: snap.Version, Timeout: d.timeout,
-	})
+	task := Task{JobID: job.ID, Kind: job.Kind, Attempt: job.Attempt, ConfigVersion: snap.Version, Timeout: d.timeout}
+	if d.claims != nil {
+		grant, err := d.grant(ctx, job.Args, snap)
+		if err != nil {
+			return err
+		}
+		if task.Nonce, err = d.claims.Mint(ctx, task, grant); err != nil {
+			return err
+		}
+		defer func() {
+			rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if err := d.claims.Release(rctx, job.ID); err != nil {
+				d.log.Warn("releasing a runner claim failed; it expires with its tokens", "job", job.ID, "err", err)
+			}
+		}()
+	}
+	exit, err := d.launch.Launch(ctx, task)
 	if errors.Is(err, ErrNoCapacity) {
 		d.log.Info("no runner capacity; waiting", "job", job.ID, "kind", job.Kind, "err", err)
 		return river.JobSnooze(SlotWait)

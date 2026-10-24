@@ -20,7 +20,7 @@ Explicit single-key Secrets for rotating one derived key alone are mounted by an
 
 ### `exemplar-root-key`
 
-The link, session, gateway, search and pseudonym keys derive from the root key with HKDF-SHA256 and a per-key label (`internal/envcfg`). An explicit `EXEMPLAR_LINK_KEY_FILE`, `EXEMPLAR_SESSION_KEY_FILE`, `EXEMPLAR_GATEWAY_TOKEN`, `EXEMPLAR_SEARCH_TOKEN` or `EXEMPLAR_PSEUDONYM_KEY` still wins. Rotating the root key signs everyone out and changes every pseudonym.
+The link, session, gateway, search, pseudonym and runner-claim keys derive from the root key with HKDF-SHA256 and a per-key label (`internal/envcfg`). An explicit `EXEMPLAR_LINK_KEY_FILE`, `EXEMPLAR_SESSION_KEY_FILE`, `EXEMPLAR_GATEWAY_TOKEN`, `EXEMPLAR_SEARCH_TOKEN`, `EXEMPLAR_PSEUDONYM_KEY` or `EXEMPLAR_CLAIM_KEY_FILE` still wins. Rotating the root key signs everyone out and changes every pseudonym.
 
 ## ConfigMaps
 

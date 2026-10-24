@@ -150,6 +150,7 @@ func TestTokenFlavors(t *testing.T) {
 		{FlavorGate, []string{"acme/exemplar-config"}, map[string]any{"administration": "read", "members": "read"}},
 		{FlavorExport, []string{"acme/app"}, map[string]any{"contents": "write", "pull_requests": "write"}},
 		{FlavorSweep, []string{"acme/app", "acme/web"}, map[string]any{"pull_requests": "read"}},
+		{FlavorEval, []string{"acme/app", "acme/web"}, map[string]any{"contents": "read"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.flavor.String(), func(t *testing.T) {
@@ -200,6 +201,8 @@ func TestTokenScopeRefusals(t *testing.T) {
 		{"export on two repos", FlavorExport, []string{"acme/a", "acme/b"}},
 		{"export writing config repo", FlavorExport, []string{"acme/exemplar-config"}},
 		{"cross-owner", FlavorContext, []string{"acme/app", "other/app"}},
+		{"eval across owners", FlavorEval, []string{"acme/app", "other/app"}},
+		{"eval on no repo", FlavorEval, nil},
 		{"bad repo name", FlavorWorker, []string{"app"}},
 		{"unknown flavor", Flavor(99), []string{"acme/app"}},
 	}

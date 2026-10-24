@@ -571,6 +571,18 @@ type RuleWeeklyStat struct {
 	OwnerOverturns      int64
 }
 
+type RunnerClaim struct {
+	JobID         int64
+	Attempt       int32
+	NonceHash     []byte
+	Tokens        []byte
+	ConfigVersion string
+	CreatedAt     pgtype.Timestamptz
+	ClaimedAt     pgtype.Timestamptz
+	ReleasedAt    pgtype.Timestamptz
+	ExpiresAt     pgtype.Timestamptz
+}
+
 type TeachProposal struct {
 	ID               int64
 	RuleID           string
