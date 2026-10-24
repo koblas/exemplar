@@ -39,6 +39,8 @@ The finding's page in the web UI shows its state and, when suppressed, the reaso
 
 ## `exemplar-search` is behind or missing
 
+If the installation runs without search on purpose (`EXEMPLAR_SEARCH_URL` empty; [How to run without exemplar-search](../install/without-search.md)), the worker says so once at start and the bug lane's contract class is skipped on every review; that is expected, not a fault. Otherwise:
+
 Responses switch to degraded mode (`git grep`, tighter caps) and the bug lane's contract class is skipped, which blocks auto-approve. Check the fetch and index logs on the StatefulSet. Delete a replica's volume to force a clean rebuild; the other replica keeps serving. With both replicas down, the context tools return errors the agents see, the bug lane is skipped, and the exemplar lane continues with the PR checkout only; reviews are not blocked.
 
 ## Feedback links fail
