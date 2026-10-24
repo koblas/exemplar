@@ -16,7 +16,7 @@ docs/spec/technical-spec.md.
 
 # PRD: Exemplar — Self-Correcting AI Code Review
 
-**Status:** Draft v0.8 · October 2026 · **Build-only** (no third-party AI reviewer will be purchased) **Source:** Redpoint Alchemy talk "AI broke code review" (Andrew Swerdlow, Roblox, Sep 10 2026) and session notes, extended with patterns borrowed from mature industry systems (Appendix B) **Working name:** Exemplar (placeholder) **Companion:** Implementation Plan & Architecture (Go services, Postgres, GitHub App)
+**Status:** Draft v0.9 · October 2026 · **Build-only** (no third-party AI reviewer will be purchased) **Source:** Redpoint Alchemy talk "AI broke code review" (Andrew Swerdlow, Roblox, Sep 10 2026) and session notes, extended with patterns borrowed from mature industry systems (Appendix B) **Working name:** Exemplar (placeholder) **Companion:** Implementation Plan & Architecture (Go services, Postgres, GitHub App)
 
 Contents
 
@@ -43,8 +43,9 @@ Contents
 
 <a id="what-changed-in-v02v04"></a>
 
-### What changed in v0.2–v0.8
+### What changed in v0.2–v0.9
 
+- **v0.9 (assumptions review):** eight assumptions re-examined against what the review space has learned. Auto-approve no longer requires zero findings of any severity: a clean run is no `blocking`, `important` or Security finding (FR-A13, §12). The goal metric is severity-weighted acceptance plus incident-set recall; raw acceptance is informational (G1, §13, §14). Verifier independence is quorum and context, with a second model family a preference, and `same_family` stops gating approval once the quorum is calibrated (FR-E10). Approval is bound to the base SHA as well as the head (FR-A9). Rules per agent is a configuration evaluated on the golden set, and overflow is ranked by expected value, not precision alone (FR-E3, FR-E16). Incidents, reverts, merged-change clusters and owner-written seeds are co-equal sources with review comments (constraint 1, FR-L1.7 to FR-L1.9; the backlog's cluster-review item is adopted). The shadow exit is an adjudicated sample plus injected recall, not precision against human comments (§14). Path-level importance priors learn from *Not important here* dismissals (FR-B9). `review_by` defaults per category (§7).
 - **v0.8 (after Will Larson's "Speeding up code review with `small-change`", October 2026):** two deterministic Stage 1 gates, author experience in the touched paths (FR-A10) and blast radius as a count of ownership areas with shared paths excluded (FR-A11); the accountability norm that an auto-approved failure is a system failure (FR-A12); a caution on domain-heavy code in §12. The post's `review-pr-cluster` idea is in [`docs/plans/backlog.md`](../plans/backlog.md).
 - **v0.7 (after Anthropic's "How the Claude Code team does code review", claude.dev, October 2026):** verifier quorum for the bug lane (FR-V7); convergence controls across pushes: a round cap and class-of-bug findings (FR-C8, FR-C9); a clean-PR false-alarm rate (FR-X12); review rounds, human approvals and time waiting on a person as informational metrics (§13.2); two open questions on unanswered findings and an automatic auto-approve circuit breaker (§16). The further ideas from that post are in [`docs/plans/backlog.md`](../plans/backlog.md), not here, until one is adopted. Where the post disagrees with this PRD (its reviewer blocks merges on open findings and never approves; Exemplar never blocks and may approve within FR-A2) the PRD stands.
 - **v0.6 (gap review):** PR lifecycle (§8.9), degraded operation (§8.10), data handling and repo eligibility (§8.11); importance check extended to compiled rules (FR-V6); auto-approve Stage 1 made strictly deterministic with path denylist, bot-author rules and a "bug lane actually ran" gate (§12); role-weighted feedback and human-comment dedupe (§9, FR-E15); CI-timing rule for linter dedupe (FR-E7); budget exemption for security and must-fix findings (FR-P6); adversarial evals and baseline sampling (§11); export operations and MCP access control (§10); cross-language clustering (FR-L3.1). **Cost and latency moved to informational metrics (§13.2)** — they are tracked and reported but are not goals or exit criteria.
@@ -89,7 +90,7 @@ The core insight from the source: this is **not a prompt problem, it is a system
 
 ### 2.1 Constraints that rule out easy answers
 
-1. **Judgment isn't written down.** It lives in millions of review comments that are mostly praise, typo fixes, and shorthand. *Rules out:* hand-writing the rulebook.
+1. **Judgment isn't written down.** It lives in millions of review comments that are mostly praise, typo fixes, and shorthand. *Rules out:* hand-writing all of it. *(v0.9)* It does not rule out an owner writing a rule by hand when they know one (FR-L1.8): a sentence from the person who owns the code can be worth a hundred mined comments, and it goes through the same gate and evals.
 2. **Trust is asymmetric.** Engineers stop reading a noisy bot within a week. *Rules out:* ship first, tune later.
 3. **Everything the model reads is untrusted.** Diffs, PR descriptions, repo files, and historical comments are all natural language and all injectable. *Rules out:* letting the model vouch for its own output.
 4. **Scale is thousands of engineers and hundreds of rules.** One giant prompt loses attention; unbounded fan-out blows the budget. *Rules out:* both naive architectures.
@@ -115,7 +116,7 @@ Every design choice below should be traceable to reducing one of these two class
 
 ### 3.1 Goals
 
-- **G1 — High-signal findings.** Raise accepted-finding rate from a generic-bot baseline (~21%) to **≥ 65%**, at or above the human reviewer acceptance rate, with an **effective false-positive rate ≤ 10%** per rule (Tricorder's bar; see §9).
+- **G1 — High-signal findings.** Raise the **severity-weighted** accepted-finding rate (`blocking` 3, `important` 2, `suggestion` 1; definitions in §13) from a generic-bot baseline (~21%, unweighted) to **≥ 65%**, at or above the human reviewer acceptance rate, with an **effective false-positive rate ≤ 10%** per rule (Tricorder's bar; see §9), **and** catch at least **50%** of the incident set (FR-X11: bugs that caused a revert or incident, replayed against the current config). *(v0.9)* Acceptance alone rewards findings that are easy to fix, not findings that matter; weighting by severity and pairing it with incident recall keeps the corpus from drifting toward the mechanical. Raw acceptance stays informational (§13.2).
 - **G2 — Encode organizational judgment.** Convert historical review comments into a curated, owned, testable rule corpus with citations back to source comments.
 - **G3 — Safe autonomy.** Auto-approve a defined class of low-risk PRs without a human reviewer, with deterministic guardrails and an instant kill switch.
 - **G4 — One evaluator, many callers.** A single alignment engine serves PR review, a rule-authoring playground, a local pre-PR CLI, IDEs and coding agents (via MCP), and other agents (branch validation, test generation).
@@ -205,7 +206,9 @@ flowchart LR
 | FR-L1.4 | Exclude the system's own seeded reactions from all feedback signals. |
 | FR-L1.5 | Support backfill at the scale of ~700K PRs / ~1.7M comments over 3 years. |
 | FR-L1.6 | **Doc-linked comments are high-value seeds.** Comments that link to internal documentation are ranked higher and the link becomes the rule's primary citation. *(Borrowed: Google AutoCommenter trained on comments containing best-practice URLs.)* |
-| FR-L1.7 | Also mine **incident postmortems and revert commits** : PRs later reverted or linked to a SEV are a source of candidate Blocker rules even when no review comment caught them. |
+| FR-L1.7 | Also mine **incident postmortems and revert commits** : PRs later reverted or linked to a SEV are a source of candidate Blocker rules even when no review comment caught them. *(v0.9)* These are a **co-equal source**, not a supplement: a candidate from one incident ranks with a comment cluster of ten (FR-L4.1), because comments record what reviewers caught and incidents record what they missed. |
+| FR-L1.8 | **Owner-written seeds** — *v0.9*. A rule owner may write a candidate by hand (a one-line constraint and the paths it applies to) in the playground or the config repo. It enters the same pipeline as a mined candidate: eval cases before merge (FR-L6.4), volume estimate (FR-P2), shadow first (FR-X4), and the same feedback and demotion lifecycle. Its citation is the owner, with any doc they link. |
+| FR-L1.9 | **Merged-change clusters** — *v0.9*. A periodic job clusters recently merged changes (by area, by what the bug lane flagged, by what later reverted) and asks what deterministic check or rule would have caught the shared pattern, opening candidates the way FR-L6 does. As review volume rises and comments per PR fall, changes carry judgment that comments no longer do. *(Borrowed: Larson's `review-pr-cluster`, which reviews batches of PRs for themes and new verifications.)* |
 
 <a id="62-extract-and-embed-fr-l2"></a>
 
@@ -284,7 +287,7 @@ Rules are stored **as code in git**, one versioned file per rule, and materializ
 | `fix_policy` | enum | `none` , `suggest` (emit suggestion block when local), `describe` — *new* |
 | `owner` | string | Team or CODEOWNERS entry. |
 | `status` | enum | `candidate` , `shadow` , `active` , `killed` . |
-| `review_by` | date | **Expiry / re-validation date** (default 12 months after promotion). Past this date the rule drops to `shadow` unless the owner re-confirms or eval still passes on recent PRs — *new* (borrowed: AutoCommenter's suppression of outdated best practices) |
+| `review_by` | date | **Expiry / re-validation date** (default 12 months after promotion; *v0.9:* `global.yaml` `review_by_defaults` sets one per category, since a Security rule and a Performance rule written against one library version have half-lives an order of magnitude apart). Past this date the rule drops to `shadow` unless the owner re-confirms or eval still passes on recent PRs — *new* (borrowed: AutoCommenter's suppression of outdated best practices) |
 | `export` | object | Whether and how the rule is exported to coding-agent instructions (§10) — *new* |
 | `eval_cases` | path | Positive and negative cases from real PRs, plus injected cases (§11). |
 
@@ -336,8 +339,9 @@ eval_cases: evals/blocking-fetch-in-loop/
 |---|---|
 | FR-E1 | **Inputs:** diff, a checkout of the commit, existing review threads, effective rules, and **context providers** (§8.3). |
 | FR-E2 | **Deterministic scope** by `file_patterns` before any model call; zero-match rules never run. |
-| FR-E3 | **One agent per exemplar.** |
+| FR-E3 | **One agent per exemplar** by default. *(v0.9)* `concurrency.rules_per_agent` (default 1, at most 5) may group rules of the same category with overlapping `file_patterns` into one agent, so related rules share one read of the code. Any value above 1 is adopted only after the golden set (FR-X5) shows no loss of precision or recall against 1; the one-giant-prompt failure mode (constraint 4) is what the cap and the eval guard against. |
 | FR-E4 | ≤ 3 concurrent agents per review (configurable). |
+| FR-E16 | **Overflow by expected value** — *v0.9*. When more rules are in scope than `max_exemplar_rules` allows, the ones skipped are the lowest in **expected value for this diff**: the rule's precision × its severity weight × its historical hit rate on the changed paths, not precision alone. Skipped rules are listed in the check run as before ("not run on this review"). |
 | FR-E5 | Purpose-built harness, read-only tools, high-capability models by default. |
 | FR-E6 | **Bug lane** runs only on PRs above a risk/size threshold or on paths flagged critical, and only emits findings in an allowlisted set of bug classes. It has its own per-class precision tracking and kill switch. |
 | FR-E7 | **Linter dedupe:** findings that overlap a finding from the repo's existing linters or CI static analysis on the same lines are dropped. **Timing:** CI results usually arrive after the bot's findings are ready. The bot waits for linter/static-analysis check runs up to a configurable window (default 2 minutes after findings are ready); if they have not reported, it posts, and when CI later reports an overlapping finding the bot minimizes its own comment as outdated and records it as a linter duplicate. Overlap counts against neither the rule's precision nor the author's feedback. |
@@ -353,7 +357,7 @@ eval_cases: evals/blocking-fetch-in-loop/
 
 | ID | Requirement |
 |---|---|
-| FR-E10 | The gateway supports **at least two model providers** . The verification stage defaults to a different model (ideally a different family) than the generator for the same finding, so their blind spots are less correlated. |
+| FR-E10 | The gateway supports **at least two model providers** . The verification stage defaults to a different model (ideally a different family) than the generator for the same finding, so their blind spots are less correlated. *(v0.9)* **Independence is the requirement; a second family is a preference.** A verifier is independent when it runs in a fresh context with only the finding, the rule and the code (never the generator's reasoning), and for the bug lane when the quorum (FR-V7) agrees. `same_family` is still recorded on every finding, but it stops gating auto-approve (§12 Stage 2) once the verifier calibration (FR-X9) passes with the configured providers. Until then a single provider blocks approval, which is the situation at the time of writing. |
 | FR-E11 | Model assignment per stage and per rule is configuration, evaluated on the golden set before change. |
 
 <a id="83-context-providers-new"></a>
@@ -525,6 +529,7 @@ The system sends diffs, repository context, ticket text and three years of revie
 | FR-B6 | The same feedback model applies to compiled rules and to each bug-lane class. |
 | FR-B7 | **Role-weighted feedback** — *new* . Dismissals are weighted by who gave them: PR author < another reviewer on the PR < the rule's owner. An author's *Wrong* or *Disagree with the rule* alone flags a rule for owner review but never drives auto-demotion (FR-B4); demotion requires the weighted effective-FP rate, which an author cannot reach by themselves. Owners can adjudicate any dismissal, and an adjudicated dismissal replaces the original weight. |
 | FR-B8 | **Human agreement counts.** A finding that was withheld as a `human_duplicate` (FR-E15), or that a human reviewer independently also raised, is recorded as a true positive for the rule even though the bot did not post it. This keeps the dedupe from silently starving good rules of evidence. |
+| FR-B9 | **Learned importance priors** — *v0.9*. *Not important here* dismissals (FR-B2) accumulate per path prefix and category. When a prefix has at least 5 such dismissals from at least 3 people over 90 days for a category, the learning plane proposes a path-level importance prior (a lower threshold or a suppression for that category under that prefix) as a config PR, with the dismissals as citations. The verifier's per-finding importance (FR-V2) stays; this gives the second false-positive class (§2.2) the same feedback loop the first has, instead of waiting for someone to tune a threshold by hand. |
 
 <a id="10-authoring-time-delivery-shift-left-new"></a>
 
@@ -567,7 +572,7 @@ The system sends diffs, repository context, ticket text and three years of revie
 
 **Deterministic first. Expensive only if it all passes.**
 
-**Stage 1 — cheap, strictly deterministic (all must pass, no model output consulted):** repository opted in and eligible (FR-H1); every changed path within the approved scope *and* outside the denylist (FR-A8); **all lanes ran to 100% coverage, including the bug lane (FR-A7), with zero findings**; author in the repo's allowlist (FR-A6); **author has merged enough PRs in the touched paths (FR-A10)**; **the change stays within one ownership area and off the shared paths (FR-A11)**; not a fork PR; not a degraded or incomplete run (FR-D5); ≤ 10 files and ≤ 1,000 lines changed.
+**Stage 1 — cheap, strictly deterministic (all must pass, no model output consulted):** repository opted in and eligible (FR-H1); every changed path within the approved scope *and* outside the denylist (FR-A8); **all lanes ran to 100% coverage, including the bug lane (FR-A7), and the run is clean (FR-A13: no `blocking` or `important` finding and no Security-category finding; `suggestion` findings are posted alongside the approval)**; author in the repo's allowlist (FR-A6); **author has merged enough PRs in the touched paths (FR-A10)**; **the change stays within one ownership area and off the shared paths (FR-A11)**; not a fork PR; not a degraded or incomplete run (FR-D5); ≤ 10 files and ≤ 1,000 lines changed.
 
 **Stage 2 — only if Stage 1 passes:** CODEOWNERS lookup; branch-protection lookup; `merge_safety_score ≥ 0.7` (deterministic, computed from history: churn, incident and revert proximity of the touched paths — definition in §16); LLM low-risk categorization verified by a second model per §8.2, yielding `review_confidence ≥ 0.8` → `APPROVE`.
 
@@ -583,9 +588,10 @@ The system sends diffs, repository context, ticket text and three years of revie
 | FR-A4 | Every auto-approval records the full gate trace. |
 | FR-A5 | **Ownership visibility** — *new* : auto-approved PRs touching a CODEOWNER's paths appear in that owner's weekly digest, preserving awareness even when no human reviewed. |
 | FR-A6 | **Author policy** — *new* . The allowlist is per repo and names humans. PRs authored by bots or coding agents (Dependabot, Renovate, Copilot, Claude Code, internal agents — detected by account type, App identity or commit trailer) are not auto-approvable unless the repo explicitly allowlists that identity, and then only within a narrower scope (e.g. dependency manifests for Renovate). |
-| FR-A7 | **The bug lane must have run.** On any PR that passes the rest of Stage 1, the bug lane is forced to run regardless of FR-E6's risk threshold. "Zero findings" only counts when every lane that could have found something actually ran. |
+| FR-A7 | **The bug lane must have run.** On any PR that passes the rest of Stage 1, the bug lane is forced to run regardless of FR-E6's risk threshold. A clean run (FR-A13) only counts when every lane that could have found something actually ran. |
 | FR-A8 | **Path denylist** — *new* . Regardless of approved scope, a PR touching any of these is never auto-approvable: `.github/**` and other CI/workflow definitions, `CODEOWNERS` , branch or ruleset configuration, build definitions, dependency manifests and lockfiles, the exemplar config repo, and the generated instruction files from §10 ( `AGENTS.md` , `CLAUDE.md` , `.cursor/rules/*` , `.github/instructions/*` ). The denylist is a hardcoded constant extended by config, never narrowed by it. A `**/*.md` scope therefore does not admit `AGENTS.md` . |
-| FR-A9 | **Approval revocation.** If a new push arrives after approval, the approval is dismissed (GitHub review dismissal) and the gates re-run on the new commit. An approval never carries forward. |
+| FR-A9 | **Approval revocation.** If a new push arrives after approval, the approval is dismissed (GitHub review dismissal) and the gates re-run on the new commit. An approval never carries forward. *(v0.9)* **The approval is bound to the base too.** It records the base branch SHA it was judged against. When the base has moved by more than `auto_approve.base_drift_commits` (default 20) or any commit on it touched a path the PR touches or imports, the `exemplar/merge-policy` check turns `pending` and the gates re-run against the new merge result before the PR can merge. Two PRs each approved against an old main must not be able to merge into a broken one. |
+| FR-A13 | **A clean run** — *v0.9*. For Stage 1, a run is clean when it posted no `blocking` and no `important` finding and no Security-category finding of any severity. `suggestion` findings do not block approval; they are posted with it, and the gate trace (FR-A4) lists them. Requiring zero findings of any severity made a log-message nit as decisive as a blocking bug and shrank the eligible set without buying safety. *(Borrowed: Larson's `small-change` qualifies with no P1 or P2 findings; Anthropic clears low-risk changes with open nits.)* |
 | FR-A10 | **Author experience** — *v0.8*. A PR is auto-approvable only if its author has at least `auto_approve.min_author_merges` prior merged PRs (default 10) in each ownership area the change touches, counted from merged PR history over the last two years (FR-L1.1's lookback), human-authored PRs only, by the author's GitHub login. Experience is per area, not per repo: a long-time owner of one directory is new to another. The allowlist (FR-A6) stays for exceptions in both directions: an allowlisted author is exempt from the count, and a bot identity is governed by FR-A6 alone. The threshold is a floor config may raise and never lower below 1. The gate trace (FR-A4) records the count per area. |
 | FR-A11 | **Blast radius** — *v0.8*. A PR is auto-approvable only if it touches at most `auto_approve.max_owner_areas` ownership areas (default 1), where an area is one CODEOWNERS entry's path set on the base branch, and touches nothing under `auto_approve.shared_paths`: libraries, utilities and other code many areas import, listed per repo. Paths matching no CODEOWNERS entry count as one area each and are never auto-approvable unless the repo sets `auto_approve.unowned_paths: allow`. The ceiling is a constant config may lower and never raise above 3; `shared_paths` may be extended and never narrowed by a repo file. |
 | FR-A12 | **System accountability** — *v0.8*. An incident, revert or confirmed bug on a PR that Exemplar auto-approved is a defect in the gates, the reviewer or verification, never a finding against the author. Each is recorded against the approval's gate trace (FR-A4) with what should have caught it, appears in the audit board and the owner digest, and feeds §13.1. The triage question is "which gate, lane, rule or check should have refused this", and the fix lands in config, a rule, an eval case or the code. *(Borrowed: Larson's norm that any error caused by a `small-change` is a failure of the system, fixed at the system level.)* |
@@ -596,7 +602,8 @@ The system sends diffs, repository context, ticket text and three years of revie
 
 | Metric | Baseline | Target |
 |---|---|---|
-| Accepted findings (weekly) | ~21% (generic bot, from the source talk — not yet measured in this org; re-measure in Phase 2) | **≥ 65%** |
+| Severity-weighted accepted findings (weekly) — *v0.9* | ~21% (generic bot, unweighted, from the source talk — not yet measured in this org; re-measure in Phase 2) | **≥ 65%** |
+| Incident-set recall (FR-X11 set replayed against current config) — *v0.9* | 0% | **≥ 50%**, rising as each incident adds a case |
 | Effective false-positive rate per rule | — | **≤ 10%** for every active rule |
 | Accepted findings vs. in-house baseline reviewer (FR-X8) | baseline | ≥ 2× precision |
 | LGTM recall on core constraints | human baseline | > human baseline |
@@ -633,6 +640,7 @@ These are reported on every review (§17.4) and in dashboards so the platform te
 | Coverage per run, and share of runs degraded or incomplete (§8.10) | Degradation that becomes routine is a precision problem in disguise |
 | Queue depth and wait time per repo (FR-D6) | Capacity planning |
 | Usage and cost by caller (production, CLI, MCP, agents — FR-S7) | Attribution; a runaway agent loop shows up here first |
+| Raw (unweighted) acceptance rate — *v0.9* | Comparability with the ~21% generic-bot figure and with other tools' numbers; the weighted rate in §13 is the goal |
 | Review rounds to merge per PR (FR-C8): mean, and the share needing five or more — *v0.7* | Whether the bot converges. Anthropic reports 2.08 → 1.32 mean rounds and 8.9% → 1.5% needing five or more after adding convergence controls; a rising figure here means findings are not being fixed in one pass |
 | Human approvals per PR (median and p95), and time waiting on a person — *v0.7* | What auto-approve and fewer human comments actually buy. Paired with the §13.1 counter-metrics: time saved that reappears as fixing time was not saved |
 
@@ -644,10 +652,10 @@ These are reported on every review (§17.4) and in dashboards so the platform te
 |---|---|---|
 | **0 — Foundations** | GitHub App, gateway (two providers, failover), tracing, config repo + schema + CI, engine with scope and validation, replay harness, in-house baseline reviewer, adversarial eval set (FR-X10), data-handling review and repo eligibility list with Security (§8.11) | Engine and baseline run end-to-end on the golden set; adversarial set in CI; eligibility and retention signed off |
 | **1 — Mine + curate** | Learning plane on pilot repos, compile-to-deterministic attempts, playground, owner workflow, injected-violation evals | ≥ 30 active rules (any kind) with passing evals |
-| **2 — Shadow** | Lanes 1–2 + verification in shadow on pilot repos; comment budget; volume estimates; PR lifecycle (§8.9) and degraded-mode behavior (§8.10) exercised in shadow; acceptance baselines re-measured (§13, §16) | Shadow precision ≥ 0.7 vs. human comments; beats baseline |
-| **3 — Comment** | Posting with Conventional Comments labels, suggestions, structured feedback, digests, auto-demotion, CLI, SARIF for security | ≥ 50% acceptance for 4 weeks; every active rule ≤ 10% effective FP |
+| **2 — Shadow** | Lanes 1–2 + verification in shadow on pilot repos; comment budget; volume estimates; PR lifecycle (§8.9) and degraded-mode behavior (§8.10) exercised in shadow; acceptance baselines re-measured (§13, §16) | *(v0.9)* Precision ≥ 0.7 on an **adjudicated sample** (owners label a random 200 shadow findings as right / wrong / unimportant; human comments are not the ground truth, since a correct finding no reviewer made would count against the bot); injected-violation recall (FR-X6) ≥ 0.7 per active rule; beats baseline |
+| **3 — Comment** | Posting with Conventional Comments labels, suggestions, structured feedback, digests, auto-demotion, CLI, SARIF for security | ≥ 50% severity-weighted acceptance for 4 weeks; every active rule ≤ 10% effective FP; incident-set recall measured and rising |
 | **4 — Shift left + bug lane** | Rule exports, MCP server, bug lane in shadow → comment on critical paths | Exported-rule violations falling; bug lane ≤ 10% effective FP per class |
-| **5 — Auto-approve** | Gates on opted-in repos; path denylist and author policy (FR-A6–A9); red-team exercise extending FR-X10; counter-metric dashboards | Zero red-team approvals; zero approvals from degraded runs in shadow; no counter-metric alarms over 4 weeks; ≥ 65% acceptance |
+| **5 — Auto-approve** | Gates on opted-in repos; path denylist and author policy (FR-A6–A13); red-team exercise extending FR-X10; counter-metric dashboards | Zero red-team approvals; zero approvals from degraded runs in shadow; no counter-metric alarms over 4 weeks; ≥ 65% severity-weighted acceptance and ≥ 50% incident-set recall |
 | **6 — Platform** | Engine as judge for other agents; Fixer for human comments; editor integration; web UI | Second internal caller in production |
 
 (Auto-approve moves after shift-left and the bug lane relative to v0.1: approving on "zero findings" is only safe once the lanes that would find problems are proven.)
