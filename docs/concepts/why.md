@@ -54,6 +54,8 @@ The durable asset is the rule corpus: owned, versioned, cited and testable. The 
 | Can block merges | Never requests changes. It approves, or it says nothing |
 | Review-time only | The same rules ship to coding agents, IDEs and a pre-PR CLI |
 
+There is a tempting shortcut that Exemplar is built to replace. When a team is overwhelmed, engineers start reviewing PRs with their own coding harness: paste the diff in, post what comes back. It looks like help. In practice the harness leaves many comments, some valid and some not, nobody can tell which the human reviewer actually agrees with, authors spend their time disproving them, and soon authors use a harness to answer the harness. Review becomes a proxy exchange that spreads no knowledge and needs no teammate. The alternative is one centralized reviewer whose findings someone owns, whose precision is measured per rule, and whose approval is a plain, auditable decision. That is what owned rules, verification, structured feedback and deterministic gates are for.
+
 ## Principles
 
 - **Precision is the product.** A noisy rule is worse than no rule. Every design choice traces to reducing one of two false positives: findings that are wrong, and findings that are right but don't matter here.
@@ -64,6 +66,7 @@ The durable asset is the rule corpus: owned, versioned, cited and testable. The 
 - **A fix is worth more than a comment.**
 - **Best practices expire.** Rules carry a review-by date and drop back to shadow unless re-confirmed.
 - **Review is also knowledge transfer.** Counter-metrics watch for auto-approve eroding shared ownership.
+- **An auto-approved failure is a system failure.** When a PR Exemplar approved causes an incident or a revert, the question is which gate, rule or check should have refused it, never which author to blame. The fix lands in config, a rule, an eval case or the code.
 - **Cost and latency are visible, not optimized for.** Every review reports what it cost; precision and encoded judgment come first.
 
 ## What it won't do
