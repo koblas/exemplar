@@ -487,6 +487,10 @@ func TestReviewPostsCommentsAndCheck(t *testing.T) {
 	if !strings.HasSuffix(title, "human review needed") || !strings.HasPrefix(summary, "**Human review needed.** Not auto-approved because ") {
 		t.Errorf("check output = %+v", output)
 	}
+	// These reviews run without exemplar-search, and the check run says so.
+	if !strings.HasSuffix(summary, "Cross-repository callers were not checked (search is not configured).") {
+		t.Errorf("check summary lacks the search-off scope line: %q", summary)
+	}
 }
 
 func TestReviewSkips(t *testing.T) {
