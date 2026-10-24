@@ -438,3 +438,16 @@ Search is the one stateful service besides Postgres (local SSD, a mirror and ind
 - **As built** recorded: the worker's roles and token flavors (§2.2, §5), the blob-less depth-1 checkout (§6.4.2), the tunnel (§13), the code layout (§3), tree-sitter's module path (§14).
 
 **Not done:** the PRD does not yet say search is optional (constraint 6, FR-E12); a v0.10 should. None of the newly specified behaviour is built; the backlog's gate and search rows still hold the briefs.
+
+### Backlog scoped against Draft 1.4 (2026-10-24)
+
+Spec §16 says the backlog tracks four groups of adopted, unbuilt work; the backlog held two (the v0.8–v0.9 gates and the local references and history). Checked each of Draft 1.4's new sections against the code (none of `reviews.round`, `posting.class_threshold`, `verifier.quorum`, `calibration_results`, `clean_pr_runs`, `approval_failures`, `review_by_defaults`, `runner_claims`, `config_snapshots` or a `Launcher` exists; advisory locks are only in `store.Migrate` and the per-repo slots; the web UI's finding page has only a false-positive action; the program board is not built) and added the missing briefs to `docs/plans/backlog.md`, each naming the packages, migrations, manifests, dashboards and pages it touches:
+
+- **Convergence and verification controls:** FR-C8 round cap, FR-C9 class-of-bug grouping, FR-V7 verifier quorum, FR-X12 clean-PR set and the change gate (noting that incident-set recall as a number is a prerequisite nobody computes yet).
+- **Gates:** FR-A12 system accountability (`approval_failures` with triage), beside the rows already there.
+- **Learning plane and measurement:** `review_by_defaults` per category; severity-weighted acceptance, the program board and the §12.5 informational metrics that have no stored inputs (human approvals per PR, time waiting on a person); the adjudicated shadow exit on the finding page.
+- **Elastic hosting:** C1–C11 from §2.4.2 as separate rows, with the GKE Autopilot overlay and the §2.4.3 verification list as a last row that needs a real GKE project.
+- The local-search row gains the check-run scope line as a piece that can ship first; a docs row asks for PRD v0.10 to make search optional.
+- An **Order of work** table repeats §16's H1–H5 over the rows, and the backlog's intro and the plans index now say the backlog holds both ideas and adopted briefs.
+
+Nothing in the code or manifests changed.
