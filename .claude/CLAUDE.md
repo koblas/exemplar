@@ -6,8 +6,9 @@ This repository is Exemplar, a Go service deployed on Kubernetes. The Go module
 is `github.com/koblas/exemplar`. The spec is `docs/spec/technical-spec.md`
 (`§` references point there); the PRD is `docs/spec/prd.md` (`FR-…` requirement
 ids); `docs/plans/README.md` maps the roadmap and requirement families to
-both. Current work follows `docs/plans/ready-to-install.md`; add a dated
-section to its log (§7) for each new piece of work. `docs/plans/phase-0.md` is
+both. Current work follows `docs/plans/ready-to-install.md`; its §7 log ends on
+2026-10-24: don't add sections there (history goes in `bd close --reason` and
+the PR description, see Work Tracking). `docs/plans/phase-0.md` is
 the Phase 0 plan (status in its §9) and the log of head starts up to 2026-10-17;
 don't add new sections there. Binaries: `cmd/exemplar` (CLI), `cmd/exemplar-gateway`,
 `cmd/exemplar-search` (git mirror, zoekt index, internal API: search_text,
@@ -40,6 +41,34 @@ Python (embed, cluster, rank) lives in `learning/`, a uv project on Python 3.13:
 in `contracts/` are generated from `schema/` by `learning/scripts/gen-contracts.sh`.
 Do not treat the suggested layout below as existing code or scaffold an entire
 application unless requested. Update this guidance as the service takes shape.
+
+## Work Tracking
+
+- Track all work in beads (`bd`, Dolt-backed, prefix `exemplar-`), never in
+  markdown TODO lists, checklists or status tables. `docs/spec/` stays the
+  source of truth for what and why; an issue carries a backlink (doc path plus
+  heading anchor, e.g. `docs/spec/technical-spec.md#646-running-without-exemplar-search`)
+  and its state, and does not restate the spec. The briefs in
+  `docs/plans/backlog.md` stay as design text that issues link to.
+- At session start run `bd ready`. Claim with `bd update <id> --status in_progress`.
+- File newly found work as its own issue under the right epic, linked to the
+  issue you were on: `bd create "<title>" -d "<backlink>" --parent <epic> --deps discovered-from:<id>`.
+  Order work with `blocks` dependencies and `order:H1`…`order:H5` labels;
+  unadopted ideas are `deferred` with the `idea` label.
+- Close with `bd close <id> --reason "<what landed, PR or commit>"`.
+- At session end export and commit the data: `bd export -o .beads/issues.jsonl`
+  from the checkout root, then commit `.beads/issues.jsonl` with the work (ask
+  before committing, as for any commit). Close reasons and PR descriptions
+  carry the history: what landed, decisions taken, how it is tested, and what is
+  still missing (file the missing pieces as issues). Only `.beads/` config and that export
+  are committed; the Dolt database is ignored.
+- Worktrees share the main checkout's database (`bd context` shows it). `no-push`
+  is set: never push Dolt data (`bd sync`, `bd dolt push`) without asking.
+- Recovery: in the checkout `bd context` names, move a corrupt database aside
+  (`mv .beads/embeddeddolt .beads/embeddeddolt.corrupt`), restore the tracked
+  files (`git checkout -- .beads`) and run `bd bootstrap --yes`, which imports
+  `.beads/issues.jsonl` when origin has no Dolt data. Ask before deleting the
+  moved-aside copy.
 
 ## Environment and Commands
 

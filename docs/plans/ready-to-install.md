@@ -1,6 +1,6 @@
 # Ready to install: implementation plan
 
-**Source:** the [plans index](README.md) for how this fits the roadmap. [`phase-0.md`](phase-0.md) holds the Phase 0 plan and the log of every head start up to 2026-10-17. New work is planned and logged here, one dated section per piece.
+**Source:** the [plans index](README.md) for how this fits the roadmap. [`phase-0.md`](phase-0.md) holds the Phase 0 plan and the log of every head start up to 2026-10-17. Work up to 2026-10-24 is logged here, one dated section per piece; later work is tracked in beads (`bd`).
 
 ## 1. Goal and exit criteria
 
@@ -155,7 +155,7 @@ Work tracked in beads — see epic exemplar-ffj (decisions) and exemplar-bnt.1 (
 
 ## 7. Log
 
-Each piece of work adds a dated section here: what was built, the decisions taken, how it is tested, and what is still missing.
+Each piece of work up to 2026-10-24 has a dated section here (no new sections: see `.claude/CLAUDE.md`, Work Tracking): what was built, the decisions taken, how it is tested, and what is still missing.
 
 ### Install experience review (2026-10-17)
 
