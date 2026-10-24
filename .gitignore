@@ -28,3 +28,6 @@ __pycache__/
 # /security-hunt working files (current run and runs moved aside)
 /.security/
 /.security.prev-*/
+
+# beads workspace gate lock (beside .beads/, not covered by .beads/.gitignore)
+/.beads.gate.lock*

@@ -9,7 +9,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 | [`docs/spec/technical-spec.md`](../spec/technical-spec.md) | **The technical specification** (Draft 1.4), and the **canonical copy**: change the spec here. It covers architecture, pipeline, data model, security and the delivery plan, and is the source for every `§` reference. |
 | [`docs/spec/prd.md`](../spec/prd.md) | **The PRD** (v0.9), and the **canonical copy**: change the PRD here. It covers the problem, goals, personas, and the functional requirements (`FR-…`) the spec implements, with sample interactions (§17). |
 | [`docs/plans/phase-0.md`](phase-0.md) | The Phase 0 implementation plan (§1–§8), its status (§9), and a dated log of the head starts up to 2026-10-17. Each "head start" section records what was built, the decisions taken, how it is tested, and what is still missing. No new sections go here. |
-| [`docs/plans/ready-to-install.md`](ready-to-install.md) | **The current plan**: making a first installation short and checkable (setup in the cluster, the GitHub App manifest flow, one root key, a setup page, release manifests). New work is logged in its §7. |
+| [`docs/plans/ready-to-install.md`](ready-to-install.md) | **The current plan**: making a first installation short and checkable (setup in the cluster, the GitHub App manifest flow, one root key, a setup page, release manifests). Its §7 logs work up to 2026-10-24; since then work is tracked in beads (`bd`), with history in close reasons and PR descriptions. |
 | [`docs/plans/backlog.md`](backlog.md) | **The backlog**: ideas not in the PRD or any plan yet (each with where it came from, what it would change and what it would cost; one leaves when adopted into the PRD or declined), and the **adopted requirements not yet built**, as briefs: the PRD v0.7–v0.9 gates and convergence controls, the local references and history of spec §6.4.6, and the elastic hosting changes of spec §2.4, in the order spec §16 gives (H1–H5). |
 | [`docs/security/phase-0-data-handling.md`](../security/phase-0-data-handling.md) | What the code does with repository data, for Security's review and sign-off. |
 | [`docs/reference/workloads.md`](../reference/deployment.md) | How to deploy: images, manifests, what an installation supplies, and the rollout risks. |
@@ -51,10 +51,7 @@ Phases are from spec §16. Work has gone past Phase 0 in "head starts", each log
 
 Built; see [plan §9](phase-0.md#9-status-2026-10-12).
 
-Waiting on outside inputs:
-- the sandbox GitHub org and App registration (T-0.1, T-0.3);
-- the monorepo benchmark run (T-0.4);
-- Security sign-off of eligibility and retention.
+Waiting on outside inputs: work tracked in beads — see epic exemplar-bnt.
 
 ### Phase 1 — Mine and curate
 
@@ -86,8 +83,7 @@ Waiting on outside inputs:
 - [Kubernetes manifests and images](phase-0.md#head-start-kubernetes-manifests-and-images-2026-10-14);
 - [Grafana boards](phase-0.md#head-start-grafana-boards-2026-10-14) over the SQL views.
 
-**Not built:**
-- OTEL-backed panels (latency, rate limits) and alerting.
+**Not built:** work tracked in beads — see epic exemplar-vtb.
 
 ### Phase 3 — Comment
 
@@ -110,8 +106,7 @@ Waiting on outside inputs:
 - [fixed-without-suggestion and reactions](phase-0.md#head-start-fixed-without-suggestion-and-reactions-2026-10-14), completing the §9.1 signals but teach-the-bot;
 - [SARIF and alert dismissals](phase-0.md#head-start-sarif-and-alert-dismissals-2026-10-14).
 
-**Not built:**
-- the Homebrew tap and internal mirror for the CLI.
+**Not built:** work tracked in beads — see epic exemplar-ffj.
 
 ### Phase 4 — Shift left and bug lane
 
@@ -141,9 +136,7 @@ Waiting on outside inputs:
 - [audit and counter-metric boards with alerts](phase-0.md#head-start-counter-metrics-and-alerts-2026-10-14);
 - compliance constants and kill switches.
 
-**Not built:**
-- the counter-metrics on unviewed owned paths and on human comment volume;
-- the red-team exercise (an activity, not code).
+**Not built:** work tracked in beads — see epics exemplar-vtb and exemplar-bnt.
 
 Auto-approve stays off in config.
 
@@ -158,11 +151,7 @@ Auto-approve stays off in config.
 
 - the [playground](phase-0.md#head-start-the-web-ui-playground-2026-10-14), with save-as-draft-PR (which also edits a rule);
 
-**Not built:**
-- the transcript viewer;
-- opt-in rollout waves (operations, not code);
-- the Fixer for human comments;
-- editor integration.
+**Not built:** work tracked in beads — see epics exemplar-653 and exemplar-bnt.
 
 ## Open questions
 
