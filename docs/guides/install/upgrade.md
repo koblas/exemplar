@@ -12,6 +12,12 @@
 
 ## Changes that need action
 
+### Runners without the App key (2026-10-24)
+
+- The `exemplar-runner` PodTemplate no longer mounts `exemplar-github-app` or sets `EXEMPLAR_GH_APP_ID` and `EXEMPLAR_GH_PRIVATE_KEY_FILE`. An overlay that patched them back in must drop them; `go test ./deploy` fails on them.
+- The worker mints each runner's GitHub tokens into a claim sealed with a key derived from the root key. If you set `EXEMPLAR_CLAIM_KEY_FILE`, set the same file on the worker and the runner template.
+- `exemplar review` evaluations now time out after 50 minutes instead of an hour, inside the tokens' one-hour life.
+
 ### Reviews run as Jobs (2026-10-24)
 
 - The core manifests now run each review, `exemplar review` evaluation and playground run as a Kubernetes Job (`--launcher=kubernetes`). They add `rbac.yaml` (a Role and RoleBinding for `exemplar-worker`), the `exemplar-runner` ServiceAccount, PodTemplate and NetworkPolicy, and mount a service account token in the worker container. Your cluster must allow the namespace's Role and the Jobs it creates; to keep reviews inside the worker pod, patch `--launcher=in-process` as the quickstart overlays do.

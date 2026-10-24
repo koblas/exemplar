@@ -471,14 +471,15 @@ CREATE TABLE config_snapshots (
   files        jsonb NOT NULL,                      -- the validated tree (path -> base64 contents); the runner re-loads it
   loaded_at    timestamptz NOT NULL DEFAULT now()
 );
-CREATE TABLE runner_claims (                        -- one row per dispatched review; tokens for one repo
-  job_id       bigint PRIMARY KEY,
-  review_id    bigint REFERENCES reviews(id),
-  nonce        text NOT NULL,                       -- one-time; the runner presents it once
-  tokens       bytea,                               -- worker, gate, poster, clone; encrypted at rest; NULLed on claim exit
+CREATE TABLE runner_claims (                        -- one row per dispatched job; a retry replaces it
+  job_id         bigint PRIMARY KEY,                -- River job
+  attempt        int NOT NULL,
+  nonce_hash     bytea NOT NULL,                    -- sha256 of the one-time nonce the runner presents once
+  tokens         bytea,                             -- AES-GCM sealed grant (repo, installation, flavor, token, expiry); NULLed on exit
   config_version text NOT NULL REFERENCES config_snapshots(version),
-  claimed_at   timestamptz, released_at timestamptz,
-  expires_at   timestamptz NOT NULL                 -- ≤ the installation tokens' own expiry
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  claimed_at     timestamptz, released_at timestamptz,
+  expires_at     timestamptz NOT NULL               -- the earliest token expiry
 );
 
 CREATE TABLE rule_runs (

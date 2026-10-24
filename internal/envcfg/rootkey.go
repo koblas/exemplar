@@ -26,6 +26,7 @@ const (
 	LabelGatewayToken = "exemplar/gateway-token/v1" //nolint:gosec // G101: a KDF label, not a credential
 	LabelSearchToken  = "exemplar/search-token/v1"  //nolint:gosec // G101: a KDF label, not a credential
 	LabelPseudonym    = "exemplar/pseudonym/v1"
+	LabelRunnerClaims = "exemplar/runner-claims/v1"
 )
 
 var (

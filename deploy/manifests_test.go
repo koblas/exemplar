@@ -345,7 +345,7 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 // Kubernetes API: it alone mounts a service account token, in its worker
 // container only, and it alone is bound to a Role, which reaches Jobs,
 // pods and the runner PodTemplate in the namespace. The runner template
-// mounts no token and no config checkout.
+// mounts no token, no config checkout and nothing of the App.
 func checkKubeAPI(t *testing.T, docs []obj, ws []workload) {
 	t.Helper()
 	for _, w := range ws {
@@ -374,6 +374,16 @@ func checkKubeAPI(t *testing.T, docs []obj, ws []workload) {
 			for _, v := range list(w.spec, "volumes") {
 				if str(v, "name") == "config" {
 					t.Errorf("%s mounts a config checkout; runners load config_snapshots", w.name)
+				}
+				if str(v, "secret", "secretName") == "exemplar-github-app" {
+					t.Errorf("%s mounts the App's Secret; runners redeem claims", w.name)
+				}
+			}
+			for _, c := range containers(t, w.spec) {
+				for _, e := range list(c, "env") {
+					if n := str(e, "name"); n == "EXEMPLAR_GH_APP_ID" || n == "EXEMPLAR_GH_PRIVATE_KEY_FILE" || str(e, "valueFrom", "secretKeyRef", "name") == "exemplar-github-app" {
+						t.Errorf("%s/%s reads the App (%s); runners redeem claims", w.name, str(c, "name"), n)
+					}
 				}
 			}
 		}

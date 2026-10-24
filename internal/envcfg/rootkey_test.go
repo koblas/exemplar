@@ -106,7 +106,7 @@ func TestTokens(t *testing.T) {
 	}
 	// Different labels give different keys from one root.
 	seen := map[string]string{}
-	for _, l := range []string{LabelLink, LabelSession, LabelGatewayToken, LabelSearchToken, LabelPseudonym} {
+	for _, l := range []string{LabelLink, LabelSession, LabelGatewayToken, LabelSearchToken, LabelPseudonym, LabelRunnerClaims} {
 		h := mustDeriveHex(t, root, l)
 		if prev, ok := seen[h]; ok {
 			t.Fatalf("%s and %s derive the same key", l, prev)

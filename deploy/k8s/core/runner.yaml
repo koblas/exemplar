@@ -2,12 +2,13 @@
 # --launcher=kubernetes) makes a Job per review from this template, adding
 # `run-job --job ID --config-version V` to the runner container's args;
 # the runner loads that config version from Postgres (config_snapshots),
-# so it has no config checkout. It reviews, posts with the App's tokens
+# so it has no config checkout. It reviews, posts with its claim's tokens
 # for that one repository, and exits: 0 done, 10 cancelled, 11
 # superseded, anything else retried by River.
 #
-# Until single-use token claims (spec §2.4 C2) the runner still mints its
-# own tokens, so it mounts the App private key.
+# The runner never holds the App private key: exemplar-worker mints the
+# job's GitHub tokens (its repository, the flavors the job needs) into a
+# single-use claim, and the Job's EXEMPLAR_RUNNER_NONCE redeems it once.
 apiVersion: v1
 kind: PodTemplate
 metadata:
@@ -45,13 +46,10 @@ template:
         env:
           - name: EXEMPLAR_DATABASE_URL
             valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
-          - name: EXEMPLAR_GH_APP_ID
-            valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id}}
           - name: EXEMPLAR_GH_API_URL
             valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL, optional: true}}
           - name: EXEMPLAR_GH_WEB_URL
             valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_WEB_URL, optional: true}}
-          - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
           - name: EXEMPLAR_CONFIG_REPO
             valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
           - name: EXEMPLAR_GATEWAY_URL
@@ -74,17 +72,11 @@ template:
           capabilities: {drop: [ALL]}
         volumeMounts:
           - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
-          - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
           - {name: work, mountPath: /var/lib/exemplar/work}
           - {name: tmp, mountPath: /tmp}
     volumes:
       - name: root-key
         secret: {secretName: exemplar-root-key, defaultMode: 0400}
-      - name: github-app
-        secret:
-          secretName: exemplar-github-app
-          items: [{key: private-key, path: private-key}]
-          defaultMode: 0400
       # The review's checkout.
       - name: work
         emptyDir: {sizeLimit: 8Gi}

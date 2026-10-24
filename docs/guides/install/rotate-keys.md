@@ -1,6 +1,6 @@
 # How to rotate keys
 
-The link, session, gateway, search and pseudonym keys all derive from the root key in `exemplar-root-key` with HKDF-SHA256 ([Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md#exemplar-root-key)). Rotating the root key rotates all of them at once.
+The link, session, gateway, search, pseudonym and runner-claim keys all derive from the root key in `exemplar-root-key` with HKDF-SHA256 ([Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md#exemplar-root-key)). Rotating the root key rotates all of them at once.
 
 ## Rotate one key alone
 
@@ -8,11 +8,12 @@ Set that key's explicit Secret or variable, which wins over the derivation:
 
 | Key | Set | On |
 |---|---|---|
-| Feedback-link signing | `EXEMPLAR_LINK_KEY_FILE` | api, worker |
+| Feedback-link signing | `EXEMPLAR_LINK_KEY_FILE` | api, worker and the runner template |
 | Sessions | `EXEMPLAR_SESSION_KEY_FILE` | api |
-| Gateway token | `EXEMPLAR_GATEWAY_TOKEN` | gateway, worker, learn, the learning CronJobs |
-| Search token | `EXEMPLAR_SEARCH_TOKEN` | search, worker |
+| Gateway token | `EXEMPLAR_GATEWAY_TOKEN` | gateway, worker, the runner template, learn, the learning CronJobs |
+| Search token | `EXEMPLAR_SEARCH_TOKEN` | search, worker, the runner template |
 | Pseudonyms | `EXEMPLAR_PSEUDONYM_KEY` | learn `ingest` and `path-events` |
+| Runner claims | `EXEMPLAR_CLAIM_KEY_FILE` | worker and the runner template (jobs in flight when it changes fail and are retried) |
 
 1. Create a Secret holding the new value (at least 32 bytes; `openssl rand -hex 32`).
 2. Patch every workload in the row to mount it and set the variable; a token must match on both sides, so roll the pods that share it together.

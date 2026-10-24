@@ -16,7 +16,7 @@ Read by more than one binary. The ConfigMap is described on [Secrets and ConfigM
 | `EXEMPLAR_GH_WEB_URL` | api, worker, gateway, search, learn, the CLI | `exemplar-settings` | GitHub's web base, `https://github.com/` by default; `https://<host>/` for GitHub Enterprise Server. Used for clone URLs and links. |
 | `EXEMPLAR_GH_API_URL` | api, worker, search, learn, the CLI | `exemplar-settings` | GitHub's API base, `https://api.github.com/` by default; `https://<host>/api/v3/` for GHES. |
 | `EXEMPLAR_DATABASE_URL` | webhook, api, worker, gateway, learn, the learning jobs, the CLI (`replay`, `calibrate`) | Secret `exemplar-database`, key `url` | The Postgres URL. The gateway uses it only to record `model_calls`. |
-| `EXEMPLAR_ROOT_KEY_FILE` | api, worker, gateway, search, learn, the learning jobs | fixed path to Secret `exemplar-root-key`, key `key` | The root key file. The link, session, gateway, search and pseudonym keys derive from it with HKDF-SHA256 unless their explicit variable is set. |
+| `EXEMPLAR_ROOT_KEY_FILE` | api, worker, gateway, search, learn, the learning jobs | fixed path to Secret `exemplar-root-key`, key `key` | The root key file. The link, session, gateway, search, pseudonym and runner-claim keys derive from it with HKDF-SHA256 unless their explicit variable is set. |
 | `EXEMPLAR_GATEWAY_URL` | worker, learn, the learning jobs, the CLI, config CI | `exemplar-settings` (`http://exemplar-gateway.exemplar.svc`) | exemplar-gateway's base URL. |
 | `EXEMPLAR_GATEWAY_TOKEN` | gateway, worker, learn, the learning jobs, the CLI, config CI | derived from the root key | The gateway's shared secret. Set explicitly to rotate it alone, or outside the cluster (config CI). |
 | `EXEMPLAR_SEARCH_URL` | worker | `exemplar-settings` (`http://exemplar-search.exemplar.svc`) | exemplar-search's base URL. Empty runs without search: agents get no `find_references` or `path_history`, the bug lane's `bug.contract` class is skipped, and a review with a skipped class is not auto-approved. The worker logs a warning at start. |
@@ -66,6 +66,13 @@ Sign-in variables come from the `exemplar-auth` ConfigMap through `envFrom` ([Ho
 ## exemplar-worker
 
 Besides the shared settings: `EXEMPLAR_LINK_KEY_FILE` (as for the API; the worker signs the footers), `EXEMPLAR_GATEWAY_TOKEN`, `EXEMPLAR_SEARCH_TOKEN` and `EXEMPLAR_AST_GREP`.
+
+| Variable | Set by | Meaning |
+|---|---|---|
+| `EXEMPLAR_CLAIM_KEY_FILE` | nothing (derived from the root key) | Seals runner claims (the GitHub tokens the worker mints for each runner) at rest. `serve` and `run-job` must agree. |
+| `EXEMPLAR_RUNNER_NONCE` | the Kubernetes launcher, on each runner Job | `run-job` only: the one-time nonce that redeems the job's runner claim. |
+
+`run-job` reads the shared settings but not `EXEMPLAR_GH_APP_ID` or `EXEMPLAR_GH_PRIVATE_KEY_FILE`: a runner never holds the App private key.
 
 ## exemplar-gateway
 

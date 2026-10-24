@@ -35,6 +35,8 @@ const (
 	LabelKind    = "exemplar.dev/kind"
 	RunnerName   = "exemplar-runner"
 	RunnerTarget = "runner" // the template's container that runs run-job
+	// NonceEnv carries the runner claim's nonce to run-job.
+	NonceEnv = "EXEMPLAR_RUNNER_NONCE"
 )
 
 // Defaults.
@@ -165,6 +167,8 @@ func (l *Launcher) job(t worker.Task) *batchv1.Job {
 	tmpl.Spec.RestartPolicy = corev1.RestartPolicyNever
 	c := &tmpl.Spec.Containers[runnerIndex(tmpl.Spec.Containers)]
 	c.Args = append([]string{"run-job", "--job=" + strconv.FormatInt(t.JobID, 10), "--config-version=" + t.ConfigVersion}, c.Args...)
+	// The claim's nonce: single-use, and useless once the tokens expire.
+	c.Env = append(c.Env, corev1.EnvVar{Name: NonceEnv, Value: t.Nonce})
 	deadline := int64((max(t.Timeout, 0) + deadlineMargin) / time.Second)
 	if t.Timeout <= 0 {
 		deadline = int64(defaultDeadline / time.Second)

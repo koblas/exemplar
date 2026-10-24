@@ -47,6 +47,8 @@ type Task struct {
 	ConfigVersion string
 	// Timeout is the job's River timeout.
 	Timeout time.Duration
+	// Nonce redeems the job's runner claim, once.
+	Nonce string
 }
 
 // Launcher runs a Task to its end. It returns an error only when it could
@@ -75,15 +77,21 @@ type Runner struct {
 	// cancel; zero leaves cancellation to the caller's context (in-process,
 	// where River cancels it).
 	CancelPoll time.Duration
+	// Claims redeems the job's tokens; the runner's GitHub is then the
+	// claim's (ClaimClients). Nil only in tests, which keep Config.GitHub.
+	Claims *Claims
+	// BaseURL is GitHub's API base for claim clients (GHES).
+	BaseURL string
 }
 
-// Run runs job id with config version and reports how it ended.
-func (r *Runner) Run(ctx context.Context, id int64, version string) Exit {
+// Run runs job id with config version, redeeming its claim with nonce, and
+// reports how it ended.
+func (r *Runner) Run(ctx context.Context, id int64, version, nonce string) Exit {
 	log := r.Config.Log
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	exit, err := r.run(ctx, id, version)
+	exit, err := r.run(ctx, id, version, nonce)
 	switch exit {
 	case ExitDone, ExitSuperseded:
 	case ExitCancel:
@@ -94,7 +102,7 @@ func (r *Runner) Run(ctx context.Context, id int64, version string) Exit {
 	return exit
 }
 
-func (r *Runner) run(ctx context.Context, id int64, version string) (Exit, error) {
+func (r *Runner) run(ctx context.Context, id int64, version, nonce string) (Exit, error) {
 	row, err := r.Jobs.JobGet(ctx, id)
 	if errors.Is(err, river.ErrNotFound) {
 		return ExitCancel, fmt.Errorf("worker: job %d %w", id, errGone)
@@ -112,6 +120,24 @@ func (r *Runner) run(ctx context.Context, id int64, version string) (Exit, error
 	}
 	cfg := r.Config
 	cfg.Snapshot = func(context.Context) (*config.Snapshot, error) { return snap, nil }
+	if r.Claims != nil {
+		grant, claimed, err := r.Claims.Redeem(ctx, id, nonce)
+		if errors.Is(err, errClaimRefused) {
+			return ExitCancel, err
+		}
+		if err != nil {
+			return ExitError, err
+		}
+		defer func() {
+			rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = r.Claims.Release(rctx, id)
+		}()
+		if claimed != version {
+			return ExitCancel, fmt.Errorf("%w: claim is for config %s, not %s", errClaimRefused, claimed, version)
+		}
+		cfg.GitHub = ClaimClients{Grant: grant, BaseURL: r.BaseURL}
+	}
 
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -202,7 +228,7 @@ func exitOf(ctx context.Context, err error) Exit {
 		return ExitDone
 	case Superseded(ctx):
 		return ExitSuperseded
-	case errors.As(err, &cancelled), errors.Is(err, errBadJob), errors.Is(err, errGone):
+	case errors.As(err, &cancelled), errors.Is(err, errBadJob), errors.Is(err, errGone), errors.Is(err, errClaimRefused):
 		return ExitCancel
 	}
 	return ExitError
@@ -210,7 +236,7 @@ func exitOf(ctx context.Context, err error) Exit {
 
 // JobRunner runs a dispatched job to its end (Runner).
 type JobRunner interface {
-	Run(ctx context.Context, id int64, version string) Exit
+	Run(ctx context.Context, id int64, version, nonce string) Exit
 }
 
 // Superseded reports whether ctx was cancelled by River's remote cancel.
@@ -225,5 +251,5 @@ type InProcess struct{ Runner JobRunner }
 
 // Launch implements Launcher.
 func (l InProcess) Launch(ctx context.Context, t Task) (Exit, error) {
-	return l.Runner.Run(ctx, t.JobID, t.ConfigVersion), nil
+	return l.Runner.Run(ctx, t.JobID, t.ConfigVersion, t.Nonce), nil
 }

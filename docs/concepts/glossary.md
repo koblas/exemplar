@@ -109,7 +109,7 @@
 : The Postgres-backed job queue every asynchronous step runs on. There is no other broker.
 
 **Root key**
-: The one Secret (`exemplar-root-key`) from which the link, session, gateway, search and pseudonym keys derive.
+: The one Secret (`exemplar-root-key`) from which the link, session, gateway, search, pseudonym and runner-claim keys derive.
 
 **Same-family**
 : A finding whose verifier was from the same model family as its generator. Posted, but blocks auto-approve.

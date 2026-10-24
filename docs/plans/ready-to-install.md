@@ -471,3 +471,21 @@ Spec §2.4.2 C1 and C3 (backlog H1). `exemplar-worker serve` is now control: it 
 - The playground keeps River's 1-minute timeout, as before the split; a longer run fails its attempt and is retried, in process or as a Job. Whether it should get longer is open.
 - A rolling update of control kills the reviews in flight (the retry deletes the left Job and starts again), as it did in process. Adopting a still-running Job instead would avoid that.
 - Control's requests are still sized for in-process reviews.
+
+### Runner claims: the App key leaves the runner (2026-10-24)
+
+Spec §2.4.2 C2 (backlog H1), after C1 and C3 (koblas/exemplar#51). Runners no longer hold the App private key.
+- **Claims** (`internal/worker/claims.go`, migration 00032 `runner_claims`): before launching, the dispatcher mints the job's installation tokens and seals them (AES-GCM, bound to the job id, key `exemplar/runner-claims/v1` from the root key or `EXEMPLAR_CLAIM_KEY_FILE`) into one row per River job; a retry's claim replaces the row, so the old nonce stops working. The runner redeems it once with the nonce (sha256 stored, never the nonce): a second redeem, another job's nonce or an expired claim matches nothing and the runner exits 10; a grant that does not open (keys differ) is an error River retries. Runner and dispatcher both release it (tokens NULL); retention deletes claims whose tokens expired and finished rows after a day. The spec's table gains `attempt`, `nonce_hash` and `created_at` and drops `review_id`.
+- **Grants per kind** (`internal/worker/grants.go`): `pr_review` worker, gate and poster for the PR repo; `evaluate` worker for its repo (none when ineligible or not installed: the runner refuses as before); mode eval worker for `exemplar-config` plus a new `gh.FlavorEval` (contents read, one owner, many repos, up to 500 per token) per installation over the eligible repos with a known installation (`InstalledRepos`, one scan of `gh_events`), as decided; `playground_run` worker for its PR repo. A vanished row cancels the job; a refused mint is retried.
+- **Runner GitHub** (`ClaimClients`): `Reader`, `Gate`, `Poster`, `CloneToken` from the grant only (`errNotClaimed` otherwise, installation included); a worker-flavor read falls back to mode eval's read-only token. Clients come from `gh.NewTokenClient` (the App's throttled client without the App).
+- **`run-job`** reads `EXEMPLAR_RUNNER_NONCE` (set by `kubelaunch` on each Job) and no App settings; `serve` keeps the App for the cheap queues and the minting. The in-process launcher passes the nonce in memory, so the quickstart runs the same claim path.
+- **Evaluations** now time out after 50 minutes (was an hour) so installation tokens (an hour) outlive every runner job, as decided.
+- **Manifests:** the runner template drops `exemplar-github-app`, `EXEMPLAR_GH_APP_ID` and `EXEMPLAR_GH_PRIVATE_KEY_FILE`; `go test ./deploy` fails if they come back.
+- **Tests:** claims redeem once, wrong and cross-job nonces, release, retry replacement, expiry, a grant moved between rows, retention; `ClaimClients` scope (repo, flavor, installation, eval fallback); grants per kind against Postgres with a fake minter; a review through River, the dispatcher, a minted claim and the in-process runner posting through claim clients, leaving no live token; `FlavorEval` scope in `internal/gh`; the Job carries the nonce.
+- **Docs:** workloads reference (claims, the 50-minute cap, known limits), environment variables, secrets reference, key rotation, architecture, upgrade notes, the known non-issue (the key is in control only), spec schema, backlog.
+
+**Not done or not verified:**
+- Nothing ran on a real cluster or against GitHub's real token API (a multi-repo `FlavorEval` token is tested against fakes only).
+- Rate limiting is per runner process; reviews of one installation in different runners no longer share a limiter (the secondary-limit transport still backs off).
+- The nonce is in the Job spec, readable by whoever can read Jobs in the namespace (control's Role and cluster admins); it is single-use and dies with the tokens.
+- With `--launcher=in-process` the runner shares the worker's process, and so the key.

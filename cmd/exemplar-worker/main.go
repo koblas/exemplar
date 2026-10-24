@@ -11,8 +11,11 @@
 // process; kubernetes runs `run-job` as a Kubernetes Job per review from
 // the exemplar-runner PodTemplate. Every config version serve loads is
 // stored (config_snapshots), and a runner reviews with the version its
-// job was dispatched with. run-job exits 0 when done, 10 when the job is
-// cancelled, 11 when it was superseded, and anything else to be retried.
+// job was dispatched with. serve mints each job's GitHub tokens into a
+// single-use runner claim; run-job redeems it with EXEMPLAR_RUNNER_NONCE
+// and never reads the App private key. run-job exits 0 when done, 10 when
+// the job is cancelled, 11 when it was superseded, and anything else to
+// be retried.
 //
 // serve also runs periodic jobs on River's leader: every 5 minutes it
 // requests redelivery of failed webhook deliveries, every 10 it sweeps
@@ -28,8 +31,11 @@
 // Settings come from the environment, never flags, for anything secret:
 //
 //	EXEMPLAR_DATABASE_URL                   Postgres (reviews, River)
-//	EXEMPLAR_GH_APP_ID                      the review app
-//	EXEMPLAR_GH_PRIVATE_KEY_FILE            its private key
+//	EXEMPLAR_GH_APP_ID                      the review app (serve only)
+//	EXEMPLAR_GH_PRIVATE_KEY_FILE            its private key (serve only)
+//	EXEMPLAR_RUNNER_NONCE                   run-job: redeems the job's runner claim
+//	EXEMPLAR_CLAIM_KEY_FILE                 seals runner claims (optional: derived
+//	                                        from EXEMPLAR_ROOT_KEY_FILE)
 //	EXEMPLAR_CONFIG_REPO                    exemplar-config, which worker tokens may not read
 //	EXEMPLAR_GH_API_URL                     GHES API base (optional)
 //	EXEMPLAR_GH_WEB_URL                     GHES web base for clones (optional)
@@ -129,7 +135,7 @@ func runServe(args []string) error {
 	if *launcherName != launcherInProcess && *launcherName != launcherKubernetes {
 		return errBadLauncher
 	}
-	env, err := envFromOS()
+	env, err := envFromOS(true)
 	if err != nil {
 		return err
 	}
@@ -172,7 +178,7 @@ func runServe(args []string) error {
 		return fmt.Errorf("store config: %w", err)
 	}
 	snapshot := func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil }
-	wcfg, err := env.workerConfig(st, *workDir, log)
+	wcfg, err := env.workerConfig(st, *workDir, worker.AppClients{App: env.app}, log)
 	if err != nil {
 		return err
 	}
@@ -199,8 +205,15 @@ func runServe(args []string) error {
 		return fmt.Errorf("create merge policy worker: %w", err)
 	}
 
-	// Reviews, evaluations and playground runs go to runners.
-	runner := &worker.Runner{Config: wcfg, Snapshot: worker.Snapshots(st, snapshot)}
+	// Reviews, evaluations and playground runs go to runners, each with
+	// only the tokens its claim grants.
+	claims, err := env.claims(st)
+	if err != nil {
+		return err
+	}
+	runner := &worker.Runner{
+		Config: wcfg, Snapshot: worker.Snapshots(st, snapshot), Claims: claims, BaseURL: os.Getenv("EXEMPLAR_GH_API_URL"),
+	}
 	var launch worker.Launcher = worker.InProcess{Runner: runner}
 	if *launcherName == launcherKubernetes {
 		if launch, err = kubeLauncher(ctx, *runnerTemplate, log); err != nil {
@@ -209,7 +222,10 @@ func runServe(args []string) error {
 	} else if _, err := worker.New(wcfg); err != nil {
 		return fmt.Errorf("create review worker: %w", err)
 	}
-	dcfg := worker.DispatchConfig{Launcher: launch, Snapshot: snapshot, Store: st, Log: log}
+	dcfg := worker.DispatchConfig{
+		Launcher: launch, Snapshot: snapshot, Store: st, Log: log, Claims: claims,
+		Granter: &worker.Granter{Minter: app, Store: st, ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO")},
+	}
 	reviews, err := worker.NewReviewDispatcher(dcfg)
 	if err != nil {
 		return fmt.Errorf("create review dispatcher: %w", err)
