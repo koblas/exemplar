@@ -84,12 +84,19 @@ type fakeGitHub struct {
 	approvals []string
 	// codeowners is the base's .github/CODEOWNERS; none when empty.
 	codeowners string
+	// listPosted lists the reviews posted here back, as GitHub does
+	// (marker dedupe reads them); other tests script the list.
+	listPosted bool
+	// intercept, when set, sees each request first, with mu held: abort
+	// drops the connection unanswered, after applying the request when
+	// apply is set (a runner killed before or after GitHub took a write).
+	intercept func(r *http.Request) (abort, apply bool)
 }
 
 func newFakeGitHub(t *testing.T, repoName, head, base string) *fakeGitHub {
 	t.Helper()
 	f := &fakeGitHub{t: t, repo: repoName, state: "open", head: head, base: base}
-	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
+	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
 	return f
 }
@@ -101,10 +108,24 @@ func (f *fakeGitHub) writeJSON(w http.ResponseWriter, v any) {
 	}
 }
 
-func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
+func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.intercept != nil {
+		if abort, apply := f.intercept(r); abort {
+			if apply {
+				f.serve(httptest.NewRecorder(), r)
+			}
+			// The runner died: its connection drops with no response.
+			panic(http.ErrAbortHandler)
+		}
+	}
+	f.serve(w, r)
+}
+
+// serve answers r; f.mu is held.
+func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	pr := fmt.Sprintf("/repos/%s/pulls/%d", f.repo, prNum)
 	body := func() map[string]any {
 		data, _ := io.ReadAll(r.Body)
@@ -141,6 +162,15 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		for i, a := range f.approvals {
 			parts := strings.Split(a, ":")
 			out = append(out, map[string]any{"id": 10 + i, "state": parts[1], "commit_id": parts[2], "user": map[string]any{"login": parts[0], "type": "User"}})
+		}
+		if f.listPosted {
+			for i, rv := range f.reviews {
+				state := "COMMENTED"
+				if rv["event"] == "APPROVE" {
+					state = "APPROVED"
+				}
+				out = append(out, map[string]any{"id": 101 + i, "state": state, "commit_id": rv["commit_id"], "body": rv["body"], "user": map[string]any{"type": "Bot"}})
+			}
 		}
 		f.writeJSON(w, out)
 	case r.Method == http.MethodGet && r.URL.Path == pr+"/files":

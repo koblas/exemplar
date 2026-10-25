@@ -71,7 +71,6 @@ var (
 type Claims struct {
 	st   *store.Store
 	aead cipher.AEAD
-	now  func() time.Time
 }
 
 // NewClaims seals claims with key (envcfg.LabelRunnerClaims, or a key
@@ -89,7 +88,7 @@ func NewClaims(st *store.Store, key []byte) (*Claims, error) {
 	if err != nil {
 		return nil, fmt.Errorf("worker: claim cipher: %w", err)
 	}
-	return &Claims{st: st, aead: aead, now: time.Now}, nil
+	return &Claims{st: st, aead: aead}, nil
 }
 
 // aad binds a sealed grant to its row, so it cannot be moved to another.
@@ -121,7 +120,7 @@ func (c *Claims) Mint(ctx context.Context, t Task, g Grant) (string, error) {
 	sealed := c.aead.Seal(iv, iv, plain, aad(t.JobID))
 	err = c.st.PutRunnerClaim(ctx, queries.PutRunnerClaimParams{
 		JobID: t.JobID, Attempt: int32(t.Attempt), NonceHash: nonceHash(nonce), Tokens: sealed,
-		ConfigVersion: t.ConfigVersion, ExpiresAt: pgtype.Timestamptz{Time: g.expires(c.now()), Valid: true},
+		ConfigVersion: t.ConfigVersion, ExpiresAt: pgtype.Timestamptz{Time: g.expires(time.Now()), Valid: true},
 	})
 	if err != nil {
 		return "", fmt.Errorf("worker: store claim: %w", err)
