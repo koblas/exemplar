@@ -74,9 +74,9 @@ conventions, checks, test techniques, time in tests) and `.claude/rules/k8s.md`
 
 - Use the repository's devenv environment (`devenv shell` or its direnv setup).
 - Check tool availability first. Devenv provides Git, Go 1.27.3, golangci-lint v2.15,
-  ripgrep, ast-grep, Semgrep, universal-ctags, Postgres 16 with pgvector, Python 3.13
-  and uv, but not kubectl, Helm, or container tooling (`gh` and `bd` come from the
-  host). Do not silently install tools or change devenv.
+  ripgrep, ast-grep, Semgrep, universal-ctags, Python 3.13 and uv, but not
+  Postgres (tests run it with testcontainers), kubectl, Helm, or container tooling
+  (`gh` and `bd` come from the host). Do not silently install tools or change devenv.
 - The root `Makefile` (and `learning/Makefile`) wraps the CI commands; `make help`
   lists targets. `make check` is the quick gate, `make ci` mirrors ci.yml. Keep the
   Makefiles and `.github/workflows/ci.yml` in step when either changes.
