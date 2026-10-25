@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -168,17 +167,9 @@ func verifierInputsChanged(base, head *config.Snapshot) bool {
 	if base == nil {
 		return true
 	}
-	b, h := base.Global, head.Global
-	var bt, ht any
-	if b.EvalThresholds.Verifier != nil {
-		bt = *b.EvalThresholds.Verifier
-	}
-	if h.EvalThresholds.Verifier != nil {
-		ht = *h.EvalThresholds.Verifier
-	}
-	return !reflect.DeepEqual(b.Providers.Verifier, h.Providers.Verifier) ||
-		!reflect.DeepEqual(b.Verifier, h.Verifier) || !reflect.DeepEqual(bt, ht) ||
-		!reflect.DeepEqual(labelSet(base), labelSet(head))
+	// One definition with the gate: an installation's calibration result
+	// is valid for exactly these inputs (calibrate.VerifierKey).
+	return calibrate.VerifierKey(base) != calibrate.VerifierKey(head)
 }
 
 // calibrationReports is the --json output: one report per stage that ran.
@@ -203,31 +194,7 @@ func categorizerInputsChanged(base, head *config.Snapshot) bool {
 	if base == nil {
 		return true
 	}
-	b, h := base.Global, head.Global
-	var bp, hp, bt, ht any
-	if b.Providers.Categorizer != nil {
-		bp = *b.Providers.Categorizer
-	}
-	if h.Providers.Categorizer != nil {
-		hp = *h.Providers.Categorizer
-	}
-	if b.EvalThresholds.Categorizer != nil {
-		bt = *b.EvalThresholds.Categorizer
-	}
-	if h.EvalThresholds.Categorizer != nil {
-		ht = *h.EvalThresholds.Categorizer
-	}
-	return !reflect.DeepEqual(bp, hp) || !reflect.DeepEqual(bt, ht) ||
-		!reflect.DeepEqual(prLabelSet(base), prLabelSet(head))
-}
-
-func prLabelSet(s *config.Snapshot) map[string]string {
-	m := map[string]string{}
-	for _, l := range s.CategorizerLabels {
-		data, _ := json.Marshal(l.CategorizerLabel) //nolint:errchkjson // a label decoded from JSON re-encodes without error; this is only a comparison key
-		m[l.ID] = string(data)
-	}
-	return m
+	return calibrate.CategorizerKey(base) != calibrate.CategorizerKey(head)
 }
 
 func categorizerMarkdown(rep calibrate.CategorizerReport, snap *config.Snapshot) string {
@@ -248,15 +215,6 @@ func categorizerMarkdown(rep calibrate.CategorizerReport, snap *config.Snapshot)
 		}
 	}
 	return b.String()
-}
-
-func labelSet(s *config.Snapshot) map[string]string {
-	m := map[string]string{}
-	for _, l := range s.VerifierLabels {
-		data, _ := json.Marshal(l.VerifierLabel) //nolint:errchkjson // a label decoded from JSON re-encodes without error; this is only a comparison key
-		m[l.ID] = string(data)
-	}
-	return m
 }
 
 func calibrationMarkdown(rep calibrate.Report, snap *config.Snapshot) string {

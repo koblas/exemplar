@@ -11,7 +11,7 @@ Every switch is a file in `exemplar-config`: edit, open a PR, merge. A push to `
 | A repo must stop being sent to providers now | Add it to `platform/eligibility.yaml` (Security owns it), merge. The config cache invalidates on push; in-flight runs for that repo are cancelled. |
 | A bad rule export landed in a repo | Revert the repo's export PR; set `export.agents: false` on the rule; the next export run removes it everywhere. |
 | Model outage | Runs become incomplete: no comments, no approvals; the check run shows "Review did not complete" with a **Re-run** action; PRs proceed with human review as normal, nothing blocks. Re-run affected PRs when the provider recovers. |
-| One provider down | The gateway fails over per stage to the next provider in `global.yaml`. Runs whose verifier ends up in the same family as the generator are flagged and cannot auto-approve. Watch the failover rate on the operations board. |
+| One provider down | The gateway fails over per stage to the next provider in `global.yaml`. Runs whose verifier ends up in the same family as the generator are flagged, and cannot auto-approve unless the installation's verifier calibration passed for those providers. Watch the failover rate on the operations board. |
 | Every provider for a stage down | As a model outage: incomplete runs until a provider recovers. |
 | Webhook backlog | Scale `exemplar-worker`; the `sweep_prs` job catches up any PR the backlog missed. The queue depth by repo is on the operations board. |
 | Runs hitting the soft ceiling | The operations board shows which rules or PR shapes are expensive. Narrow their `file_patterns` or lower their `model_tier`; raise `budgets.soft_ceiling_usd` only if precision suffers from shedding. |

@@ -7,7 +7,61 @@ package queries
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const latestCalibration = `-- name: LatestCalibration :one
+SELECT passed, ran_at FROM calibration_results WHERE kind = $1 AND key = $2 ORDER BY ran_at DESC, id DESC LIMIT 1
+`
+
+type LatestCalibrationParams struct {
+	Kind string
+	Key  string
+}
+
+type LatestCalibrationRow struct {
+	Passed bool
+	RanAt  pgtype.Timestamptz
+}
+
+// The latest result for kind and key decides; a later failure re-gates.
+func (q *Queries) LatestCalibration(ctx context.Context, arg LatestCalibrationParams) (LatestCalibrationRow, error) {
+	row := q.db.QueryRow(ctx, latestCalibration, arg.Kind, arg.Key)
+	var i LatestCalibrationRow
+	err := row.Scan(&i.Passed, &i.RanAt)
+	return i, err
+}
+
+const recordCalibration = `-- name: RecordCalibration :exec
+INSERT INTO calibration_results (kind, key, config_version, providers, known_wrong_refuted, known_true_refuted, labels, passed)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type RecordCalibrationParams struct {
+	Kind              string
+	Key               string
+	ConfigVersion     string
+	Providers         []string
+	KnownWrongRefuted *float32
+	KnownTrueRefuted  *float32
+	Labels            int32
+	Passed            bool
+}
+
+func (q *Queries) RecordCalibration(ctx context.Context, arg RecordCalibrationParams) error {
+	_, err := q.db.Exec(ctx, recordCalibration,
+		arg.Kind,
+		arg.Key,
+		arg.ConfigVersion,
+		arg.Providers,
+		arg.KnownWrongRefuted,
+		arg.KnownTrueRefuted,
+		arg.Labels,
+		arg.Passed,
+	)
+	return err
+}
 
 const verifierCalibrationLabels = `-- name: VerifierCalibrationLabels :many
 SELECT f.id, l.label, f.rule_id, f.path, f.side, f.start_line, f.end_line, f.message,

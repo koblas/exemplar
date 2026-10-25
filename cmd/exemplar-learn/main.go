@@ -85,6 +85,14 @@
 // EXEMPLAR_EXPORTS_PRIVATE_KEY_FILE): contents and pull requests on one
 // repo per token, never exemplar-config.
 //
+// calibrate: nightly verifier calibration (and the Stage 2 categorizer's,
+// when configured) through the deployed providers, recorded in
+// calibration_results by what it is valid for. Once the verifier passed,
+// a finding verified by the generator's own model family no longer keeps
+// a PR from approval. A key that already passed is skipped; --force reruns
+// it. Needs EXEMPLAR_DATABASE_URL, EXEMPLAR_GATEWAY_URL and
+// EXEMPLAR_GATEWAY_TOKEN, and EXEMPLAR_GH_* to clone recorded labels' PRs.
+//
 // Every step is idempotent, so a crashed or repeated run never loses or
 // duplicates work.
 package main
@@ -117,7 +125,7 @@ var (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: exemplar-learn ingest|path-events|extract|evals|compile|propose|demote|expiry|digest|teach|export [flags]")
+		fmt.Fprintln(os.Stderr, "usage: exemplar-learn ingest|path-events|extract|evals|compile|propose|demote|expiry|digest|teach|export|calibrate [flags]")
 		os.Exit(2)
 	}
 	var err error
@@ -144,8 +152,10 @@ func main() {
 		err = runTeach(os.Args[2:])
 	case "export":
 		err = runExport(os.Args[2:])
+	case "calibrate":
+		err = runCalibrate(os.Args[2:])
 	default:
-		fmt.Fprintln(os.Stderr, "usage: exemplar-learn ingest|path-events|extract|evals|compile|propose|demote|expiry|digest|teach|export [flags]")
+		fmt.Fprintln(os.Stderr, "usage: exemplar-learn ingest|path-events|extract|evals|compile|propose|demote|expiry|digest|teach|export|calibrate [flags]")
 		os.Exit(2)
 	}
 	if err != nil {

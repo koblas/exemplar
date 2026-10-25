@@ -299,7 +299,10 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		}
 	}
 
-	opt := engine.Options{ReviewID: rec.ReviewID, Caller: Caller, RuleRunIDs: rec.RunIDs}
+	opt := engine.Options{
+		ReviewID: rec.ReviewID, Caller: Caller, RuleRunIDs: rec.RunIDs,
+		VerifierCalibrated: verifierCalibrated(ctx, w.cfg.Store, snap),
+	}
 	// Findings earlier pushes posted: not posted again, and closed below
 	// when this head settles them.
 	var open []pipeline.OpenFinding

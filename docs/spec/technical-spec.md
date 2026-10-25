@@ -578,7 +578,7 @@ CREATE TABLE approval_failures (   -- FR-A12: an incident, revert or confirmed b
   UNIQUE (review_id, kind, ref)
 );
 
-CREATE TABLE calibration_results (  -- verifier and categorizer calibration runs (FR-X9); gates same_family (§6.13)
+CREATE TABLE calibration_results (  -- verifier and categorizer calibration runs (FR-X9); gates same_family (§6.13). As built: keyed by `key`, a hash of the verifier's (or categorizer's) own inputs, instead of config_sha, so rule edits do not re-gate; written by `exemplar-learn calibrate`
   id bigserial PRIMARY KEY,
   kind         text NOT NULL,       -- verifier | categorizer
   config_sha   text NOT NULL,
