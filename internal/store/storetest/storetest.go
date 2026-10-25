@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -75,22 +76,32 @@ func Run(m *testing.M) int {
 	return code
 }
 
+// Conns is a test store's pool size: what pgxpool's default of max(4,
+// NumCPU) gives on CI's 4-CPU runners, pinned so a test that holds
+// connections behaves the same on a larger machine as on CI.
+const Conns = 4
+
 // New creates a fresh database in the package's container, migrates it, and
-// drops it when the test ends.
+// drops it when the test ends. Its pool has Conns connections.
 func New(tb testing.TB) *store.Store {
 	tb.Helper()
 	return NewWithConns(tb, 0)
 }
 
-// NewWithConns is New with a pool of at least minConns connections, as
-// store.OpenWithConns. pgxpool's default is max(4, NumCPU), so a test
-// that holds connections (advisory-lock slots) sets its own size to run
-// the same on every machine.
+// NewWithConns is New with a pool of max(Conns, minConns) connections,
+// for a test that holds more (advisory-lock slots) than Conns allows.
 func NewWithConns(tb testing.TB, minConns int32) *store.Store {
 	tb.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	s, err := store.OpenWithConns(ctx, EmptyURL(tb), minConns)
+	u, err := url.Parse(EmptyURL(tb))
+	if err != nil {
+		tb.Fatalf("parse url: %v", err)
+	}
+	q := u.Query()
+	q.Set("pool_max_conns", strconv.Itoa(Conns))
+	u.RawQuery = q.Encode()
+	s, err := store.OpenWithConns(ctx, u.String(), minConns)
 	if err != nil {
 		tb.Fatalf("open test database: %v", err)
 	}
