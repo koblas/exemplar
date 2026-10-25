@@ -31,21 +31,23 @@ providers:
   # Each list is tried in order: when a provider times out, errors or is
   # rate limited, the call moves to the next one.
   #
-  # Providers must be registered in internal/llm (claude, bedrock). Bedrock
+  # Providers must be registered in internal/llm (claude, bedrock, openai). Bedrock
   # model ids take the anthropic. prefix; some regions need a cross-region
   # inference profile id such as us.anthropic.claude-opus-5-5.
   #
-  # claude needs the exemplar-providers Secret (anthropic-api-key); bedrock
-  # needs workload identity on the gateway's service account. The gateway
-  # builds every provider listed here and skips one whose credentials are
-  # missing, as long as each stage keeps a provider that works. Uncomment
-  # the bedrock entries to fail over to it.
+  # claude needs the exemplar-providers Secret (anthropic-api-key), openai
+  # the same Secret's openai-api-key, and bedrock workload identity on the
+  # gateway's service account. The gateway builds every provider listed here
+  # and skips one whose credentials are missing, as long as each stage keeps
+  # a provider that works. Uncomment the bedrock entries to fail over to it.
   #
-  # Both providers serve Claude, so they fail over for availability but are
-  # one model family. The verifier is meant to be a different family from
-  # the model that raised the finding, so every finding is flagged
-  # same_family, which blocks auto-approve. The auto-approve categorizer is
-  # also left unset until a provider from another family is added.
+  # claude and bedrock serve Claude, so they fail over for availability but
+  # are one model family. The verifier is meant to be a different family
+  # from the model that raised the finding, so with Claude alone every
+  # finding is flagged same_family, which blocks auto-approve. openai is a
+  # second family: uncomment its verifier entry and move it above claude,
+  # and set it as categorizer side b (below), for independent verification
+  # and auto-approve.
   #
   # generator: writes review findings. Rules start on the "standard" model
   # and move to "high" if their eval precision falls short; blocking and
@@ -56,11 +58,17 @@ providers:
   # verifier: independently checks each finding before it is posted.
   verifier:
     - { provider: claude,  model: claude-opus-5-5 }
+    # - { provider: openai,  model: gpt-5.5 }
     # - { provider: bedrock, model: anthropic.claude-opus-5-5 }
   # light: cheap, quick calls such as scoring how much a finding matters.
   light:
     - { provider: claude,  model: claude-haiku-5-5 }
     # - { provider: bedrock, model: anthropic.claude-haiku-5-5 }
+  # categorizer: the auto-approve risk categorizer's two sides, which must
+  # be different model families; there is no failover between them.
+  # categorizer:
+  #   a: { provider: claude, model: claude-sonnet-5-5 }
+  #   b: { provider: openai, model: gpt-5.5 }
 # importance_min: findings the verifier scores below this importance (0-1)
 # are stored but not posted.
 verifier:
