@@ -107,6 +107,16 @@ func New(st *store.Store, commits Commits) (*Service, error) {
 	return &Service{st: st, commits: commits}, nil
 }
 
+// WithCommits returns a copy of s that reads commits from c: a review's
+// own checkout when exemplar-search is not configured. A nil s answers
+// from c alone, with no incidents or reverts.
+func (s *Service) WithCommits(c Commits) *Service {
+	if s == nil {
+		return &Service{commits: c}
+	}
+	return &Service{st: s.st, commits: c}
+}
+
 var shaRE = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 
 // History returns p's history in repo as of rev (the PR's base commit).
@@ -114,13 +124,15 @@ func (s *Service) History(ctx context.Context, repo, p, rev string) (Result, err
 	if err := mirror.CleanPath(p); err != nil {
 		return Result{}, fmt.Errorf("pathhistory: %w", err)
 	}
-	rows, err := s.st.PathEventsForPath(ctx, queries.PathEventsForPathParams{Repo: repo, Path: p, MaxRows: MaxEvents})
-	if err != nil {
-		return Result{}, fmt.Errorf("pathhistory: events: %w", err)
-	}
 	var res Result
-	for _, r := range rows {
-		res.Entries = append(res.Entries, Entry{Kind: r.Kind, Ref: r.Ref, At: r.At.Time})
+	if s.st != nil {
+		rows, err := s.st.PathEventsForPath(ctx, queries.PathEventsForPathParams{Repo: repo, Path: p, MaxRows: MaxEvents})
+		if err != nil {
+			return Result{}, fmt.Errorf("pathhistory: events: %w", err)
+		}
+		for _, r := range rows {
+			res.Entries = append(res.Entries, Entry{Kind: r.Kind, Ref: r.Ref, At: r.At.Time})
+		}
 	}
 	if s.commits == nil || !shaRE.MatchString(rev) {
 		res.Degraded = true

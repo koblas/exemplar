@@ -1,9 +1,9 @@
 # How to run without exemplar-search
 
-Exemplar reviews without `exemplar-search`. Every rule runs over the pull request's own checkout, findings are verified and posted, and feedback, budgets and shadow mode work as usual. Search adds two things: `find_references` across the installation's other repositories, and `path_history`. It needs local SSD and is the one stateful service besides Postgres, so leave it out for a trial or a single repository, and add it when cross-repository context is worth a search volume ([How a review works](../../concepts/how-a-review-works.md#without-exemplar-search)).
+Exemplar reviews without `exemplar-search`. Every rule runs over the pull request's own checkout, findings are verified and posted, and feedback, budgets and shadow mode work as usual. Without it, `find_references` and `path_history` answer from each review's own checkout; search adds the installation's other repositories, an index, and history from its mirror. It needs local SSD and is the one stateful service besides Postgres, so leave it out for a trial or a single repository, and add it when cross-repository context is worth a search volume ([How a review works](../../concepts/how-a-review-works.md#without-exemplar-search)).
 
-!!! note "Auto-approve, today"
-    The bug lane's contract check currently needs search even on a single repository, and a review with that class skipped is routed to humans, never auto-approved. Reviews and posted findings are not affected. Add search before turning on [auto-approve](../operate/auto-approve.md); a change to answer references from the checkout on single-repository installs is in progress and will lift this for them.
+!!! note "Auto-approve"
+    A repository with no `context.extra_repos` can be auto-approved without search: its callers are all in the checkout. One that names other repositories has the bug lane's contract check skipped without search, so its PRs are routed to humans, never auto-approved; add search before turning on [auto-approve](../operate/auto-approve.md) there. Reviews and posted findings are not affected either way.
 
 ## 1. Leave the search workload out
 
@@ -43,10 +43,10 @@ Check that `rendered.yaml` has no `StatefulSet` named `exemplar-search` and that
 The worker logs one warning at start:
 
 ```text
-EXEMPLAR_SEARCH_URL not set: agents get no find_references or path_history, and bug.contract is skipped
+EXEMPLAR_SEARCH_URL not set: find_references and path_history answer from each review's checkout; other repositories are not searched
 ```
 
-Open a pull request: the review runs and its findings appear in the web UI (and on the PR once the repository leaves shadow). Every check run ends with "Cross-repository callers were not checked (search is not configured)". On a PR the bug lane covers, its reasons also include "the bug lane did not run to full coverage", which is the contract class above, not a fault.
+Open a pull request: the review runs and its findings appear in the web UI (and on the PR once the repository leaves shadow). Every check run ends with "Cross-repository callers were not checked (search is not configured)". On a repository with `context.extra_repos`, a PR the bug lane covers also lists "the bug lane did not run to full coverage" among its reasons: the contract class above, not a fault.
 
 ## Adding search later
 

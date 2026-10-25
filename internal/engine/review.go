@@ -15,6 +15,7 @@ import (
 	"github.com/koblas/exemplar/internal/compiled"
 	"github.com/koblas/exemplar/internal/gates"
 	"github.com/koblas/exemplar/internal/llm"
+	"github.com/koblas/exemplar/internal/pathhistory"
 	"github.com/koblas/exemplar/internal/redact"
 	"github.com/koblas/exemplar/internal/schema"
 	"github.com/koblas/exemplar/internal/scope"
@@ -27,6 +28,11 @@ type Engine struct {
 	compiled compiled.Runner
 	history  PathHistory
 	refs     References
+	// local answers find_references and path_history from each review's
+	// checkout when exemplar-search is not configured (refs nil);
+	// localEvents adds path_events to its history (nil: commits only).
+	local       bool
+	localEvents *pathhistory.Service
 	// judged caches linter-dedupe verdicts per pair.
 	judged judgeCache
 }
@@ -34,6 +40,15 @@ type Engine struct {
 // New returns an Engine.
 func New(h *Harness, s *redact.Scanner, c compiled.Runner) *Engine {
 	return &Engine{harness: h, scanner: s, compiled: c}
+}
+
+// WithLocalContext answers find_references and path_history from each
+// review's own checkout, for installs without exemplar-search. events
+// supplies incidents and reverts from path_events (nil: commits only).
+// A configured exemplar-search (WithReferences) takes precedence.
+func (e *Engine) WithLocalContext(events *pathhistory.Service) *Engine {
+	e.local, e.localEvents = true, events
+	return e
 }
 
 // WithPathHistory offers agents the path_history tool, answered by h.

@@ -3,7 +3,7 @@
 Auto-approve lets Exemplar submit a native `APPROVE` on a narrow class of low-risk pull requests once every deterministic gate and a two-model categorisation pass ([How a review works](../../concepts/how-a-review-works.md#auto-approve)). It stays off until you turn it on in `global.yaml` **and** in each repository.
 
 !!! note "Not before the counter-metrics are in place"
-    Turn it on only once `exemplar-search` is running (without it every review has a skipped bug class and is never approved; [How to run without exemplar-search](../install/without-search.md)), the Grafana auto-approve and counter-metrics boards and their alerts are provisioned ([How to set up Grafana](grafana.md)), and after a shadow period with zero approvals from degraded runs. The design's exit criteria for enabling it are in the [technical specification](https://github.com/koblas/exemplar/blob/main/docs/spec/technical-spec.md).
+    Turn it on only once `exemplar-search` is running if the repository sets `context.extra_repos` (without search their callers go unchecked, the bug lane's contract class is skipped, and the PR is never approved; [How to run without exemplar-search](../install/without-search.md)), the Grafana auto-approve and counter-metrics boards and their alerts are provisioned ([How to set up Grafana](grafana.md)), and after a shadow period with zero approvals from degraded runs. The design's exit criteria for enabling it are in the [technical specification](https://github.com/koblas/exemplar/blob/main/docs/spec/technical-spec.md).
 
 ## 1. Choose the repository's approval mode
 

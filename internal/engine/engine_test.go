@@ -1025,16 +1025,57 @@ func TestFindReferencesTool(t *testing.T) {
 	}
 }
 
+// Without exemplar-search, local context offers find_references and
+// path_history over the checkout.
+func TestLocalContextTools(t *testing.T) {
+	t.Parallel()
+	e := setup(t, "t", "")
+	eng, _ := newEngine(e, Script{})
+	names := func(tb *toolbox) []string {
+		defs := tb.defs()
+		out := make([]string, 0, len(defs))
+		for _, d := range defs {
+			out = append(out, d.Name)
+		}
+		return out
+	}
+	eng.pinSearch(t.Context(), e.prep)
+	if got := names(eng.toolbox(e.prep)); slices.Contains(got, "find_references") || slices.Contains(got, "path_history") {
+		t.Errorf("without local context = %v", got)
+	}
+	// Without a store: commits from the checkout, no incidents or reverts.
+	eng.WithLocalContext(nil)
+	eng.pinSearch(t.Context(), e.prep)
+	tb := eng.toolbox(e.prep)
+	if got := names(tb); !slices.Contains(got, "find_references") || !slices.Contains(got, "path_history") {
+		t.Fatalf("with local context = %v", got)
+	}
+	out, err := tb.run(t.Context(), "find_references", []byte(`{"name":"handler","defined_in":"main.go"}`))
+	if err != nil || !strings.Contains(out, "other repositories were not searched") || !strings.Contains(out, "main.go:") {
+		t.Errorf("find_references = %q, %v", out, err)
+	}
+	out, err = tb.run(t.Context(), "path_history", []byte(`{"path":"main.go"}`))
+	if err != nil || !strings.Contains(out, "commit") {
+		t.Errorf("path_history = %q, %v", out, err)
+	}
+}
+
 func TestBugContractWithReferences(t *testing.T) {
 	t.Parallel()
 	nilDeref := `{"violations": []}`
-	run := func(f *fakeRefs) RunResult {
+	runWith := func(f *fakeRefs, local bool, extra []string) RunResult {
 		e := setup(t, "Fetch inventory", "Adds a fetch.")
 		e.prep.Effective.RepoConfig.BugLane = &schema.RepoBugLane{CriticalPaths: []string{"main.go"}}
 		e.prep.Effective.Global.BugLane.Classes = map[string]schema.BugLaneFlag{buglane.Contract: {Enabled: true}}
+		if extra != nil {
+			e.prep.Effective.RepoConfig.Context = &schema.RepoContext{ExtraRepos: extra}
+		}
 		eng, _ := newEngine(e, bugScript(e, nilDeref))
 		if f != nil {
 			eng.WithReferences(f)
+		}
+		if local {
+			eng.WithLocalContext(nil)
 		}
 		res, err := eng.Review(t.Context(), e.prep, Options{Caller: "eval"})
 		if err != nil {
@@ -1046,8 +1087,23 @@ func TestBugContractWithReferences(t *testing.T) {
 		}
 		return res.Runs[i]
 	}
+	run := func(f *fakeRefs) RunResult { return runWith(f, false, nil) }
 	if r := run(&fakeRefs{}); r.Status != RunOK || r.Coverage != 1 {
 		t.Errorf("with references = %+v", r)
+	}
+	// Without search, a single repository's callers are all in the
+	// checkout: the class runs on local answers.
+	if r := runWith(nil, true, nil); r.Status != RunOK || r.Coverage != 1 {
+		t.Errorf("local, single repository = %+v", r)
+	}
+	// With extra_repos, their callers went unsearched: skipped, naming them.
+	if r := runWith(nil, true, []string{"acme/lib", "acme/sdk"}); r.Status != RunDegradedSkip ||
+		r.Detail != "exemplar-search is not configured; not searched: acme/lib, acme/sdk" {
+		t.Errorf("local with extra_repos = %+v", r)
+	}
+	// A configured search wins over local context.
+	if r := runWith(&fakeRefs{degraded: true}, true, nil); r.Status != RunDegradedSkip {
+		t.Errorf("remote degraded with local on = %+v", r)
 	}
 	for name, f := range map[string]*fakeRefs{"degraded": {degraded: true}, "unreachable": {statErr: errors.New("down")}, "not configured": nil} {
 		if r := run(f); r.Status != RunDegradedSkip {

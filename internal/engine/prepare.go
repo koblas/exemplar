@@ -79,6 +79,9 @@ type Prepared struct {
 	Secrets []Finding
 	// search is the exemplar-search pin Review set, if any.
 	search *searchPin
+	// local is set when find_references and path_history come from this
+	// checkout (no exemplar-search configured, local context on).
+	local *localContext
 
 	// CodeOwners is the base commit's CODEOWNERS (empty when it has none),
 	// for the auto-approve owner lookup.

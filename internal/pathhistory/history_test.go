@@ -186,3 +186,22 @@ func TestHistoryRejectsBadPaths(t *testing.T) {
 		t.Errorf("glob path = %+v, %v", res, err)
 	}
 }
+
+// Without a store, a service bound to a commit source answers commits
+// alone; with one, WithCommits keeps the events.
+func TestWithCommits(t *testing.T) {
+	t.Parallel()
+	m, head := newMirror(t)
+	only := (*Service)(nil).WithCommits(Local(m))
+	res, err := only.History(t.Context(), "acme/app", "svc/pay.go", head)
+	if err != nil || res.Degraded || len(res.Entries) != 3 || res.Entries[0].Kind != KindCommit {
+		t.Fatalf("commits only = %+v, %v", res, err)
+	}
+	s, err := New(storetest.New(t), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := s.WithCommits(Local(m)).History(t.Context(), "acme/app", "svc/pay.go", head); err != nil || res.Degraded || len(res.Entries) != 3 {
+		t.Errorf("with a store = %+v, %v", res, err)
+	}
+}
