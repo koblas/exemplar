@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -143,6 +144,35 @@ func TestEmbedRoutesToVoyageAndRecords(t *testing.T) {
 		c.Usage.InputTokens != 14 || len(c.DataClasses) != 1 || c.DataClasses[0] != "review_comments" {
 		t.Fatalf("recorded call %+v", c)
 	}
+	if want := 14 * 0.18 / 1e6; !c.PriceKnown || math.Abs(c.CostUSD-want) > 1e-12 {
+		t.Fatalf("cost %v (known %v), want %v", c.CostUSD, c.PriceKnown, want)
+	}
+}
+
+func TestEmbeddingModel(t *testing.T) {
+	g := newEmbedGateway(t, &fakeVoyage{dims: EmbedDimensions}, nil)
+	get := func(token string) *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/embeddings/model", nil)
+		req.Header.Set("X-Api-Key", token)
+		w := httptest.NewRecorder()
+		g.Handler().ServeHTTP(w, req)
+		return w
+	}
+	if w := get("nope"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("bad token: status %d", w.Code)
+	}
+	w := get("gw-token")
+	var got struct {
+		Provider   string `json:"provider"`
+		Model      string `json:"model"`
+		Dimensions int    `json:"dimensions"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+	if got.Provider != ProviderVoyage || got.Model != testEmbedModel || got.Dimensions != EmbedDimensions {
+		t.Fatalf("model %+v", got)
+	}
 }
 
 func TestEmbedRefusesSecrets(t *testing.T) {
@@ -219,6 +249,13 @@ func TestEmbedNotConfigured(t *testing.T) {
 			}
 			if w := callEmbed(t, g, "/v1/embeddings", nil, `{"input":["a"]}`); w.Code != http.StatusServiceUnavailable {
 				t.Fatalf("status %d, want 503", w.Code)
+			}
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/embeddings/model", nil)
+			req.Header.Set("X-Api-Key", "gw-token")
+			w := httptest.NewRecorder()
+			g.Handler().ServeHTTP(w, req)
+			if w.Code != http.StatusServiceUnavailable {
+				t.Fatalf("model: status %d, want 503", w.Code)
 			}
 		})
 	}

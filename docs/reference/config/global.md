@@ -90,12 +90,12 @@ Constraints:
 
 #### `providers.embed`
 
-One entry, with no failover: vectors from two models cannot be compared, so clusters would mix them. Unset, the gateway's `POST /v1/embeddings` answers 503 and the learning plane stops after `extract`. The gateway asks for 1024-dimension document vectors and refuses a response of any other size.
+One entry, with no failover: vectors from two models cannot be compared, so clusters would mix them. Unset, the gateway's `POST /v1/embeddings` answers 503 and the learning plane stops after `extract`. The gateway asks for 1024-dimension document vectors and refuses a response of any other size. Changing the model is safe: each extraction records the model of its embedding, the `embed` job embeds again every row from another model (a backlog may take several nightly runs), and until it is done `cluster` skips its run (exit 0, `skipped` in its report) rather than mix two models' vectors or cluster a subset. Calls are costed at Voyage's list price (`voyage-code-3` $0.18, `voyage-code-4` $0.12 per million tokens), without free-token allowances.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `provider` | string, non-empty | yes | A registered embedding provider (`voyage`, which needs `VOYAGE_API_KEY`). |
-| `model` | string, non-empty | yes | The model id, such as `voyage-code-3`. |
+| `model` | string, non-empty | yes | The model id, such as `voyage-code-3` or `voyage-code-4`. Must give 1024-dimension vectors. |
 
 ### `merge_safety`
 

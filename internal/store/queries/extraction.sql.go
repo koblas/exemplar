@@ -407,7 +407,8 @@ ON CONFLICT (comment_id) DO UPDATE SET
   title = EXCLUDED.title, description = EXCLUDED.description, preferred_approach = EXCLUDED.preferred_approach,
   applies_to_hint = EXCLUDED.applies_to_hint, category = EXCLUDED.category,
   language_agnostic = EXCLUDED.language_agnostic, confidence = EXCLUDED.confidence,
-  extractor_model = EXCLUDED.extractor_model, extractor_version = EXCLUDED.extractor_version, embedding = NULL
+  extractor_model = EXCLUDED.extractor_model, extractor_version = EXCLUDED.extractor_version, embedding = NULL,
+  embedding_model = NULL
 `
 
 type UpsertExtractionParams struct {
