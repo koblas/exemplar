@@ -6,6 +6,27 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.5.0](https://github.com/koblas/exemplar/compare/v0.4.0...v0.5.0) (2026-10-25)
+
+
+### Features
+
+* **engine:** group a rule's occurrences into one comment ([5196711](https://github.com/koblas/exemplar/commit/5196711e8ec6a1f8f7fca6ccc76cdec4b22a0945))
+* **engine:** group a rule's occurrences into one comment ([c2fca06](https://github.com/koblas/exemplar/commit/c2fca063698c8a86ca107f08833593a938f358e2))
+* **engine:** verifier quorum for the bug lane ([1ea8f8d](https://github.com/koblas/exemplar/commit/1ea8f8db24e7505900c72135521fccc6cc2cd267))
+* **engine:** verifier quorum for the bug lane ([6c1ef0d](https://github.com/koblas/exemplar/commit/6c1ef0d94b9d788c5adad695818d15029f172962))
+* **learn:** advisory lock in every scheduled job ([b6fe537](https://github.com/koblas/exemplar/commit/b6fe53789c88ceac9c7bef03cdddf4170d12d7fd))
+* **learn:** advisory lock in every scheduled job ([3a4d371](https://github.com/koblas/exemplar/commit/3a4d371a5465e55d5d1ef565655002ecc9260ac4))
+* **learn:** owner-written seeds through the candidate pipeline ([d035f51](https://github.com/koblas/exemplar/commit/d035f5180e121cb358b55c804671336e493c9447))
+* **learn:** owner-written seeds through the candidate pipeline ([067480b](https://github.com/koblas/exemplar/commit/067480bddebecf33659f94b02f2ea0bc90e056e3))
+* **learn:** settle candidate PRs closed without merging ([23825ec](https://github.com/koblas/exemplar/commit/23825eca28a435d1e45af0d22f4aee9062fd2803))
+* **learn:** settle candidate PRs closed without merging ([50af482](https://github.com/koblas/exemplar/commit/50af482fad01f7a88562e4c02575b3eee2a34a24))
+
+
+### Bug Fixes
+
+* **worker:** close out a review whose job failed its last attempt ([b13cd0f](https://github.com/koblas/exemplar/commit/b13cd0fbbe9459d64ac44c77943f22a10203b3dd))
+
 ## [0.4.0](https://github.com/koblas/exemplar/compare/v0.3.0...v0.4.0) (2026-10-25)
 
 
