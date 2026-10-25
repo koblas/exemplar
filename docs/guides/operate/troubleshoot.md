@@ -31,7 +31,7 @@ The `sweep_prs` periodic job re-enqueues open PRs the worker missed, and `reconc
 
 ## The review did not complete
 
-The check run is neutral with "Review did not complete" and a **Re-run** action. Its summary gives the reason: every provider for a stage failed, or the diff could not be redacted. Nothing was posted or approved. Fix the cause (usually the gateway or the provider) and press **Re-run**, or push again.
+The check run is neutral with "Review did not complete" and a **Re-run** action. Its summary gives the reason: every provider for a stage failed, the diff could not be redacted, or the review runner failed on every retry (out of memory, evicted, or crashing on this PR; the worker logs `review abandoned after its last attempt`). Nothing was approved; a runner that failed may have posted its comments first, and a Re-run does not post them again. Fix the cause (usually the gateway or the provider) and press **Re-run**, or push again.
 
 ## Findings are stored but not posted
 

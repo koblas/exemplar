@@ -82,7 +82,7 @@ Model output is untrusted. Code checks that every finding anchors to lines that 
 
 One review per PR head, as `COMMENT`, never `REQUEST_CHANGES`. Each inline comment is a Conventional Comments label and the message, a `suggestion` block when the fix validated, the feedback-link footer, and a line naming the rule and its citation. The `exemplar` check run leads with the verdict ([above](#who-reviews-this-pr)), summarises the run, lists rules that did not complete, and shows the cost. Security findings are also uploaded as SARIF so they appear as code-scanning alerts.
 
-A run that cannot complete (every provider for a stage down, a diff that cannot be redacted) posts nothing: the check run is neutral with "Review did not complete" and a **Re-run** action. A newer push supersedes a running review; its check run says so and nothing is posted for the old head. In `shadow: true` repos every lane runs and everything is stored, but nothing is written to the PR.
+A run that cannot complete (every provider for a stage down, a diff that cannot be redacted) posts nothing: the check run is neutral with "Review did not complete" and a **Re-run** action. A review whose runner fails on every retry ends the same way, keeping whatever it had already posted. A newer push supersedes a running review; its check run says so and nothing is posted for the old head. In `shadow: true` repos every lane runs and everything is stored, but nothing is written to the PR.
 
 ## Auto-approve
 
