@@ -65,7 +65,7 @@ func Checkout(ctx context.Context, dir string, opt CheckoutOptions) (*Workspace,
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("engine: create workspace: %w", err)
 	}
-	ws := &Workspace{Dir: dir, BaseSHA: opt.BaseSHA, HeadSHA: opt.HeadSHA, env: gitexec.Env(opt.Token)}
+	ws := &Workspace{Dir: dir, BaseSHA: opt.BaseSHA, HeadSHA: opt.HeadSHA, env: gitexec.CheckoutEnv(opt.Token)}
 
 	if _, err := ws.git(ctx, "init", "-q"); err != nil {
 		return nil, err

@@ -280,6 +280,10 @@ func (r *Repo) out(ctx context.Context, args ...string) (string, error) {
 		"GIT_AUTHOR_NAME=fixture", "GIT_AUTHOR_EMAIL=fixture@invalid",
 		"GIT_COMMITTER_NAME=fixture", "GIT_COMMITTER_EMAIL=fixture@invalid",
 		"GIT_AUTHOR_DATE=2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2026-01-01T00:00:00Z",
+		// No background maintenance after a commit: it writes under .git
+		// (maintenance.lock) while parallel tests copy the cached fixture.
+		"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=maintenance.auto", "GIT_CONFIG_VALUE_0=false",
+		"GIT_CONFIG_KEY_1=gc.auto", "GIT_CONFIG_VALUE_1=0",
 	)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
