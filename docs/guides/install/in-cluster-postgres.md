@@ -16,7 +16,7 @@ components:
   - <path>/deploy/k8s/components/postgres
 ```
 
-It adds `exemplar-postgres`: a one-replica StatefulSet of `pgvector/pgvector:0.8.0-pg16` (the image the store tests use, pinned by digest), a Service on 5432, a 50Gi volume on the default storage class, and a NetworkPolicy that admits only the webhook, API, gateway, worker and learning pods.
+It adds `exemplar-postgres`: a one-replica StatefulSet of `pgvector/pgvector:0.8.0-pg16` (the image the store tests use, pinned by digest), a Service on 5432, a 50Gi volume on the default storage class, and a NetworkPolicy that admits only the webhook, API, gateway, worker, runner and learning pods, and `exemplar-pgbouncer` when [`components/pgbouncer`](pool-runner-connections.md) is there too.
 
 ## 2. Create the Secrets
 

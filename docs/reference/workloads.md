@@ -12,6 +12,7 @@ The Kubernetes manifests in [`deploy/`](https://github.com/koblas/exemplar/tree/
 | `k8s/components/cloudflare-tunnel/` | Inbound through a Cloudflare Tunnel: the `exemplar-cloudflared` Deployment, its routes, and the NetworkPolicies that let it reach the webhook and the API. |
 | `k8s/components/ingress/` | Inbound through an Ingress controller: the two Ingresses and the NetworkPolicies that admit `ingress-nginx`. |
 | `k8s/components/postgres/` | Optional in-cluster Postgres 16 with pgvector ([How to run Postgres in the cluster](../guides/install/in-cluster-postgres.md)). In no shipped build. |
+| `k8s/components/pgbouncer/` | Optional PgBouncer in transaction mode for review runners ([How to pool runner connections](../guides/install/pool-runner-connections.md)). In no shipped build. |
 | `k8s/base/` | The default build: core plus the tunnel. `kubectl kustomize deploy/k8s/base`. |
 | `k8s/direct/` | Core plus the Ingresses, no tunnel. `kubectl kustomize deploy/k8s/direct`. |
 | `manifests_test.go` | The checks. |
@@ -29,6 +30,7 @@ GitHub and people reach exemplar-webhook and exemplar-api one of three ways. Cor
 | `direct` | Ingresses on the cluster's controller | Only the `ingress-nginx` namespace | 56 |
 | `base` + `components/ingress` | Both | Both | 63 |
 | `base` + `components/postgres` | As `base`, with the in-cluster database | As `base` | 63 |
+| `base` + `components/postgres` + `components/pgbouncer` | As `base`, with the in-cluster database and the runners' pooler | As `base` | 69 |
 
 The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMap, reviewed with the rest of the manifests rather than set in the dashboard. The rules match by path, not host name: only `^/webhook$` reaches the webhook, as the Ingress's `Exact` path does, and everything else reaches the API. Only the host names an installation routes to the tunnel (`cloudflared tunnel route dns`) reach it at all. cloudflared runs as its own Deployment, never a sidecar, so the tunnel credentials stay out of the webhook and API pods and the webhook's egress stays Postgres only. Cloudflare ends TLS at its edge and sees requests in clear text; the webhook still checks each delivery's HMAC, and its rejection log's `remote` is a cloudflared pod's address, not GitHub's. The edge rules an installation adds are on [How to install for production](../guides/install/production.md#4-write-the-overlay).
 
@@ -45,9 +47,10 @@ The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMa
 | `exemplar-learn` | 12 CronJobs | | | | | ingest, path-events, extract, calibrate, evals, compile (suspended), propose, demote, expiry, teach, digest, export |
 | `exemplar-learning` | 2 CronJobs | | | | | cluster, rank (Python) |
 | `exemplar-postgres` | StatefulSet + Service | 1 | 5432 | `pg_isready` over TCP; startup probe allows 10 min; preStop `pg_ctl stop --mode=fast --timeout=30` | 30 s → 45 s | `components/postgres` only. pgvector 0.8.0 on Postgres 16, pinned by digest. In from the Postgres clients on 5432; nothing out |
+| `exemplar-pgbouncer` | Deployment + Service + PodDisruptionBudget | 2 | 5432 `postgres`, Service 5432 | TCP on 5432 | preStop: 5 s for the Service to drop the pod, then SIGINT (waits for transactions in flight and closes idle clients), at most 30 s more → 45 s | `components/pgbouncer` only. CloudNativePG's PgBouncer 1.26.0, pinned by digest, as its `pgbouncer` user (UID 998). In from runners only; out to Postgres on 5432. SIGTERM alone would wait for every runner to disconnect |
 | `exemplar-cloudflared` | Deployment | 2 | 2000 metrics | `/healthcheck` (liveness), `/ready` (an edge connection) | 20 s → 30 s | Tunnel builds only. cloudflared 2026.9.3, pinned by digest. Egress to Cloudflare on 7844 and to the webhook and API |
 
-Every pod runs as UID 65532 with a read-only root filesystem, no capabilities, no privilege escalation and RuntimeDefault seccomp, so it passes the namespace's `restricted` Pod Security level; has no service account token, except exemplar-worker's `worker` container (below); and has an `emptyDir` for `/tmp` and any other path it writes. Postgres runs as the image's `postgres` user (UID 999).
+Every pod runs as UID 65532 with a read-only root filesystem, no capabilities, no privilege escalation and RuntimeDefault seccomp, so it passes the namespace's `restricted` Pod Security level; has no service account token, except exemplar-worker's `worker` container (below); and has an `emptyDir` for `/tmp` and any other path it writes. Postgres runs as the image's `postgres` user (UID 999), PgBouncer as its `pgbouncer` user (UID 998).
 
 ### Config sync
 
