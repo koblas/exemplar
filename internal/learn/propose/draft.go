@@ -384,7 +384,8 @@ func body(c Candidate, ruleID, owner string) string {
 	} else {
 		b.WriteString("- [ ] Add cases until the eval check passes (it needs the minimum case count in global.yaml).\n")
 	}
-	b.WriteString("- [ ] To promote: set `status: active` and merge. To kill: close this PR with the `killed` label and a reason; the reason teaches the extractor.\n")
+	b.WriteString("- [ ] To promote: set `status: active` and merge. To kill: comment why, add the `killed` label and close this PR; " +
+		"your latest comment becomes the reason, which teaches the extractor. Closed without both, it is reopened.\n")
 	return b.String()
 }
 

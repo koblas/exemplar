@@ -32,4 +32,4 @@ If the PR already has `evals/<id>/cases.yaml`, your cases are kept and nothing i
 2. Let config CI's checks pass, as for any rule.
 3. Merge. The next `propose` run marks the candidate promoted.
 
-Close the PR without merging and the seed is retired. To drop it while the PR stays open, kill it on `/ui/candidates` with a reason ([How to review mined candidates](review-candidates.md)).
+Close the PR without merging and the seed is retired; add the `killed` label and a comment saying why before closing, and it is killed with that reason instead. To drop it while the PR stays open, kill it on `/ui/candidates` with a reason ([How to review mined candidates](review-candidates.md)).
