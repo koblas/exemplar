@@ -18,6 +18,9 @@ Handle this task: $ARGUMENTS
    For lifecycle changes, align readiness, draining, and shutdown deadlines.
 4. Add or update nearby tests covering success, failure, and relevant cancellation
    paths. Use `httptest` for HTTP behavior and avoid timing-dependent sleeps.
+   For time-dependent behavior, run the test in a `testing/synctest` bubble rather
+   than adding a clock parameter, and serve HTTP through an in-memory
+   `RoundTripper` inside it (spec §16.1, "Time in tests").
    Then add the technique the change calls for (spec §16.1, "Which technique a
    change needs"): a simulation invariant for worker state machines, a metamorphic
    relation for review output, a fuzz target for parsers of outside input, a seeded

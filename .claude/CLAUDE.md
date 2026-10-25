@@ -121,8 +121,10 @@ application unless requested. Update this guidance as the service takes shape.
   fuzz target (added to `make fuzz` and ci.yml); invariant over an input domain → a
   seeded property test (stdlib `math/rand/v2` with a fixed seed, as
   `TestStage1Invariants`; no new library); new setting → a configuration-matrix row;
-  hot path → its benchmark. Inject clocks and randomness instead of calling
-  `time.Now`, sleeping, or using unseeded `rand`. Name a technique you skipped and
+  hot path → its benchmark. Don't inject clocks: production code calls `time.Now`,
+  and time-dependent tests run in a `testing/synctest` bubble, moving time with
+  `time.Sleep` and serving HTTP through an in-memory `RoundTripper`, not `httptest`
+  (spec §16.1, "Time in tests"). Seed any randomness. Name a technique you skipped and
   why in the PR description.
 
 ## Kubernetes and Safety
