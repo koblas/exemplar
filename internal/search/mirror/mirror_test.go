@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
@@ -242,64 +243,64 @@ func TestScope(t *testing.T) {
 	}
 }
 
+// TestSchedulerDebounces runs in a synctest bubble: the git fetches hold
+// the bubble's clock while they run, and the debounce window passes in
+// fake time.
 func TestSchedulerDebounces(t *testing.T) {
-	u := newUpstream(t)
-	u.commit("a.go", "package a\n", "a")
-	var fetches atomic.Int32
-	m := newManager(t, u, func(context.Context, string) (string, string, error) {
-		fetches.Add(1)
-		return "", "private", nil
-	})
-	s := NewScheduler(m, func() []string { return []string{"acme/app"} }, 300*time.Millisecond, time.Hour, nil)
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-	go func() { s.Run(ctx); close(done) }()
+	synctest.Test(t, func(t *testing.T) {
+		u := newUpstream(t)
+		u.commit("a.go", "package a\n", "a")
+		var fetches atomic.Int32
+		m := newManager(t, u, func(context.Context, string) (string, string, error) {
+			fetches.Add(1)
+			return "", "private", nil
+		})
+		s := NewScheduler(m, func() []string { return []string{"acme/app"} }, DefaultDebounce, time.Hour, nil)
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		go func() { s.Run(ctx); close(done) }()
 
-	waitFor := func(n int32) {
-		t.Helper()
-		deadline := time.Now().Add(5 * time.Second)
-		for fetches.Load() < n || s.running("acme/app") {
-			if time.Now().After(deadline) {
-				t.Fatalf("fetches = %d, want %d", fetches.Load(), n)
+		synctest.Wait()
+		if n := fetches.Load(); n != 1 || s.appBusy() {
+			t.Fatalf("initial pass: fetches = %d, running %v", n, s.appBusy())
+		}
+		// A burst inside the window coalesces into one more fetch.
+		for range 5 {
+			if !s.Request("acme/app") {
+				t.Fatal("in-scope request refused")
 			}
-			time.Sleep(10 * time.Millisecond)
 		}
-	}
-	waitFor(1) // the initial pass
-	// A burst inside the window coalesces into one more fetch.
-	for range 5 {
-		if !s.Request("acme/app") {
-			t.Fatal("in-scope request refused")
+		time.Sleep(DefaultDebounce / 2)
+		synctest.Wait()
+		if n := fetches.Load(); n != 1 {
+			t.Fatalf("fetched inside the debounce window: %d", n)
 		}
-	}
-	time.Sleep(100 * time.Millisecond)
-	if fetches.Load() != 1 {
-		t.Fatalf("fetched inside the debounce window: %d", fetches.Load())
-	}
-	waitFor(2)
-	time.Sleep(400 * time.Millisecond)
-	if fetches.Load() != 2 {
-		t.Errorf("burst produced %d fetches, want 2 in total", fetches.Load())
-	}
-	if s.Request("acme/other") {
-		t.Error("out-of-scope request accepted")
-	}
-	st := s.Status()
-	if len(st) != 1 || !st[0].OK || st[0].SnapshotSHA == "" {
-		t.Errorf("status = %+v", st)
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not stop")
-	}
+		time.Sleep(DefaultDebounce)
+		synctest.Wait()
+		if n := fetches.Load(); n != 2 || s.appBusy() {
+			t.Fatalf("after the window: fetches = %d, running %v", n, s.appBusy())
+		}
+		time.Sleep(4 * DefaultDebounce)
+		synctest.Wait()
+		if n := fetches.Load(); n != 2 {
+			t.Errorf("burst produced %d fetches, want 2 in total", n)
+		}
+		if s.Request("acme/other") {
+			t.Error("out-of-scope request accepted")
+		}
+		st := s.Status()
+		if len(st) != 1 || !st[0].OK || st[0].SnapshotSHA == "" {
+			t.Errorf("status = %+v", st)
+		}
+		cancel()
+		<-done
+	})
 }
 
-// running reports whether repo's fetch is in flight (tests).
-func (s *Scheduler) running(repo string) bool {
+// appBusy reports whether acme/app's fetch is in flight or scheduled.
+func (s *Scheduler) appBusy() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := s.state[repo]
+	st := s.state["acme/app"]
 	return st != nil && (st.running || st.timer != nil)
 }

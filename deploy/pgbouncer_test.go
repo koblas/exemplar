@@ -133,8 +133,7 @@ func (pooledJobArgs) Kind() string { return "pooled_test" }
 // between connections. Then the preStop shutdown must stop PgBouncer while
 // a client sits idle, which SIGTERM alone would wait on.
 func TestPgbouncerTransactionMode(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
+	ctx := t.Context()
 
 	direct := storetest.EmptyURL(t)
 	migrated, err := store.Open(ctx, direct)
@@ -266,23 +265,14 @@ func TestPgbouncerTransactionMode(t *testing.T) {
 	for _, a := range preStop {
 		stop = append(stop, as[string](t, a, "preStop"))
 	}
-	start := time.Now()
 	// The exec ends with the container; its error is that.
 	if _, _, err := ctr.Exec(ctx, stop); err != nil {
 		t.Logf("preStop exec: %v", err)
 	}
-	for {
-		s, err := ctr.State(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !s.Running {
-			break
-		}
-		if time.Since(start) > 20*time.Second {
-			t.Fatal("pgbouncer still running 20 s after its preStop with a client idle")
-		}
-		time.Sleep(200 * time.Millisecond)
+	// wallclock: a real container cannot run in a synctest bubble; the exit
+	// strategy polls it in wall time.
+	if err := wait.ForExit().WithExitTimeout(20*time.Second).WaitUntilReady(ctx, ctr); err != nil {
+		t.Fatalf("pgbouncer still running 20 s after its preStop with a client idle: %v", err)
 	}
 }
 

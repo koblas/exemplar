@@ -115,6 +115,8 @@ type Index struct {
 	repos map[string]*repoState
 	// build serializes builds per Index; fetches already serialize per repo.
 	build sync.Mutex
+	// retire counts superseded generations still being closed and removed.
+	retire sync.WaitGroup
 }
 
 // errConfig reports a Config missing required fields.
@@ -282,14 +284,15 @@ func (ix *Index) Build(ctx context.Context, repo string) (Meta, error) {
 	if st.behindSHA == sha || st.behindSHA == "" {
 		st.behindSince, st.behindSHA = time.Time{}, ""
 	}
-	ix.mu.Unlock()
 	if old != nil {
-		go func() {
+		// Added under mu, so Close's Wait never races this Add.
+		ix.retire.Go(func() {
 			old.refs.Wait() // queries that took the old generation
 			old.s.Close()
 			_ = os.RemoveAll(old.dir)
-		}()
+		})
 	}
+	ix.mu.Unlock()
 	ix.cfg.Logger.Info("index generation serving", "repo", repo, "gen", m.Gen, "commit", sha,
 		"delta", delta, "symbols", m.Symbols, "seconds", time.Since(start).Seconds())
 	return m, nil
@@ -546,7 +549,8 @@ func (ix *Index) grep(ctx context.Context, repo string, q TextQuery) (Result, er
 	return out, nil
 }
 
-// Close closes every generation.
+// Close closes every generation and waits for superseded ones to be
+// removed.
 func (ix *Index) Close() {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
@@ -556,4 +560,5 @@ func (ix *Index) Close() {
 			st.cur.s.Close()
 		}
 	}
+	ix.retire.Wait()
 }

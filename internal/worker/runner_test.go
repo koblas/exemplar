@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -153,27 +154,29 @@ func TestRunnerRefuses(t *testing.T) {
 
 func TestRunnerWatchesCancel(t *testing.T) {
 	t.Parallel()
-	jobs := &fakeJobs{}
-	jobs.set(1, "pr_review", rivertype.JobStateRunning, `{}`, `{}`)
-	r := &Runner{Jobs: jobs, CancelPoll: time.Millisecond}
-	ctx, cancel := context.WithCancelCause(t.Context())
-	defer cancel(nil)
-	go r.watchCancel(ctx, cancel, 1)
-	if CancelRequested(t.Context(), jobs, 1) {
-		t.Fatal("cancel before River asked")
-	}
-	jobs.set(1, "pr_review", rivertype.JobStateRunning, `{}`, `{"cancel_attempted_at": "2026-10-24T12:00:00Z"}`)
-	select {
-	case <-ctx.Done():
-	case <-time.After(5 * time.Second):
-		t.Fatal("runner never saw the cancel")
-	}
-	if !errors.Is(context.Cause(ctx), rivertype.ErrJobCancelledRemotely) {
-		t.Errorf("cause = %v", context.Cause(ctx))
-	}
-	if CancelRequested(t.Context(), jobs, 99) {
-		t.Error("a missing job reads as cancelled")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		jobs := &fakeJobs{}
+		jobs.set(1, "pr_review", rivertype.JobStateRunning, `{}`, `{}`)
+		r := &Runner{Jobs: jobs, CancelPoll: time.Second}
+		ctx, cancel := context.WithCancelCause(t.Context())
+		defer cancel(nil)
+		go r.watchCancel(ctx, cancel, 1)
+		if CancelRequested(t.Context(), jobs, 1) {
+			t.Fatal("cancel before River asked")
+		}
+		jobs.set(1, "pr_review", rivertype.JobStateRunning, `{}`, `{"cancel_attempted_at": "2026-10-24T12:00:00Z"}`)
+		select {
+		case <-ctx.Done():
+		case <-time.After(time.Minute):
+			t.Fatal("runner never saw the cancel")
+		}
+		if !errors.Is(context.Cause(ctx), rivertype.ErrJobCancelledRemotely) {
+			t.Errorf("cause = %v", context.Cause(ctx))
+		}
+		if CancelRequested(t.Context(), jobs, 99) {
+			t.Error("a missing job reads as cancelled")
+		}
+	})
 }
 
 func TestStoredSnapshot(t *testing.T) {

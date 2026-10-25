@@ -23,7 +23,6 @@ type Scheduler struct {
 	debounce time.Duration
 	backstop time.Duration
 	log      *slog.Logger
-	now      func() time.Time
 	// AfterFetch, when set, runs after each successful fetch in the same
 	// goroutine, so work on one repo (indexing) never overlaps its fetches.
 	AfterFetch func(ctx context.Context, repo, sha string)
@@ -57,7 +56,7 @@ func NewScheduler(m *Manager, scope func() []string, debounce, backstop time.Dur
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Scheduler{m: m, scope: scope, debounce: debounce, backstop: backstop, log: log, now: time.Now, state: map[string]*fetchState{}}
+	return &Scheduler{m: m, scope: scope, debounce: debounce, backstop: backstop, log: log, state: map[string]*fetchState{}}
 }
 
 // Run fetches every repo in scope now and on each backstop tick until ctx
@@ -111,8 +110,8 @@ func (s *Scheduler) Request(repo string) bool {
 		st.again = true
 	case st.timer != nil:
 		// Already scheduled.
-	case !st.last.IsZero() && s.now().Sub(st.last) < s.debounce:
-		wait := st.last.Add(s.debounce).Sub(s.now())
+	case !st.last.IsZero() && time.Since(st.last) < s.debounce:
+		wait := time.Until(st.last.Add(s.debounce))
 		st.timer = time.AfterFunc(wait, func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()
@@ -148,7 +147,7 @@ func (s *Scheduler) startLocked(repo string, st *fetchState) {
 			}
 		}
 		s.mu.Lock()
-		st.running, st.last = false, s.now()
+		st.running, st.last = false, time.Now()
 		st.ok, st.sha, st.err = err == nil, sha, ""
 		if err != nil {
 			st.err = err.Error()
