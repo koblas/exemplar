@@ -61,6 +61,12 @@ providers:
   light:
     - { provider: claude,  model: claude-haiku-5-5 }
     # - { provider: bedrock, model: anthropic.claude-haiku-5-5 }
+  # embed: the model that embeds extractions for clustering (learning
+  # plane). One entry, no failover: vectors from two models cannot be
+  # compared. Needs VOYAGE_API_KEY (exemplar-providers Secret, key
+  # voyage-api-key); without it the gateway still serves reviews and the
+  # embed job fails until the key is set.
+  embed: { provider: voyage, model: voyage-code-3 }
 # importance_min: findings the verifier scores below this importance (0-1)
 # are stored but not posted.
 verifier:

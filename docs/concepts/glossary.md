@@ -85,7 +85,7 @@
 : One of the three ways a finding is produced: compiled rules, exemplar agents, the bug lane.
 
 **Learning plane**
-: The CronJobs that mine review history into candidates and act on feedback: `exemplar-learn` (Go) and the `cluster` and `rank` jobs (Python).
+: The CronJobs that mine review history into candidates and act on feedback: `exemplar-learn` (Go) and the `embed`, `cluster` and `rank` jobs (Python).
 
 **Linter overlap**
 : A finding that duplicates an annotation from one of the repo's configured linters; dropped, and a config CI check refuses a rule whose positive cases a linter already flags.

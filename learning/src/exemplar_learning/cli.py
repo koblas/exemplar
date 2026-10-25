@@ -1,14 +1,12 @@
 """Command line for the learning jobs.
 
 - ``check``: verify database access and schema version (a CronJob's first step).
+- ``embed``: embed extractions that have no embedding, through the gateway.
 - ``cluster``: cluster embedded extractions and write a run snapshot.
-
 - ``rank``: score the latest cluster run into owned candidates.
 
-``cluster`` and ``rank`` hold a Postgres advisory lock named after the job;
-a run that finds another run holding it logs that and exits 0.
-
-``embed`` joins them once an embedding provider is approved.
+``embed``, ``cluster`` and ``rank`` hold a Postgres advisory lock named
+after the job; a run that finds another run holding it logs that and exits 0.
 """
 
 from __future__ import annotations
@@ -25,6 +23,8 @@ import psycopg
 from exemplar_learning import db, rootkey
 from exemplar_learning.cluster import graph, job
 from exemplar_learning.cluster.judge import GatewayJudge
+from exemplar_learning.embed import client as embed_client
+from exemplar_learning.embed import job as embed_job
 from exemplar_learning.rank import job as rank_job
 from exemplar_learning.rank import score
 
@@ -48,7 +48,7 @@ def _check(_: argparse.Namespace) -> int:
     return 0
 
 
-def _cluster(args: argparse.Namespace) -> int:
+def _gateway() -> tuple[str, str]:
     url, token = (
         os.environ.get("EXEMPLAR_GATEWAY_URL", ""),
         rootkey.token("EXEMPLAR_GATEWAY_TOKEN", rootkey.LABEL_GATEWAY_TOKEN),
@@ -57,7 +57,23 @@ def _cluster(args: argparse.Namespace) -> int:
         raise RuntimeError(
             "EXEMPLAR_GATEWAY_URL and EXEMPLAR_GATEWAY_TOKEN (or EXEMPLAR_ROOT_KEY_FILE) are required"
         )
-    judge = GatewayJudge(url, token)
+    return url, token
+
+
+def _embed(args: argparse.Namespace) -> int:
+    embedder = embed_client.GatewayEmbedder(*_gateway())
+    with db.job_lock("embed") as held, db.connect() as conn:
+        if not held:
+            return _skip("embed")
+        db.check_schema(conn)
+        conn.commit()
+        rep = embed_job.run(conn, embedder, args.batch_size)
+    print(json.dumps(asdict(rep)))
+    return 0
+
+
+def _cluster(args: argparse.Namespace) -> int:
+    judge = GatewayJudge(*_gateway())
     params = graph.Params(
         k=args.k,
         edge_threshold=args.edge_threshold,
@@ -105,6 +121,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("check", help="verify database access and schema version").set_defaults(
         func=_check
     )
+    e = sub.add_parser("embed", help="embed extractions without an embedding (spec §8.3)")
+    e.add_argument(
+        "--batch-size", type=int, default=embed_job.BATCH_SIZE, help="extractions per gateway call"
+    )
+    e.set_defaults(func=_embed)
     c = sub.add_parser("cluster", help="cluster embedded extractions (spec §8.4)")
     c.add_argument("--k", type=int, default=graph.K_NEIGHBOURS, help="neighbours per extraction")
     c.add_argument(
@@ -132,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (db.SchemaTooOldError, rank_job.NoClusterRunError, RuntimeError) as err:
+    except (db.SchemaTooOldError, rank_job.NoClusterRunError, RuntimeError, ValueError) as err:
         print(f"error: {err}", file=sys.stderr)
         return 1
 

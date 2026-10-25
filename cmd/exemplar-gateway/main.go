@@ -2,7 +2,8 @@
 // keys. Callers send Anthropic Messages requests to POST /v1/messages with
 // the X-Exemplar-* headers; the gateway re-scans for secrets, routes the
 // stage through its ordered provider list with failover, and records every
-// call in model_calls.
+// call in model_calls. POST /v1/embeddings serves providers.embed (Voyage)
+// the same way, without failover.
 //
 // Configuration (environment):
 //
@@ -20,6 +21,9 @@
 //	         default chain (workload identity, instance role, AWS_* env) or a
 //	         Bedrock API key in AWS_BEARER_TOKEN_BEDROCK; EXEMPLAR_BEDROCK_BASE_URL
 //	         and EXEMPLAR_BEDROCK_PROFILE optional
+//	voyage   VOYAGE_API_KEY (from the exemplar-providers Secret), for providers.embed
+//	         on POST /v1/embeddings; EXEMPLAR_VOYAGE_BASE_URL optional. Without the
+//	         key the gateway still starts and /v1/embeddings answers 503
 //	EXEMPLAR_GATEWAY_ADDR      listen address (default :8080)
 //	EXEMPLAR_GATEWAY_RPM       requests per minute per model and per caller (default 600)
 package main
@@ -87,6 +91,7 @@ func run() error {
 	api := otelhttp.NewHandler(gw.Handler(), "messages")
 	mux.Handle("/v1/messages", api)
 	mux.Handle("/v1/messages/", api)
+	mux.Handle("/v1/embeddings", otelhttp.NewHandler(gw.Handler(), "embeddings"))
 	// Liveness never depends on providers or the database.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
@@ -159,6 +164,9 @@ func loadConfig(ctx context.Context, log *slog.Logger) (llm.Config, *store.Store
 	if err != nil {
 		return cfg, nil, fmt.Errorf("providers: %w", err)
 	}
+	// Embeddings feed only the learning plane: a missing Voyage key leaves
+	// /v1/embeddings answering 503 instead of stopping reviews.
+	embedder := llm.BuildEmbedder(ctx, global.Providers.Embed, llm.EnvSettings(), log)
 	scanner, err := redact.New()
 	if err != nil {
 		return cfg, nil, fmt.Errorf("secret scanner: %w", err)
@@ -167,6 +175,7 @@ func loadConfig(ctx context.Context, log *slog.Logger) (llm.Config, *store.Store
 	cfg = llm.Config{
 		Providers:         global.Providers,
 		Clients:           clients,
+		Embedder:          embedder,
 		Scanner:           scanner,
 		Token:             token,
 		SoftCeilingUSD:    global.Budgets.SoftCeilingUSD,

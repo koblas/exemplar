@@ -16,7 +16,7 @@ A pod that refuses to start naming a value such as `example-org` or `exemplar.ex
 
 ## The gateway isn't ready
 
-A provider in `global.yaml` has no credentials: the gateway's log names the variable (`anthropic-api-key` in `exemplar-providers` for `claude`; workload identity for `bedrock`). The gateway skips a provider whose credentials are missing with a warning, and fails only when a stage is left with none.
+A provider in `global.yaml` has no credentials: the gateway's log names the variable (`anthropic-api-key` in `exemplar-providers` for `claude`; workload identity for `bedrock`). The gateway skips a provider whose credentials are missing with a warning, and fails only when a stage is left with none. The embedding provider is the exception: without `voyage-api-key` the gateway starts anyway, logs `embedding provider skipped`, and `POST /v1/embeddings` answers 503, so the `exemplar-learn-embed` CronJob fails and nothing reaches clustering until the key is set.
 
 ## No review arrives
 

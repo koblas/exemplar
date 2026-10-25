@@ -151,6 +151,15 @@ type Providers struct {
 	Verifier    []ProviderModel `json:"verifier"`
 	Light       []ProviderModel `json:"light"`
 	Categorizer *Categorizer    `json:"categorizer,omitempty"`
+	// Embed is the embedding model for extractions. A single entry: vectors
+	// from different models are not comparable, so there is no failover.
+	Embed *EmbedModel `json:"embed,omitempty"`
+}
+
+// EmbedModel names the embedding provider and model.
+type EmbedModel struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 // ProviderModel is one entry in a stage's failover list. Generator entries

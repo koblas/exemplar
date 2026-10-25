@@ -109,6 +109,9 @@ spec:
             # Bedrock uses workload identity instead (see docs/reference/workloads.md).
             - name: ANTHROPIC_API_KEY
               valueFrom: {secretKeyRef: {name: exemplar-providers, key: anthropic-api-key, optional: true}}
+            # providers.embed (learning plane); without it /v1/embeddings answers 503.
+            - name: VOYAGE_API_KEY
+              valueFrom: {secretKeyRef: {name: exemplar-providers, key: voyage-api-key, optional: true}}
           livenessProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 10
