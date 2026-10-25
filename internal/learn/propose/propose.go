@@ -138,7 +138,9 @@ func (w *Writer) Run(ctx context.Context) ([]Outcome, error) {
 		if err != nil {
 			return outs, fmt.Errorf("propose: candidate %d: %w", row.ID, err)
 		}
-		n, err := w.store.MarkCandidateProposed(ctx, queries.MarkCandidateProposedParams{ID: row.ID, ConfigPrUrl: &url})
+		n, err := w.store.MarkCandidateProposed(ctx, queries.MarkCandidateProposedParams{
+			ID: row.ID, ConfigPrUrl: &url, ConfigPrBranch: &d.Branch, RuleID: &d.RuleID, RulePath: &d.Path,
+		})
 		if err != nil {
 			return outs, fmt.Errorf("mark candidate proposed: %w", err)
 		}
@@ -218,16 +220,8 @@ func (w *Writer) load(ctx context.Context, row queries.ProposableCandidatesRow) 
 	for _, i := range incs {
 		c.Incidents = append(c.Incidents, Incident{Repo: i.Repo, Path: i.Path, Kind: i.Kind, Ref: i.Ref})
 	}
-	cases, err := w.store.CandidateEvalCases(ctx, row.ID)
-	if err != nil {
-		return c, fmt.Errorf("load candidate eval cases: %w", err)
-	}
-	for _, e := range cases {
-		ec := EvalCase{ID: e.CaseID, Kind: e.Kind, Name: e.Name, Ref: e.Ref, Patch: deref(e.Patch), SpotCheck: e.SpotCheck, Paths: e.Paths}
-		if err := json.Unmarshal(e.Expect, &ec.Expect); err != nil {
-			return c, fmt.Errorf("propose: candidate %d case %s: %w", row.ID, e.CaseID, err)
-		}
-		c.EvalCases = append(c.EvalCases, ec)
+	if c.EvalCases, err = LoadEvalCases(ctx, w.store, row.ID); err != nil {
+		return c, err
 	}
 	switch cc, err := w.store.LatestAcceptedCompile(ctx, row.ID); {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -244,6 +238,23 @@ func (w *Writer) load(ctx context.Context, row queries.ProposableCandidatesRow) 
 		return c, errNoSources
 	}
 	return c, nil
+}
+
+// LoadEvalCases reads a candidate's generated eval cases.
+func LoadEvalCases(ctx context.Context, st *store.Store, id int64) ([]EvalCase, error) {
+	rows, err := st.CandidateEvalCases(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("load candidate eval cases: %w", err)
+	}
+	var out []EvalCase
+	for _, e := range rows {
+		ec := EvalCase{ID: e.CaseID, Kind: e.Kind, Name: e.Name, Ref: e.Ref, Patch: deref(e.Patch), SpotCheck: e.SpotCheck, Paths: e.Paths}
+		if err := json.Unmarshal(e.Expect, &ec.Expect); err != nil {
+			return nil, fmt.Errorf("propose: candidate %d case %s: %w", id, e.CaseID, err)
+		}
+		out = append(out, ec)
+	}
+	return out, nil
 }
 
 func deref(s *string) string {

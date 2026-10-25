@@ -61,7 +61,7 @@ Exemplar never requests changes, so `blocking` is a label and a ranking, not a m
 
 `owner` is a team (`@org/team`) that exists on GitHub and matches `CODEOWNERS` for the file. Its members approve the PR, adjudicate feedback, and get the weekly digest. `review_by` is the date the rule expires unless re-confirmed; without it, `expiry.default_months` from `global.yaml` applies.
 
-`status` starts at `shadow`. Promote to `active` in a later PR once the shadow findings look right.
+`status` starts at `shadow`. Promote to `active` in a later PR once the shadow findings look right. A new rule you want Exemplar to generate eval cases for starts at `candidate` instead ([How to seed a rule by hand](seed-a-rule.md)).
 
 ## 5. Cite it
 
@@ -78,5 +78,15 @@ If a linter already reports the problem, map it: `linter_map` names the linter's
 ## 8. Choose the model tier
 
 `model_tier: standard` (the default) or `high`. Rules move to `high` on their own when eval precision falls short; blocking and security rules and bug hunting start on `high`.
+
+## 9. Decide whether one verifier is enough
+
+Every finding is checked by a verifier before it posts. A rule whose findings are often plausible but wrong (behaviour that depends on runtime state, say) can ask for a quorum instead:
+
+```yaml
+verify: quorum
+```
+
+Its findings then post only when `verifier.quorum.k` of `verifier.quorum.n` verifiers confirm them, at `n` times the verifier cost. Leave it out for rules whose findings the verifier's refutation rate on the lanes board shows are rarely wrong. See [`verify`](../../reference/config/rule.md).
 
 Then write [eval cases](eval-cases.md), [test it](test-a-rule.md) and open the PR.

@@ -25,6 +25,7 @@ Unknown fields are rejected. Each finding records the git blob id of the rule fi
 | `export` | object | no | What the rule contributes to coding-agent instruction files. See [`export`](#export). |
 | `eval_cases` | string | no | The rule's eval directory, for example `evals/<id>/`. When set, `evals/<id>/cases.yaml` must exist (see [eval cases](eval-cases.md)). |
 | `model_tier` | `standard`, `high` | no | The generator tier the rule runs on. Default `standard` when unset. |
+| `verify` | `single`, `quorum` | no | `quorum` sends the rule's findings to the verifier quorum (`verifier.quorum` in [`global.yaml`](global.md#verifier)) instead of one verifier, at `n` times the verifier cost. Default `single`. Bug-lane findings always use the quorum. |
 | `context` | `full`, `text-only` | no | What the rule's agent may read: `full` (the default) gives it the repository tools through exemplar-search; `text-only` limits it to the diff, which sends less code to the provider. |
 | `eval` | `historical`, `synthetic` | no | Accepted by the schema; not read by the engine or the eval runner yet. |
 | `linter_map` | object of non-empty string to array of non-empty string (at least 1) | no | Linter check run name (repo config `linters`) to the linter rule ids that report the same issue as this rule; a finding overlapping one of their annotations is a `linter_duplicate`. |

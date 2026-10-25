@@ -21,9 +21,11 @@ const (
 // evals/_verifier seed set. A result recorded for one key stays valid
 // until one of them changes; editing a rule or a repo file does not
 // touch it. Labels recorded from feedback (verifier_labels) are replayed
-// but are not part of the key: they grow every day.
+// but are not part of the key: they grow every day. The bug lane's quorum
+// (verifier.quorum) is not either: calibration replays one verifier.
 func VerifierKey(snap *config.Snapshot) string {
 	g := snap.Global
+	g.Verifier.Quorum = nil
 	seed := slices.Clone(snap.VerifierLabels)
 	slices.SortFunc(seed, func(a, b config.VerifierLabel) int { return strings.Compare(a.ID, b.ID) })
 	labels := make([]any, 0, len(seed))

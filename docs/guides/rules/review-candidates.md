@@ -1,6 +1,6 @@
 # How to review mined candidates
 
-The learning plane proposes rules it mined from your review history ([Rule lifecycle](../../concepts/rule-lifecycle.md#where-rules-come-from)). They reach you in two places.
+The learning plane proposes rules it mined from your review history ([Rule lifecycle](../../concepts/rule-lifecycle.md#where-rules-come-from)). They reach you in two places. Rules you write yourself go through the same queue as owner seeds ([How to seed a rule by hand](seed-a-rule.md)).
 
 ## 1. The candidates page
 

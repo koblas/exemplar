@@ -111,7 +111,15 @@ Every value is a number from 0 to 1. No other keys are allowed.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `importance_min` | number, 0 to 1 | yes | Findings the verifier scores below this importance are stored but not posted. |
-| `max_candidates_per_call` | integer, minimum 1 | yes | Findings checked together in one verifier call. |
+| `max_candidates_per_call` | integer, minimum 1 | yes | Findings checked together in one verifier call; each verifier of a quorum batches the same way. |
+| `quorum` | object | no | The verifier quorum for bug-lane findings and rules with `verify: quorum`. See below. |
+
+`quorum` fields. Each quorum verifier is a separate call whose provider list starts at a different entry of `providers.verifier` (the rest are its failover), so a quorum finding costs `n` verifier calls. A finding is confirmed when `k` verifiers confirm it with resolving evidence, and is stored with `verify_quorum_n` and `verify_quorum_agreed`. One that fails is stored with `suppressed_reason` `quorum`; one whose extra calls were shed at the soft cost ceiling, with `quorum_shed`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `n` | integer, minimum 2 | no | Verifiers asked. Default 3. |
+| `k` | integer, minimum 1, at most `n` | no | Confirmations needed. Default 2. |
 
 ### `posting`
 

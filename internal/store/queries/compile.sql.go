@@ -12,7 +12,7 @@ import (
 const candidatesNeedingCompile = `-- name: CandidatesNeedingCompile :many
 SELECT c.id, c.ext, c.title, c.description
 FROM candidates c
-WHERE c.status IN ('new', 'pr_open', 'promoted')
+WHERE c.status IN ('new', 'pr_open', 'promoted') AND c.source_kind = 'comments'
   AND EXISTS (SELECT 1 FROM candidate_eval_cases e WHERE e.candidate_id = c.id)
   AND NOT EXISTS (SELECT 1 FROM compile_attempts a WHERE a.candidate_id = c.id
                   AND a.attempted_at > now() - interval '90 days' AND a.status IN ('accepted', 'rejected'))
@@ -32,6 +32,8 @@ type CandidatesNeedingCompileRow struct {
 // Candidates with eval cases and no scored attempt in the last 90 days
 // (every candidate, and quarterly again), with at most 3
 // attempts of any kind in that window so a hopeless one stops retrying.
+// Mined candidates only: an accepted compile shapes the PR propose drafts,
+// and a seed's owner wrote its rule and PR.
 func (q *Queries) CandidatesNeedingCompile(ctx context.Context, limit int32) ([]CandidatesNeedingCompileRow, error) {
 	rows, err := q.db.Query(ctx, candidatesNeedingCompile, limit)
 	if err != nil {

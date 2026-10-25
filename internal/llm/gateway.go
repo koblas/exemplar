@@ -31,6 +31,10 @@ const (
 	HeaderCaller      = "X-Exemplar-Caller"
 	HeaderRepo        = "X-Exemplar-Repo"
 	HeaderDataClasses = "X-Exemplar-Data-Classes"
+	// HeaderRouteOffset starts a verifier call at the offset-th provider
+	// of providers.verifier, the rest following as failover, so the
+	// verifiers of a quorum (FR-V7) spread across the providers.
+	HeaderRouteOffset = "X-Exemplar-Route-Offset"
 )
 
 // Response headers the gateway adds.
@@ -185,6 +189,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	if off := meta.routeOffset % len(routes); off > 0 {
+		routes = slices.Concat(routes[off:], routes[:off])
+	}
 
 	if meta.reviewID != nil {
 		g.loadSpend(r.Context(), *meta.reviewID)
@@ -284,6 +291,7 @@ type callMeta struct {
 	stage, tier, caller, repo string
 	reviewID, ruleRunID       *int64
 	dataClasses               []string
+	routeOffset               int
 }
 
 var (
@@ -315,6 +323,16 @@ func parseMeta(h http.Header) (callMeta, error) {
 			}
 			*p.dst = &n
 		}
+	}
+	if v := h.Get(HeaderRouteOffset); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return m, fmt.Errorf("%w: %s must be a non-negative integer", errInvalidHeader, HeaderRouteOffset)
+		}
+		if m.stage != StageVerifier {
+			return m, fmt.Errorf("%w: %s applies only to stage %s", errInvalidHeader, HeaderRouteOffset, StageVerifier)
+		}
+		m.routeOffset = n
 	}
 	raw := h.Get(HeaderDataClasses)
 	if raw == "" {

@@ -1,8 +1,8 @@
 -- name: CandidatesNeedingEvals :many
--- New candidates with no generated cases yet.
+-- New mined candidates with no generated cases yet (seeds: SeedsNeedingEvals).
 SELECT c.id, c.ext, c.title, c.description
 FROM candidates c
-WHERE c.status = 'new'
+WHERE c.status = 'new' AND c.source_kind = 'comments'
   AND NOT EXISTS (SELECT 1 FROM candidate_eval_cases e WHERE e.candidate_id = c.id)
 ORDER BY c.score DESC, c.id
 LIMIT $1;

@@ -229,6 +229,9 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 			}
 		}
 	}
+	if n, k := s.Global.Verifier.QuorumNK(); k > n {
+		probs.add(GlobalPath, fmt.Errorf("%w: verifier.quorum.k %d is above n %d", ErrInvalidValue, k, n))
+	}
 	if ms := s.Global.MergeSafety; ms != nil {
 		if _, err := gates.Weights(ms.Weights); err != nil {
 			probs.add(GlobalPath, err)

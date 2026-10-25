@@ -55,6 +55,14 @@ type Script struct {
 	Budget string
 	// Importance is the verifier's importance for every candidate (default 0.9).
 	Importance float64
+	// Voter, when set, answers each verifier call from its place in a
+	// quorum (offset 0 is the first verifier) and its task text: the
+	// verdict for every candidate in the call, and its importance (0 is
+	// the default). It overrides Verdict, VerdictFor and Importance.
+	Voter func(offset int, task string) (verdict string, importance float64)
+	// VoterFamily, when set, is the family reported for a verifier call
+	// at that quorum offset.
+	VoterFamily func(offset int) string
 }
 
 // ScriptedTransport answers Messages API calls from a Script. Use it as the
@@ -71,6 +79,8 @@ type ScriptedCall struct {
 	Stage       string
 	DataClasses string
 	ReviewID    string
+	// RouteOffset is the call's X-Exemplar-Route-Offset (0 when unset).
+	RouteOffset int
 	Body        []byte
 }
 
@@ -89,8 +99,12 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 	_ = req.Body.Close()
 	stage := req.Header.Get(llm.HeaderStage)
+	offset, _ := strconv.Atoi(req.Header.Get(llm.HeaderRouteOffset))
 	s.mu.Lock()
-	s.Calls = append(s.Calls, ScriptedCall{Stage: stage, DataClasses: req.Header.Get(llm.HeaderDataClasses), ReviewID: req.Header.Get(llm.HeaderReviewID), Body: body})
+	s.Calls = append(s.Calls, ScriptedCall{
+		Stage: stage, DataClasses: req.Header.Get(llm.HeaderDataClasses), ReviewID: req.Header.Get(llm.HeaderReviewID),
+		RouteOffset: offset, Body: body,
+	})
 	s.mu.Unlock()
 
 	var in struct {
@@ -116,7 +130,7 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	stop := "end_turn"
 	switch stage {
 	case llm.StageVerifier:
-		text, verr := s.verdicts(task.Text)
+		text, verr := s.verdicts(offset, task.Text)
 		if verr != nil {
 			return nil, verr
 		}
@@ -180,6 +194,9 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	if f, ok := s.Script.CategorizerFamily[stage]; ok {
 		family = f
 	}
+	if stage == llm.StageVerifier && s.Script.VoterFamily != nil {
+		family = s.Script.VoterFamily(offset)
+	}
 	if family == "" {
 		family = "scripted"
 	}
@@ -196,15 +213,17 @@ func (s *ScriptedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	return &http.Response{StatusCode: http.StatusOK, Header: h, Body: io.NopCloser(bytes.NewReader(out)), Request: req}, nil
 }
 
-func (s *ScriptedTransport) verdicts(task string) (string, error) {
-	verdict := s.Script.Verdict
+func (s *ScriptedTransport) verdicts(offset int, task string) (string, error) {
+	verdict, importance := s.Script.Verdict, s.Script.Importance
 	if s.Script.VerdictFor != nil {
 		verdict = s.Script.VerdictFor(task)
+	}
+	if s.Script.Voter != nil {
+		verdict, importance = s.Script.Voter(offset, task)
 	}
 	if verdict == "" {
 		verdict = VerdictConfirmed
 	}
-	importance := s.Script.Importance
 	if importance == 0 {
 		importance = 0.9
 	}

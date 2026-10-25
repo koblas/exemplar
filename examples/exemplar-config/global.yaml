@@ -67,6 +67,10 @@ verifier:
   importance_min: 0.5
   # Findings checked together in one verifier call.
   max_candidates_per_call: 8
+  # Bug-lane findings (and rules with `verify: quorum`) go to n verifiers,
+  # each a separate call, rotated across providers.verifier; they post only
+  # when k confirm. Each such candidate costs n verifier calls.
+  quorum: { n: 3, k: 2 }
 # Bug hunting: agents look for common classes of bugs, independent of any
 # rule. They run on risky PRs (critical paths, >= 80 changed non-test lines,
 # a low merge-safety score, or an incident or revert in the last 90 days)

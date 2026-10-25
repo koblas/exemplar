@@ -150,6 +150,7 @@ func Finish(ctx context.Context, st *store.Store, rec *Record, res *engine.Resul
 			VerifyModel: strPtr(f.VerifyModel), VerifySameFamily: f.VerifySameFamily, VerifyEvidence: f.VerifyEvidenceRaw,
 			SuggestedFix: strPtr(f.Fix), FixValid: f.FixValid, State: f.State, SuppressedReason: strPtr(f.Suppressed),
 			AnchorCode: strPtr(f.AnchorCode), AnchorOrdinal: ordinal(f), GroupKey: strPtr(f.GroupKey),
+			VerifyQuorumN: quorumN(f.VerifyQuorumN), VerifyQuorumAgreed: quorumAgreed(f),
 		})
 		if err != nil {
 			return fmt.Errorf("finding: %w", err)
@@ -431,6 +432,21 @@ func checkText(p *engine.Prepared, res *engine.Result) string {
 	if res.Grouped > 0 {
 		fmt.Fprintf(&b, "- %d more occurrence(s) of a rule are listed in that rule's grouped comment instead of their own.\n", res.Grouped)
 	}
+	failed, shed := 0, 0
+	for _, f := range res.Findings {
+		switch f.Suppressed {
+		case engine.SuppressQuorum:
+			failed++
+		case engine.SuppressQuorumShed:
+			shed++
+		}
+	}
+	if failed > 0 {
+		fmt.Fprintf(&b, "- %d finding(s) held back: fewer than the verifier quorum confirmed them (`quorum`).\n", failed)
+	}
+	if shed > 0 {
+		fmt.Fprintf(&b, "- %d finding(s) held back: the verifier quorum was shed at the run's soft cost ceiling (`quorum_shed`).\n", shed)
+	}
 	b.WriteString("\nCost and duration are informational.\n")
 	return b.String()
 }
@@ -442,6 +458,25 @@ func ordinal(f *engine.Finding) *int32 {
 	}
 	k := int32(f.Ordinal)
 	return &k
+}
+
+// quorumN is a quorum candidate's verifier count; NULL for findings one
+// verifier checked.
+func quorumN(n int) *int32 {
+	if n == 0 {
+		return nil
+	}
+	v := int32(min(n, 1<<30))
+	return &v
+}
+
+// quorumAgreed is how many of a quorum candidate's verifiers confirmed it.
+func quorumAgreed(f *engine.Finding) *int32 {
+	if f.VerifyQuorumN == 0 {
+		return nil
+	}
+	v := int32(min(f.VerifyQuorumAgreed, 1<<30))
+	return &v
 }
 
 func strPtr(s string) *string {

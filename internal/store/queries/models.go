@@ -31,22 +31,30 @@ type CalibrationResult struct {
 }
 
 type Candidate struct {
-	ID                int64
-	Ext               string
-	Title             string
-	Description       string
-	ClusterSize       int32
-	DistinctReviewers int32
-	Score             float32
-	ScoreDetail       []byte
-	Owner             string
-	Status            string
-	ConfigPrUrl       *string
-	KillReason        *string
-	ClusterHash       string
-	LastRunID         int64
-	CreatedAt         pgtype.Timestamptz
-	UpdatedAt         pgtype.Timestamptz
+	ID                   int64
+	Ext                  string
+	Title                string
+	Description          string
+	ClusterSize          int32
+	DistinctReviewers    int32
+	Score                float32
+	ScoreDetail          []byte
+	Owner                string
+	Status               string
+	ConfigPrUrl          *string
+	KillReason           *string
+	ClusterHash          *string
+	LastRunID            *int64
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+	SourceKind           string
+	RuleID               *string
+	RulePath             *string
+	RuleYaml             *string
+	SeedAuthor           *string
+	ConfigPrBranch       *string
+	SeedEvalsAt          pgtype.Timestamptz
+	SeedCasesDeliveredAt pgtype.Timestamptz
 }
 
 type CandidateEvalCase struct {
@@ -259,37 +267,39 @@ type FeedbackEvent struct {
 }
 
 type Finding struct {
-	ID               int64
-	RuleRunID        int64
-	Repo             string
-	PrNumber         int32
-	RuleID           string
-	Lane             string
-	Severity         string
-	CcLabel          string
-	Path             string
-	Side             string
-	StartLine        int32
-	EndLine          int32
-	Fingerprint      string
-	Message          string
-	VerifyVerdict    *string
-	VerifyImportance *float32
-	VerifyModel      *string
-	VerifySameFamily bool
-	VerifyEvidence   []byte
-	SuggestedFix     *string
-	FixValid         *bool
-	RankScore        *float32
-	State            string
-	SuppressedReason *string
-	GhCommentID      *int64
-	GhThreadID       *string
-	SarifAlertNumber *int32
-	CreatedAt        pgtype.Timestamptz
-	AnchorCode       *string
-	AnchorOrdinal    *int32
-	GroupKey         *string
+	ID                 int64
+	RuleRunID          int64
+	Repo               string
+	PrNumber           int32
+	RuleID             string
+	Lane               string
+	Severity           string
+	CcLabel            string
+	Path               string
+	Side               string
+	StartLine          int32
+	EndLine            int32
+	Fingerprint        string
+	Message            string
+	VerifyVerdict      *string
+	VerifyImportance   *float32
+	VerifyModel        *string
+	VerifySameFamily   bool
+	VerifyEvidence     []byte
+	SuggestedFix       *string
+	FixValid           *bool
+	RankScore          *float32
+	State              string
+	SuppressedReason   *string
+	GhCommentID        *int64
+	GhThreadID         *string
+	SarifAlertNumber   *int32
+	CreatedAt          pgtype.Timestamptz
+	AnchorCode         *string
+	AnchorOrdinal      *int32
+	GroupKey           *string
+	VerifyQuorumN      *int32
+	VerifyQuorumAgreed *int32
 }
 
 type FindingOutcome struct {
