@@ -114,6 +114,15 @@ application unless requested. Update this guidance as the service takes shape.
   ports with manifests; keep the termination grace period longer than shutdown.
 - Add deterministic table-driven tests and `httptest` coverage where appropriate.
   Test cancellation, error paths, and shutdown for changes affecting those behaviors.
+- Pick the technique by the change (spec §16.1, "Which technique a change needs"):
+  worker state machine → a seeded simulation invariant; review output → a
+  metamorphic relation over `replay --scripted`; parser of outside input → a native
+  fuzz target (added to `make fuzz` and ci.yml); invariant over an input domain → a
+  seeded property test (stdlib `math/rand/v2` with a fixed seed, as
+  `TestStage1Invariants`; no new library); new setting → a configuration-matrix row;
+  hot path → its benchmark. Inject clocks and randomness instead of calling
+  `time.Now`, sleeping, or using unseeded `rand`. Name a technique you skipped and
+  why in the PR description.
 
 ## Kubernetes and Safety
 
