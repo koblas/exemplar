@@ -126,7 +126,8 @@ application unless requested. Update this guidance as the service takes shape.
   hot path → its benchmark. Don't inject clocks: production code calls `time.Now`,
   and time-dependent tests run in a `testing/synctest` bubble, moving time with
   `time.Sleep` and serving HTTP through an in-memory `RoundTripper`, not `httptest`
-  (spec §16.1, "Time in tests"). Seed any randomness. Name a technique you skipped and
+  (spec §16.1, "Time in tests"; rules in `.claude/rules/go-code.md`, enforced by
+  `go test ./internal/testclock`). Seed any randomness. Name a technique you skipped and
   why in the PR description.
 
 ## Kubernetes and Safety

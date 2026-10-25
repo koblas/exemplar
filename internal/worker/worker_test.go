@@ -994,14 +994,18 @@ func TestReviewRoundCap(t *testing.T) {
 	if len(e.fake.botComments) != 1 {
 		t.Errorf("a second summary comment: %d", len(e.fake.botComments))
 	}
-	// A person reviewed: the next push posts inline and is round 4.
+	// A person reviewed: the next push posts inline and is round 4. The
+	// reset is stamped with Postgres's clock, which stamps started_at.
+	var resetAt time.Time
+	if err := st.Pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&resetAt); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.RecordRoundReset(ctx, queries.RecordRoundResetParams{
 		Repo: repo, PrNumber: prNum, Reason: "review",
-		At: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		At: pgtype.Timestamptz{Time: resetAt, Valid: true},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(10 * time.Millisecond)
 	out = run(3)
 	if out.RoundCapped || out.Posted != 1 || out.Round != 4 {
 		t.Errorf("after a reset = %+v", out)

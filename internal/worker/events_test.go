@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
@@ -122,13 +121,10 @@ func TestEventWorkerRoutes(t *testing.T) {
 		if _, err := client.Insert(ctx, store.GHEventArgs{DeliveryID: id.String()}, nil); err != nil {
 			t.Fatal(err)
 		}
-		select {
-		case ev := <-events:
-			if ev.Kind != river.EventKindJobCompleted {
-				t.Fatalf("event job %s: %v", ev.Kind, ev.Job.Errors)
-			}
-		case <-time.After(30 * time.Second):
-			t.Fatal("event job did not finish")
+		// River's listener sits in a network read, so this test cannot run
+		// in a synctest bubble; go test -timeout bounds the wait.
+		if ev := <-events; ev.Kind != river.EventKindJobCompleted {
+			t.Fatalf("event job %s: %v", ev.Kind, ev.Job.Errors)
 		}
 	}
 	reviews := func() []store.PRReviewArgs {
