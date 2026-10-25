@@ -814,8 +814,8 @@ func checkOverlay(t *testing.T, dir string) {
 		if !strings.Contains(str(p, "patch"), "--launcher=") {
 			continue
 		}
-		if args := workerArgs(t); len(args) < 8 || !strings.HasPrefix(args[7], "--launcher=") {
-			t.Errorf("example patches args/7 as --launcher, but the worker's args are %v", args)
+		if args := workerArgs(t); len(args) < 9 || !strings.HasPrefix(args[7], "--launcher=") || !strings.HasPrefix(args[8], "--runner-quota=") {
+			t.Errorf("example patches args/7 as --launcher and args/8 as --runner-quota, but the worker's args are %v", args)
 		}
 	}
 

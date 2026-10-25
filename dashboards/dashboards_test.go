@@ -164,6 +164,12 @@ func TestAlerts(t *testing.T) {
 		`INSERT INTO approval_decisions (review_id, stage1, stage2, decision) VALUES (1, '{}', '{}', 'approved')`,
 		`INSERT INTO pr_merges (repo, pr_number, head_sha, merged_at) VALUES ('acme/app', 4, 'h', now())`,
 		`INSERT INTO pr_links (repo, pr_number, kind, ref, at) VALUES ('acme/app', 4, 'revert', '#9', now())`,
+		// Reviews waiting 45 minutes: one ready, one snoozed and due (both
+		// count), and one scheduled an hour ahead (does not).
+		`INSERT INTO river_job (kind, args, queue, state, max_attempts, created_at, scheduled_at)
+			VALUES ('pr_review', '{}', 'reviews', 'available', 25, now() - interval '45 minutes', now() - interval '45 minutes'),
+			       ('pr_review', '{}', 'reviews', 'scheduled', 25, now() - interval '45 minutes', now() + interval '10 seconds'),
+			       ('pr_review', '{}', 'reviews', 'scheduled', 25, now() - interval '45 minutes', now() + interval '1 hour')`,
 	} {
 		if _, err := st.Pool.Exec(t.Context(), q); err != nil {
 			t.Fatal(err)
@@ -171,7 +177,7 @@ func TestAlerts(t *testing.T) {
 	}
 	for _, g := range f.Groups {
 		for _, r := range g.Rules {
-			want := map[string]float64{"exemplar-auto-approved-failed": 1, "exemplar-degraded-approval": 1, "exemplar-auto-approved-failure-rate": 0}[r.UID]
+			want := map[string]float64{"exemplar-auto-approved-failed": 1, "exemplar-degraded-approval": 1, "exemplar-auto-approved-failure-rate": 0, "exemplar-review-queue-stalled": 2}[r.UID]
 			var v float64
 			if err := st.Pool.QueryRow(t.Context(), r.Data[0].Model.RawSQL).Scan(&v); err != nil || v != want {
 				t.Errorf("%s seeded = %v, %v; want %v", r.UID, v, err, want)
@@ -188,6 +194,7 @@ var promNames = map[string]bool{
 	"exemplar_model_calls_total": true, "exemplar_model_duration_seconds_bucket": true,
 	"exemplar_review_duration_seconds_bucket": true, "exemplar_review_queue_to_post_seconds_bucket": true,
 	"exemplar_github_rate_limit_remaining": true, "exemplar_github_requests_total": true,
+	"exemplar_queue_depth": true, "exemplar_queue_oldest_age_seconds": true,
 }
 
 func checkPromQL(t *testing.T, name string, targets []struct {
