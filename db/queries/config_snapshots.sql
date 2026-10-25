@@ -11,3 +11,7 @@ SELECT files FROM config_snapshots WHERE version = @version;
 DELETE FROM config_snapshots WHERE version IN (
   SELECT c.version FROM config_snapshots c WHERE c.loaded_at < @cutoff AND c.version <> @keep LIMIT @batch
 );
+
+-- name: CurrentConfigSnapshot :one
+-- The version the worker loaded last (loading marks it current).
+SELECT version, files FROM config_snapshots ORDER BY loaded_at DESC LIMIT 1;

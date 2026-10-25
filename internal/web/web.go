@@ -43,6 +43,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/learn/demote"
 	"github.com/koblas/exemplar/internal/setup"
 	"github.com/koblas/exemplar/internal/store/queries"
 )
@@ -62,6 +64,7 @@ type Store interface { //nolint:interfacebloat // exactly the store reads the pa
 	PlaygroundRunsBy(ctx context.Context, actor string) ([]queries.PlaygroundRunsByRow, error)
 	PlaygroundSpend(ctx context.Context, arg queries.PlaygroundSpendParams) (queries.PlaygroundSpendRow, error)
 	UIRuleSpec(ctx context.Context, ruleID string) (queries.UIRuleSpecRow, error)
+	CurrentConfigSnapshot(ctx context.Context) (queries.CurrentConfigSnapshotRow, error)
 }
 
 // Access reports whether the viewer can read a repo: their GitHub
@@ -258,14 +261,41 @@ func pct(n, d float64) string {
 	return fmt.Sprintf("%.0f%%", 100*n/d)
 }
 
-func toRuleRow(r queries.UIRulesRow) ruleRow {
+// efpBar is feedback.efp_bar in the config version the worker loaded
+// last, so the rules page flags what demotion acts on; the demotion
+// default when no version is stored or it does not load.
+func (h *Handler) efpBar(ctx context.Context) float64 {
+	cur, err := h.cfg.Store.CurrentConfigSnapshot(ctx)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			h.cfg.Log.Warn("reading the current config failed; using the default eFP bar", "err", err)
+		}
+		return demote.DefaultEFPBar
+	}
+	tree, err := config.DecodeTree(cur.Files)
+	if err != nil {
+		h.cfg.Log.Warn("decoding the current config failed; using the default eFP bar", "version", cur.Version, "err", err)
+		return demote.DefaultEFPBar
+	}
+	snap, err := config.LoadSnapshot(tree, cur.Version)
+	if err != nil {
+		h.cfg.Log.Warn("loading the current config failed; using the default eFP bar", "version", cur.Version, "err", err)
+		return demote.DefaultEFPBar
+	}
+	if f := snap.Global.Feedback; f != nil && f.EFPBar > 0 {
+		return f.EFPBar
+	}
+	return demote.DefaultEFPBar
+}
+
+func toRuleRow(r queries.UIRulesRow, efpBar float64) ruleRow {
 	row := ruleRow{UIRulesRow: r, Acceptance: pct(float64(r.Accepted), float64(r.Judged)), EFP: pct(r.NegW, r.NegW+r.PosW)}
 	switch {
 	case r.Status != "active" && r.Status != "shadow":
 		row.Health = ""
 	case r.NegW+r.PosW == 0:
 		row.Health = "no feedback yet"
-	case r.NegW/(r.NegW+r.PosW) > 0.30:
+	case r.NegW/(r.NegW+r.PosW) > efpBar:
 		row.Health = "over the eFP bar"
 	}
 	return row
@@ -292,6 +322,7 @@ func (h *Handler) rules(_ http.ResponseWriter, r *http.Request, v *viewer) (stri
 	q := r.URL.Query()
 	b := rulesBody{Owner: q.Get("owner"), Status: q.Get("status"), Search: strings.TrimSpace(q.Get("q")), Window: Window}
 	owners, statuses := map[string]bool{}, map[string]bool{}
+	bar := h.efpBar(r.Context())
 	for _, row := range rows {
 		if !visibleRule(v, row.Scope) {
 			continue
@@ -301,7 +332,7 @@ func (h *Handler) rules(_ http.ResponseWriter, r *http.Request, v *viewer) (stri
 			(b.Search != "" && !strings.Contains(strings.ToLower(row.RuleID+" "+row.Category), strings.ToLower(b.Search))) {
 			continue
 		}
-		b.Rules = append(b.Rules, toRuleRow(row))
+		b.Rules = append(b.Rules, toRuleRow(row, bar))
 	}
 	for o := range owners {
 		b.Owners = append(b.Owners, o)
@@ -338,7 +369,7 @@ func (h *Handler) rule(_ http.ResponseWriter, r *http.Request, v *viewer) (strin
 	if i < 0 || !visibleRule(v, rows[i].Scope) {
 		return "", "", nil, errNotFound
 	}
-	b := ruleBody{Rule: toRuleRow(rows[i]), ShadowToken: h.token(v.Login, "shadow_rule", id), KillToken: h.token(v.Login, "kill_rule", id)}
+	b := ruleBody{Rule: toRuleRow(rows[i], h.efpBar(r.Context())), ShadowToken: h.token(v.Login, "shadow_rule", id), KillToken: h.token(v.Login, "kill_rule", id)}
 	if b.Weeks, err = h.cfg.Store.UIRuleWeeks(r.Context(), id); err != nil {
 		return "", "", nil, fmt.Errorf("list rule weeks: %w", err)
 	}
