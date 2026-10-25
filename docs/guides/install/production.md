@@ -90,7 +90,7 @@ The core manifests run each review as a Kubernetes Job of its own (`--launcher=k
 
 ## What the manifests cannot do
 
-- **Egress by host name.** NetworkPolicy matches addresses, so "HTTPS out" is any public address on 443 (and 22 for git-sync). Per-host lists (GitHub only for search, providers only for the gateway) need an FQDN-aware policy from the CNI, such as Cilium `toFQDNs`, on top.
+- **Egress by host name.** NetworkPolicy matches addresses, so "HTTPS out" is any public address on 443 (and 22 for git-sync). Per-host lists (GitHub only for search, providers only for the gateway) need an FQDN-aware policy from the CNI, such as Cilium `toFQDNs`, on top. On GKE, [the Autopilot overlay](gke-autopilot.md) adds them as FQDN network policies.
 - **The tunnel's egress** is any public address on 7844. Cloudflare's edge ranges (or an FQDN policy for `region1.v2.argotunnel.com` and `region2.v2.argotunnel.com`) would narrow it.
 - **The tunnel's edge rules are outside the repo.** Without the WAF rule, anyone can post to `/webhook`, though deliveries are still HMAC-checked. Without Access, the API's own sign-in is the only gate. Nothing in the cluster can check them.
 - **The Kubernetes API's address.** The worker's NetworkPolicy reaches the API server on 443 and 6443 at any private address. Narrow it to the address and port of `kubectl get endpoints kubernetes -n default` in an overlay.

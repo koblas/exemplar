@@ -131,7 +131,7 @@ A repo with `approval_mode: merge_policy_check` requires the `exemplar/merge-pol
 ## Known limits
 
 - **Kubernetes 1.29 or later**, for native sidecars (written against 1.33).
-- **Egress by host name** needs an FQDN-aware CNI policy on top; the shipped policies match addresses.
+- **Egress by host name** needs an FQDN-aware CNI policy on top; the shipped policies match addresses. `examples/k8s/gke-autopilot` adds GKE `FQDNNetworkPolicy` objects (GitHub, model providers, Jira, the tunnel edge) and removes each NetworkPolicy's any-public-address rule; it is not yet verified on a cluster.
 - **The compile CronJob** needs unprivileged user namespaces.
 - **The App private key is in the worker (control).** It mints scoped tokens per job and hands runners only their job's; the key could mint any flavor, including config-writer, so the worker runs no model-facing code with `--launcher=kubernetes`. With `--launcher=in-process`, reviews run in the worker pod, beside the key.
 - **GitHub rate limiting is per runner.** Each runner throttles its own requests and backs off on GitHub's secondary limits; reviews of one installation in different runners do not share a budget.

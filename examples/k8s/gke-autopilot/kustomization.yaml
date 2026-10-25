@@ -1,0 +1,78 @@
+# An installation overlay for GKE Autopilot (spec §2.4.3): copy this
+# directory, replace the acme values and the hosts in fqdn-policies.yaml.
+# See docs/guides/install/gke-autopilot.md.
+#
+# NOT YET VERIFIED ON A CLUSTER. It renders and passes the repository's
+# manifest checks; the §2.4.3 checks on a trial GKE project (local-SSD
+# search, GKE Sandbox, the runners' grace period, FQDN egress, cold start,
+# cost, connection limits) are tracked in beads and may change it.
+#
+# Render: kubectl kustomize examples/k8s/gke-autopilot
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Outside this repository, point at a tagged copy instead, for example
+  # github.com/koblas/exemplar//deploy/k8s/base?ref=<version>
+  - ../../../deploy/k8s/base
+  # Per-host egress: GitHub, the model providers, the ticketing tool and
+  # Cloudflare's tunnel edge.
+  - fqdn-policies.yaml
+
+# Pin both images by digest, as in examples/k8s/acme.
+images:
+  - name: exemplar
+    newName: docker.io/koblas/exemplar
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: exemplar-learning
+    newName: docker.io/koblas/exemplar
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+patches:
+  - path: settings.yaml
+
+  # Plain NetworkPolicy allows HTTPS to any public address; on Autopilot the
+  # FQDNNetworkPolicies in fqdn-policies.yaml name the hosts instead, so the
+  # broad rule goes. Each index is that policy's "HTTPS out" egress rule in
+  # deploy/k8s/core/networkpolicies.yaml (and the tunnel component's);
+  # deploy/manifests_test.go checks them.
+  - target: {kind: NetworkPolicy, name: exemplar-gateway}
+    patch: |-
+      - {op: remove, path: /spec/egress/0}
+  - target: {kind: NetworkPolicy, name: exemplar-worker}
+    patch: |-
+      - {op: remove, path: /spec/egress/1}
+  - target: {kind: NetworkPolicy, name: exemplar-runner}
+    patch: |-
+      - {op: remove, path: /spec/egress/1}
+  - target: {kind: NetworkPolicy, name: exemplar-search}
+    patch: |-
+      - {op: remove, path: /spec/egress/0}
+  - target: {kind: NetworkPolicy, name: exemplar-learn}
+    patch: |-
+      - {op: remove, path: /spec/egress/1}
+  - target: {kind: NetworkPolicy, name: exemplar-api}
+    patch: |-
+      - {op: remove, path: /spec/egress/0}
+  - target: {kind: NetworkPolicy, name: exemplar-cloudflared}
+    patch: |-
+      - {op: remove, path: /spec/egress/0}
+
+  # GKE Sandbox: each review, and the compile job that runs model-written
+  # rules, gets a gVisor kernel of its own. Compile stays suspended until
+  # the engines are verified under gVisor.
+  - target: {kind: PodTemplate, name: exemplar-runner}
+    patch: |-
+      - {op: add, path: /template/spec/runtimeClassName, value: gvisor}
+  - target: {kind: CronJob, name: exemplar-learn-compile}
+    patch: |-
+      - {op: add, path: /spec/jobTemplate/spec/template/spec/runtimeClassName, value: gvisor}
+
+  # exemplar-search: the Performance compute class, and Autopilot's pd-ssd
+  # storage class for its index. Local SSD (ephemeral, rebuilt on a new
+  # node) is the faster option once the trial measures it:
+  #   - {op: add, path: /spec/template/spec/nodeSelector, value: {cloud.google.com/compute-class: Performance, cloud.google.com/gke-ephemeral-storage-local-ssd: "true"}}
+  - target: {kind: StatefulSet, name: exemplar-search}
+    patch: |-
+      - {op: add, path: /spec/template/spec/nodeSelector, value: {cloud.google.com/compute-class: Performance}}
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/storageClassName, value: premium-rwo}
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 500Gi}

@@ -116,6 +116,7 @@ nav:
           - How to set up sign-in: guides/install/sign-in.md
           - How to run Postgres in the cluster: guides/install/in-cluster-postgres.md
           - How to pool runner connections: guides/install/pool-runner-connections.md
+          - How to install on GKE Autopilot: guides/install/gke-autopilot.md
           - How to run without exemplar-search: guides/install/without-search.md
           - How to build your own images: guides/install/build-images.md
           - How to upgrade: guides/install/upgrade.md
