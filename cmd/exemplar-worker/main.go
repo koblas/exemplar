@@ -225,6 +225,7 @@ func runServe(args []string) error {
 	dcfg := worker.DispatchConfig{
 		Launcher: launch, Snapshot: snapshot, Store: st, Log: log, Claims: claims,
 		Granter: &worker.Granter{Minter: app, Store: st, ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO")},
+		Abandon: worker.Abandoner{Store: st, GitHub: wcfg.GitHub, Log: log}.Abandon,
 	}
 	reviews, err := worker.NewReviewDispatcher(dcfg)
 	if err != nil {

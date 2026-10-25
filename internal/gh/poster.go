@@ -150,6 +150,28 @@ func (p *Poster) StartCheck(ctx context.Context, pr PR, externalID string) (int6
 	return run.GetID(), nil
 }
 
+// OpenChecks returns the ids of Exemplar's check runs on pr's head with
+// externalID that have not completed.
+func (p *Poster) OpenChecks(ctx context.Context, pr PR, externalID string) ([]int64, error) {
+	opts := &github.ListCheckRunsOptions{CheckName: new(CheckName), Filter: new("all"), PerPage: 100}
+	var out []int64
+	for {
+		runs, resp, err := p.gh.Checks.ListCheckRunsForRef(ctx, pr.Owner, pr.Repo, pr.HeadSHA, opts)
+		if err != nil {
+			return nil, fmt.Errorf("gh: check runs of %s/%s@%s: %w", pr.Owner, pr.Repo, pr.HeadSHA, err)
+		}
+		for _, r := range runs.CheckRuns {
+			if r.GetExternalID() == externalID && r.GetStatus() != "completed" {
+				out = append(out, r.GetID())
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return out, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
 // CheckResult completes a check run.
 type CheckResult struct {
 	// Conclusion is "neutral" for every completed review: the check informs

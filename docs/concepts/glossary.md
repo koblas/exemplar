@@ -76,7 +76,7 @@
 : `exemplar-gateway`, the only process holding provider credentials. It routes each stage through an ordered provider list with failover and records cost.
 
 **Incomplete run**
-: A review that could not finish (a stage with no working provider, a diff that could not be redacted). Nothing is posted; the check run offers a re-run.
+: A review that could not finish (a stage with no working provider, a diff that could not be redacted, a runner that failed on every retry). Nothing more is posted; the check run offers a re-run.
 
 **Kill switch**
 : The ways to stop Exemplar quickly: `enabled: false` in `global.yaml` or a repo file, `auto_approve: false`, a rule's `status`, or the per-repo switch on the audit page. See [How to respond to an incident](../guides/operate/runbook.md).

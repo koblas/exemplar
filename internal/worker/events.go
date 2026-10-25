@@ -504,6 +504,11 @@ func NewEventWorker(st *store.Store, log *slog.Logger) (*EventWorker, error) {
 
 // Work implements river.Worker.
 func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs]) error {
+	return w.route(ctx, river.ClientFromContext[pgx.Tx](ctx), job)
+}
+
+// route routes job's event, enqueueing what it calls for with client.
+func (w *EventWorker) route(ctx context.Context, client *river.Client[pgx.Tx], job *river.Job[store.GHEventArgs]) error {
 	id, err := uuid.Parse(job.Args.DeliveryID)
 	if err != nil {
 		return river.JobCancel(fmt.Errorf("delivery id %q: %w", job.Args.DeliveryID, err))
@@ -524,7 +529,6 @@ func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs
 		w.log.Error("event not routable", "delivery", id, "event", ev.Event, "err", err)
 		return river.JobCancel(err)
 	}
-	client := river.ClientFromContext[pgx.Tx](ctx)
 	cancelled := 0
 	err = w.st.InTx(ctx, func(tx pgx.Tx, q *queries.Queries) error {
 		// Cancel first, in the same transaction as the new review's insert:

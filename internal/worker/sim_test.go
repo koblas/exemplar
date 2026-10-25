@@ -2,45 +2,63 @@ package worker
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"net/http"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/koblas/exemplar/internal/gh"
+	"github.com/koblas/exemplar/internal/llm"
+	"github.com/koblas/exemplar/internal/pipeline"
 	"github.com/koblas/exemplar/internal/store"
 	"github.com/koblas/exemplar/internal/store/queries"
 	"github.com/koblas/exemplar/internal/store/storetest"
 )
 
-// The worker simulation (spec §16.1): one PR head driven through the
-// review dispatcher, the claims and an in-process runner by a seeded
-// schedule of redelivered webhooks, missed dedupes, runners killed at
-// GitHub writes, pushes to newer heads (between runs and mid-review) and
-// zombie runners replaying old claims. River's executor
-// is played by the sim, on River's own table, so a step is one state
-// change; GitHub is fakeGitHub. After every step the invariants hold:
+// The worker simulation (spec §16.1): one PR driven through the webhook
+// receiver's store, the event router (EventWorker), the review dispatcher,
+// the claims and an in-process runner by a seeded schedule of deliveries
+// and redeliveries, event jobs worked twice, Re-runs, missed dedupes,
+// model outages, runners killed at GitHub writes (on any attempt, so jobs
+// are discarded), pushes to newer heads (between runs and mid-review) and
+// zombie runners replaying old claims. River's executor is played by the
+// sim, on River's own table, so a step is one state change; GitHub is
+// fakeGitHub. After every step the invariants hold:
 // each finding is posted at most once, each claim is redeemed at most
-// once and released, a redelivery enqueues nothing while a job for the
-// head lives, and nothing is posted on a head once a push left it. Run one seed with EXEMPLAR_SIM_SEED=<n>; the step trace
+// once and released, a delivery enqueues nothing while a job for the
+// head lives, a redelivery or a routed event's second run enqueues
+// nothing, a Re-run enqueues only after an incomplete review, and nothing
+// is posted on a head once a push left it. Run one seed with EXEMPLAR_SIM_SEED=<n>; the step trace
 // is logged (go test -v) and a failure names its seed. Each seed runs in
 // a synctest bubble: no clock is injected, the bubble's is set to the
 // wall clock at the start, so the claims' expiry agrees with Postgres.
 
-// simSeeds are the seeds CI runs; 8 lands a push at start-check.
-var simSeeds = []uint64{1, 2, 3, 4, 5, 8}
+// simSeeds are the seeds CI runs. Between them they Re-run (enqueued
+// and ignored), black out the model, discard a job, redeliver, route an
+// event twice and land a push at each of its points: 54 at start-check
+// and the post, 159 the discard and the ignored Re-run.
+var simSeeds = []uint64{1, 2, 3, 4, 5, 54, 159}
+
+// simBusySeed is the CI seed with the most chaos, replayed for
+// TestWorkerSimReproduces.
+const simBusySeed = 159
 
 // simSteps is how many scheduled steps a seed runs before the drain.
 const simSteps = 10
@@ -127,8 +145,13 @@ type sim struct {
 	claims *Claims
 	runner *Runner
 	d      *Dispatcher[store.PRReviewArgs]
+	events *EventWorker
+	// outage, while set, fails every generator call (simOutage).
+	outage *atomic.Bool
 	trace  []string
 	step   int
+	// deliveries are the delivery ids received, oldest first.
+	deliveries []uuid.UUID
 
 	// Guarded by e.fake.mu (intercept runs with it held).
 	killAt   *simKill
@@ -146,6 +169,7 @@ type sim struct {
 	// pushed is set once it landed, started once the run started its check.
 	pushAt    *simPush
 	newHead   string
+	pushID    uuid.UUID
 	cancelRun context.CancelCauseFunc
 	pushed    bool
 	started   bool
@@ -162,7 +186,8 @@ type sim struct {
 func newSim(t *testing.T, seed uint64) *sim {
 	t.Helper()
 	st := storetest.New(t)
-	e := setup(t, repo)
+	outage := &atomic.Bool{}
+	e := setupWith(t, repo, func(next http.RoundTripper) http.RoundTripper { return &simOutage{next: next, on: outage} })
 	e.w.cfg.Store = st
 	e.fake.listPosted = true
 	claims := newClaims(t, st)
@@ -171,18 +196,41 @@ func newSim(t *testing.T, seed uint64) *sim {
 		t.Fatal(err)
 	}
 	s := &sim{
-		t: t, seed: seed, rnd: rand.New(rand.NewPCG(seed, 0x5eed)), e: e, st: st, river: client, claims: claims, left: map[string]int{},
+		t: t, seed: seed, rnd: rand.New(rand.NewPCG(seed, 0x5eed)), e: e, st: st, river: client, claims: claims, left: map[string]int{}, outage: outage,
 		runner: &Runner{Config: e.w.cfg, Jobs: client, Snapshot: Snapshots(st, e.w.cfg.Snapshot), Claims: claims, BaseURL: e.fake.srv.URL + "/"},
 	}
 	e.fake.intercept = s.intercept
 	s.d, err = NewReviewDispatcher(DispatchConfig{
 		Launcher: s, Snapshot: e.w.cfg.Snapshot, Store: st,
 		Claims: claims, Granter: &Granter{Minter: &fakeMinter{}, Store: st},
+		Abandon: Abandoner{Store: st, GitHub: e.fake}.Abandon,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if s.events, err = NewEventWorker(st, nil); err != nil {
+		t.Fatal(err)
+	}
 	return s
+}
+
+// simOutage fails every generator call while on, as the gateway answers
+// when every provider of the stage is down (503, not to be retried): the
+// review ends incomplete.
+type simOutage struct {
+	next http.RoundTripper
+	on   *atomic.Bool
+}
+
+func (o *simOutage) RoundTrip(r *http.Request) (*http.Response, error) {
+	if !o.on.Load() || r.Header.Get(llm.HeaderStage) != llm.StageGenerator {
+		return o.next.RoundTrip(r)
+	}
+	return &http.Response{
+		StatusCode: http.StatusServiceUnavailable, Request: r,
+		Header: http.Header{"Content-Type": {"application/json"}, "X-Should-Retry": {"false"}},
+		Body:   io.NopCloser(strings.NewReader(`{"type": "error", "error": {"type": "overloaded_error", "message": "every provider for this stage is unavailable"}}`)),
+	}, nil
 }
 
 // intercept counts the runner's calls, kills it at its kill point and
@@ -222,9 +270,15 @@ func (s *sim) land(ctx context.Context, p simPush) bool {
 	f := s.e.fake
 	s.left[f.head] = len(f.reviews)
 	f.head, s.pushed = s.newHead, true
-	ids, err := s.route(context.WithoutCancel(ctx), s.newHead)
-	if s.current == nil || err != nil || !slices.Contains(ids, s.current.JobID) {
-		s.violation = fmt.Sprintf("push at %s did not supersede the running job: cancelled %v, %v", p, ids, err)
+	ctx = context.WithoutCancel(ctx)
+	err := s.deliverHead(ctx, s.pushID, "synchronize", s.newHead)
+	// JobCancelTx marks a running job; River's producer then cancels it.
+	var marked bool
+	if err == nil && s.current != nil {
+		err = s.st.Pool.QueryRow(ctx, `SELECT metadata ? 'cancel_attempted_at' FROM river_job WHERE id = $1`, s.current.JobID).Scan(&marked)
+	}
+	if s.current == nil || err != nil || !marked {
+		s.violation = fmt.Sprintf("push at %s did not supersede the running job: %v", p, err)
 	}
 	if p.delayed {
 		return false
@@ -233,28 +287,88 @@ func (s *sim) land(ctx context.Context, p simPush) bool {
 	return true
 }
 
-// route is a push's routing (EventWorker.Work): in one transaction, every
-// open review job of another head is cancelled and head's is enqueued.
-func (s *sim) route(ctx context.Context, head string) ([]int64, error) {
-	var ids []int64
-	err := s.st.InTx(ctx, func(tx pgx.Tx, _ *queries.Queries) error {
-		var err error
-		if ids, err = store.ReviewJobsToSupersede(ctx, tx, s.e.fake.repo, prNum, head); err != nil {
-			return fmt.Errorf("jobs to supersede: %w", err)
+// receive is the webhook receiver: a delivery is stored once, by its id,
+// in one transaction with the event job that routes it; a redelivery of
+// the same id stores nothing.
+func (s *sim) receive(ctx context.Context, id uuid.UUID, event, payload string) (bool, error) {
+	stored := false
+	repoName := strings.ToLower(s.e.fake.repo)
+	err := s.st.InTx(ctx, func(tx pgx.Tx, q *queries.Queries) error {
+		n, err := q.InsertGHEvent(ctx, queries.InsertGHEventParams{
+			DeliveryID: id, Event: event, InstallationID: inst, RepoFullName: &repoName, Payload: []byte(payload),
+		})
+		if err != nil || n == 0 {
+			return err
 		}
-		for _, id := range ids {
-			if _, err := s.river.JobCancelTx(ctx, tx, id); err != nil {
-				return fmt.Errorf("cancel job %d: %w", id, err)
-			}
-		}
-		a := args(s.e)
-		a.HeadSHA = head
-		if _, err := s.river.InsertTx(ctx, tx, a, nil); err != nil {
-			return fmt.Errorf("enqueue head: %w", err)
-		}
-		return nil
+		stored = true
+		_, err = s.river.InsertTx(ctx, tx, store.GHEventArgs{DeliveryID: id.String()}, nil)
+		return err
 	})
-	return ids, err
+	if err != nil {
+		return false, fmt.Errorf("receive %s: %w", event, err)
+	}
+	return stored, nil
+}
+
+// routeEvents is River working each queued event job once.
+func (s *sim) routeEvents(ctx context.Context) error {
+	for {
+		var id int64
+		err := s.st.Pool.QueryRow(ctx, `UPDATE river_job SET state = 'running', attempt = attempt + 1, attempted_at = now()
+			WHERE id = (SELECT id FROM river_job WHERE kind = 'gh_event' AND state = 'available' ORDER BY id LIMIT 1)
+			RETURNING id`).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("claim event job: %w", err)
+		}
+		if err := s.workEvent(ctx, id); err != nil {
+			return err
+		}
+	}
+}
+
+// workEvent runs running event job id through EventWorker's routing,
+// with the sim's River client (River's executor puts it in Work's
+// context), and settles it. Routing these events never fails.
+func (s *sim) workEvent(ctx context.Context, id int64) error {
+	row, err := s.river.JobGet(ctx, id)
+	if err != nil {
+		return fmt.Errorf("event job %d: %w", id, err)
+	}
+	job := &river.Job[store.GHEventArgs]{JobRow: row}
+	if err := json.Unmarshal(row.EncodedArgs, &job.Args); err != nil {
+		return fmt.Errorf("event job %d args: %w", id, err)
+	}
+	werr := s.events.route(ctx, s.river, job)
+	if _, err := s.st.Pool.Exec(ctx, simSettle, id, settleState(row, werr)); err != nil {
+		return fmt.Errorf("settle event job %d: %w", id, err)
+	}
+	if werr != nil {
+		return fmt.Errorf("route event job %d: %w", id, werr)
+	}
+	return nil
+}
+
+// deliverHead receives and routes delivery id of a pull_request event
+// for head.
+func (s *sim) deliverHead(ctx context.Context, id uuid.UUID, action, head string) error {
+	payload := fmt.Sprintf(`{"action": %q, "number": %d, "installation": {"id": %d}, "repository": {"full_name": %q},
+		"pull_request": {"state": "open", "head": {"sha": %q}}}`, action, prNum, inst, s.e.fake.repo, head)
+	if _, err := s.receive(ctx, id, "pull_request", payload); err != nil {
+		return err
+	}
+	return s.routeEvents(ctx)
+}
+
+// delivery is a new delivery id, drawn from the seed so a trace repeats.
+func (s *sim) delivery() uuid.UUID {
+	var id uuid.UUID
+	binary.BigEndian.PutUint64(id[:8], s.rnd.Uint64())
+	binary.BigEndian.PutUint64(id[8:], s.rnd.Uint64())
+	s.deliveries = append(s.deliveries, id)
+	return id
 }
 
 // probe runs at a runner's first GitHub call, when it has redeemed its
@@ -294,7 +408,9 @@ func (s *sim) Launch(ctx context.Context, task Task) (Exit, error) {
 	if s.killed {
 		exit = Exit(137)
 	}
-	s.exit = exit
+	// The run is over: the control process's own GitHub calls (abandoning
+	// the job) get through, and an unfired kill or push lands nowhere.
+	s.exit, s.killed, s.killAt, s.pushAt = exit, false, nil, nil
 	return exit, nil
 }
 
@@ -326,23 +442,141 @@ func (s *sim) count(sql string, args ...any) int {
 	return n
 }
 
-// liveJobs counts the head's jobs River's uniqueness still covers.
-func (s *sim) liveJobs() int {
-	return s.count(`SELECT count(*) FROM river_job WHERE kind = 'pr_review' AND unique_key IS NOT NULL
-		AND state NOT IN ('cancelled', 'discarded') AND args->>'head_sha' = $1`, s.e.head)
+// jobs counts the review jobs with exactly these args, or only those
+// River's uniqueness still covers (live).
+func (s *sim) jobs(a store.PRReviewArgs, live bool) int {
+	s.t.Helper()
+	b, err := json.Marshal(a)
+	if err != nil {
+		s.fatalf("encode args: %v", err)
+	}
+	return s.count(`SELECT count(*) FROM river_job WHERE kind = 'pr_review' AND args = $1::jsonb
+		AND (NOT $2 OR (unique_key IS NOT NULL AND state NOT IN ('cancelled', 'discarded')))`, b, live)
 }
 
-// deliver is a (re)delivered pull_request webhook: the router's insert.
-func (s *sim) deliver() {
-	live := s.liveJobs()
-	res, err := s.river.Insert(s.t.Context(), args(s.e), nil)
+// reviewJobs counts every review job.
+func (s *sim) reviewJobs() int {
+	s.t.Helper()
+	return s.count(`SELECT count(*) FROM river_job WHERE kind = 'pr_review'`)
+}
+
+// deliver is a new delivery of the head's pull_request webhook (opened,
+// then synchronize, reopened and the like): routing enqueues the head's
+// review unless River's uniqueness holds a live one.
+func (s *sim) deliver(action string) {
+	s.t.Helper()
+	a := args(s.e)
+	live, total := s.jobs(a, true), s.jobs(a, false)
+	if err := s.deliverHead(s.t.Context(), s.delivery(), action, s.e.head); err != nil {
+		s.fatalf("deliver: %v", err)
+	}
+	added := s.jobs(a, false) - total
+	s.logf("deliver %d: %s, %d review jobs enqueued", len(s.deliveries), action, added)
+	if (added == 0) != (live > 0) || added > 1 {
+		s.fatalf("delivery with %d live jobs enqueued %d", live, added)
+	}
+}
+
+// redeliver is GitHub redelivering an earlier delivery by its id: the
+// receiver stores nothing, so nothing is routed again.
+func (s *sim) redeliver() {
+	s.t.Helper()
+	if len(s.deliveries) == 0 {
+		s.logf("redeliver: no delivery yet")
+		return
+	}
+	i := s.rnd.IntN(len(s.deliveries))
+	ctx, total := s.t.Context(), s.count(`SELECT count(*) FROM river_job`)
+	stored, err := s.receive(ctx, s.deliveries[i], "pull_request", "{}")
+	if err == nil {
+		err = s.routeEvents(ctx)
+	}
+	s.logf("redeliver %d: stored=%v", i+1, stored)
+	if err != nil || stored || s.count(`SELECT count(*) FROM river_job`) != total {
+		s.fatalf("redelivery of delivery %d stored=%v, enqueued %d jobs: %v", i+1, stored, s.count(`SELECT count(*) FROM river_job`)-total, err)
+	}
+}
+
+// reroute is an event job worked again, as when its runner died after
+// routing committed but before River recorded the job done: routing marked
+// the event processed in its transaction, so nothing is enqueued again.
+func (s *sim) reroute() {
+	s.t.Helper()
+	n := s.count(`SELECT count(*) FROM river_job WHERE kind = 'gh_event' AND state = 'completed'`)
+	if n == 0 {
+		s.logf("reroute: no event routed yet")
+		return
+	}
+	var id int64
+	ctx := s.t.Context()
+	if err := s.st.Pool.QueryRow(ctx, `SELECT id FROM river_job WHERE kind = 'gh_event' AND state = 'completed' ORDER BY id OFFSET $1 LIMIT 1`, s.rnd.IntN(n)).Scan(&id); err != nil {
+		s.fatalf("pick event job: %v", err)
+	}
+	total := s.reviewJobs()
+	s.exec(`UPDATE river_job SET state = 'running', attempt = attempt + 1, finalized_at = NULL WHERE id = $1`, id)
+	if err := s.workEvent(ctx, id); err != nil {
+		s.fatalf("reroute: %v", err)
+	}
+	s.logf("reroute: event job %d", id)
+	if n := s.reviewJobs() - total; n != 0 {
+		s.fatalf("event job %d worked again enqueued %d review jobs", id, n)
+	}
+}
+
+// rerun is a person pressing Re-run on the head's check run: routing
+// enqueues the next attempt after an incomplete review (the first with
+// none), and nothing after any other.
+func (s *sim) rerun() {
+	s.t.Helper()
+	ctx := s.t.Context()
+	want, status := args(s.e), "none"
+	var attempt int
+	err := s.st.Pool.QueryRow(ctx, `SELECT attempt, status FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3 AND caller = 'production'
+		ORDER BY attempt DESC LIMIT 1`, want.Repo, prNum, want.HeadSHA).Scan(&attempt, &status)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		want.Attempt = 1
+	case err != nil:
+		s.fatalf("latest review: %v", err)
+	default:
+		want.Attempt = attempt + 1
+	}
+	live, mine, total := s.jobs(want, true), s.jobs(want, false), s.reviewJobs()
+	payload := fmt.Sprintf(`{"action": "requested_action", "requested_action": {"identifier": %q}, "installation": {"id": %d},
+		"repository": {"full_name": %q}, "check_run": {"name": %q, "head_sha": %q, "pull_requests": [{"number": %d}]}}`,
+		gh.RerunAction, inst, s.e.fake.repo, gh.CheckName, want.HeadSHA, prNum)
+	if _, err := s.receive(ctx, s.delivery(), "check_run", payload); err != nil {
+		s.fatalf("rerun: %v", err)
+	}
+	if err := s.routeEvents(ctx); err != nil {
+		s.fatalf("rerun: %v", err)
+	}
+	added := s.reviewJobs() - total
+	s.logf("rerun: latest review %s, %d review jobs enqueued", status, added)
+	expect := 0
+	if (status == "none" || status == reviewIncomplete) && live == 0 {
+		expect = 1 // River's uniqueness skips one still live
+	}
+	if added != expect || s.jobs(want, false)-mine != added {
+		s.fatalf("Re-run after a %s review enqueued %d jobs (%d live for attempt %d)", status, added, live, want.Attempt)
+	}
+}
+
+// sweep is the sweeper (SweepWorker): it enqueues the head if no
+// production review of it exists.
+func (s *sim) sweep() {
+	s.t.Helper()
+	a := args(s.e)
+	reviewed, err := s.st.ReviewedHead(s.t.Context(), queries.ReviewedHeadParams{Repo: a.Repo, PrNumber: prNum, HeadSha: a.HeadSHA})
 	if err != nil {
-		s.fatalf("insert: %v", err)
+		s.fatalf("reviewed head: %v", err)
 	}
-	s.logf("deliver: job %d skipped=%v", res.Job.ID, res.UniqueSkippedAsDuplicate)
-	if res.UniqueSkippedAsDuplicate != (live > 0) {
-		s.fatalf("redelivery with %d live jobs: skipped=%v", live, res.UniqueSkippedAsDuplicate)
+	if !reviewed {
+		if _, err := s.river.Insert(s.t.Context(), a, nil); err != nil {
+			s.fatalf("sweep: %v", err)
+		}
 	}
+	s.logf("sweep: reviewed=%v", reviewed)
 }
 
 // duplicate is a dedupe River missed: a second job for the same args,
@@ -367,13 +601,14 @@ func (s *sim) push() {
 	s.left[s.e.fake.head] = len(s.e.fake.reviews)
 	s.e.fake.head = head
 	s.e.fake.mu.Unlock()
-	ids, err := s.route(s.t.Context(), head)
-	if err != nil {
+	cancelled := `SELECT count(*) FROM river_job WHERE kind = 'pr_review' AND state = 'cancelled'`
+	before := s.count(cancelled)
+	if err := s.deliverHead(s.t.Context(), s.delivery(), "synchronize", head); err != nil {
 		s.fatalf("route push: %v", err)
 	}
 	s.e.head = head
 	s.heads++
-	s.logf("push: head %d, cancelled jobs %v", s.heads, ids)
+	s.logf("push: head %d, %d jobs cancelled", s.heads, s.count(cancelled)-before)
 	if n := s.count(`SELECT count(*) FROM river_job WHERE kind = 'pr_review'
 		AND state NOT IN ('completed', 'cancelled', 'discarded') AND args->>'head_sha' <> $1`, head); n != 0 {
 		s.fatalf("%d jobs of an old head still open after the push", n)
@@ -381,9 +616,9 @@ func (s *sim) push() {
 }
 
 // work is River running the next available job once. With chaos, it is
-// killed at a seeded point unless this is its last attempt (a discarded
-// job is a later slice's redelivery), or else a push to a newer head may
-// land in it.
+// killed at a seeded point (on its last attempt too: the job is then
+// discarded), or a push to a newer head lands in it, or its model calls
+// fail (the review ends incomplete).
 func (s *sim) work(chaos bool) bool {
 	ctx := s.t.Context()
 	var id int64
@@ -404,20 +639,25 @@ func (s *sim) work(chaos bool) bool {
 	}
 	var kill *simKill
 	var push *simPush
+	outage := false
 	switch {
-	case chaos && row.Attempt < row.MaxAttempts && s.rnd.IntN(2) == 0:
+	case chaos && s.rnd.IntN(2) == 0:
 		kill = &simKills[s.rnd.IntN(len(simKills))]
 	case chaos && job.Args.HeadSHA == s.e.head && s.rnd.IntN(2) == 0:
 		push = &simPushes[s.rnd.IntN(len(simPushes))]
-		s.newHead = s.e.commit(s.t, nil)
+		s.newHead, s.pushID = s.e.commit(s.t, nil), s.delivery()
+	case chaos && job.Args.HeadSHA == s.e.head && s.rnd.IntN(3) == 0:
+		outage = true
 	}
+	s.outage.Store(outage)
+	defer s.outage.Store(false)
 	// River's producer cancels the context it gave Work.
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	s.e.fake.mu.Lock()
 	s.killAt, s.killed = kill, false
 	s.pushAt, s.pushed, s.started, s.cancelRun = push, false, false, cancel
-	before := supersededChecks(s.e.fake)
+	before, posts, incomplete := supersededChecks(s.e.fake), len(s.e.fake.reviews), incompleteChecks(s.e.fake)
 	s.e.fake.mu.Unlock()
 	werr := s.d.Work(ctx, job)
 	state := s.settle(row, werr)
@@ -427,12 +667,81 @@ func (s *sim) work(chaos bool) bool {
 		at = "kill " + kill.String()
 	case push != nil:
 		at = "push " + push.String()
+	case outage:
+		at = "outage"
 	}
 	s.logf("work: job %d attempt %d chaos=%s -> %s", id, row.Attempt, at, state)
-	if push != nil {
+	switch {
+	case push != nil:
 		s.superseded(*push, job.Args.HeadSHA, state, before)
+	case outage:
+		s.incomplete(job.Args, state, posts, incomplete)
+	}
+	if state == "discarded" {
+		s.abandoned(job.Args)
 	}
 	return true
+}
+
+// abandoned checks a job River discarded: its review, if it has one, was
+// recorded incomplete (so a Re-run re-runs it) unless superseded, and none
+// of its check runs is left in progress.
+func (s *sim) abandoned(a store.PRReviewArgs) {
+	s.t.Helper()
+	var id int64
+	var status string
+	err := s.st.Pool.QueryRow(s.t.Context(), `SELECT id, status FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3
+		AND attempt = $4 AND caller = 'production' ORDER BY id DESC LIMIT 1`, a.Repo, prNum, a.HeadSHA, max(a.Attempt, 1)).Scan(&id, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.logf("abandoned: no review")
+		return
+	}
+	if err != nil {
+		s.fatalf("abandoned: review row: %v", err)
+	}
+	f := s.e.fake
+	f.mu.Lock()
+	open := 0
+	for i, c := range f.checks {
+		if c["external_id"] == pipeline.CheckExternalID(id) && !f.checksDone[i+1] {
+			open++
+		}
+	}
+	f.mu.Unlock()
+	s.logf("abandoned: review %s, %d check runs in progress", status, open)
+	if status != reviewIncomplete && status != "superseded" || open != 0 {
+		s.fatalf("discarded job left its review %s with %d check runs in progress", status, open)
+	}
+}
+
+// incomplete checks a run whose model calls all failed: the job completed,
+// its review row is incomplete, nothing was posted, and its check run says
+// the review did not complete (so a person can Re-run it).
+func (s *sim) incomplete(a store.PRReviewArgs, state string, posts, checks int) {
+	s.t.Helper()
+	s.e.fake.mu.Lock()
+	posted, said := len(s.e.fake.reviews)-posts, incompleteChecks(s.e.fake)-checks
+	s.e.fake.mu.Unlock()
+	var status string
+	if err := s.st.Pool.QueryRow(s.t.Context(), `SELECT status FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3
+		AND attempt = $4 AND caller = 'production'`, a.Repo, prNum, a.HeadSHA, max(a.Attempt, 1)).Scan(&status); err != nil {
+		s.fatalf("outage: review row: %v", err)
+	}
+	if state != "completed" || status != reviewIncomplete || posted != 0 || said != 1 {
+		s.fatalf("outage: job %s, review %s, %d posts, %d incomplete checks; want completed, incomplete, 0, 1", state, status, posted, said)
+	}
+}
+
+// incompleteChecks counts check-run updates saying a review did not
+// complete; f.mu is held.
+func incompleteChecks(f *fakeGitHub) int {
+	n := 0
+	for _, u := range f.checkUpdates {
+		if out, _ := u["output"].(map[string]any); out["title"] == "Review did not complete" {
+			n++
+		}
+	}
+	return n
 }
 
 // superseded checks a run a push was armed in. If it landed, the run
@@ -483,8 +792,21 @@ func supersededChecks(f *fakeGitHub) int {
 	return n
 }
 
+// simSettle records a job's end state, as River's completer.
+const simSettle = `UPDATE river_job SET state = $2::river_job_state,
+	finalized_at = CASE WHEN $2 IN ('completed', 'cancelled', 'discarded') THEN now() END WHERE id = $1`
+
 // settle records Work's result as River's executor would.
 func (s *sim) settle(row *rivertype.JobRow, err error) string {
+	s.t.Helper()
+	state := settleState(row, err)
+	s.exec(simSettle, row.ID, state)
+	return state
+}
+
+// settleState is the state River's executor gives a job Work returned
+// err for.
+func settleState(row *rivertype.JobRow, err error) string {
 	var cancel *rivertype.JobCancelError
 	var snooze *rivertype.JobSnoozeError
 	state := "retryable"
@@ -498,13 +820,13 @@ func (s *sim) settle(row *rivertype.JobRow, err error) string {
 	case row.Attempt >= row.MaxAttempts:
 		state = "discarded"
 	}
-	s.exec(`UPDATE river_job SET state = $2::river_job_state,
-		finalized_at = CASE WHEN $2 IN ('completed', 'cancelled', 'discarded') THEN now() END WHERE id = $1`, row.ID, state)
 	return state
 }
 
 // replay is a zombie runner: one left over from an earlier dispatch
-// redeems its old nonce while its job runs again. It must get nothing.
+// redeems its old nonce while its job runs again (or, for a job River
+// cancelled or discarded, which a newer one may share a unique key with,
+// while it stays settled). It must get nothing.
 func (s *sim) replay() {
 	if len(s.tasks) == 0 {
 		s.logf("replay: no task yet")
@@ -516,7 +838,9 @@ func (s *sim) replay() {
 	if err := s.st.Pool.QueryRow(ctx, `SELECT state FROM river_job WHERE id = $1`, task.JobID).Scan(&state); err != nil {
 		s.fatalf("job %d: %v", task.JobID, err)
 	}
-	s.exec(`UPDATE river_job SET state = 'running', finalized_at = NULL WHERE id = $1`, task.JobID)
+	if state != "cancelled" && state != "discarded" {
+		s.exec(`UPDATE river_job SET state = 'running', finalized_at = NULL WHERE id = $1`, task.JobID)
+	}
 	s.e.fake.mu.Lock()
 	before := s.requests
 	s.e.fake.mu.Unlock()
@@ -524,8 +848,7 @@ func (s *sim) replay() {
 	s.e.fake.mu.Lock()
 	calls := s.requests - before
 	s.e.fake.mu.Unlock()
-	s.exec(`UPDATE river_job SET state = $2::river_job_state,
-		finalized_at = CASE WHEN $2 IN ('completed', 'cancelled', 'discarded') THEN now() END WHERE id = $1`, task.JobID, state)
+	s.exec(simSettle, task.JobID, state)
 	s.logf("replay: job %d attempt %d -> exit %d, %d GitHub calls", task.JobID, task.Attempt, exit, calls)
 	if exit != ExitCancel || calls != 0 {
 		s.fatalf("zombie runner of job %d attempt %d: exit %d after %d GitHub calls", task.JobID, task.Attempt, exit, calls)
@@ -583,24 +906,37 @@ func (s *sim) check() {
 	s.logf("check: %d comments in %d reviews, %d check runs, %d dispatches, head %d", len(posted), reviews, checks, len(s.tasks), s.heads)
 }
 
-// run plays the seed's schedule, then drains the queue with no kills.
+// run plays the seed's schedule, then the sweeper and a person's Re-run
+// of an incomplete review, then drains the queue with no chaos.
 func (s *sim) run() {
-	s.deliver()
+	s.deliver("opened")
 	s.check()
 	for s.step = 1; s.step <= simSteps; s.step++ {
 		switch p := s.rnd.IntN(100); {
-		case p < 20:
-			s.deliver()
-		case p < 35:
+		case p < 12:
+			s.deliver("synchronize")
+		case p < 17:
+			s.redeliver()
+		case p < 21:
+			s.reroute()
+		case p < 28:
+			s.rerun()
+		case p < 38:
 			s.duplicate()
-		case p < 45:
+		case p < 46:
 			s.push()
-		case p < 85:
+		case p < 88:
 			s.work(true)
 		default:
 			s.replay()
 		}
 		s.check()
+	}
+	s.sweep()
+	// The check run of an incomplete review asks for a Re-run.
+	if s.count(`SELECT count(*) FROM reviews WHERE id = (SELECT max(id) FROM reviews WHERE head_sha = $1 AND caller = 'production')
+		AND status = $2`, s.e.head, reviewIncomplete) == 1 {
+		s.rerun()
 	}
 	for s.work(false) {
 		s.check()
@@ -641,9 +977,9 @@ func TestWorkerSim(t *testing.T) {
 // TestWorkerSimReproduces checks a seed replays step for step, so a
 // failing seed reproduces.
 func TestWorkerSimReproduces(t *testing.T) {
-	a, b := simulate(t, simSeeds[0]), simulate(t, simSeeds[0])
+	a, b := simulate(t, simBusySeed), simulate(t, simBusySeed)
 	if !slices.Equal(a, b) {
-		t.Errorf("seed %d diverged:\n%s\n---\n%s", simSeeds[0], strings.Join(a, "\n"), strings.Join(b, "\n"))
+		t.Errorf("seed %d diverged:\n%s\n---\n%s", simBusySeed, strings.Join(a, "\n"), strings.Join(b, "\n"))
 	}
 }
 
