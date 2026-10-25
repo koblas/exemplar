@@ -15,6 +15,9 @@ The scaffolding provides guidance, not an executable service or Kubernetes chart
 Skills live under `skills/<name>/SKILL.md` and can also load automatically when
 their descriptions match a request. The review skill is manually invoked.
 
+Path-scoped coding rules live under `rules/` and load when Claude works on
+matching files: `rules/go-code.md` covers time and clocks in Go code and tests.
+
 ## Permissions
 
 Shared settings pre-approve Go checks, formatting, and selected Git inspection.

@@ -209,13 +209,10 @@ func TestSweepWorker(t *testing.T) {
 		if res, err := client.Insert(ctx, SweepArgs{}, nil); err != nil || res.UniqueSkippedAsDuplicate {
 			t.Fatalf("insert sweep = %+v, %v", res, err)
 		}
-		select {
-		case ev := <-events:
-			if ev.Kind != river.EventKindJobCompleted {
-				t.Fatalf("sweep %s: %v", ev.Kind, ev.Job.Errors)
-			}
-		case <-time.After(30 * time.Second):
-			t.Fatal("sweep did not finish")
+		// River's listener sits in a network read, so this test cannot run
+		// in a synctest bubble; go test -timeout bounds the wait.
+		if ev := <-events; ev.Kind != river.EventKindJobCompleted {
+			t.Fatalf("sweep %s: %v", ev.Kind, ev.Job.Errors)
 		}
 	}
 	res, err := client.JobList(ctx, river.NewJobListParams().Kinds("pr_review").States(rivertype.JobStateAvailable))

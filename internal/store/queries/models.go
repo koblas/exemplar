@@ -529,6 +529,7 @@ type Review struct {
 	AgentReads       []string
 	Round            *int32
 	RoundCapped      bool
+	CheckoutBytes    *int64
 }
 
 type ReviewDailyStat struct {

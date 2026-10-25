@@ -66,6 +66,10 @@ The worker (control), gateway, search and learn pods read `exemplar-config` from
 | `--runner-template` | `exemplar-runner` | The PodTemplate runner Jobs are made from (`kubernetes` only) |
 | `--concurrency` | `4` | `pr_review` jobs at once per worker pod: reviews in this process, or runner Jobs in flight when there is no runner quota |
 | `--runner-quota` | `0` (none) | `kubernetes` only. Runners in flight across every worker pod, reviews, evaluations and playground runs together. Each pod then takes up to this many `pr_review` jobs, so one pod can fan out to the whole quota. The core manifests set `8`; the quickstart overlays set `0` |
+| `--runner-disk-min` | `2Gi` | `kubernetes` only. The smallest checkout volume a runner Job is sized to |
+| `--runner-disk-max` | `50Gi` | `kubernetes` only. The largest checkout volume a runner Job is sized to |
+
+A runner's checkout is on the `work` volume, a generic ephemeral volume of its own pod: a PersistentVolumeClaim from the cluster's default StorageClass, made with the pod and deleted with it. Every review records its checkout's size (`reviews.checkout_bytes`); a review's runner Job then requests twice the largest of its repository's last 20 checkouts plus 1 GiB, rounded up to a GiB and kept within `--runner-disk-min` and `--runner-disk-max`. A repository with no recorded checkout, and every evaluation and playground run, gets the template's 8 GiB. An overlay that makes `work` an `emptyDir` instead gets the same size as its `sizeLimit`. The runner container's own ephemeral storage (1 GiB request, 4 GiB limit) covers `/tmp` and logs.
 
 With a runner quota, a job takes one of the quota's slots (Postgres advisory locks, like the per-repo slots, so they hold across worker pods) before its runner launches and keeps it until the runner ends. When every slot is held, the job waits 20 s without using an attempt, and the worker logs `runner quota reached; waiting`. Each held slot is one more Postgres connection on the worker pod.
 

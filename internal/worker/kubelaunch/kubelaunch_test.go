@@ -5,12 +5,14 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -34,12 +36,20 @@ func template() *corev1.PodTemplate {
 					Name: RunnerTarget, Image: "exemplar", Command: []string{"/usr/local/bin/exemplar-worker"},
 					Args: []string{"--work-dir=/var/lib/exemplar/work"},
 				}},
+				Volumes: []corev1.Volume{{Name: WorkVolume, Ephemeral: &corev1.EphemeralVolumeSource{
+					VolumeClaimTemplate: &corev1.PersistentVolumeClaimTemplate{Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("8Gi")}},
+					}},
+				}}},
 			},
 		},
 	}
 }
 
-// cluster is a fake API server with a hand-driven Job controller.
+// cluster is a fake API server with a hand-driven Job controller. Tests
+// build it inside a synctest bubble, so the launcher's polls, grace and
+// replace waits run at their default lengths in fake time.
 type cluster struct {
 	t      *testing.T
 	client *fake.Clientset
@@ -49,24 +59,22 @@ type cluster struct {
 func newCluster(t *testing.T) *cluster {
 	t.Helper()
 	client := fake.NewClientset(template())
-	l, err := New(t.Context(), Config{
-		Client: client, Namespace: ns, Poll: time.Millisecond,
-		CancelGrace: 50 * time.Millisecond, ReplaceWait: 50 * time.Millisecond,
-	})
+	l, err := New(t.Context(), Config{Client: client, Namespace: ns})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return &cluster{t: t, client: client, l: l}
 }
 
-// waitJob waits for the Job named name to exist.
+// waitJob waits, in bubble time, for the Job named name to exist.
 func (c *cluster) waitJob(name string) *batchv1.Job {
 	c.t.Helper()
-	for range 5000 {
+	for range 100 {
+		synctest.Wait()
 		if j, err := c.client.BatchV1().Jobs(ns).Get(context.Background(), name, metav1.GetOptions{}); err == nil {
 			return j
 		}
-		time.Sleep(time.Millisecond)
+		time.Sleep(DefaultPoll)
 	}
 	c.t.Fatalf("job %s never created", name)
 	return nil
@@ -122,32 +130,34 @@ func task(id int64, attempt int) worker.Task {
 
 func TestJobSpec(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
-	tk := task(7, 2)
-	res := c.launch(t.Context(), tk)
-	j := c.waitJob("exemplar-runner-7-2")
-	c.finish(j.Name, new(int32(0)))
-	if r := <-res; r.exit != worker.ExitDone || r.err != nil {
-		t.Fatalf("launch = %+v", r)
-	}
-	s := j.Spec
-	if *s.BackoffLimit != 0 || *s.ActiveDeadlineSeconds != int64((worker.ReviewTimeout+deadlineMargin)/time.Second) || *s.TTLSecondsAfterFinished != finishedTTL {
-		t.Errorf("job spec = backoff %d deadline %d ttl %d", *s.BackoffLimit, *s.ActiveDeadlineSeconds, *s.TTLSecondsAfterFinished)
-	}
-	if j.Labels[LabelRiver] != "7" || s.Template.Labels[LabelRiver] != "7" || s.Template.Labels[LabelName] != RunnerName || s.Template.Labels[LabelKind] != "pr_review" {
-		t.Errorf("labels = %v / %v", j.Labels, s.Template.Labels)
-	}
-	want := []string{"run-job", "--job=7", "--config-version=abc123", "--work-dir=/var/lib/exemplar/work"}
-	if got := s.Template.Spec.Containers[0].Args; !slices.Equal(got, want) || s.Template.Spec.RestartPolicy != corev1.RestartPolicyNever {
-		t.Errorf("runner args = %v, restart %s", got, s.Template.Spec.RestartPolicy)
-	}
-	if env := s.Template.Spec.Containers[0].Env; len(env) != 1 || env[0].Name != NonceEnv || env[0].Value != "n0nce" {
-		t.Errorf("runner env = %v", env)
-	}
-	// The template itself is untouched.
-	if got := c.l.tmpl.Spec.Containers[0].Args; len(got) != 1 {
-		t.Errorf("template args = %v", got)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		c := newCluster(t)
+		tk := task(7, 2)
+		res := c.launch(t.Context(), tk)
+		j := c.waitJob("exemplar-runner-7-2")
+		c.finish(j.Name, new(int32(0)))
+		if r := <-res; r.exit != worker.ExitDone || r.err != nil {
+			t.Fatalf("launch = %+v", r)
+		}
+		s := j.Spec
+		if *s.BackoffLimit != 0 || *s.ActiveDeadlineSeconds != int64((worker.ReviewTimeout+deadlineMargin)/time.Second) || *s.TTLSecondsAfterFinished != finishedTTL {
+			t.Errorf("job spec = backoff %d deadline %d ttl %d", *s.BackoffLimit, *s.ActiveDeadlineSeconds, *s.TTLSecondsAfterFinished)
+		}
+		if j.Labels[LabelRiver] != "7" || s.Template.Labels[LabelRiver] != "7" || s.Template.Labels[LabelName] != RunnerName || s.Template.Labels[LabelKind] != "pr_review" {
+			t.Errorf("labels = %v / %v", j.Labels, s.Template.Labels)
+		}
+		want := []string{"run-job", "--job=7", "--config-version=abc123", "--work-dir=/var/lib/exemplar/work"}
+		if got := s.Template.Spec.Containers[0].Args; !slices.Equal(got, want) || s.Template.Spec.RestartPolicy != corev1.RestartPolicyNever {
+			t.Errorf("runner args = %v, restart %s", got, s.Template.Spec.RestartPolicy)
+		}
+		if env := s.Template.Spec.Containers[0].Env; len(env) != 1 || env[0].Name != NonceEnv || env[0].Value != "n0nce" {
+			t.Errorf("runner env = %v", env)
+		}
+		// The template itself is untouched.
+		if got := c.l.tmpl.Spec.Containers[0].Args; len(got) != 1 {
+			t.Errorf("template args = %v", got)
+		}
+	})
 }
 
 func TestExitCodes(t *testing.T) {
@@ -165,12 +175,14 @@ func TestExitCodes(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			c := newCluster(t)
-			res := c.launch(t.Context(), task(1, 1))
-			c.finish(c.waitJob("exemplar-runner-1-1").Name, tc.code)
-			if r := <-res; r.exit != tc.want || r.err != nil {
-				t.Errorf("launch = %+v, want %d", r, tc.want)
-			}
+			synctest.Test(t, func(t *testing.T) {
+				c := newCluster(t)
+				res := c.launch(t.Context(), task(1, 1))
+				c.finish(c.waitJob("exemplar-runner-1-1").Name, tc.code)
+				if r := <-res; r.exit != tc.want || r.err != nil {
+					t.Errorf("launch = %+v, want %d", r, tc.want)
+				}
+			})
 		})
 	}
 }
@@ -179,101 +191,113 @@ func TestExitCodes(t *testing.T) {
 // earlier Job of the same River job, so two runners never overlap.
 func TestEarlierJobDeleted(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
-	old := c.l.job(task(9, 1))
-	if _, err := c.client.BatchV1().Jobs(ns).Create(t.Context(), old, metav1.CreateOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	other := c.l.job(task(10, 1))
-	if _, err := c.client.BatchV1().Jobs(ns).Create(t.Context(), other, metav1.CreateOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	res := c.launch(t.Context(), task(9, 2))
-	c.finish(c.waitJob("exemplar-runner-9-2").Name, new(int32(0)))
-	if r := <-res; r.exit != worker.ExitDone || r.err != nil {
-		t.Fatalf("launch = %+v", r)
-	}
-	if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), old.Name, metav1.GetOptions{}); err == nil {
-		t.Error("the earlier runner still exists")
-	}
-	if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), other.Name, metav1.GetOptions{}); err != nil {
-		t.Errorf("another job's runner was touched: %v", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		c := newCluster(t)
+		old := c.l.job(task(9, 1))
+		if _, err := c.client.BatchV1().Jobs(ns).Create(t.Context(), old, metav1.CreateOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		other := c.l.job(task(10, 1))
+		if _, err := c.client.BatchV1().Jobs(ns).Create(t.Context(), other, metav1.CreateOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		res := c.launch(t.Context(), task(9, 2))
+		c.finish(c.waitJob("exemplar-runner-9-2").Name, new(int32(0)))
+		if r := <-res; r.exit != worker.ExitDone || r.err != nil {
+			t.Fatalf("launch = %+v", r)
+		}
+		if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), old.Name, metav1.GetOptions{}); err == nil {
+			t.Error("the earlier runner still exists")
+		}
+		if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), other.Name, metav1.GetOptions{}); err != nil {
+			t.Errorf("another job's runner was touched: %v", err)
+		}
+	})
 }
 
 // An earlier Job that does not go in time leaves the task snoozed.
 func TestEarlierJobStuck(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
-	if _, err := c.client.BatchV1().Jobs(ns).Create(t.Context(), c.l.job(task(9, 1)), metav1.CreateOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	c.client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) { return true, nil, nil })
-	exit, err := c.l.Launch(t.Context(), task(9, 2))
-	if !errors.Is(err, worker.ErrNoCapacity) || exit != worker.ExitError {
-		t.Fatalf("launch = %d, %v", exit, err)
-	}
-	if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), "exemplar-runner-9-2", metav1.GetOptions{}); err == nil {
-		t.Error("started beside a running runner")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		c := newCluster(t)
+		if _, err := c.client.BatchV1().Jobs(ns).Create(t.Context(), c.l.job(task(9, 1)), metav1.CreateOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		c.client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) { return true, nil, nil })
+		exit, err := c.l.Launch(t.Context(), task(9, 2))
+		if !errors.Is(err, worker.ErrNoCapacity) || exit != worker.ExitError {
+			t.Fatalf("launch = %d, %v", exit, err)
+		}
+		if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), "exemplar-runner-9-2", metav1.GetOptions{}); err == nil {
+			t.Error("started beside a running runner")
+		}
+	})
 }
 
 func TestCancel(t *testing.T) {
 	t.Parallel()
 	t.Run("superseded runner stops itself", func(t *testing.T) {
 		t.Parallel()
-		c := newCluster(t)
-		ctx, cancel := context.WithCancelCause(t.Context())
-		res := c.launch(ctx, task(3, 1))
-		name := c.waitJob("exemplar-runner-3-1").Name
-		cancel(rivertype.ErrJobCancelledRemotely)
-		c.finish(name, new(int32(worker.ExitSuperseded)))
-		if r := <-res; r.exit != worker.ExitSuperseded || r.err != nil {
-			t.Errorf("launch = %+v", r)
-		}
+		synctest.Test(t, func(t *testing.T) {
+			c := newCluster(t)
+			ctx, cancel := context.WithCancelCause(t.Context())
+			res := c.launch(ctx, task(3, 1))
+			name := c.waitJob("exemplar-runner-3-1").Name
+			cancel(rivertype.ErrJobCancelledRemotely)
+			c.finish(name, new(int32(worker.ExitSuperseded)))
+			if r := <-res; r.exit != worker.ExitSuperseded || r.err != nil {
+				t.Errorf("launch = %+v", r)
+			}
+		})
 	})
 	t.Run("superseded runner past its grace is deleted", func(t *testing.T) {
 		t.Parallel()
-		c := newCluster(t)
-		ctx, cancel := context.WithCancelCause(t.Context())
-		res := c.launch(ctx, task(4, 1))
-		name := c.waitJob("exemplar-runner-4-1").Name
-		cancel(rivertype.ErrJobCancelledRemotely)
-		r := <-res
-		if r.err == nil || r.exit != worker.ExitError {
-			t.Errorf("launch = %+v", r)
-		}
-		if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), name, metav1.GetOptions{}); err == nil {
-			t.Error("cancelled runner not deleted")
-		}
+		synctest.Test(t, func(t *testing.T) {
+			c := newCluster(t)
+			ctx, cancel := context.WithCancelCause(t.Context())
+			res := c.launch(ctx, task(4, 1))
+			name := c.waitJob("exemplar-runner-4-1").Name
+			cancel(rivertype.ErrJobCancelledRemotely)
+			r := <-res
+			if r.err == nil || r.exit != worker.ExitError {
+				t.Errorf("launch = %+v", r)
+			}
+			if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), name, metav1.GetOptions{}); err == nil {
+				t.Error("cancelled runner not deleted")
+			}
+		})
 	})
 	t.Run("timed out runner is deleted", func(t *testing.T) {
 		t.Parallel()
-		c := newCluster(t)
-		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-		defer cancel()
-		res := c.launch(ctx, task(6, 1))
-		name := c.waitJob("exemplar-runner-6-1").Name
-		if r := <-res; !errors.Is(r.err, context.DeadlineExceeded) {
-			t.Errorf("launch = %+v", r)
-		}
-		if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), name, metav1.GetOptions{}); err == nil {
-			t.Error("timed-out runner not deleted")
-		}
+		synctest.Test(t, func(t *testing.T) {
+			c := newCluster(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+			defer cancel()
+			res := c.launch(ctx, task(6, 1))
+			name := c.waitJob("exemplar-runner-6-1").Name
+			if r := <-res; !errors.Is(r.err, context.DeadlineExceeded) {
+				t.Errorf("launch = %+v", r)
+			}
+			if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), name, metav1.GetOptions{}); err == nil {
+				t.Error("timed-out runner not deleted")
+			}
+		})
 	})
 	t.Run("control stopping leaves the runner", func(t *testing.T) {
 		t.Parallel()
-		c := newCluster(t)
-		ctx, cancel := context.WithCancel(t.Context())
-		res := c.launch(ctx, task(5, 1))
-		name := c.waitJob("exemplar-runner-5-1").Name
-		cancel()
-		if r := <-res; !errors.Is(r.err, context.Canceled) {
-			t.Errorf("launch = %+v", r)
-		}
-		if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), name, metav1.GetOptions{}); err != nil {
-			t.Errorf("runner deleted on shutdown: %v", err)
-		}
+		synctest.Test(t, func(t *testing.T) {
+			c := newCluster(t)
+			ctx, cancel := context.WithCancel(t.Context())
+			res := c.launch(ctx, task(5, 1))
+			name := c.waitJob("exemplar-runner-5-1").Name
+			cancel()
+			if r := <-res; !errors.Is(r.err, context.Canceled) {
+				t.Errorf("launch = %+v", r)
+			}
+			if _, err := c.client.BatchV1().Jobs(ns).Get(t.Context(), name, metav1.GetOptions{}); err != nil {
+				t.Errorf("runner deleted on shutdown: %v", err)
+			}
+		})
 	})
 }
 
@@ -287,12 +311,67 @@ func TestNewChecksTemplate(t *testing.T) {
 	if _, err := New(t.Context(), Config{Client: fake.NewClientset(bad), Namespace: ns}); !errors.Is(err, errNoTemplate) {
 		t.Errorf("template without a runner container = %v", err)
 	}
+	noWork := template()
+	noWork.Template.Spec.Volumes = nil
+	if _, err := New(t.Context(), Config{Client: fake.NewClientset(noWork), Namespace: ns}); !errors.Is(err, errNoTemplate) {
+		t.Errorf("template without a work volume = %v", err)
+	}
+}
+
+// A job's checkout volume is sized for it (spec §2.4.2 C6): the ephemeral
+// volume's request, or an emptyDir's limit; 0 keeps the template's.
+func TestWorkVolumeSize(t *testing.T) {
+	t.Parallel()
+	c := newCluster(t)
+	storage := func(j *batchv1.Job) string {
+		v := workVolume(j.Spec.Template.Spec.Volumes)
+		if v.Ephemeral != nil {
+			q := v.Ephemeral.VolumeClaimTemplate.Spec.Resources.Requests[corev1.ResourceStorage]
+			return q.String()
+		}
+		return v.EmptyDir.SizeLimit.String()
+	}
+	if got := storage(c.l.job(worker.Task{JobID: 1, WorkDisk: 7 << 30})); got != "7Gi" {
+		t.Errorf("sized = %s", got)
+	}
+	if got := storage(c.l.job(worker.Task{JobID: 2})); got != "8Gi" {
+		t.Errorf("unsized = %s", got)
+	}
+	// The template is not changed by a sized job.
+	if got := storage(c.l.job(worker.Task{JobID: 3})); got != "8Gi" {
+		t.Errorf("template after a sized job = %s", got)
+	}
+	empty := template()
+	empty.Template.Spec.Volumes = []corev1.Volume{{Name: WorkVolume, EmptyDir: &corev1.EmptyDirVolumeSource{}}}
+	l, err := New(t.Context(), Config{Client: fake.NewClientset(empty), Namespace: ns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := storage(l.job(worker.Task{JobID: 4, WorkDisk: 3 << 30})); got != "3Gi" {
+		t.Errorf("emptyDir = %s", got)
+	}
 }
 
 // fakeRunner is an in-process runner that exits as told.
 type fakeRunner struct{ exit worker.Exit }
 
 func (f fakeRunner) Run(context.Context, int64, string, string) worker.Exit { return f.exit }
+
+// conformanceLauncher returns the launcher named name whose runner exits
+// with exit; the kubernetes one finishes its Job as that runner would.
+func conformanceLauncher(t *testing.T, name string, exit worker.Exit) worker.Launcher {
+	t.Helper()
+	if name == "in-process" {
+		return worker.InProcess{Runner: fakeRunner{exit}}
+	}
+	c := newCluster(t)
+	go func() {
+		name := c.waitJob(JobName(task(1, 1))).Name
+		code := int32(exit)
+		c.finish(name, &code)
+	}()
+	return c.l
+}
 
 // TestConformance runs the same runner outcomes through the dispatcher on
 // both launchers: River sees the same result whichever runs the review.
@@ -314,37 +393,24 @@ func TestConformance(t *testing.T) {
 			return err != nil && !errors.As(err, &c)
 		}},
 	}
-	launchers := map[string]func(t *testing.T, exit worker.Exit) worker.Launcher{
-		"in-process": func(_ *testing.T, exit worker.Exit) worker.Launcher {
-			return worker.InProcess{Runner: fakeRunner{exit}}
-		},
-		"kubernetes": func(t *testing.T, exit worker.Exit) worker.Launcher {
-			t.Helper()
-			c := newCluster(t)
-			go func() {
-				name := c.waitJob(JobName(task(1, 1))).Name
-				code := int32(exit)
-				c.finish(name, &code)
-			}()
-			return c.l
-		},
-	}
-	for lname, mk := range launchers {
+	for _, lname := range []string{"in-process", "kubernetes"} {
 		for oname, o := range outcomes {
 			t.Run(lname+"/"+oname, func(t *testing.T) {
 				t.Parallel()
-				d, err := worker.NewReviewDispatcher(worker.DispatchConfig{
-					Launcher: mk(t, o.exit), Snapshot: func(context.Context) (*config.Snapshot, error) { return snap, nil },
+				synctest.Test(t, func(t *testing.T) {
+					d, err := worker.NewReviewDispatcher(worker.DispatchConfig{
+						Launcher: conformanceLauncher(t, lname, o.exit), Snapshot: func(context.Context) (*config.Snapshot, error) { return snap, nil },
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					err = d.Work(t.Context(), &river.Job[store.PRReviewArgs]{
+						JobRow: &rivertype.JobRow{ID: 1, Kind: "pr_review", Attempt: 1}, Args: store.PRReviewArgs{Repo: "acme/app"},
+					})
+					if !o.want(err) {
+						t.Errorf("work = %v", err)
+					}
 				})
-				if err != nil {
-					t.Fatal(err)
-				}
-				err = d.Work(t.Context(), &river.Job[store.PRReviewArgs]{
-					JobRow: &rivertype.JobRow{ID: 1, Kind: "pr_review", Attempt: 1}, Args: store.PRReviewArgs{Repo: "acme/app"},
-				})
-				if !o.want(err) {
-					t.Errorf("work = %v", err)
-				}
 			})
 		}
 	}

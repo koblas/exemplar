@@ -48,7 +48,7 @@ INSERT INTO reviews (repo, pr_number, head_sha, base_sha, prev_review_id, config
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9)
 ON CONFLICT (repo, pr_number, head_sha, config_version, caller, attempt)
 DO UPDATE SET repo = EXCLUDED.repo
-RETURNING id, repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, coverage, degraded, shed, incomplete_reason, verdict, bug_lane, cost_usd, started_at, finished_at, attempt, agent, agent_reads, round, round_capped
+RETURNING id, repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, coverage, degraded, shed, incomplete_reason, verdict, bug_lane, cost_usd, started_at, finished_at, attempt, agent, agent_reads, round, round_capped, checkout_bytes
 `
 
 type CreateReviewParams struct {
@@ -102,6 +102,7 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		&i.AgentReads,
 		&i.Round,
 		&i.RoundCapped,
+		&i.CheckoutBytes,
 	)
 	return i, err
 }
@@ -178,7 +179,7 @@ func (q *Queries) GetGHEvent(ctx context.Context, deliveryID uuid.UUID) (GhEvent
 }
 
 const getReview = `-- name: GetReview :one
-SELECT id, repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, coverage, degraded, shed, incomplete_reason, verdict, bug_lane, cost_usd, started_at, finished_at, attempt, agent, agent_reads, round, round_capped FROM reviews WHERE id = $1
+SELECT id, repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, coverage, degraded, shed, incomplete_reason, verdict, bug_lane, cost_usd, started_at, finished_at, attempt, agent, agent_reads, round, round_capped, checkout_bytes FROM reviews WHERE id = $1
 `
 
 func (q *Queries) GetReview(ctx context.Context, id int64) (Review, error) {
@@ -209,6 +210,7 @@ func (q *Queries) GetReview(ctx context.Context, id int64) (Review, error) {
 		&i.AgentReads,
 		&i.Round,
 		&i.RoundCapped,
+		&i.CheckoutBytes,
 	)
 	return i, err
 }
@@ -344,6 +346,22 @@ func (q *Queries) RecordRoundReset(ctx context.Context, arg RecordRoundResetPara
 	return err
 }
 
+const repoCheckoutBytes = `-- name: RepoCheckoutBytes :one
+SELECT coalesce(max(checkout_bytes), 0)::bigint AS bytes FROM (
+  SELECT checkout_bytes FROM reviews WHERE repo = $1 AND checkout_bytes IS NOT NULL
+  ORDER BY id DESC LIMIT 20
+) recent
+`
+
+// The largest checkout of the repo's last 20 reviews that recorded one;
+// 0 for a repo with none recorded yet.
+func (q *Queries) RepoCheckoutBytes(ctx context.Context, repo string) (int64, error) {
+	row := q.db.QueryRow(ctx, repoCheckoutBytes, repo)
+	var bytes int64
+	err := row.Scan(&bytes)
+	return bytes, err
+}
+
 const reviewedHead = `-- name: ReviewedHead :one
 SELECT EXISTS (
   SELECT 1 FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3 AND caller = 'production'
@@ -392,6 +410,20 @@ func (q *Queries) RoundState(ctx context.Context, arg RoundStateParams) (RoundSt
 	var i RoundStateRow
 	err := row.Scan(&i.SinceReset, &i.LastRound)
 	return i, err
+}
+
+const setCheckoutBytes = `-- name: SetCheckoutBytes :exec
+UPDATE reviews SET checkout_bytes = $1 WHERE id = $2
+`
+
+type SetCheckoutBytesParams struct {
+	CheckoutBytes *int64
+	ID            int64
+}
+
+func (q *Queries) SetCheckoutBytes(ctx context.Context, arg SetCheckoutBytesParams) error {
+	_, err := q.db.Exec(ctx, setCheckoutBytes, arg.CheckoutBytes, arg.ID)
+	return err
 }
 
 const setReviewRound = `-- name: SetReviewRound :exec

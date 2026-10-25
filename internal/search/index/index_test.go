@@ -180,7 +180,7 @@ func TestBuildAndSearch(t *testing.T) {
 		t.Errorf("new content = %v", paths(res))
 	}
 	// The old generation is removed once released.
-	waitGone(t, filepath.Join(f.cfg.Root, "acme", "app", genName(1)))
+	waitGone(t, f.ix, filepath.Join(f.cfg.Root, "acme", "app", genName(1)))
 
 	// After a day, the next build is full.
 	f.age("acme/app", FullEvery+time.Minute)
@@ -193,17 +193,13 @@ func TestBuildAndSearch(t *testing.T) {
 	}
 }
 
-func waitGone(t *testing.T, p string) {
+// waitGone waits for superseded generations to be retired, then checks
+// that p is gone.
+func waitGone(t *testing.T, ix *Index, p string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(p); os.IsNotExist(err) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%s still exists", p)
-		}
-		time.Sleep(10 * time.Millisecond)
+	ix.retire.Wait()
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatalf("%s still exists: %v", p, err)
 	}
 }
 

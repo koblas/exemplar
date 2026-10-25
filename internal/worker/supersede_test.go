@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
@@ -81,11 +80,9 @@ func TestRunningReviewCancelled(t *testing.T) {
 	if _, err := client.Insert(ctx, args(e), nil); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-model.started:
-	case <-time.After(30 * time.Second):
-		t.Fatal("review never reached the model")
-	}
+	// River's listener sits in a network read, so this test cannot run in
+	// a synctest bubble; go test -timeout bounds these waits.
+	<-model.started
 
 	// A push to a new head: cancel every other head's review.
 	err = st.InTx(ctx, func(tx pgx.Tx, _ *queries.Queries) error {
@@ -99,13 +96,8 @@ func TestRunningReviewCancelled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case ev := <-events:
-		if ev.Kind != river.EventKindJobCancelled {
-			t.Fatalf("job %s: %v", ev.Kind, ev.Job.Errors)
-		}
-	case <-time.After(30 * time.Second):
-		t.Fatal("review was not cancelled")
+	if ev := <-events; ev.Kind != river.EventKindJobCancelled {
+		t.Fatalf("job %s: %v", ev.Kind, ev.Job.Errors)
 	}
 	var status string
 	if err := st.Pool.QueryRow(ctx, `SELECT status FROM reviews WHERE repo = $1 AND pr_number = $2`, repo, prNum).Scan(&status); err != nil {

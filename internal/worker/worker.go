@@ -258,6 +258,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	if err != nil {
 		return out, fmt.Errorf("checkout: %w", err)
 	}
+	checkoutBytes := dirBytes(ws.Dir)
 	headRepo := pr.HeadRepo
 	if headRepo == "" {
 		headRepo = deletedFork // the fork was deleted: still a fork
@@ -288,6 +289,12 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	rec.Links = w.cfg.Links
 	rec.LinkBase = strings.TrimSuffix(w.cfg.CloneURL(a.Repo), ".git")
 	out.ReviewID = rec.ReviewID
+	if w.cfg.Store != nil && checkoutBytes > 0 {
+		// Sizes the repo's next runner volumes (spec §2.4.2 C6).
+		if err := w.cfg.Store.SetCheckoutBytes(ctx, queries.SetCheckoutBytesParams{ID: rec.ReviewID, CheckoutBytes: &checkoutBytes}); err != nil {
+			w.cfg.Log.Warn("recording the checkout size failed", "repo", a.Repo, "review_id", rec.ReviewID, "err", err)
+		}
+	}
 	// A shadow repo is reviewed in full and stored, but
 	// nothing is written to its PRs: no check run, comments, replies or
 	// approval. Revoking an earlier Exemplar approval (above) still happens.

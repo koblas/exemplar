@@ -2,7 +2,8 @@
 // (River, routing, the cheap queues and the periodic jobs) and dispatches
 // each review to a runner; run-job is one runner.
 //
-//	exemplar-worker serve --config DIR --work-dir /var/lib/exemplar/work [--addr :8080] [--concurrency 4] [--launcher in-process|kubernetes] [--runner-quota N]
+//	exemplar-worker serve --config DIR --work-dir /var/lib/exemplar/work [--addr :8080] [--concurrency 4] [--launcher in-process|kubernetes]
+//	                      [--runner-quota N] [--runner-disk-min 2Gi --runner-disk-max 50Gi]
 //	exemplar-worker run-job --job ID --config-version V --work-dir /var/lib/exemplar/work
 //	exemplar-worker enqueue --repo org/repo --pr 123 --head SHA --installation ID
 //
@@ -66,6 +67,7 @@ import (
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/envcfg"
@@ -83,6 +85,7 @@ var (
 	errBadConcurrency = errors.New("--concurrency must be at least 1")
 	errBadLauncher    = errors.New("--launcher must be in-process or kubernetes")
 	errBadQuota       = errors.New("--runner-quota must be 0 (none) or more, and needs --launcher=kubernetes")
+	errBadDisk        = errors.New("--runner-disk-min and --runner-disk-max must be sizes above 0, min at most max")
 )
 
 func main() {
@@ -120,6 +123,22 @@ func reviewWorkers(concurrency, quota int) int {
 	return concurrency
 }
 
+// diskBounds parses the runner volume bounds (Kubernetes quantities).
+func diskBounds(minSize, maxSize string) (worker.DiskSizing, error) {
+	lo, err := resource.ParseQuantity(minSize)
+	if err != nil {
+		return worker.DiskSizing{}, fmt.Errorf("%w: %w", errBadDisk, err)
+	}
+	hi, err := resource.ParseQuantity(maxSize)
+	if err != nil {
+		return worker.DiskSizing{}, fmt.Errorf("%w: %w", errBadDisk, err)
+	}
+	if lo.Value() <= 0 || hi.Value() < lo.Value() {
+		return worker.DiskSizing{}, errBadDisk
+	}
+	return worker.DiskSizing{Min: lo.Value(), Max: hi.Value()}, nil
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: exemplar-worker serve|run-job|enqueue [flags]")
 	os.Exit(2)
@@ -133,6 +152,8 @@ func runServe(args []string) error {
 	concurrency := fs.Int("concurrency", 4, "reviews run at once: in this process, or as runners in flight")
 	launcherName := fs.String("launcher", launcherInProcess, "where reviews run: in-process, or kubernetes (a Job per review)")
 	runnerTemplate := fs.String("runner-template", kubelaunch.RunnerName, "the PodTemplate runner Jobs are made from (--launcher=kubernetes)")
+	diskMin := fs.String("runner-disk-min", "2Gi", "smallest checkout volume a runner Job is sized to (--launcher=kubernetes)")
+	diskMax := fs.String("runner-disk-max", "50Gi", "largest checkout volume a runner Job is sized to (--launcher=kubernetes)")
 	quota := fs.Int("runner-quota", 0, "runners in flight across every control replica, 0 for no quota (--launcher=kubernetes); each replica then takes up to this many reviews")
 	platformTeam := fs.String("platform-team", "@platform/devex", "team that may take every web UI owner action")
 	reload := fs.Duration("reload", time.Minute, "how often to re-read --config")
@@ -154,6 +175,10 @@ func runServe(args []string) error {
 		return errBadQuota
 	}
 	reviewSlots := reviewWorkers(*concurrency, *quota)
+	disk, err := diskBounds(*diskMin, *diskMax)
+	if err != nil {
+		return err
+	}
 	env, err := envFromOS(true)
 	if err != nil {
 		return err
@@ -254,6 +279,19 @@ func runServe(args []string) error {
 		Granter:     &worker.Granter{Minter: app, Store: st, ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO")},
 		Abandon:     worker.Abandoner{Store: st, GitHub: wcfg.GitHub, Log: log}.Abandon,
 		RunnerQuota: *quota,
+	}
+	if *launcherName == launcherKubernetes {
+		// Size each review's checkout volume from its repo's recorded
+		// checkouts (spec §2.4.2 C6).
+		disk.Known = func(ctx context.Context, repo string) int64 {
+			n, err := st.RepoCheckoutBytes(ctx, repo)
+			if err != nil {
+				log.Warn("reading the repo's checkout size failed; the runner gets the template's volume", "repo", repo, "err", err)
+				return 0
+			}
+			return n
+		}
+		dcfg.Disk = &disk
 	}
 	reviews, err := worker.NewReviewDispatcher(dcfg)
 	if err != nil {

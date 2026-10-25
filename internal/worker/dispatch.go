@@ -35,6 +35,8 @@ type Dispatcher[T river.JobArgs] struct {
 	// slots (in quotaSlots) while its runner is in flight.
 	quota      int
 	quotaSlots *Slots
+	// disk, when set, sizes the runner's checkout volume for the job.
+	disk func(context.Context, T) int64
 	// grant is the job's tokens; claims holds them for the runner. Both
 	// nil only in tests, where the runner uses its own GitHub.
 	grant  func(context.Context, T, *config.Snapshot) (Grant, error)
@@ -62,7 +64,10 @@ type DispatchConfig struct {
 	// RunnerQuota, when above 0, caps runners in flight across every
 	// control replica (serve --runner-quota); it needs Store.
 	RunnerQuota int
-	Log         *slog.Logger
+	// Disk, when set, sizes each review's checkout volume from its repo's
+	// recorded checkouts; nil keeps the runner template's.
+	Disk *DiskSizing
+	Log  *slog.Logger
 }
 
 func newDispatcher[T river.JobArgs](cfg DispatchConfig, timeout time.Duration, grant func(Granter) func(context.Context, T, *config.Snapshot) (Grant, error)) (*Dispatcher[T], error) {
@@ -112,6 +117,9 @@ func NewReviewDispatcher(cfg DispatchConfig) (*Dispatcher[store.PRReviewArgs], e
 		}
 	}
 	d.abandon = cfg.Abandon
+	if s := cfg.Disk; s != nil && s.Known != nil {
+		d.disk = func(ctx context.Context, a store.PRReviewArgs) int64 { return s.size(s.Known(ctx, a.Repo)) }
+	}
 	return d, nil
 }
 
@@ -192,6 +200,9 @@ func (d *Dispatcher[T]) work(ctx context.Context, job *river.Job[T]) error {
 		defer release()
 	}
 	task := Task{JobID: job.ID, Kind: job.Kind, Attempt: job.Attempt, ConfigVersion: snap.Version, Timeout: d.timeout}
+	if d.disk != nil {
+		task.WorkDisk = d.disk(ctx, job.Args)
+	}
 	if d.claims != nil {
 		grant, err := d.grant(ctx, job.Args, snap)
 		if err != nil {
