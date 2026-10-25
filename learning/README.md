@@ -17,12 +17,12 @@ The models in `src/exemplar_learning/contracts` are generated from `../schema` w
 
 ## Jobs
 
-- `exemplar-learning embed` (spec §8.3) gives every extraction without an embedding one. It sends `title`, `description` and `preferred_approach` (not the raw comment) to the gateway's `POST /v1/embeddings` (stage `embed`, Voyage per `providers.embed`), `--batch-size` texts per call (default 128), and stores the 1024-dimension vector in `extractions.embedding`.
-  - **Idempotent:** it only fills NULLs, and each batch commits, so a failed run keeps its progress. Re-extraction resets a row's embedding, and the write also matches the text it embedded, so a row rewritten during the call is left for the next run.
-  - **Secrets:** a batch the gateway's secret scan refuses is retried a row at a time; the refused row stays unembedded and is counted in the report as `refused`.
+- `exemplar-learning embed` (spec §8.3) gives every extraction an embedding from the gateway's current model: rows with none, and rows whose `embedding_model` is another model (so a change of `providers.embed` re-embeds; the model comes from `GET /v1/embeddings/model`). It sends `title`, `description` and `preferred_approach` (not the raw comment) to the gateway's `POST /v1/embeddings` (stage `embed`, Voyage per `providers.embed`), `--batch-size` texts per call (default 128), and stores the 1024-dimension vector and its model in `extractions.embedding` and `embedding_model`.
+  - **Idempotent:** it only writes pending rows, and each batch commits, so a failed run keeps its progress. Re-extraction resets a row's embedding, and the write also matches the text it embedded, so a row rewritten during the call is left for the next run.
+  - **Secrets:** a batch the gateway's secret scan refuses is split in half and each half retried; the refused row stays unembedded and is counted in the report as `refused`.
   - The job lives here, not in `exemplar-learn`, because its only reader is `cluster`, which loads the vectors with pgvector in this package.
   Needs `EXEMPLAR_DATABASE_URL`, `EXEMPLAR_GATEWAY_URL` and `EXEMPLAR_GATEWAY_TOKEN`.
-- `exemplar-learning cluster` (spec §8.4) clusters embedded extractions:
+- `exemplar-learning cluster` (spec §8.4) clusters embedded extractions. While they come from more than one model (after a change of `providers.embed`, until `embed` has caught up) it skips the run and reports why: mixing two models' vectors is meaningless, and clustering a subset would retire candidates whose rows are not in it. Otherwise:
   1. Partition by file extension, with language-agnostic extractions in one extra partition `*`.
   2. Build a k=20 nearest-neighbour graph (faiss, exact cosine) and keep edges at cosine ≥ 0.65.
   3. Find Leiden communities with a fixed seed, re-splitting any over 200 at 0.75.

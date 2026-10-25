@@ -17,6 +17,10 @@ type Price struct {
 // read rate is not in that table and is taken as 0.1x input. Confirm
 // against the pricing page before relying on totals.
 //
+// Voyage rates are from Voyage AI's pricing page (docs.voyageai.com/docs/pricing,
+// updated 2026-09-29). Embeddings bill input tokens only; the page's free
+// token allowances are not modelled, so totals are an upper bound.
+//
 // Bedrock is billed by AWS under its own price list, so it has no entries
 // here: Bedrock calls record cost 0 with PriceKnown=false and do not count
 // toward the soft ceiling until the contracted rates are added.
@@ -25,6 +29,10 @@ var prices = map[string]map[string]Price{
 		"claude-opus-5-5":   {Input: 4.00, Output: 20.00, CacheRead: 0.20, CacheWrite: 5.00},
 		"claude-sonnet-5-5": {Input: 2.00, Output: 10.00, CacheRead: 0.20, CacheWrite: 2.50},
 		"claude-haiku-5-5":  {Input: 0.10, Output: 0.50, CacheRead: 0.01, CacheWrite: 0.125},
+	},
+	ProviderVoyage: {
+		"voyage-code-3": {Input: 0.18},
+		"voyage-code-4": {Input: 0.12},
 	},
 }
 

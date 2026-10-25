@@ -6,7 +6,10 @@ per gateway call, and each batch commits on its own, so a failed run keeps
 what it wrote and the next run picks up the rest: the job is idempotent
 because it only ever fills NULLs.
 
-Re-extraction (UpsertExtraction) rewrites the text and resets the
+A row is pending when it has no embedding or one from another model than
+the gateway's (``extractions.embedding_model``), so changing
+providers.embed re-embeds everything, a batch per call, without mixing
+vector spaces. Re-extraction (UpsertExtraction) rewrites the text and resets the
 embedding to NULL. The write therefore also matches the text it embedded:
 if the row changed during the call, the stale vector is dropped and the
 next run embeds the new text.
@@ -15,8 +18,8 @@ next run embeds the new text.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Protocol
 
 import psycopg
 from pgvector import HalfVector
@@ -28,7 +31,14 @@ log = logging.getLogger(__name__)
 
 BATCH_SIZE = 128
 
-Embed = Callable[[list[str]], list[list[float]]]
+
+class Embed(Protocol):
+    """Texts in, vectors out, all from ``model``."""
+
+    @property
+    def model(self) -> str: ...
+
+    def __call__(self, texts: list[str], /) -> list[list[float]]: ...
 
 
 @dataclass
@@ -37,7 +47,9 @@ class Report:
     calls: int = 0
     refused: int = 0  # the gateway's secret scan refused the text; left NULL
     stale: int = 0  # re-extracted during the call; left for the next run
-    remaining: int = 0  # still without an embedding after the run
+    remaining: int = 0  # still pending after the run
+    model: str = ""
+    refused_ids: list[int] = field(default_factory=list, repr=False)
 
 
 @dataclass(frozen=True)
@@ -52,11 +64,14 @@ class Row:
         return "\n".join(p.strip() for p in parts if p and p.strip())
 
 
-def pending(conn: psycopg.Connection, after: int, limit: int) -> list[Row]:
+PENDING = "(embedding IS NULL OR embedding_model IS DISTINCT FROM %(model)s)"
+
+
+def pending(conn: psycopg.Connection, model: str, after: int, limit: int) -> list[Row]:
     rows = conn.execute(
-        """SELECT comment_id, title, description, preferred_approach FROM extractions
-           WHERE embedding IS NULL AND comment_id > %s ORDER BY comment_id LIMIT %s""",
-        (after, limit),
+        f"""SELECT comment_id, title, description, preferred_approach FROM extractions
+            WHERE {PENDING} AND comment_id > %(after)s ORDER BY comment_id LIMIT %(limit)s""",  # noqa: S608 - PENDING is a constant
+        {"model": model, "after": after, "limit": limit},
     ).fetchall()
     return [Row(*r) for r in rows]
 
@@ -72,6 +87,7 @@ def _embed_rows(embed: Embed, rows: list[Row], rep: Report) -> list[tuple[Row, l
     except RefusedError:
         if len(rows) == 1:
             rep.refused += 1
+            rep.refused_ids.append(rows[0].comment_id)
             log.warning(
                 "gateway refused extraction %d (secret scan); left unembedded", rows[0].comment_id
             )
@@ -80,16 +96,24 @@ def _embed_rows(embed: Embed, rows: list[Row], rep: Report) -> list[tuple[Row, l
     return _embed_rows(embed, rows[:mid], rep) + _embed_rows(embed, rows[mid:], rep)
 
 
-def _store(conn: psycopg.Connection, row: Row, vec: list[float]) -> bool:
+def _store(conn: psycopg.Connection, model: str, row: Row, vec: list[float]) -> bool:
     if len(vec) != DIMENSIONS:
         raise RuntimeError(
             f"embedding for {row.comment_id} has {len(vec)} dimensions, want {DIMENSIONS}"
         )
     cur = conn.execute(
-        """UPDATE extractions SET embedding = %s
-           WHERE comment_id = %s AND embedding IS NULL
-             AND title = %s AND description = %s AND preferred_approach IS NOT DISTINCT FROM %s""",
-        (HalfVector(vec), row.comment_id, row.title, row.description, row.preferred_approach),
+        f"""UPDATE extractions SET embedding = %(vec)s, embedding_model = %(model)s
+            WHERE comment_id = %(id)s AND {PENDING}
+              AND title = %(title)s AND description = %(desc)s
+              AND preferred_approach IS NOT DISTINCT FROM %(approach)s""",  # noqa: S608 - PENDING is a constant
+        {
+            "vec": HalfVector(vec),
+            "model": model,
+            "id": row.comment_id,
+            "title": row.title,
+            "desc": row.description,
+            "approach": row.preferred_approach,
+        },
     )
     return cur.rowcount == 1
 
@@ -99,19 +123,30 @@ def run(conn: psycopg.Connection, embed: Embed, batch_size: int = BATCH_SIZE) ->
     if batch_size < 1:
         raise ValueError("batch_size must be at least 1")
     register_vector(conn)
-    rep = Report()
+    model = embed.model
+    rep = Report(model=model)
     after = 0
-    while rows := pending(conn, after, batch_size):
+    while rows := pending(conn, model, after, batch_size):
         conn.commit()  # no transaction held open across the gateway call
         after = rows[-1].comment_id
         for row, vec in _embed_rows(embed, rows, rep):
-            if _store(conn, row, vec):
+            if _store(conn, model, row, vec):
                 rep.embedded += 1
             else:
                 rep.stale += 1
         conn.commit()
+    # A refused row still holding another model's vector would keep two
+    # models stored, and cluster waits for one: drop that vector.
+    if rep.refused_ids:
+        conn.execute(
+            """UPDATE extractions SET embedding = NULL, embedding_model = NULL
+               WHERE comment_id = ANY(%(ids)s) AND embedding IS NOT NULL
+                 AND embedding_model IS DISTINCT FROM %(model)s""",
+            {"ids": rep.refused_ids, "model": model},
+        )
     rep.remaining = conn.execute(
-        "SELECT count(*) FROM extractions WHERE embedding IS NULL"
+        f"SELECT count(*) FROM extractions WHERE {PENDING}",  # noqa: S608 - PENDING is a constant
+        {"model": model},
     ).fetchone()[0]
     conn.commit()
     return rep
