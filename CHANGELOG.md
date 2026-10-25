@@ -6,6 +6,45 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.6.0](https://github.com/koblas/exemplar/compare/v0.5.0...v0.6.0) (2026-10-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **worker:** the worker's args gain --runner-quota=8 at args/8, and serve refuses a quota with --launcher=in-process. An overlay that patches args/7 to --launcher=in-process must also patch args/8 to --runner-quota=0, as the quickstart overlays now do, or the worker exits at startup.
+
+### Features
+
+* **deploy:** GKE Autopilot overlay ([b0d3123](https://github.com/koblas/exemplar/commit/b0d31232b39949ec525842a6caad5e5f6f1fd5f9))
+* **deploy:** GKE Autopilot overlay ([f47a580](https://github.com/koblas/exemplar/commit/f47a5802070ed3851e05b5cfd5e56cbfcdb676d0))
+* **deploy:** pgbouncer component and runner pooled database URL ([7853bfe](https://github.com/koblas/exemplar/commit/7853bfea482628df8e86ba857dfcf30e2926dbc5))
+* **deploy:** pgbouncer component and runner pooled database URL ([c584279](https://github.com/koblas/exemplar/commit/c5842797ef7a09c86b40c469c50913646603a711))
+* **examples:** end-to-end demo kit and runbook ([971d0c8](https://github.com/koblas/exemplar/commit/971d0c8fc1ea35e5aa288c48fb42211605f01481))
+* **examples:** end-to-end demo kit and runbook ([8323945](https://github.com/koblas/exemplar/commit/832394587bf6155854957271e15acc0f2b71c3ce))
+* **learning:** embed extractions through a Voyage route in the gateway ([0b4bffb](https://github.com/koblas/exemplar/commit/0b4bffbe2ee071d36be85e56305c1bf64d8c2326))
+* **learning:** embed extractions through a Voyage route in the gateway ([f3652a5](https://github.com/koblas/exemplar/commit/f3652a5a082b8e210b580fa8c758c7def863f492))
+* **learning:** re-embed on embedding model change and cost Voyage calls ([cbfc00d](https://github.com/koblas/exemplar/commit/cbfc00d64cfcc9cc18a08bdd8bea1d61484259d1))
+* **learning:** re-embed on embedding model change and cost Voyage calls ([2929357](https://github.com/koblas/exemplar/commit/2929357a2fbc052cce57427ce5f0d7abffa08818))
+* **llm:** add an OpenAI provider as a second model family ([ea8ba31](https://github.com/koblas/exemplar/commit/ea8ba31f93fc24bad02e68e405f0afce371fff01))
+* **llm:** add an OpenAI provider as a second model family ([fd2523c](https://github.com/koblas/exemplar/commit/fd2523c319a51be7521d2e6b61335d97a190db52))
+* **worker:** per-review checkout volume sized per job ([ed6acc5](https://github.com/koblas/exemplar/commit/ed6acc5dc686cb46e66682056083dd33c61d6f4e))
+* **worker:** per-review checkout volume sized per job ([e14f267](https://github.com/koblas/exemplar/commit/e14f26711082ad393a1ae5fcc9eceb3238684bcd))
+* **worker:** run the baseline reviewer live on sampled heads ([308bf2f](https://github.com/koblas/exemplar/commit/308bf2f0c50c333ce360df394a612c067b403705))
+* **worker:** run the baseline reviewer live on sampled heads ([8a4aad8](https://github.com/koblas/exemplar/commit/8a4aad871fcef46b4231091993e5920a786c78b5))
+* **worker:** runner quota and queue metrics ([222a287](https://github.com/koblas/exemplar/commit/222a28759b43e74b75c4216535e59206de4a1ac7))
+* **worker:** runner quota and queue metrics ([f6f6ccf](https://github.com/koblas/exemplar/commit/f6f6ccf1187a723ea88cb150c3342c41a85d25e2))
+
+
+### Bug Fixes
+
+* **gh:** take over a head's in-progress check run instead of adding one ([c514c2f](https://github.com/koblas/exemplar/commit/c514c2f7e40ea27a0c5c79d20c260a5e75e490d1))
+* one check run per head on retries; UI eFP flag at the configured bar ([daf3416](https://github.com/koblas/exemplar/commit/daf341684be29e2c2b0a231a74b666b1d8a479d4))
+* **web:** flag rules over the configured eFP bar ([fdadd76](https://github.com/koblas/exemplar/commit/fdadd76a556ca2186d185a6924fe7798b61078b7))
+* **worker:** expire runner claims by the later of two clocks ([c0b1e24](https://github.com/koblas/exemplar/commit/c0b1e2460535db0066ebf524370f918a5687e71f))
+* **worker:** never run two reviews of one PR head at once ([fdf0014](https://github.com/koblas/exemplar/commit/fdf0014e1feacbb7d24e49a0e946e2ad19d5908f))
+* **worker:** size the sim's pool so overlaps cannot exhaust it ([1c6343a](https://github.com/koblas/exemplar/commit/1c6343a9bf390c9d6d956f91df4cf8186cea7156))
+* **worker:** size the sim's pool so overlaps cannot exhaust it ([8d4c3df](https://github.com/koblas/exemplar/commit/8d4c3df4ae8d38249df3faee354b5e0226b6271a))
+
 ## [0.5.0](https://github.com/koblas/exemplar/compare/v0.4.0...v0.5.0) (2026-10-25)
 
 
