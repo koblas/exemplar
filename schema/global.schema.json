@@ -79,7 +79,12 @@
       "type": "object", "additionalProperties": false, "required": ["importance_min", "max_candidates_per_call"],
       "properties": {
         "importance_min": { "$ref": "#/$defs/unit" },
-        "max_candidates_per_call": { "type": "integer", "minimum": 1 }
+        "max_candidates_per_call": { "type": "integer", "minimum": 1 },
+        "quorum": {
+          "type": "object", "additionalProperties": false,
+          "description": "Verifiers asked (n) and confirmations needed (k) for bug-lane findings and rules with verify: quorum.",
+          "properties": { "n": { "type": "integer", "minimum": 2 }, "k": { "type": "integer", "minimum": 1 } }
+        }
       }
     },
     "comment_budget": {

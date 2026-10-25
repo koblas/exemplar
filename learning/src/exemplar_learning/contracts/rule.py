@@ -72,6 +72,11 @@ class ModelTier(Enum):
     high = "high"
 
 
+class Verify(Enum):
+    single = "single"
+    quorum = "quorum"
+
+
 class Context(Enum):
     full = "full"
     text_only = "text-only"
@@ -111,6 +116,7 @@ class CodeReviewRule(BaseModel):
     export: Export | None = None
     eval_cases: str | None = None
     model_tier: ModelTier | None = None
+    verify: Verify | None = None
     context: Context | None = None
     eval: Eval | None = None
     linter_map: dict[constr(min_length=1), LinterMap] | None = Field(

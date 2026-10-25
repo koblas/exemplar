@@ -353,3 +353,44 @@ func TestClassThreshold(t *testing.T) {
 		t.Error("class_threshold 0 accepted")
 	}
 }
+
+// verifier.quorum defaults to 3 and 2, k may not exceed n, and a rule may
+// opt into the quorum (FR-V7).
+func TestVerifierQuorum(t *testing.T) {
+	snap, err := LoadSnapshot(baseTree(t), "v")
+	if n, k := snap.Global.Verifier.QuorumNK(); err != nil || n != 3 || k != 2 {
+		t.Fatalf("example quorum = %d of %d, %v", k, n, err)
+	}
+	if n, k := (schema.VerifierConfig{}).QuorumNK(); n != schema.DefaultQuorumN || k != schema.DefaultQuorumK {
+		t.Errorf("absent quorum = %d of %d", k, n)
+	}
+	for _, tt := range []struct{ quorum, err string }{
+		{"quorum: { n: 5, k: 3 }", ""},
+		{"quorum: { n: 2, k: 3 }", "verifier.quorum.k 3 is above n 2"},
+		{"quorum: { n: 1, k: 1 }", "global.yaml"},
+		{"quorum: { n: 3, k: 0 }", "global.yaml"},
+	} {
+		tree := baseTree(t)
+		tree[GlobalPath] = &fstest.MapFile{Data: []byte(strings.Replace(string(tree[GlobalPath].Data), "quorum: { n: 3, k: 2 }", tt.quorum, 1))}
+		_, err := LoadSnapshot(tree, "v")
+		if tt.err == "" && err != nil || tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)) {
+			t.Errorf("%s: %v", tt.quorum, err)
+		}
+	}
+	path := "rules/reliability/propagate-context.yaml"
+	for verify, ok := range map[string]bool{"quorum": true, "single": true, "triple": false} {
+		tree := baseTree(t)
+		tree[path] = &fstest.MapFile{Data: append(slices.Clone(tree[path].Data), []byte("\nverify: "+verify+"\n")...)}
+		snap, err := LoadSnapshot(tree, "v")
+		if ok != (err == nil) {
+			t.Errorf("verify: %s: %v", verify, err)
+			continue
+		}
+		if ok {
+			i := slices.IndexFunc(snap.Rules, func(r Rule) bool { return r.ID == "propagate-context" })
+			if snap.Rules[i].Verify != verify {
+				t.Errorf("verify: %s read as %q", verify, snap.Rules[i].Verify)
+			}
+		}
+	}
+}

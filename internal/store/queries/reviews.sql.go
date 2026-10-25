@@ -12,6 +12,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const abandonReview = `-- name: AbandonReview :one
+UPDATE reviews SET status = 'incomplete', incomplete_reason = $5, finished_at = coalesce(finished_at, now())
+WHERE id = (SELECT max(r.id) FROM reviews r
+            WHERE r.repo = $1 AND r.pr_number = $2 AND r.head_sha = $3 AND r.attempt = $4 AND r.caller = 'production')
+  AND status <> 'superseded'
+RETURNING id
+`
+
+type AbandonReviewParams struct {
+	Repo             string
+	PrNumber         int32
+	HeadSha          string
+	Attempt          int32
+	IncompleteReason *string
+}
+
+// A head's review whose job failed its last attempt: recorded incomplete,
+// so Re-run re-runs it. A superseded review stays superseded (no row).
+func (q *Queries) AbandonReview(ctx context.Context, arg AbandonReviewParams) (int64, error) {
+	row := q.db.QueryRow(ctx, abandonReview,
+		arg.Repo,
+		arg.PrNumber,
+		arg.HeadSha,
+		arg.Attempt,
+		arg.IncompleteReason,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createReview = `-- name: CreateReview :one
 INSERT INTO reviews (repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, attempt)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9)

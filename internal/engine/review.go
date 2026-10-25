@@ -326,7 +326,11 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 	}
 	sameFamily := false
 	if len(toVerify) > 0 {
-		for _, vr := range e.verify(ctx, p, toVerify, genFamily, meta) {
+		vo := e.verify(ctx, p, toVerify, genFamily, meta, p.quorumFor, overBudget.Load)
+		if vo.shed {
+			res.Degraded = true
+		}
+		for _, vr := range vo.runs {
 			res.Runs = append(res.Runs, vr.run)
 			if strings.Contains(vr.run.Detail, ErrProvidersUnavailable.Error()) {
 				res.Incomplete = "every verifier provider was unavailable"
@@ -444,7 +448,9 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, opt 
 	}()
 	status[SecretRuleID] = schema.StatusActive
 
-	// Stable order: severity, path, line, rule.
+	// Stable order: severity, path, line, rule. Fingerprint ordinals
+	// count in this order, so it must not depend on anything that varies
+	// between pushes.
 	slices.SortStableFunc(all, func(a, b *Finding) int {
 		return cmp.Or(
 			cmp.Compare(severityRank(a.Severity), severityRank(b.Severity)),
@@ -497,6 +503,15 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, opt 
 		}
 		eligible = append(eligible, f)
 	}
+
+	// Rank: within a severity, a higher quorum share first (§6.10, FR-V7).
+	// After fingerprinting, since votes vary from push to push.
+	slices.SortStableFunc(eligible, func(a, b *Finding) int {
+		return cmp.Or(
+			cmp.Compare(severityRank(a.Severity), severityRank(b.Severity)),
+			cmp.Compare(quorumShare(b), quorumShare(a)),
+		)
+	})
 
 	// Class-of-bug grouping (FR-C9), after dedupe and before the budget.
 	res.Grouped = groupByClass(eligible, p.Effective.Global.ClassThreshold(), opt.ReviewID)
