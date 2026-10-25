@@ -102,6 +102,13 @@ func (p *Poster) PostReview(ctx context.Context, pr PR, rv ReviewPost) (int64, b
 	return review.GetID(), true, nil
 }
 
+// Posted reports whether review reviewID's post is on pr's head (its
+// marker), whatever happened to the job that posted it.
+func (p *Poster) Posted(ctx context.Context, pr PR, reviewID int64) (bool, error) {
+	id, err := p.findReview(ctx, pr, Marker(reviewID, pr.HeadSHA))
+	return id != 0, err
+}
+
 func (p *Poster) findReview(ctx context.Context, pr PR, marker string) (int64, error) {
 	opts := &github.ListOptions{PerPage: 100}
 	for {

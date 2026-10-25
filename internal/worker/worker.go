@@ -310,6 +310,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		if open, err = w.cfg.Store.OpenFindings(ctx, queries.OpenFindingsParams{Repo: a.Repo, PrNumber: int32(a.PR)}); err != nil {
 			return w.failed(ctx, poster, target, checkID, rec, out, err)
 		}
+		open = w.dropUnposted(ctx, poster, a, open)
 		if !shadow {
 			open = w.reanchor(ctx, reader, poster, target, p, open, &out)
 		}
@@ -620,6 +621,56 @@ func (w *Worker) supersede(ctx context.Context, poster *gh.Poster, target gh.PR,
 		}
 	}
 	return out, cause
+}
+
+// dropUnposted drops the open findings whose review never reached GitHub.
+// Finish stores a finding as posted before Post submits it, so a review
+// superseded or killed in between leaves findings posted only in the
+// store, which would keep every later review from posting them. The
+// review's marker on its head tells these apart from a post whose comment
+// mapping was lost (no comment id either). A failed lookup keeps the
+// findings: not posting again beats posting twice. A review still between
+// its Finish and its post elsewhere loses its findings here, and its
+// mapping marks them posted again if it posts.
+func (w *Worker) dropUnposted(ctx context.Context, poster *gh.Poster, a store.PRReviewArgs, open []pipeline.OpenFinding) []pipeline.OpenFinding {
+	type review struct {
+		id   int64
+		head string
+	}
+	posted := map[review]bool{}
+	var kept []pipeline.OpenFinding
+	var drop []int64
+	for _, f := range open {
+		if f.GhCommentID != nil {
+			kept = append(kept, f)
+			continue
+		}
+		r := review{f.ReviewID, f.HeadSha}
+		ok, seen := posted[r]
+		if !seen {
+			target, err := gh.ParsePR(a.Repo, a.PR, f.HeadSha)
+			if err == nil {
+				ok, err = poster.Posted(ctx, target, f.ReviewID)
+			}
+			if err != nil {
+				w.cfg.Log.Warn("review post not checked; its findings stay open", "repo", a.Repo, "pr", a.PR, "review_id", f.ReviewID, "err", err)
+				ok = true
+			}
+			posted[r] = ok
+		}
+		if ok {
+			kept = append(kept, f)
+		} else {
+			drop = append(drop, f.ID)
+		}
+	}
+	if len(drop) > 0 {
+		w.cfg.Log.Info("findings never posted; posting them again", "repo", a.Repo, "pr", a.PR, "findings", len(drop))
+		if err := w.cfg.Store.MarkFindingsNotPosted(ctx, drop); err != nil {
+			w.cfg.Log.Warn("unposted findings not recorded", "repo", a.Repo, "pr", a.PR, "err", err)
+		}
+	}
+	return kept
 }
 
 // approve submits the APPROVE for a native_approve repo, after checking

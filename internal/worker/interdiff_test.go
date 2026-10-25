@@ -33,6 +33,7 @@ func TestPlanCarry(t *testing.T) {
 		scopedRule("partial", "v1", ex, "a.go"),
 		scopedRule("compiled", "v1", engine.LaneCompiled, "a.go"),
 		scopedRule("new", "v1", ex, "a.go"),
+		scopedRule("unposted", "v1", ex, "a.go"),
 	}
 	prev := []queries.CarryableRunsRow{
 		prevRun("carry", ex, engine.RunOK, 1, 10, "b.go", "a.go"),
@@ -43,7 +44,9 @@ func TestPlanCarry(t *testing.T) {
 		prevRun("failed", ex, engine.RunSchemaError, 1, 15, "a.go"),
 		prevRun("partial", ex, engine.RunOK, 0.5, 16, "a.go"),
 		prevRun("compiled", engine.LaneCompiled, engine.RunOK, 1, 17, "a.go"),
+		prevRun("unposted", ex, engine.RunOK, 1, 18, "a.go"),
 	}
+	prev[len(prev)-1].Unposted = true // its finding never reached GitHub
 	got := PlanCarry(scoped, prev, []string{"c.go", "e.go"}, []string{"d.go"})
 	if len(got) != 1 || got["carry"] != (engine.CarriedRun{FromRunID: 10, Version: "v1", Candidates: 2, Gating: 1}) {
 		t.Errorf("carry = %+v", got)

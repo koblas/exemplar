@@ -15,9 +15,10 @@ import (
 
 // PlanCarry picks the exemplar rules to carry forward from the previous
 // review's runs. A rule carries only if its previous run was ok at full
-// coverage with the same version and exactly the same scoped files, and
-// none of those files is in changed (the interdiff) or holds an open
-// finding. Everything else re-runs on its whole scope.
+// coverage with the same version and exactly the same scoped files, none
+// of those files is in changed (the interdiff) or holds an open finding,
+// and none of its findings failed to reach GitHub. Everything else re-runs
+// on its whole scope.
 func PlanCarry(scoped []engine.ScopedRule, prev []queries.CarryableRunsRow, changed, openPaths []string) map[string]engine.CarriedRun {
 	touched := map[string]bool{}
 	for _, p := range changed {
@@ -33,7 +34,7 @@ func PlanCarry(scoped []engine.ScopedRule, prev []queries.CarryableRunsRow, chan
 	out := map[string]engine.CarriedRun{}
 	for _, s := range scoped {
 		r, ok := byRule[s.Rule.ID]
-		if !ok || s.Lane != engine.LaneExemplar || r.Lane != engine.LaneExemplar || r.Status != engine.RunOK ||
+		if !ok || s.Lane != engine.LaneExemplar || r.Lane != engine.LaneExemplar || r.Status != engine.RunOK || r.Unposted ||
 			r.Coverage == nil || *r.Coverage < 1 || r.RuleVersion != s.Rule.VersionSHA || !sameFiles(r.ScopedFiles, s.Files) ||
 			slices.ContainsFunc(s.Files, func(f string) bool { return touched[f] }) {
 			continue

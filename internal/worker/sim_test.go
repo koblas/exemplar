@@ -21,24 +21,26 @@ import (
 	"github.com/riverqueue/river/rivertype"
 
 	"github.com/koblas/exemplar/internal/store"
+	"github.com/koblas/exemplar/internal/store/queries"
 	"github.com/koblas/exemplar/internal/store/storetest"
 )
 
 // The worker simulation (spec §16.1): one PR head driven through the
 // review dispatcher, the claims and an in-process runner by a seeded
 // schedule of redelivered webhooks, missed dedupes, runners killed at
-// GitHub writes and zombie runners replaying old claims. River's executor
+// GitHub writes, pushes to newer heads (between runs and mid-review) and
+// zombie runners replaying old claims. River's executor
 // is played by the sim, on River's own table, so a step is one state
 // change; GitHub is fakeGitHub. After every step the invariants hold:
 // each finding is posted at most once, each claim is redeemed at most
-// once and released, and a redelivery enqueues nothing while a job for
-// the head lives. Run one seed with EXEMPLAR_SIM_SEED=<n>; the step trace
+// once and released, a redelivery enqueues nothing while a job for the
+// head lives, and nothing is posted on a head once a push left it. Run one seed with EXEMPLAR_SIM_SEED=<n>; the step trace
 // is logged (go test -v) and a failure names its seed. Each seed runs in
 // a synctest bubble: no clock is injected, the bubble's is set to the
 // wall clock at the start, so the claims' expiry agrees with Postgres.
 
-// simSeeds are the seeds CI runs.
-var simSeeds = []uint64{1, 2, 3, 4, 5}
+// simSeeds are the seeds CI runs; 8 lands a push at start-check.
+var simSeeds = []uint64{1, 2, 3, 4, 5, 8}
 
 // simSteps is how many scheduled steps a seed runs before the drain.
 const simSteps = 10
@@ -68,12 +70,40 @@ var simKills = []simKill{
 	{"list-comments", false},
 }
 
-// simRoute names the review's GitHub writes (and the comment listing
-// that maps posted findings); "" for every other call.
+// simPush is where a push to a newer head lands in a running review: at
+// one of its GitHub calls before the post, which then never reaches
+// GitHub (a push after the pre-post head check posts on the old head,
+// which nothing can prevent). get-pr is that pre-post check. A delayed
+// push's cancel has not reached the runner yet: only the head moves, and
+// the review must notice it itself.
+type simPush struct {
+	route   string
+	delayed bool
+}
+
+func (p simPush) String() string {
+	if p.delayed {
+		return p.route + "/delayed"
+	}
+	return p.route
+}
+
+// simPushes are the push points.
+var simPushes = []simPush{
+	{"start-check", false},
+	{"get-pr", false},
+	{"post-review", false},
+	{"start-check", true},
+}
+
+// simRoute names the review's GitHub writes, the comment listing that
+// maps posted findings and the PR read; "" for every other call.
 func simRoute(f *fakeGitHub, r *http.Request) string {
 	pr := fmt.Sprintf("/repos/%s/pulls/%d", f.repo, prNum)
 	checks := "/repos/" + f.repo + "/check-runs"
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == pr:
+		return "get-pr"
 	case r.Method == http.MethodPost && r.URL.Path == checks:
 		return "start-check"
 	case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, checks+"/"):
@@ -110,6 +140,20 @@ type sim struct {
 	current   *Task
 	probed    bool
 	violation string
+	exit      Exit
+	// pushAt is where the running review's push lands, to newHead
+	// (committed before the run); cancelRun is River's cancel of the run.
+	// pushed is set once it landed, started once the run started its check.
+	pushAt    *simPush
+	newHead   string
+	cancelRun context.CancelCauseFunc
+	pushed    bool
+	started   bool
+	// left are the heads pushes left, each with how many reviews GitHub
+	// held then: none posted later may be on it.
+	left map[string]int
+	// heads counts the pushes, naming heads in the trace (SHAs vary).
+	heads int
 
 	// tasks are the dispatched tasks, oldest first, for zombie replays.
 	tasks []Task
@@ -127,7 +171,7 @@ func newSim(t *testing.T, seed uint64) *sim {
 		t.Fatal(err)
 	}
 	s := &sim{
-		t: t, seed: seed, rnd: rand.New(rand.NewPCG(seed, 0x5eed)), e: e, st: st, river: client, claims: claims,
+		t: t, seed: seed, rnd: rand.New(rand.NewPCG(seed, 0x5eed)), e: e, st: st, river: client, claims: claims, left: map[string]int{},
 		runner: &Runner{Config: e.w.cfg, Jobs: client, Snapshot: Snapshots(st, e.w.cfg.Snapshot), Claims: claims, BaseURL: e.fake.srv.URL + "/"},
 	}
 	e.fake.intercept = s.intercept
@@ -141,9 +185,9 @@ func newSim(t *testing.T, seed uint64) *sim {
 	return s
 }
 
-// intercept counts the runner's calls and kills it at its kill point;
-// a dead runner's later calls never reach GitHub. It returns abort and
-// apply, as fakeGitHub.intercept.
+// intercept counts the runner's calls, kills it at its kill point and
+// lands its push at the push point; a dead runner's later calls never
+// reach GitHub. It returns abort and apply, as fakeGitHub.intercept.
 func (s *sim) intercept(r *http.Request) (bool, bool) {
 	s.requests++
 	if s.killed {
@@ -158,7 +202,59 @@ func (s *sim) intercept(r *http.Request) (bool, bool) {
 		s.kill()
 		return true, k.after
 	}
+	route := simRoute(s.e.fake, r)
+	if p := s.pushAt; p != nil && route == p.route && (route != "get-pr" || s.started) {
+		s.pushAt = nil
+		return s.land(r.Context(), *p), false
+	}
+	if route == "start-check" {
+		s.started = true
+	}
 	return false, false
+}
+
+// land lands the armed push at the runner's current call: the head moves,
+// routing cancels the running job and enqueues the new head's in one
+// transaction, then River cancels the run (unless the cancel is delayed)
+// and the call is dropped unapplied (it returns abort). It runs on the
+// fake's goroutine with its lock held, so it records, check fails.
+func (s *sim) land(ctx context.Context, p simPush) bool {
+	f := s.e.fake
+	s.left[f.head] = len(f.reviews)
+	f.head, s.pushed = s.newHead, true
+	ids, err := s.route(context.WithoutCancel(ctx), s.newHead)
+	if s.current == nil || err != nil || !slices.Contains(ids, s.current.JobID) {
+		s.violation = fmt.Sprintf("push at %s did not supersede the running job: cancelled %v, %v", p, ids, err)
+	}
+	if p.delayed {
+		return false
+	}
+	s.cancelRun(rivertype.ErrJobCancelledRemotely)
+	return true
+}
+
+// route is a push's routing (EventWorker.Work): in one transaction, every
+// open review job of another head is cancelled and head's is enqueued.
+func (s *sim) route(ctx context.Context, head string) ([]int64, error) {
+	var ids []int64
+	err := s.st.InTx(ctx, func(tx pgx.Tx, _ *queries.Queries) error {
+		var err error
+		if ids, err = store.ReviewJobsToSupersede(ctx, tx, s.e.fake.repo, prNum, head); err != nil {
+			return fmt.Errorf("jobs to supersede: %w", err)
+		}
+		for _, id := range ids {
+			if _, err := s.river.JobCancelTx(ctx, tx, id); err != nil {
+				return fmt.Errorf("cancel job %d: %w", id, err)
+			}
+		}
+		a := args(s.e)
+		a.HeadSHA = head
+		if _, err := s.river.InsertTx(ctx, tx, a, nil); err != nil {
+			return fmt.Errorf("enqueue head: %w", err)
+		}
+		return nil
+	})
+	return ids, err
 }
 
 // probe runs at a runner's first GitHub call, when it has redeemed its
@@ -196,8 +292,9 @@ func (s *sim) Launch(ctx context.Context, task Task) (Exit, error) {
 	defer s.e.fake.mu.Unlock()
 	s.tasks, s.current = append(s.tasks, task), nil
 	if s.killed {
-		return Exit(137), nil
+		exit = Exit(137)
 	}
+	s.exit = exit
 	return exit, nil
 }
 
@@ -232,7 +329,7 @@ func (s *sim) count(sql string, args ...any) int {
 // liveJobs counts the head's jobs River's uniqueness still covers.
 func (s *sim) liveJobs() int {
 	return s.count(`SELECT count(*) FROM river_job WHERE kind = 'pr_review' AND unique_key IS NOT NULL
-		AND state NOT IN ('cancelled', 'discarded')`)
+		AND state NOT IN ('cancelled', 'discarded') AND args->>'head_sha' = $1`, s.e.head)
 }
 
 // deliver is a (re)delivered pull_request webhook: the router's insert.
@@ -262,10 +359,32 @@ func (s *sim) duplicate() {
 	s.logf("duplicate: job %d", id)
 }
 
-// work is River running the next available job once, killed at a seeded
-// point unless this is its last attempt (a discarded job is a later
-// slice's redelivery).
-func (s *sim) work(mayKill bool) bool {
+// push is a push to a newer head between runs: routing cancels the old
+// head's queued jobs and enqueues the new head's.
+func (s *sim) push() {
+	head := s.e.commit(s.t, nil)
+	s.e.fake.mu.Lock()
+	s.left[s.e.fake.head] = len(s.e.fake.reviews)
+	s.e.fake.head = head
+	s.e.fake.mu.Unlock()
+	ids, err := s.route(s.t.Context(), head)
+	if err != nil {
+		s.fatalf("route push: %v", err)
+	}
+	s.e.head = head
+	s.heads++
+	s.logf("push: head %d, cancelled jobs %v", s.heads, ids)
+	if n := s.count(`SELECT count(*) FROM river_job WHERE kind = 'pr_review'
+		AND state NOT IN ('completed', 'cancelled', 'discarded') AND args->>'head_sha' <> $1`, head); n != 0 {
+		s.fatalf("%d jobs of an old head still open after the push", n)
+	}
+}
+
+// work is River running the next available job once. With chaos, it is
+// killed at a seeded point unless this is its last attempt (a discarded
+// job is a later slice's redelivery), or else a push to a newer head may
+// land in it.
+func (s *sim) work(chaos bool) bool {
 	ctx := s.t.Context()
 	var id int64
 	err := s.st.Pool.QueryRow(ctx, `UPDATE river_job SET state = 'running', attempt = attempt + 1, attempted_at = now()
@@ -284,20 +403,84 @@ func (s *sim) work(mayKill bool) bool {
 		s.fatalf("job %d args: %v", id, err)
 	}
 	var kill *simKill
-	if mayKill && row.Attempt < row.MaxAttempts && s.rnd.IntN(2) == 0 {
+	var push *simPush
+	switch {
+	case chaos && row.Attempt < row.MaxAttempts && s.rnd.IntN(2) == 0:
 		kill = &simKills[s.rnd.IntN(len(simKills))]
+	case chaos && job.Args.HeadSHA == s.e.head && s.rnd.IntN(2) == 0:
+		push = &simPushes[s.rnd.IntN(len(simPushes))]
+		s.newHead = s.e.commit(s.t, nil)
 	}
+	// River's producer cancels the context it gave Work.
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	s.e.fake.mu.Lock()
 	s.killAt, s.killed = kill, false
+	s.pushAt, s.pushed, s.started, s.cancelRun = push, false, false, cancel
+	before := supersededChecks(s.e.fake)
 	s.e.fake.mu.Unlock()
 	werr := s.d.Work(ctx, job)
 	state := s.settle(row, werr)
 	at := "none"
-	if kill != nil {
-		at = kill.String()
+	switch {
+	case kill != nil:
+		at = "kill " + kill.String()
+	case push != nil:
+		at = "push " + push.String()
 	}
-	s.logf("work: job %d attempt %d kill=%s -> %s", id, row.Attempt, at, state)
+	s.logf("work: job %d attempt %d chaos=%s -> %s", id, row.Attempt, at, state)
+	if push != nil {
+		s.superseded(*push, job.Args.HeadSHA, state, before)
+	}
 	return true
+}
+
+// superseded checks a run a push was armed in. If it landed, the run
+// ended superseded (cancelled by River, or completed once it saw the head
+// move itself), its review row is superseded, and the check run it
+// started was completed as superseded. A push lands nowhere in a run
+// that ends before its point (a retry whose review is already posted).
+func (s *sim) superseded(p simPush, old, state string, before int) {
+	s.t.Helper()
+	f := s.e.fake
+	f.mu.Lock()
+	pushed, exit, checks := s.pushed, s.exit, supersededChecks(f)-before
+	s.pushAt = nil
+	f.mu.Unlock()
+	if !pushed {
+		s.logf("push at %s did not land", p)
+		return
+	}
+	s.e.head = s.newHead
+	s.heads++
+	s.logf("push at %s: head %d, exit %d", p, s.heads, exit)
+	want, wantChecks := "cancelled", 1
+	if p.delayed {
+		want = "completed"
+	} else if exit != ExitSuperseded {
+		s.fatalf("superseded run exited %d, want %d", exit, ExitSuperseded)
+	}
+	if p.route == "start-check" && !p.delayed {
+		wantChecks = 0 // the check run never started
+	}
+	if state != want || checks != wantChecks {
+		s.fatalf("push at %s: job %s with %d superseded check runs, want %s with %d", p, state, checks, want, wantChecks)
+	}
+	if n := s.count(`SELECT count(*) FROM reviews WHERE id = (SELECT max(id) FROM reviews WHERE head_sha = $1) AND status = 'superseded'`, old); n != 1 {
+		s.fatalf("push at %s: the old head's review is not superseded", p)
+	}
+}
+
+// supersededChecks counts check-run updates completing one as superseded;
+// f.mu is held.
+func supersededChecks(f *fakeGitHub) int {
+	n := 0
+	for _, u := range f.checkUpdates {
+		if out, _ := u["output"].(map[string]any); out["title"] == "Superseded" {
+			n++
+		}
+	}
+	return n
 }
 
 // settle records Work's result as River's executor would.
@@ -365,6 +548,11 @@ func (s *sim) check() {
 			posted[fmt.Sprint(m["path"], ":", m["side"], ":", m["line"], ":", m["body"])]++
 		}
 	}
+	for i, rv := range f.reviews {
+		if n, ok := s.left[fmt.Sprint(rv["commit_id"])]; ok && i >= n && s.violation == "" {
+			s.violation = fmt.Sprintf("review %d posted on a head a push left", i)
+		}
+	}
 	checks, reviews, violation := len(f.checks), len(f.reviews), s.violation
 	f.mu.Unlock()
 	if violation != "" {
@@ -392,7 +580,7 @@ func (s *sim) check() {
 			s.fatalf("job %d attempt %d's claim redeemed again: %v", task.JobID, task.Attempt, err)
 		}
 	}
-	s.logf("check: %d comments in %d reviews, %d check runs, %d dispatches", len(posted), reviews, checks, len(s.tasks))
+	s.logf("check: %d comments in %d reviews, %d check runs, %d dispatches, head %d", len(posted), reviews, checks, len(s.tasks), s.heads)
 }
 
 // run plays the seed's schedule, then drains the queue with no kills.
@@ -403,8 +591,10 @@ func (s *sim) run() {
 		switch p := s.rnd.IntN(100); {
 		case p < 20:
 			s.deliver()
-		case p < 40:
+		case p < 35:
 			s.duplicate()
+		case p < 45:
+			s.push()
 		case p < 85:
 			s.work(true)
 		default:
