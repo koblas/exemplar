@@ -132,8 +132,14 @@ func emptyDir(dir string) bool {
 	return errors.Is(err, fs.ErrNotExist) || (err == nil && len(entries) == 0)
 }
 
+// beforeCopy, when set, runs before each entry under src is read. Tests
+// use it to remove a file between the directory listing and the read.
+var beforeCopy func(path string)
+
 // copyTree copies regular files, directories and symlinks from src to dst.
-// Both sides go through os.Root, so no path can leave either tree.
+// Both sides go through os.Root, so no path can leave either tree. An entry
+// that the listing returned but that is gone by the time it is read (a lock
+// file another git process removed) is skipped, not an error.
 func copyTree(src, dst string) error {
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", dst, err)
@@ -150,10 +156,19 @@ func copyTree(src, dst string) error {
 	defer func() { _ = to.Close() }()
 	err = fs.WalkDir(from.FS(), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if path != "." && vanished(err) {
+				return nil
+			}
 			return err
+		}
+		if beforeCopy != nil {
+			beforeCopy(path)
 		}
 		info, err := d.Info()
 		if err != nil {
+			if vanished(err) {
+				return nil
+			}
 			return fmt.Errorf("stat %s: %w", path, err)
 		}
 		switch {
@@ -164,6 +179,9 @@ func copyTree(src, dst string) error {
 		case info.Mode()&fs.ModeSymlink != 0:
 			link, err := from.Readlink(path)
 			if err != nil {
+				if vanished(err) {
+					return nil
+				}
 				return fmt.Errorf("read link %s: %w", path, err)
 			}
 			if err := to.Symlink(link, path); err != nil {
@@ -172,6 +190,9 @@ func copyTree(src, dst string) error {
 		default:
 			b, err := from.ReadFile(path)
 			if err != nil {
+				if vanished(err) {
+					return nil
+				}
 				return fmt.Errorf("read %s: %w", path, err)
 			}
 			if err := to.WriteFile(path, b, info.Mode().Perm()); err != nil {
@@ -185,6 +206,9 @@ func copyTree(src, dst string) error {
 	}
 	return nil
 }
+
+// vanished reports an entry that disappeared after the directory listing.
+func vanished(err error) bool { return errors.Is(err, fs.ErrNotExist) }
 
 func build(ctx context.Context, dir string, base, head map[string]string, deleted []string) (*Repo, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {

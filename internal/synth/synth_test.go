@@ -1,6 +1,8 @@
 package synth
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,6 +61,62 @@ func TestCachedBuildMatchesFresh(t *testing.T) {
 	inPlace, err := Build(t.Context(), dir, base, head, deleted)
 	if err != nil || inPlace.BaseSHA == fresh.BaseSHA {
 		t.Errorf("non-empty dir = %+v, %v; want a build that commits extra.txt", inPlace, err)
+	}
+}
+
+// A built fixture never starts background maintenance: it would write and
+// remove .git/objects/maintenance.lock while parallel tests copy the cache.
+func TestBuildDisablesAutoMaintenance(t *testing.T) {
+	r, err := Build(t.Context(), t.TempDir(), map[string]string{"a.txt": "a\n"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{"maintenance.auto": "false", "gc.auto": "0"} {
+		got, err := r.out(t.Context(), "config", "--get", key)
+		if err != nil || got != want {
+			t.Errorf("%s = %q, %v; want %q", key, got, err, want)
+		}
+	}
+}
+
+// A file listed by the walk but removed before it is read, as a lock file
+// another git process drops, is skipped rather than failing the copy.
+func TestCopyTreeSkipsVanishedFile(t *testing.T) {
+	src := t.TempDir()
+	for name, body := range map[string]string{"keep.txt": "keep\n", "objects/maintenance.lock": "", "objects/pack/p.idx": "idx\n"} {
+		full := filepath.Join(src, name)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	beforeCopy = func(path string) {
+		if path == "objects/maintenance.lock" {
+			if err := os.Remove(filepath.Join(src, path)); err != nil {
+				t.Error(err)
+			}
+		}
+	}
+	t.Cleanup(func() { beforeCopy = nil })
+
+	dst := filepath.Join(t.TempDir(), "dst")
+	if err := copyTree(src, dst); err != nil {
+		t.Fatalf("copyTree: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "objects/maintenance.lock")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("maintenance.lock copied: %v", err)
+	}
+	for name, want := range map[string]string{"keep.txt": "keep\n", "objects/pack/p.idx": "idx\n"} {
+		if b, err := os.ReadFile(filepath.Join(dst, name)); err != nil || string(b) != want {
+			t.Errorf("%s = %q, %v", name, b, err)
+		}
+	}
+
+	// A missing source is still an error.
+	if err := copyTree(filepath.Join(src, "nope"), filepath.Join(t.TempDir(), "d")); err == nil {
+		t.Error("copy of a missing source succeeded")
 	}
 }
 
