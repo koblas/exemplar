@@ -86,7 +86,7 @@ From a clone of this repository, `go test ./deploy` also checks every build agai
 
 ## Sizing
 
-The core manifests run each review as a Kubernetes Job of its own (`--launcher=kubernetes`, [Runners](../../reference/workloads.md#runners)): the runner template's requests are one review's, and each worker pod's `--concurrency` caps the Jobs it keeps in flight. The worker pod's own requests are still sized for reviews in process and can come down. Worker, runner, search and storage requests are starting points. Re-size from your own monorepo benchmark: shallow sparse clone time, zoekt full-index time and size, query latency, ctags coverage of the main languages.
+The core manifests run each review as a Kubernetes Job of its own (`--launcher=kubernetes`, [Runners](../../reference/workloads.md#runners)): the runner template's requests are one review's, and `--runner-quota` (8 in the core manifests) caps the Jobs in flight across every worker pod. Raise it to let a burst of pushes fan out; each runner in flight holds Postgres connections, so size `max_connections` (or a pooler) with it. The worker pod's own requests are still sized for reviews in process and can come down. Worker, runner, search and storage requests are starting points. Re-size from your own monorepo benchmark: shallow sparse clone time, zoekt full-index time and size, query latency, ctags coverage of the main languages.
 
 ## What the manifests cannot do
 
