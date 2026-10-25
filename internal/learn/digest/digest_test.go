@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
@@ -32,7 +33,16 @@ func (f *fakeRepo) CreateIssue(_ context.Context, title, body string, _ []string
 	return gh.ConfigItem{URL: "https://github.com/acme/exemplar-config/issues/9"}, nil
 }
 
+// TestDigest runs on a Thursday, in a synctest bubble slept to it.
 func TestDigest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)))
+		testDigest(t)
+	})
+}
+
+func testDigest(t *testing.T) {
+	t.Helper()
 	st := storetest.New(t)
 	ctx := t.Context()
 	exec := func(sql string, args ...any) int64 {
@@ -81,8 +91,7 @@ func TestDigest(t *testing.T) {
 		rule("legacy", "@platform/backend", ""), rule("docs-style", "@docs/team", ""),
 	}}
 	repo := &fakeRepo{}
-	now := func() time.Time { return time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC) } // a Thursday
-	ds, err := Runner{Store: st, Repo: repo, Now: now}.Run(ctx, snap)
+	ds, err := Runner{Store: st, Repo: repo}.Run(ctx, snap)
 	if err != nil || len(ds) != 2 || ds[0].Action != "opened" {
 		t.Fatalf("digests = %+v, %v", ds, err)
 	}
@@ -107,12 +116,21 @@ func TestDigest(t *testing.T) {
 		t.Errorf("docs digest = %s", repo.bodies[0])
 	}
 	// The same week again: no new issues.
-	if ds, err := (Runner{Store: st, Repo: repo, Now: now}).Run(ctx, snap); err != nil || ds[0].Action != "exists" || len(repo.titles) != 2 {
+	if ds, err := (Runner{Store: st, Repo: repo}).Run(ctx, snap); err != nil || ds[0].Action != "exists" || len(repo.titles) != 2 {
 		t.Errorf("again = %+v, %v", ds, err)
 	}
 }
 
+// TestDriftDigest runs on a Thursday, in a synctest bubble slept to it.
 func TestDriftDigest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)))
+		testDriftDigest(t)
+	})
+}
+
+func testDriftDigest(t *testing.T) {
+	t.Helper()
 	st := storetest.New(t)
 	ctx := t.Context()
 	for _, q := range []string{
@@ -134,8 +152,7 @@ func TestDriftDigest(t *testing.T) {
 		}
 	}
 	repo := &fakeRepo{}
-	now := func() time.Time { return time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC) }
-	ds, err := Runner{Store: st, Repo: repo, Platform: "@platform/devex", Now: now}.Run(ctx, &config.Snapshot{})
+	ds, err := Runner{Store: st, Repo: repo, Platform: "@platform/devex"}.Run(ctx, &config.Snapshot{})
 	if err != nil || len(ds) != 1 || ds[0].Owner != "@platform/devex" || ds[0].Title != "Export drift, week of October 12, 2026" {
 		t.Fatalf("digests = %+v, %v", ds, err)
 	}
@@ -145,12 +162,21 @@ func TestDriftDigest(t *testing.T) {
 		t.Errorf("body:\n%s", body)
 	}
 	// No platform team: no drift digest.
-	if ds, err := (Runner{Store: st, Now: now}).Run(ctx, &config.Snapshot{}); err != nil || len(ds) != 0 {
+	if ds, err := (Runner{Store: st}).Run(ctx, &config.Snapshot{}); err != nil || len(ds) != 0 {
 		t.Errorf("without platform = %+v, %v", ds, err)
 	}
 }
 
+// TestUpstreamRewrite runs on a Thursday, in a synctest bubble slept to it.
 func TestUpstreamRewrite(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)))
+		testUpstreamRewrite(t)
+	})
+}
+
+func testUpstreamRewrite(t *testing.T) {
+	t.Helper()
 	st := storetest.New(t)
 	ctx := t.Context()
 	exec := func(sql string, args ...any) int64 {
@@ -209,8 +235,7 @@ func TestUpstreamRewrite(t *testing.T) {
 	}
 	snap := &config.Snapshot{Rules: []config.Rule{exported("no-raw-sql"), exported("prefer-arena")}}
 	repo := &fakeRepo{}
-	now := func() time.Time { return time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC) }
-	if _, err := (Runner{Store: st, Repo: repo, Now: now}).Run(ctx, snap); err != nil || len(repo.bodies) != 1 {
+	if _, err := (Runner{Store: st, Repo: repo}).Run(ctx, snap); err != nil || len(repo.bodies) != 1 {
 		t.Fatalf("digest: %v, %d", err, len(repo.bodies))
 	}
 	body := repo.bodies[0]

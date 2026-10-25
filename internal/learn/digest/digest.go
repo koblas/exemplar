@@ -72,7 +72,6 @@ type Runner struct {
 	// GitHubURL is the web base for links (default https://github.com/).
 	GitHubURL string
 	Log       *slog.Logger
-	Now       func() time.Time
 }
 
 // Run writes one digest per owner of a global rule that is active or in
@@ -82,9 +81,6 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Digest, error
 	if r.Log == nil {
 		r.Log = slog.Default()
 	}
-	if r.Now == nil {
-		r.Now = time.Now
-	}
 	if r.GitHubURL == "" {
 		r.GitHubURL = "https://github.com/"
 	}
@@ -92,7 +88,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Digest, error
 	if err != nil {
 		return nil, err
 	}
-	monday := r.Now().UTC().Truncate(24 * time.Hour)
+	monday := time.Now().UTC().Truncate(24 * time.Hour)
 	for monday.Weekday() != time.Monday {
 		monday = monday.AddDate(0, 0, -1)
 	}
@@ -117,7 +113,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Digest, error
 			continue
 		}
 		d := Digest{Owner: owner, Title: fmt.Sprintf("Rule health for %s, week of %s", owner, monday.Format("January 2, 2006"))}
-		d.Body = r.body(owner, owners[owner], in, approved, r.Now(), snap.Global.Feedback)
+		d.Body = r.body(owner, owners[owner], in, approved, time.Now(), snap.Global.Feedback)
 		pending = append(pending, d)
 	}
 	if r.Platform != "" {

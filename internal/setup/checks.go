@@ -45,7 +45,6 @@ type Checker struct {
 	// LastEvent is when exemplar-webhook last stored an event (ok false:
 	// never).
 	LastEvent func(ctx context.Context) (at time.Time, ok bool, err error)
-	Now       func() time.Time
 }
 
 // deliveryWindow is how far back the webhook checks look.
@@ -53,12 +52,8 @@ const deliveryWindow = 24 * time.Hour
 
 // Run runs every check; each is bounded by ctx.
 func (c Checker) Run(ctx context.Context) []Check {
-	now := time.Now
-	if c.Now != nil {
-		now = c.Now
-	}
-	deliveries, dcheck := c.deliveries(ctx, now())
-	return []Check{c.installation(ctx), c.configRepo(ctx), dcheck, c.events(ctx, now(), deliveries)}
+	deliveries, dcheck := c.deliveries(ctx, time.Now())
+	return []Check{c.installation(ctx), c.configRepo(ctx), dcheck, c.events(ctx, time.Now(), deliveries)}
 }
 
 func (c Checker) installation(ctx context.Context) Check {

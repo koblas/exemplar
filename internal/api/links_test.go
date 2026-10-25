@@ -12,19 +12,39 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/feedbacklink"
 	"github.com/koblas/exemplar/internal/store"
 )
 
+// hosts serves each request with its host's handler in the calling
+// goroutine: no listener or connection goroutine keeps a synctest
+// bubble's clock from moving, and the handlers see the bubble's time.
+type hosts map[string]http.Handler
+
+func (h hosts) RoundTrip(r *http.Request) (*http.Response, error) {
+	srv, ok := h[r.URL.Host]
+	if !ok {
+		return nil, fmt.Errorf("no test server for %s", r.URL.Host)
+	}
+	r = r.Clone(r.Context())
+	r.Host = r.URL.Host
+	if r.Body == nil {
+		r.Body = http.NoBody
+	}
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, r)
+	return w.Result(), nil
+}
+
 type env struct {
-	srv     *httptest.Server
-	gh      *httptest.Server
+	srv     struct{ URL string }
+	gh      struct{ URL string }
 	links   *feedbacklink.Signer
 	client  *http.Client
 	queued  []store.FeedbackLinkArgs
-	now     time.Time
 	ghLogin string
 	ghType  string
 	s       *Server
@@ -32,8 +52,9 @@ type env struct {
 
 func setup(t *testing.T) *env {
 	t.Helper()
-	e := &env{now: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC), ghLogin: "alice", ghType: "User"}
-	e.gh = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	e := &env{ghLogin: "alice", ghType: "User"}
+	e.srv.URL, e.gh.URL = "http://127.0.0.1:8080", "http://github.test"
+	gh := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/login/oauth/access_token":
@@ -61,16 +82,14 @@ func setup(t *testing.T) *env {
 			t.Errorf("unexpected GitHub call %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 		}
-	}))
-	t.Cleanup(e.gh.Close)
+	})
 	var err error
 	e.links, err = feedbacklink.New([]byte(strings.Repeat("l", 32)), "http://127.0.0.1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	e.srv = httptest.NewServer(mux)
-	t.Cleanup(e.srv.Close)
+	web := hosts{"127.0.0.1:8080": mux, "github.test": gh}
 	s, err := New(Config{
 		Links: e.links, SessionKey: []byte(strings.Repeat("s", 32)), PublicURL: e.srv.URL,
 		GitHub:    &GitHubAuth{ClientID: "Iv1.client", ClientSecret: "shh", AllowedOrgs: []string{"acme"}},
@@ -85,7 +104,7 @@ func setup(t *testing.T) *env {
 			return Finding{}, errors.New("no rows")
 		},
 		Enqueue: func(_ context.Context, a store.FeedbackLinkArgs) error { e.queued = append(e.queued, a); return nil },
-		Now:     func() time.Time { return e.now },
+		HTTP:    &http.Client{Transport: web},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +112,7 @@ func setup(t *testing.T) *env {
 	mux.Handle("/", s.Handler())
 	e.s = s
 	jar, _ := cookiejar.New(nil)
-	e.client = &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	e.client = &http.Client{Transport: web, Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return e
 }
 
@@ -147,7 +166,17 @@ func (e *env) signIn(t *testing.T, link, code string) result {
 
 var tokenRE = regexp.MustCompile(`name="t" value="([^"]+)"`)
 
+// TestFeedbackLinkFlow runs at now, in a synctest bubble slept to it.
 func TestFeedbackLinkFlow(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testFeedbackLinkFlow(t, now)
+	})
+}
+
+func testFeedbackLinkFlow(t *testing.T, now time.Time) {
+	t.Helper()
 	e := setup(t)
 	link := e.link(8812, "not_important")
 	resp := e.signIn(t, link, "good")
@@ -185,7 +214,7 @@ func TestFeedbackLinkFlow(t *testing.T) {
 	if r := post("/f/8812/not_important", url.Values{"s": {sig}, "t": {tok}, "text": {"  generated code  "}}); r.StatusCode != http.StatusOK {
 		t.Fatalf("record = %d", r.StatusCode)
 	}
-	if len(e.queued) != 1 || e.queued[0] != (store.FeedbackLinkArgs{FindingID: 8812, Reason: "not_important", Actor: "alice", At: e.now, Text: "generated code"}) {
+	if len(e.queued) != 1 || e.queued[0] != (store.FeedbackLinkArgs{FindingID: 8812, Reason: "not_important", Actor: "alice", At: now, Text: "generated code"}) {
 		t.Errorf("queued = %+v", e.queued)
 	}
 	// A forged link, or one for a finding retention removed.
@@ -206,7 +235,7 @@ func TestFeedbackLinkFlow(t *testing.T) {
 		t.Errorf("record on unreadable repo = %d, queued %d", r.StatusCode, len(e.queued))
 	}
 	// The session expires.
-	e.now = e.now.Add(9 * time.Hour)
+	time.Sleep(9 * time.Hour)
 	if resp, _ := e.get(t, link); resp.StatusCode != http.StatusFound {
 		t.Errorf("expired session = %d", resp.StatusCode)
 	}

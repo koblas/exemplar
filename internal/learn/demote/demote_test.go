@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
@@ -159,7 +160,16 @@ func (f fakeStats) DemotionStats(context.Context, int32) ([]queries.DemotionStat
 	return f, nil
 }
 
+// TestRunner runs in a synctest bubble slept to 2026-10-14.
 func TestRunner(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC)))
+		testRunner(t)
+	})
+}
+
+func testRunner(t *testing.T) {
+	t.Helper()
 	bad := func(id string) queries.DemotionStatsRow {
 		return queries.DemotionStatsRow{RuleID: id, Judged: 30, Negatives: 6, NegW: 12, PosW: 24, NonAuthorActors: 2}
 	}
@@ -174,10 +184,9 @@ func TestRunner(t *testing.T) {
 	newRepo := func() *fakeRepo {
 		return &fakeRepo{files: map[string]string{"rules/noisy.yaml": "id: noisy\nstatus: active\n"}, prs: map[string]string{}, written: map[string]string{}}
 	}
-	now := func() time.Time { return time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC) }
 
 	repo := newRepo()
-	decisions, outs, err := Runner{Stats: stats, Repo: repo, Now: now}.Run(t.Context(), snap)
+	decisions, outs, err := Runner{Stats: stats, Repo: repo}.Run(t.Context(), snap)
 	if err != nil || len(decisions) != 5 {
 		t.Fatalf("Run = %d decisions, %v", len(decisions), err)
 	}
@@ -203,19 +212,19 @@ func TestRunner(t *testing.T) {
 	}
 
 	// The next night: the PR exists, so nothing is opened again.
-	if _, outs, err := (Runner{Stats: stats, Repo: repo, Now: now}).Run(t.Context(), snap); err != nil || outs[0].Action != "skipped" || len(repo.bodies) != 1 {
+	if _, outs, err := (Runner{Stats: stats, Repo: repo}).Run(t.Context(), snap); err != nil || outs[0].Action != "skipped" || len(repo.bodies) != 1 {
 		t.Errorf("rerun = %+v, %v", outs, err)
 	}
 
 	// Protection refuses the merge: the PR stays open for a human.
 	repo = newRepo()
 	repo.mergeErr = errors.New("review required")
-	if _, outs, err := (Runner{Stats: fakeStats{bad("noisy")}, Repo: repo, Now: now}).Run(t.Context(), snap); err != nil || outs[0].Action != "opened" {
+	if _, outs, err := (Runner{Stats: fakeStats{bad("noisy")}, Repo: repo}).Run(t.Context(), snap); err != nil || outs[0].Action != "opened" {
 		t.Errorf("unmerged = %+v, %v", outs, err)
 	}
 
 	// A dry run writes nothing.
-	if _, outs, err := (Runner{Stats: fakeStats{bad("noisy")}, Now: now}).Run(t.Context(), snap); err != nil || outs[0].Action != "dry_run" {
+	if _, outs, err := (Runner{Stats: fakeStats{bad("noisy")}}).Run(t.Context(), snap); err != nil || outs[0].Action != "dry_run" {
 		t.Errorf("dry run = %+v, %v", outs, err)
 	}
 
@@ -223,7 +232,7 @@ func TestRunner(t *testing.T) {
 	// for that rule, not a broken PR.
 	repo = newRepo()
 	repo.files["rules/noisy.yaml"] = "id: noisy\nstatus: shadow\n"
-	if _, outs, err := (Runner{Stats: fakeStats{bad("noisy")}, Repo: repo, Now: now}).Run(t.Context(), snap); err == nil || outs[0].Action != "skipped" || len(repo.bodies) != 0 {
+	if _, outs, err := (Runner{Stats: fakeStats{bad("noisy")}, Repo: repo}).Run(t.Context(), snap); err == nil || outs[0].Action != "skipped" || len(repo.bodies) != 0 {
 		t.Errorf("stale = %+v, %v", outs, err)
 	}
 }
@@ -283,7 +292,16 @@ func TestDemotionStatsQuery(t *testing.T) {
 	}
 }
 
+// TestFlag runs in a synctest bubble slept to 2026-10-14.
 func TestFlag(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC)))
+		testFlag(t)
+	})
+}
+
+func testFlag(t *testing.T) {
+	t.Helper()
 	// Both bars crossed, but only the author objected: a flag.
 	authorOnly := queries.DemotionStatsRow{RuleID: "noisy", Judged: 30, Negatives: 6, NegW: 12, PosW: 24, NonAuthorActors: 1}
 	snap := &config.Snapshot{Rules: []config.Rule{{
@@ -291,13 +309,11 @@ func TestFlag(t *testing.T) {
 		Path: "rules/noisy.yaml", Scope: "global", VersionSHA: "0123456789abcdef",
 	}}}
 	repo := &fakeRepo{files: map[string]string{"rules/noisy.yaml": "id: noisy\nstatus: active\n"}, prs: map[string]string{}, written: map[string]string{}}
-	day := 0
 	run := func() Outcome {
 		t.Helper()
-		now := func() time.Time { return time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC).AddDate(0, 0, day) }
-		_, outs, err := Runner{Stats: fakeStats{authorOnly}, Repo: repo, Now: now}.Run(t.Context(), snap)
+		_, outs, err := Runner{Stats: fakeStats{authorOnly}, Repo: repo}.Run(t.Context(), snap)
 		if err != nil || len(outs) != 1 {
-			t.Fatalf("day %d: %+v, %v", day, outs, err)
+			t.Fatalf("%s: %+v, %v", time.Now().Format(time.DateOnly), outs, err)
 		}
 		return outs[0]
 	}
@@ -305,12 +321,12 @@ func TestFlag(t *testing.T) {
 		!strings.Contains(repo.bodies[0], "@platform/backend") || !strings.Contains(repo.bodies[0], "Respond by 2026-10-28") {
 		t.Fatalf("first = %+v, %q", o, repo.bodies)
 	}
-	day = 7
+	time.Sleep(7 * 24 * time.Hour)
 	if o := run(); o.Action != "waiting" || len(repo.bodies) != 1 {
 		t.Errorf("day 7 = %+v", o)
 	}
 	repo.activity = true
-	day = 15
+	time.Sleep(8 * 24 * time.Hour) // day 15
 	if o := run(); o.Action != "responded" || len(repo.merged) != 0 {
 		t.Errorf("owner responded = %+v", o)
 	}
@@ -324,7 +340,7 @@ func TestFlag(t *testing.T) {
 		files: repo.files, prs: map[string]string{}, written: map[string]string{},
 		issues: []gh.ConfigItem{{Number: 7, State: "closed"}}, titles: []string{"Exemplar flag: noisy (0123456789ab)"},
 	}
-	if _, outs, err := (Runner{Stats: fakeStats{authorOnly}, Repo: repo2, Now: time.Now}).Run(t.Context(), snap); err != nil || outs[0].Action != "responded" {
+	if _, outs, err := (Runner{Stats: fakeStats{authorOnly}, Repo: repo2}).Run(t.Context(), snap); err != nil || outs[0].Action != "responded" {
 		t.Errorf("closed flag = %+v, %v", outs, err)
 	}
 }

@@ -148,7 +148,6 @@ type Runner struct {
 	// Repo writes the config PR; nil makes Run a dry run.
 	Repo Repo
 	Log  *slog.Logger
-	Now  func() time.Time
 	// ResponseDays overrides ResponseDays (feedback.owner_response_days).
 	ResponseDays int
 }
@@ -159,9 +158,6 @@ type Runner struct {
 func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Decision, []Outcome, error) {
 	if r.Log == nil {
 		r.Log = slog.Default()
-	}
-	if r.Now == nil {
-		r.Now = time.Now
 	}
 	rows, err := r.Stats.DemotionStats(ctx, Window)
 	if err != nil {
@@ -254,7 +250,7 @@ func (r Runner) demote(ctx context.Context, rule config.Rule, d Decision) (Outco
 	if err := r.Repo.PutFile(ctx, branch, rule.Path, next, msg); err != nil {
 		return Outcome{}, fmt.Errorf("put file: %w", err)
 	}
-	url, number, err := r.Repo.OpenPR(ctx, branch, base, msg, prBody(rule, d, r.Now()))
+	url, number, err := r.Repo.OpenPR(ctx, branch, base, msg, prBody(rule, d, time.Now()))
 	if err != nil {
 		return Outcome{}, fmt.Errorf("open PR: %w", err)
 	}
@@ -306,7 +302,7 @@ func (r Runner) flag(ctx context.Context, rule config.Rule, d Decision) (Outcome
 		return Outcome{}, fmt.Errorf("find issue: %w", err)
 	}
 	if !found {
-		deadline := r.Now().AddDate(0, 0, days)
+		deadline := time.Now().AddDate(0, 0, days)
 		issue, err := r.Repo.CreateIssue(ctx, title, flagBody(rule, d, deadline), []string{FlagLabel})
 		if err != nil {
 			return Outcome{}, fmt.Errorf("create issue: %w", err)
@@ -323,7 +319,7 @@ func (r Runner) flag(ctx context.Context, rule config.Rule, d Decision) (Outcome
 	switch {
 	case responded:
 		return Outcome{Decision: d, Action: "responded", URL: issue.URL, Reason: "the owner commented"}, nil
-	case r.Now().Before(issue.CreatedAt.AddDate(0, 0, days)):
+	case time.Now().Before(issue.CreatedAt.AddDate(0, 0, days)):
 		return Outcome{Decision: d, Action: "waiting", URL: issue.URL}, nil
 	}
 	d.Why = fmt.Sprintf("flagged %s with no response in %d days", issue.CreatedAt.UTC().Format(time.DateOnly), days)

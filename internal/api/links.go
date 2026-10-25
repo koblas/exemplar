@@ -73,7 +73,6 @@ type Config struct {
 	Enqueue func(ctx context.Context, a store.FeedbackLinkArgs) error
 	HTTP    *http.Client
 	Log     *slog.Logger
-	Now     func() time.Time
 }
 
 // Session lifetime and the OAuth round trip's window.
@@ -145,9 +144,6 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.DiscardHandler)
 	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
-	}
 	return &Server{cfg: cfg}, nil
 }
 
@@ -206,7 +202,7 @@ func (s *Server) login(r *http.Request) string {
 		return ""
 	}
 	n, err := strconv.ParseInt(exp, 10, 64)
-	if err != nil || s.cfg.Now().Unix() > n {
+	if err != nil || time.Now().Unix() > n {
 		return ""
 	}
 	name, err := base64.RawURLEncoding.DecodeString(login)
@@ -341,7 +337,7 @@ func (s *Server) record(w http.ResponseWriter, r *http.Request) {
 	if rs := []rune(text); len(rs) > maxText {
 		text = string(rs[:maxText])
 	}
-	if err := s.cfg.Enqueue(r.Context(), store.FeedbackLinkArgs{FindingID: id, Reason: reason, Actor: login, At: s.cfg.Now().UTC(), Text: text}); err != nil {
+	if err := s.cfg.Enqueue(r.Context(), store.FeedbackLinkArgs{FindingID: id, Reason: reason, Actor: login, At: time.Now().UTC(), Text: text}); err != nil {
 		s.cfg.Log.Error("feedback not enqueued", "finding", id, "err", err)
 		s.render(w, http.StatusServiceUnavailable, view{Heading: "Not recorded", Message: "Something went wrong on our side. Please try again in a minute."})
 		return
@@ -381,7 +377,7 @@ func (s *Server) githubAuthorize(w http.ResponseWriter, r *http.Request, ret, mo
 		return
 	}
 	n := base64.RawURLEncoding.EncodeToString(nonce)
-	exp := strconv.FormatInt(s.cfg.Now().Add(stateTTL).Unix(), 10)
+	exp := strconv.FormatInt(time.Now().Add(stateTTL).Unix(), 10)
 	enc := base64.RawURLEncoding.EncodeToString([]byte(ret))
 	state := enc + "." + exp + "." + mode + "." + s.mac("state", enc, exp, mode, n)
 	s.setCookie(w, stateCookie, n, "/oauth/", stateTTL)
@@ -403,7 +399,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		fail("The sign-in did not start here, or took too long. Open the link again.")
 		return
 	}
-	if exp, err := strconv.ParseInt(parts[1], 10, 64); err != nil || s.cfg.Now().Unix() > exp {
+	if exp, err := strconv.ParseInt(parts[1], 10, 64); err != nil || time.Now().Unix() > exp {
 		fail("The sign-in took too long. Open the link again.")
 		return
 	}

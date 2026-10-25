@@ -5,12 +5,32 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
+// handlerTransport serves requests with h in the calling goroutine, so
+// no connection goroutine keeps a synctest bubble's clock from moving.
+type handlerTransport struct{ h http.Handler }
+
+func (t handlerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	w := httptest.NewRecorder()
+	t.h.ServeHTTP(w, r)
+	return w.Result(), nil
+}
+
+// TestChecker runs on 2026-10-14, in a synctest bubble slept to it.
 func TestChecker(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)))
+		testChecker(t)
+	})
+}
+
+func testChecker(t *testing.T) {
+	t.Helper()
 	calls := map[string]int{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls[r.Header.Get("Authorization")+" "+r.URL.Path]++
 		switch r.Header.Get("Authorization") + " " + r.URL.Path {
 		case "Bearer u /user":
@@ -26,11 +46,8 @@ func TestChecker(t *testing.T) {
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
-	}))
-	defer srv.Close()
-	c := New(srv.URL+"/", srv.Client())
-	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
-	c.Now = func() time.Time { return now }
+	})
+	c := New("http://github.test/", &http.Client{Transport: handlerTransport{h}})
 	ctx := t.Context()
 
 	if l, err := c.Login(ctx, "u"); err != nil || l != "alice" {
@@ -57,7 +74,7 @@ func TestChecker(t *testing.T) {
 	if calls["Bearer u /user"] != 1 || calls["Bearer u /repos/acme/app"] != 1 || calls["Bearer u /repos/acme/secret"] != 1 {
 		t.Errorf("calls = %v", calls)
 	}
-	now = now.Add(TTL + time.Second)
+	time.Sleep(TTL + time.Second)
 	_, _ = c.CanRead(ctx, "u", "acme/app")
 	if calls["Bearer u /repos/acme/app"] != 2 {
 		t.Errorf("expired entry not refreshed: %v", calls)

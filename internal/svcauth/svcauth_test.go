@@ -14,14 +14,23 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
+// tenant serves its JWKS in process (no listener), so time can move
+// in a synctest bubble.
 type tenant struct {
 	key     *rsa.PrivateKey
 	kid     string
 	fetches atomic.Int32
-	srv     *httptest.Server
+	jwks    http.Handler
+}
+
+func (tn *tenant) RoundTrip(r *http.Request) (*http.Response, error) {
+	rec := httptest.NewRecorder()
+	tn.jwks.ServeHTTP(rec, r)
+	return rec.Result(), nil
 }
 
 func newTenant(t *testing.T) *tenant {
@@ -31,16 +40,17 @@ func newTenant(t *testing.T) *tenant {
 		t.Fatal(err)
 	}
 	tn := &tenant{key: key, kid: "k1"}
-	tn.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	tn.jwks = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		tn.fetches.Add(1)
 		pub := tn.key.PublicKey
-		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
+		if err := json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
 			"kty": "RSA", "kid": tn.kid, "use": "sig", "alg": "RS256",
 			"n": base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
 			"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
-		}}})
-	}))
-	t.Cleanup(tn.srv.Close)
+		}}}); err != nil {
+			t.Error(err)
+		}
+	})
 	return tn
 }
 
@@ -62,11 +72,22 @@ func (tn *tenant) sign(t *testing.T, hdr, claims map[string]any) string {
 	return in + "." + base64.RawURLEncoding.EncodeToString(sig)
 }
 
+var verifyNow = time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+
+// TestVerify runs at verifyNow, in a synctest bubble slept to it.
 func TestVerify(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(verifyNow))
+		testVerify(t)
+	})
+}
+
+func testVerify(t *testing.T) {
+	t.Helper()
 	tn := newTenant(t)
-	v := NewVerifier("https://acme.us.auth0.com/", "https://exemplar.example/api", tn.srv.URL)
-	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
-	v.Now, v.HTTP = func() time.Time { return now }, tn.srv.Client()
+	v := NewVerifier("https://acme.us.auth0.com/", "https://exemplar.example/api", "https://acme.us.auth0.com/.well-known/jwks.json")
+	now := verifyNow
+	v.HTTP = &http.Client{Transport: tn}
 	type claims struct {
 		Sub   string `json:"sub"`
 		Scope string `json:"scope"`
@@ -148,6 +169,7 @@ func TestVerify(t *testing.T) {
 	// Rotation: the tenant now signs with k2; after a minute it is fetched,
 	// once.
 	tn.kid = "k2"
+	time.Sleep(2 * time.Minute)
 	now = now.Add(2 * time.Minute)
 	c3 := good()
 	c3["exp"] = now.Add(time.Hour).Unix()

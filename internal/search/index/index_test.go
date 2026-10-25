@@ -66,21 +66,23 @@ type fixture struct {
 	u   *upstream
 	m   *mirror.Manager
 	ix  *Index
-	now time.Time
-	mu  sync.Mutex
 	cfg Config
 }
 
-func (f *fixture) clock() time.Time {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.now
-}
-
-func (f *fixture) advance(d time.Duration) {
-	f.mu.Lock()
-	f.now = f.now.Add(d)
-	f.mu.Unlock()
+// age moves repo's last full build and its lag start d into the past, as
+// if d had passed: zoekt's directory watcher keeps goroutines in a system
+// call, so a synctest bubble's clock could not move while the index is
+// open.
+func (f *fixture) age(repo string, d time.Duration) {
+	f.ix.mu.Lock()
+	defer f.ix.mu.Unlock()
+	st := f.ix.repos[repo]
+	if st.cur != nil {
+		st.cur.meta.LastFull = st.cur.meta.LastFull.Add(-d)
+	}
+	if !st.behindSince.IsZero() {
+		st.behindSince = st.behindSince.Add(-d)
+	}
 }
 
 func setup(t *testing.T) *fixture {
@@ -101,8 +103,8 @@ func setup(t *testing.T) *fixture {
 	if _, err := m.Fetch(t.Context(), "acme/app"); err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{u: u, m: m, now: time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)}
-	f.cfg = Config{Root: t.TempDir(), Mirrors: m, CTags: FindCTags(), Now: f.clock}
+	f := &fixture{u: u, m: m}
+	f.cfg = Config{Root: t.TempDir(), Mirrors: m, CTags: FindCTags()}
 	if f.ix, err = New(f.cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +183,7 @@ func TestBuildAndSearch(t *testing.T) {
 	waitGone(t, filepath.Join(f.cfg.Root, "acme", "app", genName(1)))
 
 	// After a day, the next build is full.
-	f.advance(FullEvery + time.Minute)
+	f.age("acme/app", FullEvery+time.Minute)
 	f.u.write("again", map[string]string{"svc/b.go": "package svc\n"})
 	if _, err := f.m.Fetch(ctx, "acme/app"); err != nil {
 		t.Fatal(err)
@@ -260,7 +262,7 @@ func TestDegradedMode(t *testing.T) {
 	if res, _ := f.ix.SearchText(ctx, "acme/app", TextQuery{Pattern: `http\.Get\(`}); res.Degraded {
 		t.Error("degraded before the lag limit")
 	}
-	f.advance(LagLimit + time.Minute)
+	f.age("acme/app", LagLimit+time.Minute)
 	res, _ = f.ix.SearchText(ctx, "acme/app", TextQuery{Pattern: `http\.Get\(`})
 	if !res.Degraded || res.Commit != sha || !strings.Contains(strings.Join(paths(res), ","), "svc/new.go") {
 		t.Errorf("lagging search = %+v", res)
