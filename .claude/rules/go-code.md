@@ -3,7 +3,65 @@ paths:
   - "**/*.go"
 ---
 
-# Go code: time and clocks
+# Go code
+
+Conventions for the Go service. The repository map, work tracking and the
+ask-before rules are in `.claude/CLAUDE.md`; the design is in
+`docs/spec/technical-spec.md`.
+
+## Checks
+
+- Default checks: `go test ./...`, `go test -race ./...`, `golangci-lint run`,
+  `go build ./...`. Start with the touched package's tests, then broaden.
+  `make check` runs the quick gate; `make ci` mirrors `ci.yml`.
+- `golangci-lint run` follows `.golangci.yml` and includes `govet`; there is
+  no separate `go vet` step in the Makefile or CI.
+- Format touched Go files with `gofmt`; do not reformat unrelated files.
+- Set `EXEMPLAR_REQUIRE_ENGINES=1` (as CI does) to make engine-dependent tests
+  fail rather than skip. Postgres tests start a pgvector container with
+  testcontainers-go and skip without a container runtime unless
+  `EXEMPLAR_REQUIRE_DB=1`. Regenerate `internal/store/queries` with sqlc v1.31.1.
+- Under devenv, the nix cc wrapper rejects the tree-sitter grammars' cgo include
+  paths when `NIX_ENFORCE_PURITY=1`; the Makefile exports 0 and the session
+  hook leaves it unset. If a direct `go build` fails with
+  `NIX_BUILD_TOP: unbound variable`, run it with `NIX_ENFORCE_PURITY=0`.
+
+## Service conventions
+
+- Prefer the standard library and existing dependencies. Add a dependency only
+  for a concrete requirement; do not assume a router, database, or cloud provider.
+- New code goes in `cmd/<service>/` for entrypoints and `internal/` for private
+  packages.
+- Keep transport, business logic, and infrastructure separate without speculative
+  interfaces. Define small interfaces at the consumer when they are needed.
+- Propagate `context.Context`, cancellation, and deadlines to downstream calls.
+- Return contextual errors, preserving causes with `%w`; avoid panic for ordinary
+  failures. Validate configuration at startup and fail clearly on invalid values.
+- Use structured logs (`log/slog`); never log credentials or payload secrets.
+- Configure HTTP server and client timeouts, bound request sizes, and shut down
+  gracefully on SIGTERM/SIGINT. Stop background workers and close resources
+  within a deadline.
+- Keep liveness independent of external dependency outages. Readiness reflects
+  the ability to serve traffic and turns false during shutdown. Align probe paths
+  and ports with the manifests; keep the termination grace period longer than
+  shutdown.
+
+## Tests
+
+- Deterministic table-driven tests are the default. Test cancellation, error
+  paths, and shutdown for changes that affect them. `httptest` servers are fine
+  outside a synctest bubble; inside one, serve HTTP through an in-memory
+  `http.RoundTripper` (see "Time and clocks"). Seed any randomness.
+- Pick the technique by the change (spec §16.1, "Which technique a change
+  needs"): a worker state machine → a seeded simulation invariant
+  (`internal/worker/sim_test.go`); review output → a metamorphic relation over
+  `replay --scripted`; a parser of outside input → a native fuzz target, added to
+  `make fuzz` and `ci.yml`; an invariant over an input domain → a seeded property
+  test (stdlib `math/rand/v2` with a fixed seed, as `TestStage1Invariants`; no
+  new library); a new setting → a configuration-matrix row; a hot path → its
+  benchmark. Name a technique you skipped, and why, in the PR description.
+
+## Time and clocks
 
 The reasoning is in `docs/spec/technical-spec.md` §16.1 ("Time in tests"). The rules:
 
