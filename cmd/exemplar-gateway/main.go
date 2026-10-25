@@ -21,6 +21,7 @@
 //	         default chain (workload identity, instance role, AWS_* env) or a
 //	         Bedrock API key in AWS_BEARER_TOKEN_BEDROCK; EXEMPLAR_BEDROCK_BASE_URL
 //	         and EXEMPLAR_BEDROCK_PROFILE optional
+//	openai   OPENAI_API_KEY (from the KMS-backed secret); EXEMPLAR_OPENAI_BASE_URL optional
 //	voyage   VOYAGE_API_KEY (from the exemplar-providers Secret), for providers.embed
 //	         on POST /v1/embeddings; EXEMPLAR_VOYAGE_BASE_URL optional. Without the
 //	         key the gateway still starts and /v1/embeddings answers 503

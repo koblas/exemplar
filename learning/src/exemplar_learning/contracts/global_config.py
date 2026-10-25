@@ -125,7 +125,11 @@ class ProviderModel1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    provider: str = Field(..., min_length=1)
+    provider: str = Field(
+        ...,
+        description="A provider registered in internal/llm: claude or bedrock (the anthropic family), or openai (a second family, for an independent verifier or categorizer side).",
+        min_length=1,
+    )
     model: str = Field(..., min_length=1)
     standard: str | None = Field(None, min_length=1)
     high: str | None = Field(None, min_length=1)
@@ -135,7 +139,11 @@ class ProviderModel2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    provider: str = Field(..., min_length=1)
+    provider: str = Field(
+        ...,
+        description="A provider registered in internal/llm: claude or bedrock (the anthropic family), or openai (a second family, for an independent verifier or categorizer side).",
+        min_length=1,
+    )
     model: str | None = Field(None, min_length=1)
     standard: str = Field(..., min_length=1)
     high: str = Field(..., min_length=1)

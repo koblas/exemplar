@@ -11,7 +11,7 @@
       "additionalProperties": false,
       "required": ["provider"],
       "properties": {
-        "provider": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1, "description": "A provider registered in internal/llm: claude or bedrock (the anthropic family), or openai (a second family, for an independent verifier or categorizer side)." },
         "model": { "type": "string", "minLength": 1 },
         "standard": { "type": "string", "minLength": 1 },
         "high": { "type": "string", "minLength": 1 }
