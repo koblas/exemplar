@@ -73,16 +73,15 @@ type Verifier struct {
 	Audience string
 	JWKSURL  string
 	HTTP     *http.Client
-	Now      func() time.Time
 
 	mu      sync.Mutex
 	keys    map[string]*rsa.PublicKey
 	fetched time.Time
 }
 
-// NewVerifier returns a Verifier with default HTTP and clock.
+// NewVerifier returns a Verifier with default HTTP.
 func NewVerifier(issuer, audience, jwksURL string) *Verifier {
-	return &Verifier{Issuer: issuer, Audience: audience, JWKSURL: jwksURL, HTTP: &http.Client{Timeout: 10 * time.Second}, Now: time.Now}
+	return &Verifier{Issuer: issuer, Audience: audience, JWKSURL: jwksURL, HTTP: &http.Client{Timeout: 10 * time.Second}}
 }
 
 // Registered are the claims Verify checks itself.
@@ -124,7 +123,7 @@ func (v *Verifier) Verify(ctx context.Context, token string, out any) error {
 	if err := decodePart(parts[1], &c); err != nil {
 		return fmt.Errorf("%w: claims", ErrInvalid)
 	}
-	now := v.Now()
+	now := time.Now()
 	switch {
 	case c.Iss != v.Issuer:
 		return fmt.Errorf("%w: issuer", ErrInvalid)
@@ -187,11 +186,11 @@ func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) 
 	if k, ok := v.keys[kid]; ok {
 		return k, nil
 	}
-	if !v.fetched.IsZero() && v.Now().Sub(v.fetched) < refreshEvery {
+	if !v.fetched.IsZero() && time.Since(v.fetched) < refreshEvery {
 		return nil, fmt.Errorf("%w: unknown key", ErrInvalid)
 	}
 	keys, err := v.fetch(ctx)
-	v.fetched = v.Now()
+	v.fetched = time.Now()
 	if err != nil {
 		return nil, err
 	}

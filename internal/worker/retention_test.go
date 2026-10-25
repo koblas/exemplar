@@ -3,17 +3,27 @@ package worker
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/store/storetest"
 )
 
+// TestRetention runs at now, in a synctest bubble slept to it.
 func TestRetention(t *testing.T) {
 	t.Parallel()
+	now := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testRetention(t, now)
+	})
+}
+
+func testRetention(t *testing.T, now time.Time) {
+	t.Helper()
 	st := storetest.New(t)
 	ctx := t.Context()
-	now := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
 	days := func(n int) time.Time { return now.AddDate(0, 0, -n) }
 	exec := func(sql string, args ...any) {
 		t.Helper()
@@ -69,7 +79,7 @@ func TestRetention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.now, w.batch = func() time.Time { return now }, 2
+	w.batch = 2
 	res, err := w.Run(ctx)
 	if err != nil {
 		t.Fatal(err)

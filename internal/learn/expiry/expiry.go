@@ -73,7 +73,6 @@ type Runner struct {
 	// Repo writes the PRs; nil makes Run a dry run.
 	Repo Repo
 	Log  *slog.Logger
-	Now  func() time.Time
 }
 
 // Run handles every active global rule past its review_by date. One
@@ -81,9 +80,6 @@ type Runner struct {
 func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Outcome, error) {
 	if r.Log == nil {
 		r.Log = slog.Default()
-	}
-	if r.Now == nil {
-		r.Now = time.Now
 	}
 	months, after, bar := DefaultMonths, DefaultAfterDays, DefaultEFPBar
 	if e := snap.Global.Expiry; e != nil {
@@ -97,7 +93,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Outcome, erro
 	if f := snap.Global.Feedback; f != nil && f.EFPBar > 0 {
 		bar = f.EFPBar
 	}
-	today := r.Now().UTC().Truncate(24 * time.Hour)
+	today := time.Now().UTC().Truncate(24 * time.Hour)
 	var outs []Outcome
 	var errs []error
 	for _, rule := range snap.Rules {
@@ -180,7 +176,7 @@ func (r Runner) handle(ctx context.Context, rule config.Rule, o Outcome, until t
 		switch {
 		case responded:
 			o.Action = "responded" // the owner engaged; a human decides
-		case r.Now().Before(pr.CreatedAt.AddDate(0, 0, afterDays)):
+		case time.Now().Before(pr.CreatedAt.AddDate(0, 0, afterDays)):
 			o.Action = "waiting"
 		default:
 			if err := r.Repo.MergePR(ctx, pr.Number, "Expired rule "+rule.ID+" moves to shadow (spec §8.10)"); err != nil {
@@ -216,7 +212,7 @@ func (r Runner) handle(ctx context.Context, rule config.Rule, o Outcome, until t
 	if err := r.Repo.PutFile(ctx, branch, rule.Path, next, title); err != nil {
 		return o, fmt.Errorf("put file: %w", err)
 	}
-	url, _, err := r.Repo.OpenPR(ctx, branch, base, title, body(rule, o, until, afterDays, r.Now()))
+	url, _, err := r.Repo.OpenPR(ctx, branch, base, title, body(rule, o, until, afterDays, time.Now()))
 	if err != nil {
 		return o, fmt.Errorf("open PR: %w", err)
 	}

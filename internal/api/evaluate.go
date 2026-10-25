@@ -79,7 +79,6 @@ type EvalConfig struct {
 	PerMinute int
 	HTTP      *http.Client
 	Log       *slog.Logger
-	Now       func() time.Time
 }
 
 // Evaluations serves /v1/evaluate.
@@ -108,11 +107,7 @@ func NewEvaluations(cfg EvalConfig) (*Evaluations, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.DiscardHandler)
 	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
-	}
 	users := ghuser.New(cfg.GitHubAPI, cfg.HTTP)
-	users.Now = cfg.Now
 	return &Evaluations{cfg: cfg, users: users, limiters: map[string]*rate.Limiter{}}, nil
 }
 
@@ -248,7 +243,7 @@ func (e *Evaluations) create(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, "no such repo, or you cannot read it")
 		return
 	}
-	day := e.cfg.Now().UTC().Truncate(24 * time.Hour)
+	day := time.Now().UTC().Truncate(24 * time.Hour)
 	spent, runs, err := e.cfg.Spent(r.Context(), login, day)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "could not read your budget")

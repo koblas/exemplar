@@ -188,7 +188,7 @@ func (s *Server) githubAllowed(ctx context.Context, token, login string) (bool, 
 // finding's repo, and for the web UI (/ui/) when ui (or always for OIDC,
 // whose access needs no token).
 func (s *Server) startSession(w http.ResponseWriter, login string, ui uiSession, forUI bool) error {
-	exp := strconv.FormatInt(s.cfg.Now().Add(sessionTTL).Unix(), 10)
+	exp := strconv.FormatInt(time.Now().Add(sessionTTL).Unix(), 10)
 	enc := base64.RawURLEncoding.EncodeToString([]byte(login))
 	s.setCookie(w, sessionCookie, enc+"."+exp+"."+s.mac("session", enc, exp), "/", sessionTTL)
 	data, err := json.Marshal(ui)
@@ -221,7 +221,7 @@ func (s *Server) oidcStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad return path", http.StatusBadRequest)
 		return
 	}
-	st := oidcState{Return: ret, Exp: s.cfg.Now().Add(stateTTL).Unix()}
+	st := oidcState{Return: ret, Exp: time.Now().Add(stateTTL).Unix()}
 	for _, p := range []*string{&st.State, &st.Nonce, &st.Verifier} {
 		b := make([]byte, 32)
 		if _, err := rand.Read(b); err != nil {
@@ -270,7 +270,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		fail("The sign-in did not start here, or took too long. Try again.")
 		return
 	}
-	if s.cfg.Now().Unix() > st.Exp || !validReturn(st.Return) {
+	if time.Now().Unix() > st.Exp || !validReturn(st.Return) {
 		fail("The sign-in took too long. Try again.")
 		return
 	}
@@ -330,7 +330,7 @@ var connectPage = template.Must(template.New("connect").Parse(`<!doctype html>
 // pendLink keeps the OIDC sign-in and asks for GitHub: straight to GitHub
 // when connecting is required, or a page that offers to skip.
 func (s *Server) pendLink(w http.ResponseWriter, r *http.Request, ui uiSession, ret string) {
-	data, err := json.Marshal(pendingLink{ID: ui, Return: ret, Exp: s.cfg.Now().Add(stateTTL).Unix()})
+	data, err := json.Marshal(pendingLink{ID: ui, Return: ret, Exp: time.Now().Add(stateTTL).Unix()})
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -357,7 +357,7 @@ func (s *Server) pending(r *http.Request) (pendingLink, bool) {
 	}
 	data, err := s.open("oidc-link", c.Value)
 	var p pendingLink
-	if err != nil || json.Unmarshal(data, &p) != nil || s.cfg.Now().Unix() > p.Exp || !validReturn(p.Return) || p.ID.Subject == "" {
+	if err != nil || json.Unmarshal(data, &p) != nil || time.Now().Unix() > p.Exp || !validReturn(p.Return) || p.ID.Subject == "" {
 		return pendingLink{}, false
 	}
 	return p, true

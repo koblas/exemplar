@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/gh"
@@ -39,7 +40,16 @@ func thread(login, typename, path string, start, line any) map[string]any {
 const cachePatch = "@@ -1,2 +1,4 @@\n package svc\n+import \"sync\"\n+var mu sync.Mutex\n \n" +
 	"@@ -18,2 +20,3 @@ func Get(k string) string {\n \tv := load(k)\n+\tcache.Set(k, v) // token " + "%s" + "\n \treturn v\n"
 
+// TestRevertSeeds runs at now, in a synctest bubble slept to it.
 func TestRevertSeeds(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testRevertSeeds(t)
+	})
+}
+
+func testRevertSeeds(t *testing.T) {
+	t.Helper()
 	st := storetest.New(t)
 	ctx := t.Context()
 	revertPR := mergedPR(9, `Revert "Add price cache"`, "Reverts acme/app#7\n\n"+
@@ -84,7 +94,7 @@ func TestRevertSeeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	pseudo, _ := ingest.NewPseudonymizer([]byte("0123456789abcdef0123456789abcdef"))
-	cfg := Config{Now: func() time.Time { return now }, Seeds: &Seeds{
+	cfg := Config{Seeds: &Seeds{
 		Pseudonyms: pseudo, Scanner: sc, DocHosts: []string{"docs.internal.example"},
 	}}
 	run := func() RevertStats {

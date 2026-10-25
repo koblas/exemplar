@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/redact"
@@ -118,10 +119,19 @@ func newWriter(t *testing.T, s *store.Store, repo Repo) *Writer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(Config{Now: func() time.Time { return now }}, s, repo, sc)
+	return New(Config{}, s, repo, sc)
 }
 
+// TestProposeThrottlesPerOwner runs at now, in a synctest bubble slept to it.
 func TestProposeThrottlesPerOwner(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testProposeThrottlesPerOwner(t)
+	})
+}
+
+func testProposeThrottlesPerOwner(t *testing.T) {
+	t.Helper()
 	s := storetest.New(t)
 	seed(t, s, map[string]int{"@acme/payments": 5, "@acme/search": 1}, func(i int) string { return fmt.Sprintf("Rule number %d", i) })
 	repo := newFakeRepo()
@@ -167,7 +177,16 @@ func TestProposeThrottlesPerOwner(t *testing.T) {
 	}
 }
 
+// TestProposeRecoversExistingPR runs at now, in a synctest bubble slept to it.
 func TestProposeRecoversExistingPR(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testProposeRecoversExistingPR(t)
+	})
+}
+
+func testProposeRecoversExistingPR(t *testing.T) {
+	t.Helper()
 	s := storetest.New(t)
 	seed(t, s, map[string]int{"@acme/payments": 1}, func(int) string { return "Recovered rule" })
 	repo := newFakeRepo()
@@ -185,7 +204,16 @@ func TestProposeRecoversExistingPR(t *testing.T) {
 	}
 }
 
+// TestProposeRefusesSecretsAndDryRunWritesNothing runs at now, in a synctest bubble slept to it.
 func TestProposeRefusesSecretsAndDryRunWritesNothing(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testProposeRefusesSecretsAndDryRunWritesNothing(t)
+	})
+}
+
+func testProposeRefusesSecretsAndDryRunWritesNothing(t *testing.T) {
+	t.Helper()
 	s := storetest.New(t)
 	sum := sha256.Sum256([]byte("propose test token"))
 	secret := "ghp_" + hex.EncodeToString(sum[:])[:36]

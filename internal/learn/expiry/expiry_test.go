@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/config"
@@ -69,7 +70,16 @@ func (f fakeStats) RuleRecentOutcomes(_ context.Context, a queries.RuleRecentOut
 	return f[a.RuleID], nil
 }
 
+// TestExpiry runs in a synctest bubble slept to 2026-10-14.
 func TestExpiry(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC)))
+		testExpiry(t)
+	})
+}
+
+func testExpiry(t *testing.T) {
+	t.Helper()
 	rule := func(id, reviewBy, status string) config.Rule {
 		return config.Rule{
 			ID: id, Status: status, Owner: "@platform/backend", ReviewBy: reviewBy,
@@ -92,11 +102,9 @@ func TestExpiry(t *testing.T) {
 		"healthy": {Judged: 12, NegW: 1, PosW: 20},
 		"noisy":   {Judged: 12, NegW: 8, PosW: 10},
 	}
-	day := 0
 	run := func() map[string]Outcome {
 		t.Helper()
-		now := func() time.Time { return time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC).AddDate(0, 0, day) }
-		outs, err := Runner{Stats: stats, Repo: repo, Now: now}.Run(t.Context(), snap)
+		outs, err := Runner{Stats: stats, Repo: repo}.Run(t.Context(), snap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,11 +132,11 @@ func TestExpiry(t *testing.T) {
 		!strings.Contains(strings.Join(repo.bodies, "\n"), "merges on its own after 2026-10-28") {
 		t.Errorf("bodies = %q", repo.bodies)
 	}
-	day = 7
+	time.Sleep(7 * 24 * time.Hour)
 	if outs := run(); outs["noisy"].Action != "waiting" || outs["healthy"].Action != "waiting" || len(repo.merged) != 0 {
 		t.Errorf("day 7 = %+v", outs)
 	}
-	day = 15
+	time.Sleep(8 * 24 * time.Hour) // day 15
 	repo.activity = true
 	if outs := run(); outs["noisy"].Action != "responded" || len(repo.merged) != 0 {
 		t.Errorf("responded = %+v", outs["noisy"])
@@ -146,7 +154,7 @@ func TestExpiry(t *testing.T) {
 		t.Errorf("after merge = %+v", outs)
 	}
 	// A dry run writes nothing.
-	if outs, err := (Runner{Stats: stats, Now: time.Now}).Run(t.Context(), snap); err != nil || outs[0].Action != "dry_run" {
+	if outs, err := (Runner{Stats: stats}).Run(t.Context(), snap); err != nil || outs[0].Action != "dry_run" {
 		t.Errorf("dry run = %+v, %v", outs, err)
 	}
 }

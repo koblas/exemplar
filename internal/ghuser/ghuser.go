@@ -29,7 +29,6 @@ type Checker struct {
 	// API is https://api.github.com/ (GHES: https://<host>/api/v3/).
 	API  string
 	HTTP *http.Client
-	Now  func() time.Time
 
 	mu     sync.Mutex
 	logins map[string]entry // token hash -> login
@@ -49,7 +48,7 @@ func New(api string, c *http.Client) *Checker {
 	if c == nil {
 		c = &http.Client{Timeout: 10 * time.Second}
 	}
-	return &Checker{API: api, HTTP: c, Now: time.Now, logins: map[string]entry{}, access: map[string]entry{}}
+	return &Checker{API: api, HTTP: c, logins: map[string]entry{}, access: map[string]entry{}}
 }
 
 func key(token string) string {
@@ -61,7 +60,7 @@ func (c *Checker) get(m map[string]entry, k string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := m[k]
-	if !ok || c.Now().After(e.until) {
+	if !ok || time.Now().After(e.until) {
 		return "", false
 	}
 	return e.value, true
@@ -70,7 +69,7 @@ func (c *Checker) get(m map[string]entry, k string) (string, bool) {
 func (c *Checker) put(m map[string]entry, k, v string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := c.Now()
+	now := time.Now()
 	if len(m) > maxEntries {
 		for k, e := range m {
 			if now.After(e.until) {

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/gh"
@@ -208,7 +209,7 @@ var now = time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
 
 func newJob(t *testing.T, st *store.Store, f *fakeGitHub) *Job {
 	t.Helper()
-	j, err := New(Config{Now: func() time.Time { return now }}, f.connect, st, eligible{"acme/app": true})
+	j, err := New(Config{}, f.connect, st, eligible{"acme/app": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +236,16 @@ func events(t *testing.T, st *store.Store) []event {
 	return out
 }
 
+// TestReverts runs at now, in a synctest bubble slept to it.
 func TestReverts(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testReverts(t)
+	})
+}
+
+func testReverts(t *testing.T) {
+	t.Helper()
 	st := storetest.New(t)
 	revertPR := mergedPR(9, `Revert "Add cache"`, "Reverts acme/app#7", "m9", "svc/cache.go", "svc/cache_test.go")
 	f := &fakeGitHub{
@@ -301,7 +311,16 @@ func prLinks(t *testing.T, st *store.Store) []string {
 	return out
 }
 
+// TestRevertsRateLimitedKeepsCursor runs at now, in a synctest bubble slept to it.
 func TestRevertsRateLimitedKeepsCursor(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testRevertsRateLimitedKeepsCursor(t)
+	})
+}
+
+func testRevertsRateLimitedKeepsCursor(t *testing.T) {
+	t.Helper()
 	st := storetest.New(t)
 	f := &fakeGitHub{t: t, limited: true}
 	stats, err := newJob(t, st, f).Reverts(t.Context(), "acme/app")

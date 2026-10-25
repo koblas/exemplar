@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/gh"
@@ -22,6 +23,7 @@ func (f fakeApp) HookDeliveries(context.Context, time.Time) ([]gh.Delivery, erro
 	return f.deliveries, f.deliveriesErr
 }
 
+// TestChecks runs each case at now, in a synctest bubble slept to it.
 func TestChecks(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	ok := []gh.Delivery{{StatusCode: 200, Event: "pull_request", DeliveredAt: now.Add(-time.Minute)}}
@@ -63,26 +65,29 @@ func TestChecks(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := Checker{
-				App: tc.app, Org: "acme", ConfigRepo: "acme/exemplar-config", WebhookURL: "https://e.acme.com/webhook",
-				LastEvent: tc.last, Now: func() time.Time { return now },
-			}.Run(t.Context())
-			if len(got) != len(tc.want) {
-				t.Fatalf("Run = %+v", got)
-			}
-			var fixes []string
-			for i, c := range got {
-				if c.Status != tc.want[i] {
-					t.Errorf("%s = %s (%s), want %s", c.Name, c.Status, c.Detail, tc.want[i])
+			synctest.Test(t, func(t *testing.T) {
+				time.Sleep(time.Until(now))
+				got := Checker{
+					App: tc.app, Org: "acme", ConfigRepo: "acme/exemplar-config", WebhookURL: "https://e.acme.com/webhook",
+					LastEvent: tc.last,
+				}.Run(t.Context())
+				if len(got) != len(tc.want) {
+					t.Fatalf("Run = %+v", got)
 				}
-				if c.Status != StatusOK && c.Detail == "" {
-					t.Errorf("%s has no detail", c.Name)
+				var fixes []string
+				for i, c := range got {
+					if c.Status != tc.want[i] {
+						t.Errorf("%s = %s (%s), want %s", c.Name, c.Status, c.Detail, tc.want[i])
+					}
+					if c.Status != StatusOK && c.Detail == "" {
+						t.Errorf("%s has no detail", c.Name)
+					}
+					fixes = append(fixes, c.Fix)
 				}
-				fixes = append(fixes, c.Fix)
-			}
-			if tc.fixes != "" && !strings.Contains(strings.Join(fixes, "\n"), tc.fixes) {
-				t.Errorf("fixes %q don't mention %q", fixes, tc.fixes)
-			}
+				if tc.fixes != "" && !strings.Contains(strings.Join(fixes, "\n"), tc.fixes) {
+					t.Errorf("fixes %q don't mention %q", fixes, tc.fixes)
+				}
+			})
 		})
 	}
 }

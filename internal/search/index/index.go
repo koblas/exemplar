@@ -66,7 +66,6 @@ type Config struct {
 	// RequireCTags fails builds whose symbol extraction fails.
 	RequireCTags bool
 	Logger       *slog.Logger
-	Now          func() time.Time
 }
 
 // FindCTags returns the universal-ctags binary on PATH, or "".
@@ -129,9 +128,6 @@ func New(cfg Config) (*Index, error) {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
-	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
 	}
 	if err := os.MkdirAll(cfg.Root, 0o750); err != nil {
 		return nil, fmt.Errorf("index: root: %w", err)
@@ -233,7 +229,7 @@ func (ix *Index) Build(ctx context.Context, repo string) (Meta, error) {
 		return cur.meta, nil
 	}
 
-	now := ix.cfg.Now()
+	now := time.Now()
 	m := Meta{Gen: 1, Commit: sha, BuiltAt: now, LastFull: now, Symbols: ix.cfg.CTags != ""}
 	delta := false
 	if cur != nil {
@@ -370,7 +366,7 @@ func (ix *Index) NoteMirror(repo, sha string) {
 		return
 	}
 	if st.behindSince.IsZero() {
-		st.behindSince = ix.cfg.Now()
+		st.behindSince = time.Now()
 	}
 	st.behindSHA = sha
 }
@@ -398,7 +394,7 @@ func (ix *Index) Status(repo string) Status {
 		return s
 	}
 	if !st.behindSince.IsZero() {
-		s.Lag = ix.cfg.Now().Sub(st.behindSince)
+		s.Lag = time.Since(st.behindSince)
 	}
 	if st.cur != nil {
 		m := st.cur.meta
@@ -505,7 +501,7 @@ func (ix *Index) acquire(repo string) *generation {
 	if st == nil || st.cur == nil {
 		return nil
 	}
-	if !st.behindSince.IsZero() && ix.cfg.Now().Sub(st.behindSince) > LagLimit {
+	if !st.behindSince.IsZero() && time.Since(st.behindSince) > LagLimit {
 		return nil
 	}
 	st.cur.refs.Add(1)

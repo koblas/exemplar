@@ -84,7 +84,6 @@ type Config struct {
 	// HTTP calls GitHub (default http.DefaultClient).
 	HTTP *http.Client
 	Log  *slog.Logger
-	Now  func() time.Time
 }
 
 // app is one App's progress through the flow.
@@ -129,9 +128,6 @@ func New(cfg Config) (*Handler, error) {
 	}
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
-	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
 	}
 	return &Handler{
 		cfg: cfg, org: org, form: random(),
@@ -258,7 +254,7 @@ func (h *Handler) Manifest(kind string) map[string]any {
 func (h *Handler) newState(kind string) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	now := h.cfg.Now()
+	now := time.Now()
 	for s, p := range h.states {
 		if now.After(p.expires) {
 			delete(h.states, s)
@@ -280,7 +276,7 @@ func (h *Handler) spendState(state string) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	p, ok := h.states[state]
-	if !ok || h.cfg.Now().After(p.expires) {
+	if !ok || time.Now().After(p.expires) {
 		return "", errState
 	}
 	delete(h.states, state)

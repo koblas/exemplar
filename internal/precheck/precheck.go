@@ -119,7 +119,6 @@ type VolumeConfig struct {
 	Days    int // window (default 30)
 	PerRepo int // PRs listed per repo (default 10)
 	MaxRuns int // rule runs across all repos (default 40)
-	Now     func() time.Time
 }
 
 // VolumeReport is one rule's volume estimate.
@@ -152,9 +151,6 @@ func Volume(ctx context.Context, src PRSource, trial PRRunner, snap *config.Snap
 	if cfg.MaxRuns <= 0 {
 		cfg.MaxRuns = 40
 	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
-	}
 	rep := VolumeReport{Rule: rule.ID, Repos: []string{}}
 	for repo, rc := range snap.Repos {
 		if eligible(repo) && rc.Enabled && !slices.Contains(rc.DisabledGlobalRules, rule.ID) {
@@ -162,7 +158,7 @@ func Volume(ctx context.Context, src PRSource, trial PRRunner, snap *config.Snap
 		}
 	}
 	slices.Sort(rep.Repos)
-	since := cfg.Now().AddDate(0, 0, -cfg.Days)
+	since := time.Now().AddDate(0, 0, -cfg.Days)
 	budget := snap.Global.CommentBudget
 	exempt := strings.EqualFold(rule.Category, "Security") || rule.Severity == schema.SeverityBlocking
 	for _, repo := range rep.Repos {

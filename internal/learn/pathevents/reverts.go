@@ -55,8 +55,6 @@ type Config struct {
 	Logger   *slog.Logger
 	// Seeds, when set, also writes revert seeds for the extractor.
 	Seeds *Seeds
-	// Now is the clock (tests).
-	Now func() time.Time
 }
 
 // API is GitHub access for one repo.
@@ -99,9 +97,6 @@ func New(cfg Config, connect Connect, st *store.Store, elig Eligibility) (*Job, 
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
-	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
 	}
 	if s := cfg.Seeds; s != nil {
 		if s.Pseudonyms == nil || s.Scanner == nil {
@@ -176,7 +171,7 @@ func (j *Job) Reverts(ctx context.Context, repo string) (RevertStats, error) {
 	if err != nil {
 		return stats, err
 	}
-	start := j.cfg.Now()
+	start := time.Now()
 	since := start.Add(-j.cfg.Backfill)
 	switch ts, err := j.st.GetRevertsSince(ctx, repo); {
 	case errors.Is(err, pgx.ErrNoRows):

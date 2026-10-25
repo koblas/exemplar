@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/koblas/exemplar/internal/gates"
@@ -54,7 +55,16 @@ func (f *fakeGitHub) query(_ context.Context, q string, vars map[string]any, out
 	return json.Unmarshal(b, out)
 }
 
+// TestCollect runs at now, in a synctest bubble slept to it.
 func TestCollect(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(now))
+		testCollect(t)
+	})
+}
+
+func testCollect(t *testing.T) {
+	t.Helper()
 	st := storetest.New(t)
 	ctx := t.Context()
 	exec := func(sql string, args ...any) {
@@ -79,7 +89,7 @@ func TestCollect(t *testing.T) {
 	exec(`INSERT INTO mined_prs VALUES ('acme/app', 60, 'a', 'b', $1, false, ARRAY['svc/cart.go'])`, now.Add(-40*day))
 
 	f := &fakeGitHub{forcePushes: 2, veterans: map[string]bool{"alice": true}}
-	c, err := New(st, f.query, func() time.Time { return now })
+	c, err := New(st, f.query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +130,7 @@ func TestCollect(t *testing.T) {
 
 func TestCollectFailsClosed(t *testing.T) {
 	st := storetest.New(t)
-	c, _ := New(st, (&fakeGitHub{fail: true}).query, func() time.Time { return now })
+	c, _ := New(st, (&fakeGitHub{fail: true}).query)
 	if _, err := c.Collect(t.Context(), PR{Repo: "acme/app", Number: 1, Author: "bob", Paths: []string{"a.go"}}, nil); err == nil {
 		t.Fatal("Collect returned facts it could not measure")
 	}
@@ -129,7 +139,7 @@ func TestCollectFailsClosed(t *testing.T) {
 func TestOddLoginCountsAsNew(t *testing.T) {
 	st := storetest.New(t)
 	f := &fakeGitHub{veterans: map[string]bool{"alice": true}}
-	c, _ := New(st, f.query, func() time.Time { return now })
+	c, _ := New(st, f.query)
 	in, err := c.Collect(t.Context(), PR{Repo: "acme/app", Number: 1, Author: "alice repo:other/x", Paths: []string{"a.go"}}, nil)
 	if err != nil || !in.NewAuthor || len(f.searches) != 0 {
 		t.Fatalf("in = %+v, err = %v, searches = %v", in, err, f.searches)

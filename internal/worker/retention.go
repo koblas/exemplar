@@ -57,7 +57,6 @@ type RetentionWorker struct {
 
 	st       *store.Store
 	snapshot func(context.Context) (*config.Snapshot, error)
-	now      func() time.Time
 	log      *slog.Logger
 	batch    int32
 }
@@ -70,7 +69,7 @@ func NewRetentionWorker(st *store.Store, snapshot func(context.Context) (*config
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &RetentionWorker{st: st, snapshot: snapshot, now: time.Now, log: log, batch: retentionBatch}, nil
+	return &RetentionWorker{st: st, snapshot: snapshot, log: log, batch: retentionBatch}, nil
 }
 
 // Timeout bounds one run.
@@ -135,7 +134,7 @@ func (w *RetentionWorker) Run(ctx context.Context) (RetentionResult, error) {
 			errs = append(errs, fmt.Errorf("retention: %s %w; skipped", p.name, errNoPeriod))
 			continue
 		}
-		cutoff := pgtype.Timestamptz{Time: w.now().AddDate(0, 0, -p.days), Valid: true}
+		cutoff := pgtype.Timestamptz{Time: time.Now().AddDate(0, 0, -p.days), Valid: true}
 		for range maxRetentionBatches {
 			n, err := p.step(ctx, cutoff, w.batch)
 			out[p.name] += n

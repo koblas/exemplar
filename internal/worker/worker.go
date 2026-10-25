@@ -68,7 +68,6 @@ type Config struct {
 	// CloneURL overrides https://github.com/<repo>.git (tests).
 	CloneURL func(repo string) string
 	Log      *slog.Logger
-	Now      func() time.Time
 	// Links, when set, signs feedback links into each comment.
 	Links *feedbacklink.Signer
 	// LinterPoll is how often a review re-reads the linters' check runs
@@ -103,9 +102,6 @@ func New(cfg Config) (*Worker, error) {
 	}
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.DiscardHandler)
-	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
 	}
 	if cfg.LinterPoll <= 0 {
 		cfg.LinterPoll = 10 * time.Second
@@ -657,7 +653,7 @@ func (w *Worker) mergeSafety(ctx context.Context, reader *github.Client, p *engi
 	query := func(ctx context.Context, q string, vars map[string]any, out any) error {
 		return gh.GraphQL(ctx, reader, q, vars, out)
 	}
-	c, err := mergesafety.New(w.cfg.Store, query, w.cfg.Now)
+	c, err := mergesafety.New(w.cfg.Store, query)
 	if err != nil {
 		w.cfg.Log.Error("merge safety", "err", err)
 		return nil

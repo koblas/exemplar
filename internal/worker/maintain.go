@@ -126,7 +126,6 @@ type ReconcileWorker struct {
 
 	st  *store.Store
 	app Deliveries
-	now func() time.Time
 	log *slog.Logger
 }
 
@@ -138,12 +137,12 @@ func NewReconcileWorker(st *store.Store, app Deliveries, log *slog.Logger) (*Rec
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &ReconcileWorker{st: st, app: app, now: time.Now, log: log}, nil
+	return &ReconcileWorker{st: st, app: app, log: log}, nil
 }
 
 // Work implements river.Worker.
 func (w *ReconcileWorker) Work(ctx context.Context, _ *river.Job[ReconcileArgs]) error {
-	ds, err := w.app.HookDeliveries(ctx, w.now().Add(-ReconcileLookback))
+	ds, err := w.app.HookDeliveries(ctx, time.Now().Add(-ReconcileLookback))
 	if err != nil {
 		return fmt.Errorf("list hook deliveries: %w", err)
 	}
@@ -272,7 +271,6 @@ type SweepWorker struct {
 	st       *store.Store
 	search   PRSearch
 	snapshot func(context.Context) (*config.Snapshot, error)
-	now      func() time.Time
 	log      *slog.Logger
 }
 
@@ -284,7 +282,7 @@ func NewSweepWorker(st *store.Store, search PRSearch, snapshot func(context.Cont
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &SweepWorker{st: st, search: search, snapshot: snapshot, now: time.Now, log: log}, nil
+	return &SweepWorker{st: st, search: search, snapshot: snapshot, log: log}, nil
 }
 
 // Work implements river.Worker. One owner's failure does not stop the
@@ -294,7 +292,7 @@ func (w *SweepWorker) Work(ctx context.Context, _ *river.Job[SweepArgs]) error {
 	if err != nil {
 		return err
 	}
-	since := w.now().Add(-SweepLookback)
+	since := time.Now().Add(-SweepLookback)
 	client := river.ClientFromContext[pgx.Tx](ctx)
 	enqueued, failed := 0, 0
 	for owner, batches := range searchBatches(SweepRepos(snap), since) {

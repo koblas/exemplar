@@ -35,7 +35,6 @@ type Config struct {
 	// Scan is how many top candidates are considered per run.
 	Scan   int
 	Logger *slog.Logger
-	Now    func() time.Time
 }
 
 // Writer opens candidate PRs.
@@ -61,9 +60,6 @@ func New(cfg Config, st *store.Store, repo Repo, sc *redact.Scanner) *Writer {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
-	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
 	}
 	return &Writer{cfg: cfg, store: st, repo: repo, scanner: sc, log: cfg.Logger}
 }
@@ -117,7 +113,7 @@ func (w *Writer) Run(ctx context.Context) ([]Outcome, error) {
 		if err != nil {
 			return outs, err
 		}
-		d, err := BuildDraft(c, w.cfg.Now())
+		d, err := BuildDraft(c, time.Now())
 		if err != nil {
 			out.Action, out.Reason = "skipped", err.Error()
 			outs = append(outs, out)
