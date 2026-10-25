@@ -44,6 +44,6 @@
       "allowedDomains": ["proxy.golang.org", "sum.golang.org", "storage.googleapis.com"],
       "allowLocalBinding": true
     },
-    "excludedCommands": ["pg_ctl *"]
+    "excludedCommands": ["pg_ctl *","bd"]
   }
 }
