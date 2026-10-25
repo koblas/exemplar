@@ -25,10 +25,10 @@ GitHub and people reach exemplar-webhook and exemplar-api one of three ways. Cor
 
 | Build | How | Admits | Resources |
 |---|---|---|---|
-| `base` (default) | `exemplar-cloudflared` dials out to Cloudflare on 7844 (QUIC, falling back to HTTP/2 over TCP). Cloudflare balances between its 2 replicas. | Only `exemplar-cloudflared` pods | 58 |
-| `direct` | Ingresses on the cluster's controller | Only the `ingress-nginx` namespace | 55 |
-| `base` + `components/ingress` | Both | Both | 62 |
-| `base` + `components/postgres` | As `base`, with the in-cluster database | As `base` | 62 |
+| `base` (default) | `exemplar-cloudflared` dials out to Cloudflare on 7844 (QUIC, falling back to HTTP/2 over TCP). Cloudflare balances between its 2 replicas. | Only `exemplar-cloudflared` pods | 59 |
+| `direct` | Ingresses on the cluster's controller | Only the `ingress-nginx` namespace | 56 |
+| `base` + `components/ingress` | Both | Both | 63 |
+| `base` + `components/postgres` | As `base`, with the in-cluster database | As `base` | 63 |
 
 The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMap, reviewed with the rest of the manifests rather than set in the dashboard. The rules match by path, not host name: only `^/webhook$` reaches the webhook, as the Ingress's `Exact` path does, and everything else reaches the API. Only the host names an installation routes to the tunnel (`cloudflared tunnel route dns`) reach it at all. cloudflared runs as its own Deployment, never a sidecar, so the tunnel credentials stay out of the webhook and API pods and the webhook's egress stays Postgres only. Cloudflare ends TLS at its edge and sees requests in clear text; the webhook still checks each delivery's HMAC, and its rejection log's `remote` is a cloudflared pod's address, not GitHub's. The edge rules an installation adds are on [How to install for production](../guides/install/production.md#4-write-the-overlay).
 
@@ -42,7 +42,7 @@ The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMa
 | `exemplar-worker` | Deployment | 2 (×4 reviews each) | 8080 `http` (probes only) | `/healthz`, `/readyz` | 80 s → 120 s | Control: routes events, runs the cheap queues and River's periodic jobs on its leader, and dispatches reviews to runners ([Runners](#runners)) |
 | `exemplar-runner` | PodTemplate → a Job per review | One per review in flight | none | none | 60 s grace | `--launcher=kubernetes` only. One review, then exits; no config checkout, no Kubernetes API token |
 | `exemplar-search` | StatefulSet + 2 Services | 2, on different nodes | 8080 `http`, Services 8080 and 80 | `/healthz`, `/readyz` | 25 s → 45 s | Local SSD per replica (`local-ssd`, 500Gi placeholder). Optional: an overlay may delete it and empty `EXEMPLAR_SEARCH_URL` ([How to run without exemplar-search](../guides/install/without-search.md)) |
-| `exemplar-learn` | 11 CronJobs | | | | | ingest, path-events, extract, evals, compile (suspended), propose, demote, expiry, teach, digest, export |
+| `exemplar-learn` | 12 CronJobs | | | | | ingest, path-events, extract, calibrate, evals, compile (suspended), propose, demote, expiry, teach, digest, export |
 | `exemplar-learning` | 2 CronJobs | | | | | cluster, rank (Python) |
 | `exemplar-postgres` | StatefulSet + Service | 1 | 5432 | `pg_isready` over TCP; startup probe allows 10 min; preStop `pg_ctl stop --mode=fast --timeout=30` | 30 s → 45 s | `components/postgres` only. pgvector 0.8.0 on Postgres 16, pinned by digest. In from the Postgres clients on 5432; nothing out |
 | `exemplar-cloudflared` | Deployment | 2 | 2000 metrics | `/healthcheck` (liveness), `/ready` (an edge connection) | 20 s → 30 s | Tunnel builds only. cloudflared 2026.9.3, pinned by digest. Egress to Cloudflare on 7844 and to the webhook and API |
@@ -95,6 +95,7 @@ Only the worker's `worker` container mounts a service account token (a projected
 | `exemplar-learn-extract` | `*/30 * * * *` | Collects finished extraction batches and submits one new batch to the gateway, skipping comments from repositories the config no longer makes eligible. |
 | `exemplar-learn-path-events` | `30 2 * * *` | Records paths touched by reverts and incident-linked PRs. |
 | `exemplar-learn-cluster` | `30 3 * * *` | Python: clusters embedded extractions. |
+| `exemplar-learn-calibrate` | `15 4 * * *` | Verifier calibration (and the categorizer's, when configured) through the deployed providers, recorded in `calibration_results`; skipped when the same verifier inputs already passed. A passing verifier result lets same-family findings through the auto-approve gate. |
 | `exemplar-learn-rank` | `30 4 * * *` | Python: scores the latest cluster run into candidates. |
 | `exemplar-learn-evals` | `0 5 * * *` | Generates eval cases for new candidates. |
 | `exemplar-learn-compile` | `30 5 * * *` | Suspended: compiles candidates to ast-grep or Semgrep in a sandbox ([How to enable the compile CronJob](../guides/operate/compile-cronjob.md)). |

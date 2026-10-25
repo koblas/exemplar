@@ -21,6 +21,7 @@ func TestStage1Invariants(t *testing.T) {
 			Unreviewed:             r.IntN(3),
 			Degraded:               r.IntN(2) == 0,
 			SameFamilyVerification: r.IntN(2) == 0,
+			VerifierCalibrated:     r.IntN(2) == 0,
 			BugLaneCovered:         r.IntN(4) != 0,
 			GlobalAutoApprove:      r.IntN(2) == 0,
 			RepoAutoApprove:        r.IntN(2) == 0,
@@ -31,7 +32,7 @@ func TestStage1Invariants(t *testing.T) {
 			WithinSize:             r.IntN(4) != 0,
 		}
 		res := EvaluateStage1(in)
-		forced := !in.Complete || in.Coverage < 1 || in.Candidates > 0 || in.Unreviewed > 0 || in.Degraded || in.SameFamilyVerification
+		forced := !in.Complete || in.Coverage < 1 || in.Candidates > 0 || in.Unreviewed > 0 || in.Degraded || in.SameFamilyVerification && !in.VerifierCalibrated
 		if forced && res.Eligible {
 			t.Fatalf("eligible with a forcing condition: %+v", in)
 		}
@@ -48,7 +49,7 @@ func TestStage1Invariants(t *testing.T) {
 		check(in.Coverage < 1, ReasonCoverage)
 		check(in.Candidates > 0, ReasonCandidates)
 		check(in.Unreviewed > 0, ReasonUnreviewed)
-		check(in.SameFamilyVerification, ReasonSameFamily)
+		check(in.SameFamilyVerification && !in.VerifierCalibrated, ReasonSameFamily)
 		check(!in.BugLaneCovered, ReasonBugLane)
 		check(in.RepoShadow, ReasonRepoShadow)
 		check(!in.PathPolicy, ReasonPaths)

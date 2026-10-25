@@ -10,3 +10,11 @@ JOIN reviews r ON r.id = rr.review_id
 WHERE l.label IN ('true', 'wrong')
 ORDER BY f.id
 LIMIT $1;
+
+-- name: RecordCalibration :exec
+INSERT INTO calibration_results (kind, key, config_version, providers, known_wrong_refuted, known_true_refuted, labels, passed)
+VALUES (@kind, @key, @config_version, @providers, @known_wrong_refuted, @known_true_refuted, @labels, @passed);
+
+-- name: LatestCalibration :one
+-- The latest result for kind and key decides; a later failure re-gates.
+SELECT passed, ran_at FROM calibration_results WHERE kind = @kind AND key = @key ORDER BY ran_at DESC, id DESC LIMIT 1;

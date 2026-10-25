@@ -136,7 +136,7 @@ func (w *EvaluateWorker) Evaluate(ctx context.Context, id uuid.UUID) (string, er
 	if err != nil {
 		return "", fmt.Errorf("worker: prepare review: %w", err)
 	}
-	res, err := w.cfg.Engine.Review(ctx, p, engine.Options{Caller: row.Caller})
+	res, err := w.cfg.Engine.Review(ctx, p, engine.Options{Caller: row.Caller, VerifierCalibrated: verifierCalibrated(ctx, w.cfg.Store, snap)})
 	if err != nil {
 		return "", fmt.Errorf("worker: review: %w", err)
 	}

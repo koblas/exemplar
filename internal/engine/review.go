@@ -62,6 +62,10 @@ type Options struct {
 	ReviewID int64
 	// Caller is reviews.caller: production, eval, baseline, ...
 	Caller string
+	// VerifierCalibrated is set when the installation's verifier
+	// calibration passed for the deployed verifier inputs: same-family
+	// verification then does not gate (FR-E10).
+	VerifierCalibrated bool
 	// RuleRunIDs, when set, maps rule id to its persisted rule_runs.id so
 	// gateway calls are attributed per rule run.
 	RuleRunIDs map[string]int64
@@ -344,6 +348,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		Unreviewed:             len(p.Excluded),
 		Degraded:               res.Degraded,
 		SameFamilyVerification: sameFamily,
+		VerifierCalibrated:     opt.VerifierCalibrated,
 		BugLaneCovered:         bugLaneCovered(res.Runs),
 		GlobalAutoApprove:      p.Effective.Global.AutoApprove,
 		RepoAutoApprove:        p.Effective.RepoConfig.AutoApprove != nil && p.Effective.RepoConfig.AutoApprove.Enabled,

@@ -1164,6 +1164,137 @@ spec:
                 items: [{key: private-key, path: private-key}]
                 defaultMode: 0400
 ---
+# Verifier calibration, nightly: replays the labeled findings through the
+# deployed providers and records the result in calibration_results. Once it
+# passes, same-family verification no longer keeps PRs from approval. A
+# result that already passed for the same verifier inputs is skipped.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: exemplar-learn-calibrate
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-learn, app.kubernetes.io/component: calibrate, app.kubernetes.io/part-of: exemplar}
+spec:
+  schedule: "15 4 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: {app.kubernetes.io/name: exemplar-learn, app.kubernetes.io/component: calibrate, app.kubernetes.io/part-of: exemplar}
+        spec:
+          serviceAccountName: exemplar-learn
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            # One sync, then exit: the job reads a fixed config.
+            - name: config-sync
+              image: registry.k8s.io/git-sync/git-sync:v4.7.1@sha256:c5e1976da735bf0b53979f079a07475d77174c51863cd084e928ff6074480717
+              args:
+                - --repo=$(EXEMPLAR_GH_WEB_URL)$(EXEMPLAR_CONFIG_REPO)
+                - --ref=main
+                - --root=/config
+                - --link=current
+                - --one-time
+                - --github-app-private-key-file=/etc/github-app/private-key
+              env:
+                - name: EXEMPLAR_GH_WEB_URL
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_WEB_URL}}
+                - name: EXEMPLAR_CONFIG_REPO
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
+                # Clones exemplar-config over HTTPS as the review app.
+                - name: GITSYNC_GITHUB_BASE_URL
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL}}
+                - name: GITSYNC_GITHUB_APP_APPLICATION_ID
+                  valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id}}
+                - name: GITSYNC_GITHUB_APP_INSTALLATION_ID
+                  valueFrom: {secretKeyRef: {name: exemplar-github-app, key: installation-id}}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: config, mountPath: /config}
+                - {name: config-app, mountPath: /etc/github-app, readOnly: true}
+                - {name: sync-tmp, mountPath: /tmp}
+          containers:
+            - name: calibrate
+              image: exemplar
+              command: ["/usr/local/bin/exemplar-learn"]
+              args:
+                - calibrate
+                - --config=/config/current
+                - --work-dir=/tmp/calibrate
+              envFrom:
+                - configMapRef: {name: exemplar-otel, optional: true}
+                - secretRef: {name: exemplar-otel, optional: true}
+              env:
+                - name: EXEMPLAR_DATABASE_URL
+                  valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+                - name: EXEMPLAR_GH_APP_ID
+                  valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id}}
+                - name: EXEMPLAR_GH_WEB_URL
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_WEB_URL, optional: true}}
+                - name: EXEMPLAR_GH_API_URL
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL, optional: true}}
+                - name: EXEMPLAR_GH_INSTALLATION_ID
+                  valueFrom: {secretKeyRef: {name: exemplar-github-app, key: installation-id, optional: true}}
+                - {name: EXEMPLAR_GH_PRIVATE_KEY_FILE, value: /var/run/secrets/exemplar/github-app/private-key}
+                - name: EXEMPLAR_CONFIG_REPO
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
+                - name: EXEMPLAR_GATEWAY_URL
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
+                - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
+                - {name: EXEMPLAR_AST_GREP, value: /usr/local/bin/ast-grep}
+              # One labeled PR checked out at a time, and one verifier call each.
+              resources:
+                requests: {cpu: 500m, memory: 1Gi}
+                limits: {cpu: "2", memory: 4Gi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
+                - {name: config, mountPath: /config, readOnly: true}
+                - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {sizeLimit: 8Gi}
+            - name: root-key
+              secret: {secretName: exemplar-root-key, defaultMode: 0400}
+            - name: config
+              emptyDir: {sizeLimit: 256Mi}
+            - name: config-app
+              secret:
+                secretName: exemplar-github-app
+                items: [{key: private-key, path: private-key}]
+                defaultMode: 0400
+            - name: sync-tmp
+              emptyDir: {sizeLimit: 64Mi}
+            - name: github-app
+              secret:
+                secretName: exemplar-github-app
+                items: [{key: private-key, path: private-key}]
+                defaultMode: 0400
+---
 # Weekly rule-health digest per owner, Mondays.
 apiVersion: batch/v1
 kind: CronJob

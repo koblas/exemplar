@@ -12,11 +12,21 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
 // Env returns git's environment. token may be empty.
-func Env(token string) []string {
+func Env(token string) []string { return env(token, false) }
+
+// CheckoutEnv is Env for a throwaway checkout (a review's workspace, a
+// test fixture): git's automatic maintenance is off. After a commit or a
+// fetch git otherwise starts `git maintenance run --auto` in the
+// background, which keeps writing under .git (maintenance.lock, packs)
+// while the caller copies the tree or deletes it.
+func CheckoutEnv(token string) []string { return env(token, true) }
+
+func env(token string, checkout bool) []string {
 	env := []string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + os.TempDir(),
@@ -26,13 +36,19 @@ func Env(token string) []string {
 		"GIT_AUTHOR_NAME=exemplar", "GIT_AUTHOR_EMAIL=exemplar@invalid",
 		"GIT_COMMITTER_NAME=exemplar", "GIT_COMMITTER_EMAIL=exemplar@invalid",
 	}
+	var config [][2]string
 	if token != "" {
 		basic := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
-		env = append(env,
-			"GIT_CONFIG_COUNT=1",
-			"GIT_CONFIG_KEY_0=http.extraHeader",
-			"GIT_CONFIG_VALUE_0=Authorization: Basic "+basic,
-		)
+		config = append(config, [2]string{"http.extraHeader", "Authorization: Basic " + basic})
+	}
+	if checkout {
+		config = append(config, [2]string{"maintenance.auto", "false"}, [2]string{"gc.auto", "0"})
+	}
+	if len(config) > 0 {
+		env = append(env, "GIT_CONFIG_COUNT="+strconv.Itoa(len(config)))
+		for i, kv := range config {
+			env = append(env, "GIT_CONFIG_KEY_"+strconv.Itoa(i)+"="+kv[0], "GIT_CONFIG_VALUE_"+strconv.Itoa(i)+"="+kv[1])
+		}
 	}
 	return env
 }

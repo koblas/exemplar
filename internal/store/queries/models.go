@@ -17,6 +17,19 @@ type ApprovalDecision struct {
 	GhReviewID *int64
 }
 
+type CalibrationResult struct {
+	ID                int64
+	Kind              string
+	Key               string
+	ConfigVersion     string
+	Providers         []string
+	KnownWrongRefuted *float32
+	KnownTrueRefuted  *float32
+	Labels            int32
+	Passed            bool
+	RanAt             pgtype.Timestamptz
+}
+
 type Candidate struct {
 	ID                int64
 	Ext               string

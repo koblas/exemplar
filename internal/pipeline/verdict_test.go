@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -159,5 +160,21 @@ func TestVerdict(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Same-family verification is a reason only until the verifier passed
+// calibration (FR-E10).
+func TestVerdictSameFamily(t *testing.T) {
+	t.Parallel()
+	in := eligible()
+	in.SameFamilyVerification = true
+	v := verdict(result(in, nil, nil))
+	if v.Approved || len(v.Reasons) != 1 || !strings.Contains(v.Reasons[0], "has not passed calibration") {
+		t.Fatalf("uncalibrated = %+v", v)
+	}
+	in.VerifierCalibrated = true
+	if v := verdict(result(in, nil, nil)); slices.ContainsFunc(v.Reasons, func(r string) bool { return strings.Contains(r, "model family") }) {
+		t.Errorf("calibrated still names the family: %+v", v)
 	}
 }

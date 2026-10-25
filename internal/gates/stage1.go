@@ -36,6 +36,11 @@ type Stage1Input struct {
 	// SameFamilyVerification is true when any finding was verified by the
 	// generator's model family.
 	SameFamilyVerification bool `json:"SameFamilyVerification"`
+	// VerifierCalibrated is true when the installation's latest verifier
+	// calibration for the deployed verifier inputs passed
+	// (calibration_results). Same-family verification then no longer
+	// gates (FR-E10); it is still recorded.
+	VerifierCalibrated bool `json:"VerifierCalibrated"`
 	// BugLaneCovered is true when the bug lane (forced on auto-approve
 	// candidates) ran to 100% coverage. A run without it is never
 	// eligible.
@@ -113,7 +118,7 @@ func EvaluateStage1(in Stage1Input) Stage1Result {
 	if in.Degraded {
 		reasons = append(reasons, ReasonDegraded)
 	}
-	if in.SameFamilyVerification {
+	if in.SameFamilyVerification && !in.VerifierCalibrated {
 		reasons = append(reasons, ReasonSameFamily)
 	}
 	if !in.BugLaneCovered {

@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,13 +25,16 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
 	"github.com/koblas/exemplar/internal/buglane"
+	"github.com/koblas/exemplar/internal/calibrate"
 	"github.com/koblas/exemplar/internal/compiled"
 	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/engine"
+	"github.com/koblas/exemplar/internal/gates"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/redact"
 	"github.com/koblas/exemplar/internal/schema"
 	"github.com/koblas/exemplar/internal/store"
+	"github.com/koblas/exemplar/internal/store/queries"
 	"github.com/koblas/exemplar/internal/store/storetest"
 	"github.com/koblas/exemplar/internal/synth"
 )
@@ -810,5 +814,61 @@ func TestReviewWithoutSearchRunsContract(t *testing.T) {
 				t.Errorf("extra_repos: contract %s, bug lane covered %v", status, covered)
 			}
 		})
+	}
+}
+
+// Same-family verification keeps a PR from approval until the verifier
+// calibration passed for the deployed verifier inputs (FR-E10); the
+// latest result decides.
+func TestReviewSameFamilyAfterCalibration(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	st := storetest.New(t)
+	e := setup(t, repo)
+	e.w.cfg.Store = st
+	snap, _ := e.w.cfg.Snapshot(ctx)
+	trace := func(attempt int) (bool, bool, []string) {
+		t.Helper()
+		a := args(e)
+		a.Attempt = attempt
+		if _, err := e.w.Review(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+		var same, calibrated bool
+		var reasons []string
+		if err := st.Pool.QueryRow(ctx, `SELECT (d.stage1->'input'->>'SameFamilyVerification')::bool, (d.stage1->'input'->>'VerifierCalibrated')::bool,
+			ARRAY(SELECT jsonb_array_elements_text(d.stage1->'reasons'))
+			FROM approval_decisions d JOIN reviews r ON r.id = d.review_id WHERE r.repo = $1 AND r.attempt = $2`, repo, max(attempt, 1)).Scan(&same, &calibrated, &reasons); err != nil {
+			t.Fatal(err)
+		}
+		return same, calibrated, reasons
+	}
+	same, calibrated, reasons := trace(0)
+	if !same || calibrated || !slices.Contains(reasons, gates.ReasonSameFamily) {
+		t.Fatalf("uncalibrated: same %v, calibrated %v, reasons %v", same, calibrated, reasons)
+	}
+	record := func(passed bool) {
+		t.Helper()
+		if err := st.RecordCalibration(ctx, queries.RecordCalibrationParams{
+			Kind: calibrate.KindVerifier, Key: calibrate.VerifierKey(snap), ConfigVersion: snap.Version,
+			Providers: calibrate.VerifierProviders(snap), Labels: 4, Passed: passed,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record(true)
+	same, calibrated, reasons = trace(2)
+	if !same || !calibrated || slices.Contains(reasons, gates.ReasonSameFamily) {
+		t.Fatalf("calibrated: same %v, calibrated %v, reasons %v", same, calibrated, reasons)
+	}
+	// A later failure re-gates; another key's result does not count.
+	record(false)
+	if verifierCalibrated(ctx, st, snap) {
+		t.Error("a later failing calibration still counts as passed")
+	}
+	other := *snap
+	other.Global.Providers.Verifier = []schema.ProviderModel{{Provider: "bedrock", Model: "x"}}
+	if verifierCalibrated(ctx, st, &other) {
+		t.Error("another key's result counted")
 	}
 }

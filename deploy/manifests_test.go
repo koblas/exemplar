@@ -67,10 +67,10 @@ var variants = []struct {
 	ingresses int      // Ingress objects
 	inbound   []string // who may reach the webhook and the API
 }{
-	{"tunnel", []string{"k8s/base"}, 20, 0, []string{"pod exemplar-cloudflared"}},
-	{"direct", []string{"k8s/direct"}, 19, 2, []string{"namespace ingress-nginx"}},
-	{"both", []string{"k8s/base", "k8s/components/ingress"}, 20, 2, []string{"namespace ingress-nginx", "pod exemplar-cloudflared"}},
-	{"postgres", []string{"k8s/base", "k8s/components/postgres"}, 21, 0, []string{"pod exemplar-cloudflared"}},
+	{"tunnel", []string{"k8s/base"}, 21, 0, []string{"pod exemplar-cloudflared"}},
+	{"direct", []string{"k8s/direct"}, 20, 2, []string{"namespace ingress-nginx"}},
+	{"both", []string{"k8s/base", "k8s/components/ingress"}, 21, 2, []string{"namespace ingress-nginx", "pod exemplar-cloudflared"}},
+	{"postgres", []string{"k8s/base", "k8s/components/postgres"}, 22, 0, []string{"pod exemplar-cloudflared"}},
 }
 
 // load reads every document of every manifest the kustomizations under

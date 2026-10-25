@@ -88,8 +88,8 @@ func verdict(res *engine.Result) Verdict {
 	if in.Degraded {
 		add("the review ran degraded")
 	}
-	if in.SameFamilyVerification {
-		add("a finding was verified by the generator's own model family")
+	if in.SameFamilyVerification && !in.VerifierCalibrated {
+		add("a finding was verified by the generator's own model family, and the verifier has not passed calibration for these providers")
 	}
 	// The approval checks, only reached when the gates above all passed.
 	if s2 := res.Stage2; s2 != nil {
