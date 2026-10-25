@@ -3,16 +3,22 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/learn/demote"
 	"github.com/koblas/exemplar/internal/store/queries"
 	"github.com/koblas/exemplar/internal/store/storetest"
 )
@@ -359,3 +365,52 @@ func TestUI(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestRuleRowEFPBar(t *testing.T) {
+	row := queries.UIRulesRow{Status: "active", NegW: 15, PosW: 85} // eFP 0.15
+	for _, tc := range []struct {
+		bar  float64
+		want string
+	}{{0.10, "over the eFP bar"}, {0.20, ""}} {
+		if got := toRuleRow(row, tc.bar).Health; got != tc.want {
+			t.Errorf("bar %.2f: health %q, want %q", tc.bar, got, tc.want)
+		}
+	}
+}
+
+func TestEFPBarFromCurrentConfig(t *testing.T) {
+	st := storetest.New(t)
+	h := &Handler{cfg: Config{Store: st, Log: slog.New(slog.DiscardHandler)}}
+	if got := h.efpBar(t.Context()); got != demote.DefaultEFPBar {
+		t.Fatalf("no stored config: bar %v, want the default %v", got, demote.DefaultEFPBar)
+	}
+	tree, err := config.ReadTree(os.DirFS("../../examples/exemplar-config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(version string, bar float64) {
+		t.Helper()
+		g := *tree["global.yaml"]
+		if bar > 0 {
+			g.Data = append(slices.Clone(g.Data), fmt.Sprintf("\nfeedback:\n  efp_bar: %v\n  role_weights: {author: 1, reviewer: 2, owner: 4}\n"+
+				"  reaction_weight: 0.5\n  demotion_wilson_floor: 0.8\n  demotion_requires: owner_adjudication_or_two_non_author_actors\n  owner_response_days: 14\n", bar)...)
+		}
+		files := maps.Clone(tree)
+		files["global.yaml"] = &g
+		enc, err := config.EncodeTree(files)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.PutConfigSnapshot(t.Context(), queries.PutConfigSnapshotParams{Version: version, Files: enc}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("v1", 0.25)
+	if got := h.efpBar(t.Context()); got != 0.25 {
+		t.Fatalf("stored efp_bar 0.25: bar %v", got)
+	}
+	put("v2", 0) // a later version without a feedback block
+	if got := h.efpBar(t.Context()); got != demote.DefaultEFPBar {
+		t.Fatalf("current config without feedback: bar %v, want the default", got)
+	}
+}

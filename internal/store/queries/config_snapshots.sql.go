@@ -11,6 +11,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const currentConfigSnapshot = `-- name: CurrentConfigSnapshot :one
+SELECT version, files FROM config_snapshots ORDER BY loaded_at DESC LIMIT 1
+`
+
+type CurrentConfigSnapshotRow struct {
+	Version string
+	Files   []byte
+}
+
+// The version the worker loaded last (loading marks it current).
+func (q *Queries) CurrentConfigSnapshot(ctx context.Context) (CurrentConfigSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, currentConfigSnapshot)
+	var i CurrentConfigSnapshotRow
+	err := row.Scan(&i.Version, &i.Files)
+	return i, err
+}
+
 const deleteExpiredConfigSnapshots = `-- name: DeleteExpiredConfigSnapshots :execrows
 DELETE FROM config_snapshots WHERE version IN (
   SELECT c.version FROM config_snapshots c WHERE c.loaded_at < $1 AND c.version <> $2 LIMIT $3
