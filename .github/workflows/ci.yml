@@ -81,7 +81,7 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.14.0
+          version: v2.15.0
 
   vuln:
     runs-on: ubuntu-latest

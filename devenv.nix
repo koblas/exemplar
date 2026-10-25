@@ -21,26 +21,26 @@ let
   });
 
   # golangci-lint must be built with a Go whose export data it can read;
-  # nixpkgs' 2.13.2 (x/tools 0.49) cannot read Go 1.27's. 2.14.0 (x/tools
-  # 0.50) can. Matches the version pinned in .github/workflows/ci.yml.
+  # nixpkgs' 2.13.2 (x/tools 0.49) cannot read Go 1.27's. 2.15.0 (x/tools
+  # 0.52) can. Matches the version pinned in .github/workflows/ci.yml.
   golangci-lint =
     (pkgs.golangci-lint.override {
       buildGo127Module = pkgs.buildGo127Module.override { inherit go; };
     }).overrideAttrs
       (old: {
-        version = "2.14.0";
+        version = "2.15.0";
         src = pkgs.fetchFromGitHub {
           owner = "golangci";
           repo = "golangci-lint";
-          tag = "v2.14.0";
-          hash = "sha256-HATA7JKHwEouM+8jYZbQrkX7p4gut4IpyTvcBexu/4o=";
+          tag = "v2.15.0";
+          hash = "sha256-m9PoJHescRuT9DiKsb6LL+lQlc7RKAWDiRyf8pNMffA=";
         };
-        vendorHash = "sha256-ekP/zDhYMpMG+tYAyYHNfLOCt/JkxrXUw1jHUEfsM8k=";
+        vendorHash = "sha256-gWbhZc/BJwuiwyTMaR1ShEBI1lo0bGLCXsdj5n91baw=";
         ldflags = [
           "-s"
           "-w"
-          "-X main.version=2.14.0"
-          "-X main.commit=v2.14.0"
+          "-X main.version=2.15.0"
+          "-X main.commit=v2.15.0"
           "-X main.date=1970-01-01T00:00:00Z"
         ];
       });

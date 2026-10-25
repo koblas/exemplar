@@ -73,7 +73,7 @@ application unless requested. Update this guidance as the service takes shape.
 ## Environment and Commands
 
 - Use the repository's devenv environment (`devenv shell` or its direnv setup).
-- Check tool availability first. Devenv provides Git, Go 1.27.3, golangci-lint v2.14,
+- Check tool availability first. Devenv provides Git, Go 1.27.3, golangci-lint v2.15,
   ripgrep, ast-grep, Semgrep, universal-ctags, Postgres 16 with pgvector, Python 3.13
   and uv, but not kubectl, Helm, or container tooling. Do not silently install tools or
   change devenv. Set `EXEMPLAR_REQUIRE_ENGINES=1` (as CI does) to make engine-dependent
