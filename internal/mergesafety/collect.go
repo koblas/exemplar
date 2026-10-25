@@ -57,18 +57,14 @@ var (
 type Collector struct {
 	st    *store.Store
 	query Query
-	now   func() time.Time
 }
 
-// New returns a Collector. now defaults to time.Now.
-func New(st *store.Store, q Query, now func() time.Time) (*Collector, error) {
+// New returns a Collector.
+func New(st *store.Store, q Query) (*Collector, error) {
 	if st == nil || q == nil {
 		return nil, ErrConfig
 	}
-	if now == nil {
-		now = time.Now
-	}
-	return &Collector{st: st, query: q, now: now}, nil
+	return &Collector{st: st, query: q}, nil
 }
 
 // Collect measures the facts for pr. sensitive is the repo's
@@ -84,7 +80,7 @@ func (c *Collector) Collect(ctx context.Context, pr PR, sensitive []string) (gat
 		in.Paths[i] = gates.PathFacts{Path: p, Sensitive: gates.Sensitive(p, sensitive)}
 		byPath[p] = &in.Paths[i]
 	}
-	now := c.now()
+	now := time.Now()
 	if len(pr.Paths) > 0 {
 		events, err := c.st.RecentPathEvents(ctx, queries.RecentPathEventsParams{
 			Repo: pr.Repo, Paths: pr.Paths, Since: ts(now.AddDate(0, 0, -max(gates.IncidentWindowDays, gates.RevertWindowDays))),
