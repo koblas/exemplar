@@ -27,6 +27,7 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/llm"
 	"github.com/koblas/exemplar/internal/pipeline"
@@ -39,7 +40,8 @@ import (
 // receiver's store, the event router (EventWorker), the review dispatcher,
 // the claims and an in-process runner by a seeded schedule of deliveries
 // and redeliveries, event jobs worked twice, Re-runs, missed dedupes,
-// model outages, runners killed at GitHub writes or at their own Postgres
+// model outages, two runners at once (contending for the repo's review
+// slots, or reviewing at once), runners killed at GitHub writes or at their own Postgres
 // writes (on any attempt, so jobs are discarded; a hard kill is a SIGKILL,
 // which also cuts the runner off Postgres), pushes to newer heads (between runs and mid-review) and
 // zombie runners replaying old claims. River's executor is played by the
@@ -57,13 +59,19 @@ import (
 // simSeeds are the seeds CI runs. Between them they Re-run (enqueued
 // and ignored), black out the model, discard and abandon a job,
 // redeliver, route an event twice, land a push at each of its points,
-// hard-kill a runner at a GitHub call, and kill one at each of its
-// Postgres kill points: 69, 77 and 95 add what 1-5 miss.
-var simSeeds = []uint64{1, 2, 3, 4, 5, 69, 77, 95}
+// kill a runner hard at a GitHub call and at each of its Postgres kill
+// points, and overlap two runs at each park point: snoozed for a full repo
+// or a busy head, or both reviewing. The seeds after 5 add what 1-5 miss.
+var simSeeds = []uint64{1, 2, 3, 4, 5, 43, 68, 120, 140, 141}
 
 // simBusySeed is the CI seed with the most chaos, replayed for
 // TestWorkerSimReproduces.
-const simBusySeed = 69
+const simBusySeed = 141
+
+// simParks are where an overlap's first runner waits while a second one
+// runs: before its check run, at the pre-post head check (after the check
+// run started) and before its post.
+var simParks = []string{"start-check", "get-pr", "post-review"}
 
 // simSteps is how many scheduled steps a seed runs before the drain.
 const simSteps = 10
@@ -311,7 +319,10 @@ type sim struct {
 	claims *Claims
 	runner *Runner
 	// db is the runner's Postgres, which a hard kill cuts.
-	db     *simDB
+	db *simDB
+	// limit is the repo's review limit (queues.per_repo_concurrency), 1
+	// or 2 by seed.
+	limit  int
 	d      *Dispatcher[store.PRReviewArgs]
 	events *EventWorker
 	// outage, while set, fails every generator call (simOutage).
@@ -381,8 +392,20 @@ func newSim(t *testing.T, seed uint64) *sim {
 		runner: &Runner{Config: rcfg, Jobs: runnerJobs, Snapshot: Snapshots(db.st, e.w.cfg.Snapshot), Claims: runnerClaims, BaseURL: e.fake.srv.URL + "/"},
 	}
 	e.fake.intercept = s.intercept
+	s.limit = 1 + s.rnd.IntN(2)
+	// The dispatcher's config sets the repo's limit; the version is the
+	// same, so the runner's own snapshot is unchanged.
+	limited := func(ctx context.Context) (*config.Snapshot, error) {
+		snap, err := e.w.cfg.Snapshot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		cp := *snap
+		cp.Global.Queues.PerRepoConcurrency, cp.Global.Queues.LargeRepos = s.limit, nil
+		return &cp, nil
+	}
 	s.d, err = NewReviewDispatcher(DispatchConfig{
-		Launcher: s, Snapshot: e.w.cfg.Snapshot, Store: st,
+		Launcher: s, Snapshot: limited, Store: st,
 		Claims: claims, Granter: &Granter{Minter: &fakeMinter{}, Store: st},
 		Abandon: Abandoner{Store: st, GitHub: e.fake}.Abandon,
 	})
@@ -561,6 +584,10 @@ func (s *sim) delivery() uuid.UUID {
 // again. It runs on the fake's goroutine, so it records, check fails.
 func (s *sim) probe(ctx context.Context, task Task) {
 	ctx = context.WithoutCancel(ctx)
+	if held, err := s.slotsHeld(ctx); err != nil || held > s.limit {
+		s.violation = fmt.Sprintf("job %d attempt %d ran with %d of the repo's slots held, limit %d: %v", task.JobID, task.Attempt, held, s.limit, err)
+		return
+	}
 	var live int
 	if err := s.st.Pool.QueryRow(ctx, `SELECT count(*) FROM runner_claims WHERE job_id = $1 AND tokens IS NOT NULL`, task.JobID).Scan(&live); err != nil || live != 1 {
 		s.violation = fmt.Sprintf("job %d attempt %d's claim not live at its first GitHub call: %d rows, %v", task.JobID, task.Attempt, live, err)
@@ -585,6 +612,32 @@ func (s *sim) die(hard bool) {
 		s.db.cut()
 	}
 	s.kill()
+}
+
+// slotsHeld counts the repo's review slots held now (Postgres advisory
+// locks); one past the limit counts too, as it must never be taken.
+func (s *sim) slotsHeld(ctx context.Context) (int, error) {
+	rows, err := s.st.Pool.Query(ctx, `SELECT classid::bigint, objid::bigint FROM pg_locks
+		WHERE locktype = 'advisory' AND objsubid = 1 AND granted`)
+	if err != nil {
+		return 0, fmt.Errorf("advisory locks: %w", err)
+	}
+	locks, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) ([2]int64, error) {
+		var l [2]int64
+		err := r.Scan(&l[0], &l[1])
+		return l, err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("advisory locks: %w", err)
+	}
+	n := 0
+	for slot := range s.limit + 1 {
+		key := uint64(slotKey(s.e.fake.repo, slot))
+		if slices.Contains(locks, [2]int64{int64(uint32(key >> 32)), int64(uint32(key))}) {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // Launch implements Launcher: the runner in this process, killed at the
@@ -827,14 +880,28 @@ func (s *sim) push() {
 // discarded), or a push to a newer head lands in it, or its model calls
 // fail (the review ends incomplete).
 func (s *sim) work(chaos bool) bool {
+	job, ok := s.claimJob()
+	if !ok {
+		s.logf("work: nothing to run")
+		return false
+	}
+	s.workJob(job, chaos)
+	return true
+}
+
+// claimJob is River's producer taking the next available review job.
+func (s *sim) claimJob() (*river.Job[store.PRReviewArgs], bool) {
+	s.t.Helper()
 	ctx := s.t.Context()
 	var id int64
 	err := s.st.Pool.QueryRow(ctx, `UPDATE river_job SET state = 'running', attempt = attempt + 1, attempted_at = now()
 		WHERE id = (SELECT id FROM river_job WHERE kind = 'pr_review' AND state IN ('available', 'retryable') ORDER BY id LIMIT 1)
 		RETURNING id`).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false
+	}
 	if err != nil {
-		s.logf("work: nothing to run")
-		return false
+		s.fatalf("claim job: %v", err)
 	}
 	row, err := s.river.JobGet(ctx, id)
 	if err != nil {
@@ -844,6 +911,12 @@ func (s *sim) work(chaos bool) bool {
 	if err := json.Unmarshal(row.EncodedArgs, &job.Args); err != nil {
 		s.fatalf("job %d args: %v", id, err)
 	}
+	return job, true
+}
+
+// workJob runs claimed job to its end and settles it.
+func (s *sim) workJob(job *river.Job[store.PRReviewArgs], chaos bool) {
+	ctx, row, id := s.t.Context(), job.JobRow, job.ID
 	var kill *simKill
 	var push *simPush
 	outage := false
@@ -889,7 +962,84 @@ func (s *sim) work(chaos bool) bool {
 	if state == "discarded" {
 		s.abandoned(job.Args)
 	}
-	return true
+}
+
+// overlap is two runners at once. The next job runs until a seeded
+// GitHub call and waits there, holding its repo slot and its head's lock,
+// while the job after it runs to its end; then the first goes on. The
+// second is snoozed, without spending an attempt or getting a claim, at a
+// repo limit of 1 or when it reviews the same head; otherwise both review
+// at once. Neither run has other chaos.
+func (s *sim) overlap() {
+	s.t.Helper()
+	a, ok := s.claimJob()
+	if !ok {
+		s.logf("overlap: nothing to run")
+		return
+	}
+	at := simParks[s.rnd.IntN(len(simParks))]
+	f := s.e.fake
+	parked, resume := make(chan struct{}), make(chan struct{})
+	var armed, started atomic.Bool
+	armed.Store(true)
+	park := func(r *http.Request) {
+		route := simRoute(f, r)
+		if route == "start-check" {
+			defer started.Store(true)
+		}
+		if route != at || at == "get-pr" && !started.Load() || !armed.CompareAndSwap(true, false) {
+			return
+		}
+		close(parked)
+		<-resume
+	}
+	f.park.Store(&park)
+	defer f.park.Store(nil)
+	f.mu.Lock()
+	s.killAt, s.killed, s.pushAt, s.pushed, s.started = nil, false, nil, false, false
+	f.mu.Unlock()
+	ctx, cancel := context.WithCancelCause(s.t.Context())
+	defer cancel(nil)
+	done := make(chan error, 1)
+	go func() { done <- s.d.Work(ctx, a) }()
+	select {
+	case err := <-done:
+		armed.Store(false)
+		s.logf("overlap: job %d attempt %d finished before %s -> %s", a.ID, a.Attempt, at, s.settle(a.JobRow, err))
+		return
+	case <-parked:
+	}
+	b, ok := s.claimJob()
+	if !ok {
+		close(resume)
+		s.logf("overlap: job %d parked at %s, nothing else to run -> %s", a.ID, at, s.settle(a.JobRow, <-done))
+		return
+	}
+	var claimsBefore int
+	claims := `SELECT count(*) FROM runner_claims WHERE job_id = $1`
+	claimsBefore = s.count(claims, b.ID)
+	berr := s.d.Work(ctx, b)
+	bstate := s.settle(b.JobRow, berr)
+	close(resume)
+	astate := s.settle(a.JobRow, <-done)
+	s.logf("overlap: limit %d, job %d (args attempt %d) parked at %s -> %s; job %d (args attempt %d, unique %v) -> %s",
+		s.limit, a.ID, a.Args.Attempt, at, astate, b.ID, b.Args.Attempt, s.unique(b.ID), bstate)
+	var snooze *rivertype.JobSnoozeError
+	snoozed := errors.As(berr, &snooze)
+	sameHead := a.Args.Repo == b.Args.Repo && a.Args.PR == b.Args.PR && a.Args.HeadSHA == b.Args.HeadSHA
+	if wait := s.limit == 1 || sameHead; snoozed != wait || snoozed && s.count(claims, b.ID) != claimsBefore {
+		s.fatalf("at limit %d, job %d (same head %v) ran beside job %d: snoozed %v, %v", s.limit, b.ID, sameHead, a.ID, snoozed, berr)
+	}
+	if snoozed && s.count(`SELECT attempt FROM river_job WHERE id = $1`, b.ID) != b.Attempt-1 {
+		s.fatalf("snoozed job %d spent an attempt", b.ID)
+	}
+}
+
+// unique reports whether River's uniqueness covers job id (a duplicate()
+// row is not).
+func (s *sim) unique(id int64) bool {
+	s.t.Helper()
+	return s.count(`SELECT count(*) FROM river_job WHERE id = $1 AND unique_key IS NOT NULL`, id) == 1
 }
 
 // abandoned checks a job River discarded: its review, if it has one, was
@@ -1010,6 +1160,12 @@ func (s *sim) settle(row *rivertype.JobRow, err error) string {
 	s.t.Helper()
 	state := settleState(row, err)
 	s.exec(simSettle, row.ID, state)
+	// A snooze gives the attempt back and counts itself. River schedules
+	// the job SlotWait ahead; the sim has no time, so it is available now.
+	if _, ok := errors.AsType[*rivertype.JobSnoozeError](err); ok {
+		s.exec(`UPDATE river_job SET attempt = attempt - 1,
+			metadata = jsonb_set(metadata, '{snoozes}', to_jsonb(coalesce((metadata->>'snoozes')::int, 0) + 1)) WHERE id = $1`, row.ID)
+	}
 	return state
 }
 
@@ -1134,8 +1290,10 @@ func (s *sim) run() {
 			s.duplicate()
 		case p < 46:
 			s.push()
-		case p < 88:
+		case p < 80:
 			s.work(true)
+		case p < 88:
+			s.overlap()
 		default:
 			s.replay()
 		}
