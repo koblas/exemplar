@@ -95,7 +95,7 @@ sequenceDiagram
   WK->>GH: APPROVE only if every auto-approve gate passed
 ```
 
-The webhook answers inside GitHub's 10-second window because it only stores and enqueues. A review is idempotent on its PR head and config version, so a retried or re-delivered job skips work already done. A run that cannot complete (both providers down for a stage, or a diff that cannot be redacted) posts no comments and no approval; its check run says why and offers a re-run.
+The webhook answers inside GitHub's 10-second window because it only stores and enqueues. A review is idempotent on its PR head and config version, so a retried or re-delivered job skips work already done. Two reviews of the same head never run at once, on any replica: the second waits until the first ends, then finds what it posted. A run that cannot complete (both providers down for a stage, or a diff that cannot be redacted) posts no comments and no approval; its check run says why and offers a re-run.
 
 Besides `pr_review`, the event router turns webhooks into `feedback_signal`, `feedback_command` (slash commands), `linter_check` (late CI results), `merge_policy` and `alert_dismissal` jobs ([`internal/worker/events.go`](https://github.com/koblas/exemplar/blob/main/internal/worker/events.go)). What happens inside one review is on [How a review works](how-a-review-works.md).
 

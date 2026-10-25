@@ -25,8 +25,10 @@ type Dispatcher[T river.JobArgs] struct {
 	launch   Launcher
 	snapshot func(context.Context) (*config.Snapshot, error)
 	timeout  time.Duration
-	// slot, when set, names the repo whose per-repo slot the job holds.
+	// slot, when set, names the repo whose per-repo slot the job holds;
+	// head, when set, takes the lock of the job's PR head.
 	slot  func(T) string
+	head  func(context.Context, T) (func(), bool, error)
 	slots *Slots
 	// grant is the job's tokens; claims holds them for the runner. Both
 	// nil only in tests, where the runner uses its own GitHub.
@@ -91,6 +93,9 @@ func NewReviewDispatcher(cfg DispatchConfig) (*Dispatcher[store.PRReviewArgs], e
 	if cfg.Store != nil {
 		d.slots = NewSlots(cfg.Store.Pool)
 		d.slot = func(a store.PRReviewArgs) string { return a.Repo }
+		d.head = func(ctx context.Context, a store.PRReviewArgs) (func(), bool, error) {
+			return d.slots.AcquireHead(ctx, a.Repo, a.PR, a.HeadSHA)
+		}
 	}
 	d.abandon = cfg.Abandon
 	return d, nil
@@ -134,6 +139,18 @@ func (d *Dispatcher[T]) work(ctx context.Context, job *river.Job[T]) error {
 	snap, err := d.snapshot(ctx)
 	if err != nil {
 		return err
+	}
+	if d.head != nil {
+		// One review of a head at a time, attempts and duplicates included.
+		release, ok, err := d.head(ctx, job.Args)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			d.log.Debug("another review of this head is running; waiting", "job", job.ID)
+			return river.JobSnooze(SlotWait)
+		}
+		defer release()
 	}
 	if d.slot != nil {
 		// Per-repo fairness: wait for one of the repo's slots.

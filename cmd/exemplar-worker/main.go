@@ -159,10 +159,11 @@ func runServe(args []string) error {
 	var snap atomic.Pointer[config.Snapshot]
 	snap.Store(first)
 
-	// Each running review holds a connection for its per-repo queue slot,
-	// besides what the review itself (in-process), River, the event,
-	// linter-check and feedback workers and the periodic jobs use.
-	conns := int32(*concurrency) + 14
+	// Each running review holds two connections, for its per-repo queue
+	// slot and its PR head's lock, besides what the review itself
+	// (in-process), River, the event, linter-check and feedback workers and
+	// the periodic jobs use.
+	conns := 2*int32(*concurrency) + 14
 	if *launcherName == launcherInProcess {
 		conns += int32(*concurrency)
 	}

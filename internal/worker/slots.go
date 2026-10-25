@@ -18,7 +18,9 @@ import (
 // worker replica, 32 for queues.large_repos. River's queue MaxWorkers is
 // per process, so the limit is a set of Postgres advisory-lock slots: a
 // review holds one for its whole run on a dedicated connection. A pod that
-// dies drops its connection, and Postgres frees the slot.
+// dies drops its connection, and Postgres frees the slot. A review also
+// holds its PR head's lock, so two reviews of one head never run at once:
+// posting's dedupe checks before it posts, and two runs would both post.
 
 // LargeRepoConcurrency is the per-repo limit for queues.large_repos.
 const LargeRepoConcurrency = 32
@@ -49,16 +51,37 @@ func slotKey(repo string, slot int) int64 {
 	return int64(h.Sum64())
 }
 
+// headKey is the advisory-lock key of one PR head's reviews.
+func headKey(repo string, pr int, head string) int64 {
+	h := fnv.New64a()
+	fmt.Fprintf(h, "exemplar/review-head/%s/%d/%s", strings.ToLower(repo), pr, head)
+	return int64(h.Sum64())
+}
+
 // Acquire takes a free slot of repo's limit. It returns ok=false, with no
 // error, when every slot is taken. release frees the slot and returns the
 // connection; it must be called exactly once, and works after ctx ends.
 func (s *Slots) Acquire(ctx context.Context, repo string, limit int) (func(), bool, error) {
+	keys := make([]int64, limit)
+	for slot := range limit {
+		keys[slot] = slotKey(repo, slot)
+	}
+	return s.take(ctx, keys)
+}
+
+// AcquireHead takes the lock of repo#pr's head: ok=false, with no error,
+// while another review of it runs. release is as Acquire's.
+func (s *Slots) AcquireHead(ctx context.Context, repo string, pr int, head string) (func(), bool, error) {
+	return s.take(ctx, []int64{headKey(repo, pr, head)})
+}
+
+// take holds the first of keys free, on a connection of its own.
+func (s *Slots) take(ctx context.Context, keys []int64) (func(), bool, error) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("worker: slot connection: %w", err)
 	}
-	for slot := range limit {
-		key := slotKey(repo, slot)
+	for _, key := range keys {
 		var got bool
 		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&got); err != nil {
 			conn.Release()
