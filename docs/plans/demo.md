@@ -12,7 +12,7 @@ The case in [`docs/concepts/why.md`](../concepts/why.md), live, in four beats. E
 
 | Beat | The audience sees | Produced by | Needs |
 |---|---|---|---|
-| **A. Org-specific findings** | A PR that breaks two seeded org rules gets one review: inline comments with the rule id, Conventional Comments label, citation and a one-click suggestion; the check run lists coverage and says why a human is needed. A second PR baits a plausible but wrong finding, and the finding page in `/ui/` shows the verifier refuting it, so it was never posted. | webhook → worker (lanes 1–2, bug lane, verifier, poster) | Active rules in `exemplar-config` with eval cases; the PR set (§3) |
+| **A. Org-specific findings** | A PR that breaks two seeded org rules gets one review: inline comments with the rule id, Conventional Comments label, citation and a one-click suggestion; the check run lists coverage and says why a human is needed. A file in the same PR baits a plausible but wrong finding; the check run's held-back counts and the lanes board's refutation-by-rule panel show the verifier refuting it, so it was never posted (`/ui/` lists posted findings only). | webhook → worker (lanes 1–2, bug lane, verifier, poster) | Active rules in `exemplar-config` with eval cases; the PR set (§3) |
 | **B. Auto-approve vs route** | A README typo PR from an allowed author is approved by the App with no human. A PR touching `sensitive_paths` gets a check run naming the Stage 1 reasons it was routed to humans. | worker gates (spec §6.13), Stage 2 categorizer on two providers | `auto_approve` on globally and for the repo, CODEOWNERS covering the allowed paths, branch protection that lets a native approve count, **two model families** (§4) |
 | **C. Mining with citations** | Seeded review history becomes a candidate rule PR in `exemplar-config` whose description cites the review comments it came from, routed to the CODEOWNERS owner. | `exemplar-learn` ingest → extract → **embed** → cluster → rank → propose | Seed history (§3) merged before ingest first runs; an embedding provider (§4) |
 | **D. Feedback loop and boards** | A reviewer's `/exemplar not-important` reply shows on the finding page within a minute; the teach job opens a draft rule-edit PR narrowing `file_patterns`; the demote job drops a rule over the eFP bar to shadow by an auto-merged config PR; the boards show per-rule precision and Exemplar against the in-house baseline on the same PRs. | worker feedback commands; `exemplar-learn teach`, `demote`; materialized roll-ups; Grafana | One owner signal for teach; **30 judged findings** on one rule for demotion (spec §9.4 fixes the window); live baseline runs (§4) |
@@ -31,19 +31,22 @@ The case in [`docs/concepts/why.md`](../concepts/why.md), live, in four beats. E
 
 ## 3. The demo kit
 
-Kept under `examples/demo/`, driven by `gh` with the three accounts' tokens, and safe to re-run against a fresh org:
+[`examples/demo/`](../../examples/demo/README.md) holds the kit and its runbook. A driver (`kit/`, a Go program, not part of the product) plays the three people through the GitHub API with their tokens, one phase at a time, each safe to re-run:
 
-- **Sandbox repository content:** a small Go service with a CODEOWNERS file, an `internal/auth/` path for `sensitive_paths`, and the rules of `examples/exemplar-config` applying to it.
-- **Seed history** for beat C, pushed and merged before ingest first runs: ingest reads merged or closed PRs only, the first comment of each review thread, and its cursor does not revisit a PR, so comments added after a PR is mined are never read. At least two PRs and two reviewers per pattern, each comment 25 characters or more, stating the same constraint in close paraphrase on files of the same extension (the cluster job joins at cosine ≥ 0.65).
-- **The PR set** for beats A and B: the two-violation PR, the refutation bait (modelled on `evals/_verifier/wrong-*`), the README typo, and the sensitive-path PR.
-- **Feedback volume** for beat D: PRs that produce 30 judged findings on one demo rule, judged by the two reviewers with `/exemplar` commands so the weighted eFP clears `feedback.efp_bar` and the Wilson bound falls below `demotion_wilson_floor`.
-- **A runbook:** the order of the run, and each learning job started on demand with `kubectl create job --from=cronjob/exemplar-learn-<job>` (extract twice: one pass submits the batch, the next collects it). It also names the cluster context and namespace for every command.
+- **repo:** the sandbox repository's base tree, a small Go service with a CODEOWNERS file naming the rule owner and an `internal/auth/` path for `sensitive_paths`.
+- **config:** the demo's exemplar-config, rendered from `examples/exemplar-config` (left as it is, since the repository's tests read it) with the repo file, the noisy demo rule `demo-todo-comments` and its eval case, and `global.yaml` with auto-approve on, the categorizer on two families, the cross-family verifier first, every head sampled for the baseline, and `verifier.importance_min` lowered to 0.3 so the deliberately noisy rule's findings post for people to reject (a real install keeps 0.5).
+- **seed:** the history for beat C, merged before ingest first runs, since ingest reads merged or closed PRs and the first comment of each review thread, and its cursor does not revisit a PR. Two conventions, each stated by both reviewers on three PRs on `.go` files; the driver's tests run every comment through ingest's own filter.
+- **prs:** beats A and B: the two-violation PR with its refutation bait, the README typo and the sensitive-path PR.
+- **feedback:** beat D's volume. PRs with three TODOs each are opened until 30 of the demo rule's findings are marked wrong, by both reviewers in turn after each has reviewed the PR, so the feedback counts at reviewer weight.
+- **teach:** the owner's *not important here* under `internal/legacy`.
+
+The runbook gives the run order, starts each learning job on demand with `kubectl create job --from=cronjob/exemplar-learn-<job>` (extract twice: one pass submits the batch, the next collects it) and names the cluster context and namespace for every command.
 
 <a id="4-code-the-demo-needs"></a>
 
 ## 4. Code the demo needs
 
-What the code does not do yet, found by tracing each beat. Each is a beads issue under the demo epic.
+What tracing each beat found missing from the code, each built as a beads issue the demo's live run depends on.
 
 - **Embed job** (spec §8.3): nothing writes `extractions.embedding`, and `cluster` reads only rows that have one, so mining stops after extract. A Voyage route in the gateway and an embed job in `learning/` fill it.
 - **Second-family provider** (spec §6.13, PRD FR-E10): `gates.ReviewConfidence` is 0 when both categorizers share a family, and every route in `internal/llm` reports `anthropic`, so nothing can be approved. An adapter for a second family behind the gateway, configured as `providers.categorizer` side B, unblocks Stage 2 and the cross-family verifier (`exemplar-bnt.7`).

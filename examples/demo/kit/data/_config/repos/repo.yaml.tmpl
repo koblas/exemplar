@@ -1,0 +1,14 @@
+# The demo's sandbox repository: posting on, native approve, and
+# auto-approve for README and docs changes by the demo author.
+enabled: true
+shadow: false
+review_drafts: true
+forks:
+  review: false
+sensitive_paths: ["internal/auth/**"]
+approval_mode: native_approve
+auto_approve:
+  enabled: true
+  paths: ["README.md", "docs/**"]
+  allowed_authors: ["{{.Author}}"]
+  approvable_owners: ["@{{.Owner}}"]
