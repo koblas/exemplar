@@ -20,6 +20,20 @@ import (
 // do on GitHub. The base does not move.
 func (e *env) push(t *testing.T, files map[string]string) {
 	t.Helper()
+	head := e.commit(t, files)
+	e.head = head
+	e.fake.mu.Lock()
+	e.fake.head = head
+	e.fake.mu.Unlock()
+	if body, ok := files["main.go"]; ok {
+		e.main.Store(&body)
+	}
+}
+
+// commit is push's git half: it commits files over the current head and
+// returns the new head, leaving the fake and e.head where they were.
+func (e *env) commit(t *testing.T, files map[string]string) string {
+	t.Helper()
 	git := func(args ...string) string {
 		t.Helper()
 		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", *e.dir}, args...)...)
@@ -46,13 +60,7 @@ func (e *env) push(t *testing.T, files map[string]string) {
 	git("commit", "-q", "--allow-empty", "-m", "push")
 	head := git("rev-parse", "HEAD")
 	git("branch", "-f", "pr", head)
-	e.head = head
-	e.fake.mu.Lock()
-	e.fake.head = head
-	e.fake.mu.Unlock()
-	if body, ok := files["main.go"]; ok {
-		e.main.Store(&body)
-	}
+	return head
 }
 
 // rewrite force-pushes: a new head built on the base, not on the old
