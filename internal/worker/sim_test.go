@@ -638,8 +638,11 @@ func (s *sim) die(hard bool) {
 // slotsHeld counts the repo's review slots held now (Postgres advisory
 // locks); one past the limit counts too, as it must never be taken.
 func (s *sim) slotsHeld(ctx context.Context) (int, error) {
+	// pg_locks spans the server, where other seeds hold the same keys in
+	// their own databases; advisory locks only conflict within one.
 	rows, err := s.st.Pool.Query(ctx, `SELECT classid::bigint, objid::bigint FROM pg_locks
-		WHERE locktype = 'advisory' AND objsubid = 1 AND granted`)
+		WHERE locktype = 'advisory' AND objsubid = 1 AND granted
+		  AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`)
 	if err != nil {
 		return 0, fmt.Errorf("advisory locks: %w", err)
 	}
@@ -1487,11 +1490,19 @@ func (s *sim) run() {
 	}
 }
 
+// simParallel bounds the seeds simulating at once. Each holds its own
+// database and two pools of up to simConns connections (control's and its
+// runner's), and the test container allows Postgres's default 100.
+const simParallel = 4
+
+// simSlots hands out the simParallel places.
+var simSlots = make(chan struct{}, simParallel)
+
 // TestWorkerSim runs the simulation over CI's seeds, or the one in
-// EXEMPLAR_SIM_SEED. The sim tests are not parallel: claim clients use
-// http.DefaultTransport, whose connections must not cross bubbles, and
-// the package's parallel tests wait for sequential ones.
+// EXEMPLAR_SIM_SEED, in parallel: each seed has its own bubble, database,
+// fake GitHub and transport, so nothing crosses between them.
 func TestWorkerSim(t *testing.T) {
+	t.Parallel()
 	seeds := simSeeds
 	if v := os.Getenv("EXEMPLAR_SIM_SEED"); v != "" {
 		n, err := strconv.ParseUint(v, 10, 64)
@@ -1502,6 +1513,7 @@ func TestWorkerSim(t *testing.T) {
 	}
 	for _, seed := range seeds {
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+			t.Parallel()
 			simulate(t, seed)
 		})
 	}
@@ -1510,6 +1522,7 @@ func TestWorkerSim(t *testing.T) {
 // TestWorkerSimReproduces checks a seed replays step for step, so a
 // failing seed reproduces.
 func TestWorkerSimReproduces(t *testing.T) {
+	t.Parallel()
 	a, b := simulate(t, simBusySeed), simulate(t, simBusySeed)
 	if !slices.Equal(a, b) {
 		t.Errorf("seed %d diverged:\n%s\n---\n%s", simBusySeed, strings.Join(a, "\n"), strings.Join(b, "\n"))
@@ -1524,6 +1537,8 @@ func TestWorkerSimReproduces(t *testing.T) {
 // late runner, a client or job timeout).
 func simulate(t *testing.T, seed uint64) []string {
 	t.Helper()
+	simSlots <- struct{}{}
+	defer func() { <-simSlots }()
 	wall := time.Now()
 	var trace []string
 	synctest.Test(t, func(t *testing.T) {
