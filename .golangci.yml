@@ -51,6 +51,14 @@ linters:
         # int -> int32 for Postgres columns and counters bounded far below
         # the limit; flagging every conversion buries real findings.
         - G115
+    govet:
+      enable-all: true
+      disable:
+        # Reordering fields by GC scan size breaks their logical grouping
+        # for a few bytes on structs that are not on a hot path.
+        - fieldalignment
+        # Nearly every hit is the idiomatic `if err := ...` in an inner scope.
+        - shadow
     lll:
       line-length: 200
     nolintlint:
