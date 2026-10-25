@@ -375,3 +375,35 @@ func (r *ConfigRepo) addedFiles(ctx context.Context, number int) ([]string, erro
 	}
 	return out, nil
 }
+
+// LatestHumanComment returns the newest non-empty comment a person (not a
+// bot) left on PR or issue number, among its first 300.
+func (r *ConfigRepo) LatestHumanComment(ctx context.Context, number int) (string, string, bool, error) {
+	var login, body string
+	var found bool
+	opts := &github.IssueListCommentsOptions{PerPage: 100}
+	for range 3 {
+		cs, resp, err := r.gh.Issues.ListComments(ctx, r.owner, r.repo, number, opts)
+		if err != nil {
+			return "", "", false, restErr(err, fmt.Sprintf("comments on #%d", number))
+		}
+		for _, c := range cs {
+			if u := c.GetUser(); u != nil && !strings.EqualFold(u.GetType(), "Bot") && strings.TrimSpace(c.GetBody()) != "" {
+				login, body, found = u.GetLogin(), c.GetBody(), true
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return login, body, found, nil
+}
+
+// ReopenPR comments on and reopens a closed PR.
+func (r *ConfigRepo) ReopenPR(ctx context.Context, number int, comment string) error {
+	if _, _, err := r.gh.PullRequests.Edit(ctx, r.owner, r.repo, number, &github.PullRequest{State: new("open")}); err != nil {
+		return restErr(err, fmt.Sprintf("reopen #%d", number))
+	}
+	return r.Comment(ctx, number, comment)
+}
