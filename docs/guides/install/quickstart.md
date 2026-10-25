@@ -68,6 +68,8 @@ PGPASS=$(openssl rand -hex 24); kubectl -n exemplar create secret generic exempl
 kubectl -n exemplar create secret generic exemplar-providers --from-literal=anthropic-api-key=<your key>
 ```
 
+Claude alone is enough to review in shadow and to post. An OpenAI key, for independent verification and auto-approve, and a Voyage AI key, for mining review history into rules, can be added at any time: [How to add model providers](model-providers.md).
+
 === "Cloudflare Tunnel"
 
     ```bash

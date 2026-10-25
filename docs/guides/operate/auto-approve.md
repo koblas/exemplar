@@ -51,7 +51,7 @@ A PR that changes a file Exemplar excludes from review (binary, over 1 MB, delet
 
 ## 3. Turn it on globally
 
-In `global.yaml`, set `auto_approve: true` and, for Stage 2, `providers.categorizer` with two models from different families. Without a categorizer the two-model check cannot run and nothing is approved. With both the generator and the verifier on one family, every finding is flagged `same_family`, which blocks approval until the verifier calibration has passed for your providers. The `exemplar-learn-calibrate` CronJob runs it nightly; to run it now, after a change to `providers.verifier`, `verifier`, `eval_thresholds.verifier` or `evals/_verifier`:
+In `global.yaml`, set `auto_approve: true` and, for Stage 2, `providers.categorizer` with two models from different families ([How to add model providers](../install/model-providers.md) adds the second family and its key). Without a categorizer the two-model check cannot run and nothing is approved. With both the generator and the verifier on one family, every finding is flagged `same_family`, which blocks approval until the verifier calibration has passed for your providers. The `exemplar-learn-calibrate` CronJob runs it nightly; to run it now, after a change to `providers.verifier`, `verifier`, `eval_thresholds.verifier` or `evals/_verifier`:
 
 ```bash
 kubectl --context <your-cluster> -n exemplar create job --from=cronjob/exemplar-learn-calibrate calibrate-now
