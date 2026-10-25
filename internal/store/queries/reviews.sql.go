@@ -43,6 +43,27 @@ func (q *Queries) AbandonReview(ctx context.Context, arg AbandonReviewParams) (i
 	return id, err
 }
 
+const baselineReviewed = `-- name: BaselineReviewed :one
+SELECT EXISTS (
+  SELECT 1 FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3 AND caller = 'baseline'
+) AS reviewed
+`
+
+type BaselineReviewedParams struct {
+	Repo     string
+	PrNumber int32
+	HeadSha  string
+}
+
+// Whether a head already has a baseline review (spec §6.3 item 10), so a
+// retried production job does not run the baseline again.
+func (q *Queries) BaselineReviewed(ctx context.Context, arg BaselineReviewedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, baselineReviewed, arg.Repo, arg.PrNumber, arg.HeadSha)
+	var reviewed bool
+	err := row.Scan(&reviewed)
+	return reviewed, err
+}
+
 const createReview = `-- name: CreateReview :one
 INSERT INTO reviews (repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, attempt)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9)

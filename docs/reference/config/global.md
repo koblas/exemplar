@@ -168,12 +168,12 @@ Keys match `^bug\.[a-z0-9-]+$` and must name an allowlisted bug class (the examp
 
 ### `baseline`
 
-Share of PRs that also get a generic, rule-free review for comparison. Its findings are stored, never posted.
+Share of reviewed PR heads that also get a generic, rule-free review for comparison. It runs after the head's production review, is stored with `caller=baseline`, and is never posted: no comment, check run or approval, and it counts in no feedback figure. A head that already has a baseline review is not run again.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `sample_rate` | number, 0 to 1 | yes | Share of PRs sampled. |
-| `strata` | array of `repo`, `size_bucket` | no | Sampling strata. Size buckets are up to 50, up to 300, and over 300 changed lines. |
+| `sample_rate` | number, 0 to 1 | yes | Share of reviewed heads sampled. The draw is fixed per head (repository, PR and commit), so a retried review decides the same way. |
+| `strata` | array of `repo`, `size_bucket` | no | Sampling strata. Every head is drawn at `sample_rate`, so each stratum is sampled at that rate in expectation. Size buckets are up to 50, up to 300, and over 300 changed lines. |
 
 ### `eval_thresholds`
 
