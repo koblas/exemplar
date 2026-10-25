@@ -1,6 +1,6 @@
 # Plans and status
 
-The map of Exemplar's plans: which document says what, how to read the references in code and commits, and where each part of the roadmap stands. Status as of 2026-10-13.
+The map of Exemplar's plans: which document says what, how to read the references in code and commits, and where each part of the roadmap stands. Status as of 2026-10-25.
 
 ## Documents
 
@@ -26,7 +26,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 | Family | PRD area | PRD | Spec | Status |
 |---|---|---|---|---|
 | FR-E | Engine: review every PR with org rules, one agent per rule, never block, repo context (E12–E14) | §8.1–8.3 | §5, §6.4–6.7, §6.12 | Built: three lanes, agent harness, exemplar-search tools, linter dedupe (E7) and human-comment dedupe (E15). Lane 1 needs ast-grep/Semgrep installed. |
-| FR-V | Verification with model diversity | §8.4 | §6.8 | Built, plus calibration. There is no provider from a second model family yet, so every finding is flagged same-family (plan §9, decision 7). |
+| FR-V | Verification with model diversity | §8.4 | §6.8 | Built, plus calibration. The gateway has a second model family, `openai` (beads exemplar-o2r.9), usable as verifier provider B and as the categorizer's second side; the example config still routes the verifier to Claude only, so there every finding is flagged same-family (plan §9, decision 7) until an installation adds it. |
 | FR-T | Model output is untrusted and checked by code | §8.5 | §6.9, §13 | Built. |
 | FR-P | Comment budget, labels, SARIF, dedupe | §8.6 | §6.10, §6.12 | Budget, ranking, Conventional Comments labels, exact dedupe, linter dedupe (before posting and late CI) human-comment dedupe (FR-E15), and SARIF for Security findings with dismissals as feedback are built, as are code-scanning alerts as a linter-dedupe source. |
 | FR-F | Validated one-click fixes | §8.7 | §6.11 | F1–F2 built: fixes are validated in code (Go with go/parser and gofmt; C, C++, C#, Java, JavaScript, TypeScript, Python, Ruby and Rust with tree-sitter) and posted as suggestion blocks. F3 (applied-suggestion tracking) is built. F4 is Phase 5. |
@@ -36,8 +36,8 @@ The map of Exemplar's plans: which document says what, how to read the reference
 | **FR-D** | **Degraded operation** | **§8.10** | **§6.15** | **D2 fan-out cap, D3 provider failover, D4 explicit coverage, D5 degraded runs cannot approve and D6 backpressure (per-repo concurrency) are built. D1, the shedding order, is partly built: only step 1, shedding bug classes not yet started once the budget leaves `ok`. Step 2 (exemplar rules, lowest precision first), step 3 (verifier importance scoring) and the p95-latency trigger are not.** |
 | FR-H | Data handling and eligibility | §8.11 | §13.1 | Built, including retention. The periods await Security sign-off. |
 | FR-S | Shift left: rule exports, pre-PR checks | §10 | §10 | Export-block approval and summary lint for config PRs; [rule exports](phase-0.md#head-start-rule-exports-2026-10-14) (daily, one PR per repo) with [drift](phase-0.md#head-start-export-drift-2026-10-14) on the shift-left board and in the platform digest; [`exemplar review`](phase-0.md#head-start-exemplar-review-and-v1evaluate-2026-10-14) through `/v1/evaluate`. MCP is deferred (Appendix C). |
-| FR-X | Evaluation before rollout | §11 | §8.8–8.9, §11 | Built: eval CI, replay, adversarial set, verifier and categorizer calibration, baseline reviewer, and mutation evals for bug classes (Go). |
-| FR-L | Learning plane: mining, extraction, ranking | §6 | §8 | Built through candidate PRs, except the embed job (spec §8.3; beads exemplar-wlg.9): nothing fills `extractions.embedding`, so clustering has no input and mining stops after extraction. Needs real data to meet the Phase 1 exit criteria. |
+| FR-X | Evaluation before rollout | §11 | §8.8–8.9, §11 | Built: eval CI, replay, adversarial set, verifier and categorizer calibration, baseline reviewer (in replay, and live on heads drawn at `baseline.sample_rate`, stored with `caller=baseline` and never posted; beads exemplar-vtb.7), and mutation evals for bug classes (Go). |
+| FR-L | Learning plane: mining, extraction, ranking | §6 | §8 | Built through candidate PRs, including the embed job (spec §8.3): a Voyage route in the gateway fills `extractions.embedding`, and re-embeds when the model changes (beads exemplar-wlg.9 to wlg.11); not yet run against the live Voyage API (exemplar-wlg.12). Needs real data to meet the Phase 1 exit criteria. |
 
 **Where FR-D6 fits:** it's the last of the degraded-operation requirements (PRD §8.10).
 - **The PRD asks** that reviews queue per repo, that a burst (a mass rebase, a release-branch cut) drains in order with incremental review, and that queue depth be visible to the platform team.
@@ -69,7 +69,7 @@ Waiting on outside inputs: work tracked in beads — see epic exemplar-bnt.
 - [verifier calibration](phase-0.md#phase-1-head-start-verifier-calibration-2026-10-13);
 - owner-written seeds (FR-L1.8, D1.1) with generated eval cases and promotion on merge (beads `exemplar-wlg.2`).
 
-**Not built:** the embed job, so mined comments are extracted but never clustered (beads exemplar-wlg.9).
+**Built since:** the [embed job](../../learning/src/exemplar_learning/embed/) through a Voyage route in the gateway (beads exemplar-wlg.9 to wlg.11).
 
 **Not met:** the exit criteria (≥ 30 active rules, extractor in band, ≥ 15% compiled), which need mined data.
 
