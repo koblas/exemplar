@@ -71,6 +71,7 @@ Besides the shared settings: `EXEMPLAR_LINK_KEY_FILE` (as for the API; the worke
 |---|---|---|
 | `EXEMPLAR_CLAIM_KEY_FILE` | nothing (derived from the root key) | Seals runner claims (the GitHub tokens the worker mints for each runner) at rest. `serve` and `run-job` must agree. |
 | `EXEMPLAR_RUNNER_NONCE` | the Kubernetes launcher, on each runner Job | `run-job` only: the one-time nonce that redeems the job's runner claim. |
+| `EXEMPLAR_RUNNER_DATABASE_URL` | Secret `exemplar-database`, key `runner-url` (optional), on the runner template only | `run-job` only: the Postgres URL through a pooler in transaction mode. Unset or empty, `run-job` uses `EXEMPLAR_DATABASE_URL`. `serve` never reads it: its review slots are session-level advisory locks. |
 
 `run-job` reads the shared settings but not `EXEMPLAR_GH_APP_ID` or `EXEMPLAR_GH_PRIVATE_KEY_FILE`: a runner never holds the App private key.
 

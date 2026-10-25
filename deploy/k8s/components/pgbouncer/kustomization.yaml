@@ -1,0 +1,17 @@
+# Optional PgBouncer in transaction mode in front of Postgres, for review
+# runners only (spec §2.4.2 C7): hundreds of runner Jobs would otherwise
+# exhaust Postgres connections. Control (exemplar-worker serve) and every
+# other binary stay direct: the per-repo slots, migrations and learn's run
+# locks are session-scoped advisory locks, which transaction mode breaks.
+# Not in any shipped build: add it to an overlay of deploy/k8s/base or
+# deploy/k8s/direct (components: [.../components/pgbouncer]), supply the
+# exemplar-pgbouncer Secret, and set the exemplar-database Secret's
+# runner-url to
+# postgres://exemplar:<password>@exemplar-pgbouncer.exemplar.svc:5432/exemplar.
+# Use it with components/postgres or a managed database; a cloud pooler in
+# transaction mode does the same job through runner-url alone.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - pgbouncer.yaml
+  - networkpolicies.yaml

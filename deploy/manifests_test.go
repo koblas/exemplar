@@ -71,6 +71,8 @@ var variants = []struct {
 	{"direct", []string{"k8s/direct"}, 20, 2, []string{"namespace ingress-nginx"}},
 	{"both", []string{"k8s/base", "k8s/components/ingress"}, 21, 2, []string{"namespace ingress-nginx", "pod exemplar-cloudflared"}},
 	{"postgres", []string{"k8s/base", "k8s/components/postgres"}, 22, 0, []string{"pod exemplar-cloudflared"}},
+	{"pgbouncer", []string{"k8s/base", "k8s/components/pgbouncer"}, 22, 0, []string{"pod exemplar-cloudflared"}},
+	{"postgres+pgbouncer", []string{"k8s/base", "k8s/components/postgres", "k8s/components/pgbouncer"}, 23, 0, []string{"pod exemplar-cloudflared"}},
 }
 
 // load reads every document of every manifest the kustomizations under
@@ -285,6 +287,11 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 			if s := str(v, "secret", "secretName"); s != "" && !secrets[s] {
 				t.Errorf("%s: secret %s is not documented in settings.yaml", w.name, s)
 			}
+			// A Secret file not world-readable is root's unless fsGroup
+			// gives it to the pod's group.
+			if m, ok := get(v, "secret", "defaultMode").(uint64); ok && m&0o004 == 0 && get(spec, "securityContext", "fsGroup") == nil {
+				t.Errorf("%s: secret volume %s (mode %o) is unreadable without fsGroup", w.name, str(v, "name"), m)
+			}
 		}
 		for _, c := range containers(t, spec) {
 			cname := w.name + "/" + str(c, "name")
@@ -324,6 +331,16 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 				}
 				if s := str(e, "valueFrom", "secretKeyRef", "name"); s != "" && !secrets[s] {
 					t.Errorf("%s: secret %s is not documented in settings.yaml", cname, s)
+				}
+				// The pooler is transaction mode: control's slots, migrations
+				// and the scheduled-job locks are session-scoped advisory
+				// locks, so only review runners may use its URL.
+				pooled := name == "EXEMPLAR_RUNNER_DATABASE_URL" || str(e, "valueFrom", "secretKeyRef", "key") == "runner-url"
+				if pooled && w.name != "exemplar-runner" {
+					t.Errorf("%s: only exemplar-runner may use the pooled database URL (%s)", cname, name)
+				}
+				if name == "EXEMPLAR_DATABASE_URL" && str(e, "valueFrom", "secretKeyRef", "key") != "url" {
+					t.Errorf("%s: EXEMPLAR_DATABASE_URL must be exemplar-database's direct url", cname)
 				}
 			}
 			// GitHub Enterprise Server: every container that calls GitHub
@@ -507,6 +524,10 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 			checkPostgres(t, w, main, args)
 			continue
 		}
+		if binary == "pgbouncer" {
+			checkPgbouncer(t, w, main)
+			continue
+		}
 		// Exemplar's binaries serve /healthz and /readyz on --addr (default
 		// :8080) as the http port; cloudflared serves its own on --metrics.
 		portName, addrFlag, addr, live, ready := "http", "--addr=", ":8080", "/healthz", "/readyz"
@@ -569,7 +590,7 @@ func checkServices(t *testing.T, docs []obj, ws []workload) {
 		}
 		if kind == "Service" {
 			want := "http"
-			if name == "exemplar-postgres" {
+			if name == "exemplar-postgres" || name == "exemplar-pgbouncer" {
 				want = "postgres"
 			}
 			for _, p := range list(d, "spec", "ports") {

@@ -32,6 +32,8 @@
 // Settings come from the environment, never flags, for anything secret:
 //
 //	EXEMPLAR_DATABASE_URL                   Postgres (reviews, River)
+//	EXEMPLAR_RUNNER_DATABASE_URL            run-job: Postgres through a pooler in
+//	                                        transaction mode (optional: the above)
 //	EXEMPLAR_GH_APP_ID                      the review app (serve only)
 //	EXEMPLAR_GH_PRIVATE_KEY_FILE            its private key (serve only)
 //	EXEMPLAR_RUNNER_NONCE                   run-job: redeems the job's runner claim

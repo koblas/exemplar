@@ -28,7 +28,7 @@ CREATE DATABASE exemplar OWNER exemplar;
 CREATE EXTENSION IF NOT EXISTS vector;  -- as a superuser, if the exemplar role cannot
 ```
 
-Put its URL in `exemplar-database` (`url`), for example `postgres://exemplar:<password>@db.internal:5432/exemplar?sslmode=require`. For an evaluation without a managed database, see [How to run Postgres in the cluster](in-cluster-postgres.md).
+Put its URL in `exemplar-database` (`url`), for example `postgres://exemplar:<password>@db.internal:5432/exemplar?sslmode=require`. For an evaluation without a managed database, see [How to run Postgres in the cluster](in-cluster-postgres.md). With many reviews in flight, put a pooler in front of the runners: [How to pool runner connections](pool-runner-connections.md).
 
 ## 3. Create the Secrets
 
