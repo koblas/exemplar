@@ -10,6 +10,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 | [`docs/spec/prd.md`](../spec/prd.md) | **The PRD** (v0.10), and the **canonical copy**: change the PRD here. It covers the problem, goals, personas, and the functional requirements (`FR-…`) the spec implements, with sample interactions (§17). |
 | [`docs/plans/phase-0.md`](phase-0.md) | The Phase 0 implementation plan (§1–§8), its status (§9), and a dated log of the head starts up to 2026-10-17. Each "head start" section records what was built, the decisions taken, how it is tested, and what is still missing. No new sections go here. |
 | [`docs/plans/ready-to-install.md`](ready-to-install.md) | **The current plan**: making a first installation short and checkable (setup in the cluster, the GitHub App manifest flow, one root key, a setup page, release manifests). Its §7 logs work up to 2026-10-24; since then work is tracked in beads (`bd`), with history in close reasons and PR descriptions. |
+| [`docs/plans/demo.md`](demo.md) | The design for the **end-to-end demo** on a sandbox org: the four beats the audience sees, what produces each, the prerequisites from outside the repository, the demo kit, and the code the demo still needs. Status is in beads (epic exemplar-gf3). |
 | [`docs/plans/backlog.md`](backlog.md) | **The backlog**: ideas not in the PRD or any plan yet (each with where it came from, what it would change and what it would cost; one leaves when adopted into the PRD or declined), and the **adopted requirements not yet built**, as briefs: the PRD v0.7–v0.9 gates and convergence controls, and the elastic hosting changes of spec §2.4, in the order spec §16 gives (H1–H5). |
 | [`docs/security/phase-0-data-handling.md`](../security/phase-0-data-handling.md) | What the code does with repository data, for Security's review and sign-off. |
 | [`docs/reference/workloads.md`](../reference/deployment.md) | How to deploy: images, manifests, what an installation supplies, and the rollout risks. |
@@ -36,7 +37,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 | FR-H | Data handling and eligibility | §8.11 | §13.1 | Built, including retention. The periods await Security sign-off. |
 | FR-S | Shift left: rule exports, pre-PR checks | §10 | §10 | Export-block approval and summary lint for config PRs; [rule exports](phase-0.md#head-start-rule-exports-2026-10-14) (daily, one PR per repo) with [drift](phase-0.md#head-start-export-drift-2026-10-14) on the shift-left board and in the platform digest; [`exemplar review`](phase-0.md#head-start-exemplar-review-and-v1evaluate-2026-10-14) through `/v1/evaluate`. MCP is deferred (Appendix C). |
 | FR-X | Evaluation before rollout | §11 | §8.8–8.9, §11 | Built: eval CI, replay, adversarial set, verifier and categorizer calibration, baseline reviewer, and mutation evals for bug classes (Go). |
-| FR-L | Learning plane: mining, extraction, ranking | §6 | §8 | Built through candidate PRs. Needs real data to meet the Phase 1 exit criteria. |
+| FR-L | Learning plane: mining, extraction, ranking | §6 | §8 | Built through candidate PRs, except the embed job (spec §8.3; beads exemplar-wlg.9): nothing fills `extractions.embedding`, so clustering has no input and mining stops after extraction. Needs real data to meet the Phase 1 exit criteria. |
 
 **Where FR-D6 fits:** it's the last of the degraded-operation requirements (PRD §8.10).
 - **The PRD asks** that reviews queue per repo, that a burst (a mass rebase, a release-branch cut) drains in order with incremental review, and that queue depth be visible to the platform team.
@@ -67,6 +68,8 @@ Waiting on outside inputs: work tracked in beads — see epic exemplar-bnt.
 - [export approval](phase-0.md#phase-1-head-start-export-approval-and-summary-lint-2026-10-13);
 - [verifier calibration](phase-0.md#phase-1-head-start-verifier-calibration-2026-10-13);
 - owner-written seeds (FR-L1.8, D1.1) with generated eval cases and promotion on merge (beads `exemplar-wlg.2`).
+
+**Not built:** the embed job, so mined comments are extracted but never clustered (beads exemplar-wlg.9).
 
 **Not met:** the exit criteria (≥ 30 active rules, extractor in band, ≥ 15% compiled), which need mined data.
 
