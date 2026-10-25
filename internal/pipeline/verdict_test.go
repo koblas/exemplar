@@ -46,6 +46,16 @@ func TestVerdict(t *testing.T) {
 			title: "approved", contains: []string{"No human review needed", "Every auto-approve gate passed"},
 		},
 		{
+			// Suggestions do not keep a run from being clean; the posted ones
+			// are named beside the approval (FR-A13).
+			name: "approved with suggestions", res: func() *engine.Result {
+				r := result(func() gates.Stage1Input { in := eligible(); in.CandidatesAll = 3; return in }(), nil, stage2(pass))
+				r.Findings = []engine.Finding{{State: engine.StatePosted}, {State: engine.StatePosted}, {State: engine.StateDropped}}
+				return r
+			}(), approved: true,
+			title: "approved", contains: []string{"No human review needed", "2 suggestion(s) posted beside the approval"},
+		},
+		{
 			name: "global off hides the gates",
 			res: result(func() gates.Stage1Input {
 				in := eligible()
@@ -90,7 +100,7 @@ func TestVerdict(t *testing.T) {
 			}(), nil, nil),
 			contains: []string{
 				"1 changed file(s) were excluded from review",
-				"the review raised 2 candidate finding(s), counting any the verifier refuted",
+				"the review raised 2 blocking or important finding(s), counting any the verifier refuted",
 				"coverage was 80%, not 100%",
 			},
 		},

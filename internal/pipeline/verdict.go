@@ -14,6 +14,9 @@ import (
 // code-measured traces in approval_decisions; never model text.
 type Verdict struct {
 	Approved bool
+	// Suggestions counts the suggestion findings posted beside an
+	// approval: they do not keep a run from being clean (FR-A13).
+	Suggestions int
 	// Reasons is empty when Approved. Otherwise the first reasons, most
 	// decisive first: auto-approve off, policy, the review's outcome, then
 	// the approval checks.
@@ -27,7 +30,13 @@ const maxVerdictReasons = 3
 // verdict derives the verdict from a finished review's gate traces.
 func verdict(res *engine.Result) Verdict {
 	if res.Decision() == gates.DecisionApproved {
-		return Verdict{Approved: true}
+		posted := 0
+		for _, f := range res.Findings {
+			if f.State == engine.StatePosted {
+				posted++
+			}
+		}
+		return Verdict{Approved: true, Suggestions: posted}
 	}
 	s1 := res.Stage1
 	in := s1.Input
@@ -65,7 +74,7 @@ func verdict(res *engine.Result) Verdict {
 		add(fmt.Sprintf("%d changed file(s) were excluded from review", in.Unreviewed))
 	}
 	if in.Candidates > 0 {
-		add(fmt.Sprintf("the review raised %d candidate finding(s), counting any the verifier refuted", in.Candidates))
+		add(fmt.Sprintf("the review raised %d blocking or important finding(s), counting any the verifier refuted", in.Candidates))
 	}
 	if !in.Complete {
 		add("the review did not complete")
@@ -204,7 +213,11 @@ func (v Verdict) Title() string {
 // Line is the check run summary's first line.
 func (v Verdict) Line() string {
 	if v.Approved {
-		return "**No human review needed.** Every auto-approve gate passed; Exemplar approves this head."
+		s := "**No human review needed.** Every auto-approve gate passed; Exemplar approves this head."
+		if v.Suggestions > 0 {
+			s += fmt.Sprintf(" %d suggestion(s) posted beside the approval.", v.Suggestions)
+		}
+		return s
 	}
 	return "**Human review needed.** Not auto-approved because " + strings.Join(v.Reasons, "; ") + "."
 }

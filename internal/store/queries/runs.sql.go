@@ -12,23 +12,28 @@ import (
 const carryableRuns = `-- name: CarryableRuns :many
 SELECT rr.rule_id, rr.rule_version, rr.lane, rr.status, rr.coverage, rr.scoped_files,
        coalesce(rr.carried_from, rr.id)::bigint AS origin_id,
-       (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id))::int AS candidates
+       (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id))::int AS candidates,
+       -- The candidates that gate a clean run by severity (FR-A13); a Security
+       -- rule's gate whatever their severity, which the caller knows by rule.
+       (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id)
+          AND f.severity IN ('blocking', 'important'))::int AS candidates_gating
 FROM rule_runs rr WHERE rr.review_id = $1
 `
 
 type CarryableRunsRow struct {
-	RuleID      string
-	RuleVersion string
-	Lane        string
-	Status      string
-	Coverage    *float32
-	ScopedFiles []string
-	OriginID    int64
-	Candidates  int32
+	RuleID           string
+	RuleVersion      string
+	Lane             string
+	Status           string
+	Coverage         *float32
+	ScopedFiles      []string
+	OriginID         int64
+	Candidates       int32
+	CandidatesGating int32
 }
 
 // A review's rule runs, each with the run that did the work (itself, or
-// the one it was carried from) and that run's candidate count.
+// the one it was carried from) and that run's candidate counts.
 func (q *Queries) CarryableRuns(ctx context.Context, reviewID int64) ([]CarryableRunsRow, error) {
 	rows, err := q.db.Query(ctx, carryableRuns, reviewID)
 	if err != nil {
@@ -47,6 +52,7 @@ func (q *Queries) CarryableRuns(ctx context.Context, reviewID int64) ([]Carryabl
 			&i.ScopedFiles,
 			&i.OriginID,
 			&i.Candidates,
+			&i.CandidatesGating,
 		); err != nil {
 			return nil, err
 		}

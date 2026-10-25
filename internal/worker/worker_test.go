@@ -537,19 +537,30 @@ func TestApproveRechecksHead(t *testing.T) {
 	poster := gh.NewPoster(e.fake.client())
 	target, _ := gh.ParsePR(repo, prNum, e.head)
 	p := &engine.Prepared{PR: engine.PRInfo{Repo: repo, Number: prNum}, Effective: &config.Effective{}}
-	ok, err := e.w.approve(t.Context(), reader, poster, target, p, 9)
+	ok, err := e.w.approve(t.Context(), reader, poster, target, p, 9, 0)
 	if err != nil || !ok || len(e.fake.reviews) != 1 || e.fake.reviews[0]["event"] != "APPROVE" {
 		t.Fatalf("approve = %v, %v, %+v", ok, err, e.fake.reviews)
 	}
+	if body, _ := e.fake.reviews[0]["body"].(string); !strings.HasPrefix(body, "Exemplar found nothing to flag") {
+		t.Errorf("approval body = %q", body)
+	}
+	// Suggestions posted with a clean run are named in the approval.
+	if ok, err := e.w.approve(t.Context(), reader, poster, target, p, 12, 2); err != nil || !ok || len(e.fake.reviews) != 2 {
+		t.Fatalf("approve with suggestions = %v, %v", ok, err)
+	}
+	if body, _ := e.fake.reviews[1]["body"].(string); !strings.HasPrefix(body, "Every auto-approve gate passed. Exemplar left 2 suggestion(s); none blocks this approval.") {
+		t.Errorf("approval body with suggestions = %q", body)
+	}
+	e.fake.reviews = e.fake.reviews[:1]
 	// The head moved during the review: no approval.
 	e.fake.headAfterReview = strings.Repeat("b", 40)
-	if ok, err := e.w.approve(t.Context(), reader, poster, target, p, 10); err != nil || ok || len(e.fake.reviews) != 1 {
+	if ok, err := e.w.approve(t.Context(), reader, poster, target, p, 10, 0); err != nil || ok || len(e.fake.reviews) != 1 {
 		t.Errorf("approved a moved head: %v, %v", ok, err)
 	}
 	// merge_policy_check repos are never approved: they get the check.
 	e.fake.headAfterReview = ""
 	p.Effective.RepoConfig.ApprovalMode = "merge_policy_check"
-	if ok, _ := e.w.approve(t.Context(), reader, poster, target, p, 11); ok {
+	if ok, _ := e.w.approve(t.Context(), reader, poster, target, p, 11, 0); ok {
 		t.Error("approved in merge_policy_check mode")
 	}
 }

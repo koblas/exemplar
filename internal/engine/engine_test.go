@@ -1205,7 +1205,13 @@ func TestReviewCarry(t *testing.T) {
 				version = r.VersionSHA
 			}
 		}
-		carry[id] = CarriedRun{FromRunID: 41, Version: version, Candidates: 2}
+		// Two candidates each, one of them blocking or important in the first
+		// rule: only gating candidates keep a run from being clean (FR-A13).
+		gating := 0
+		if id == "propagate-context" {
+			gating = 1
+		}
+		carry[id] = CarriedRun{FromRunID: 41, Version: version, Candidates: 2, Gating: gating}
 	}
 
 	// Not an auto-approve candidate: both exemplar rules carry, no model call.
@@ -1219,8 +1225,9 @@ func TestReviewCarry(t *testing.T) {
 			}
 		}
 	}
-	if carried != 2 || generatorCalls(tr) != 0 || res.CarriedFrom != "0123456789" || res.Stage1.Input.Candidates < 4 {
-		t.Fatalf("carried %d, generator calls %d, from %q, candidates %d", carried, generatorCalls(tr), res.CarriedFrom, res.Stage1.Input.Candidates)
+	in := res.Stage1.Input
+	if carried != 2 || generatorCalls(tr) != 0 || res.CarriedFrom != "0123456789" || in.CandidatesAll < 4 || in.CandidatesAll-in.Candidates != 3 {
+		t.Fatalf("carried %d, generator calls %d, from %q, candidates %d of %d", carried, generatorCalls(tr), res.CarriedFrom, in.Candidates, in.CandidatesAll)
 	}
 
 	// A rule whose version changed re-runs.
@@ -1298,5 +1305,26 @@ func TestBugLanePostsOnCriticalPaths(t *testing.T) {
 				t.Errorf("bug finding = %+v", bf)
 			}
 		})
+	}
+}
+
+// Only blocking or important candidates, and Security ones of any
+// severity, keep a run from being clean (FR-A13). Severity and category
+// are the rule's.
+func TestGatingCandidates(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		severity, category string
+		want               bool
+	}{
+		{schema.SeverityBlocking, "Reliability", true},
+		{schema.SeverityImportant, "Reliability", true},
+		{schema.SeveritySuggestion, "Maintainability", false},
+		{schema.SeveritySuggestion, "Security", true},
+		{schema.SeveritySuggestion, "security", true},
+	} {
+		if got := gating(&Finding{Severity: tc.severity, Category: tc.category}); got != tc.want {
+			t.Errorf("%s/%s: %v, want %v", tc.severity, tc.category, got, tc.want)
+		}
 	}
 }

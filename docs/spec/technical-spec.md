@@ -493,7 +493,7 @@ CREATE TABLE rule_runs (
   status         text NOT NULL,                     -- ok|zero_coverage|schema_error|timeout|shed|deferred|degraded_skip
   coverage       real,
   context_degraded boolean NOT NULL DEFAULT false,
-  candidates_by_severity jsonb,                     -- {blocking, important, suggestion, security} before verification; carried runs feed Stage 1 (FR-A13)
+  candidates_by_severity jsonb,                     -- {blocking, important, suggestion, security} before verification; carried runs feed Stage 1 (FR-A13). As built: not a column; carried runs count findings.severity of the origin run, Security by the rule's category
   expected_value real,                              -- the FR-E16 score at scope time; NULL for Lane 1 and 3
   model text, input_tokens int, cached_tokens int, output_tokens int,
   cost_usd       numeric(10,4),

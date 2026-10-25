@@ -17,7 +17,7 @@ func scopedRule(id, version, lane string, files ...string) engine.ScopedRule {
 }
 
 func prevRun(id, lane, status string, cov float32, origin int64, files ...string) queries.CarryableRunsRow {
-	return queries.CarryableRunsRow{RuleID: id, RuleVersion: "v1", Lane: lane, Status: status, Coverage: &cov, OriginID: origin, Candidates: 2, ScopedFiles: files}
+	return queries.CarryableRunsRow{RuleID: id, RuleVersion: "v1", Lane: lane, Status: status, Coverage: &cov, OriginID: origin, Candidates: 2, CandidatesGating: 1, ScopedFiles: files}
 }
 
 func TestPlanCarry(t *testing.T) {
@@ -45,7 +45,7 @@ func TestPlanCarry(t *testing.T) {
 		prevRun("compiled", engine.LaneCompiled, engine.RunOK, 1, 17, "a.go"),
 	}
 	got := PlanCarry(scoped, prev, []string{"c.go", "e.go"}, []string{"d.go"})
-	if len(got) != 1 || got["carry"] != (engine.CarriedRun{FromRunID: 10, Version: "v1", Candidates: 2}) {
+	if len(got) != 1 || got["carry"] != (engine.CarriedRun{FromRunID: 10, Version: "v1", Candidates: 2, Gating: 1}) {
 		t.Errorf("carry = %+v", got)
 	}
 	if len(PlanCarry(scoped, nil, nil, nil)) != 0 {

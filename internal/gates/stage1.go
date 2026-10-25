@@ -18,9 +18,15 @@ type Stage1Input struct {
 	// Coverage is completed in-scope rules ÷ in-scope rules, from the
 	// harness tool-call log.
 	Coverage float64 `json:"Coverage"`
-	// Candidates counts findings produced by every lane before
-	// verification. A refuted finding still counts (system rule 6).
+	// Candidates counts the findings that keep a run from being clean:
+	// those of blocking or important severity, and Security-category ones
+	// of any severity, produced by every lane before verification. A
+	// refuted finding still counts (system rule 6); suggestions do not
+	// (FR-A13). Severity and category come from the rule, never a model.
 	Candidates int `json:"Candidates"`
+	// CandidatesAll counts every candidate finding, suggestions included.
+	// It is recorded in the trace and gates nothing.
+	CandidatesAll int `json:"CandidatesAll"`
 	// Unreviewed counts changed files excluded from review (binary, over
 	// 1 MB, removed, ignored by .gitattributes or .exemplarignore). No
 	// lane saw them, so they cannot be called clean.

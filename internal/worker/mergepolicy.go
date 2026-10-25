@@ -31,7 +31,7 @@ type mergePolicyInput struct {
 func reportMergePolicy(ctx context.Context, reader *github.Client, member gates.MemberFunc, poster *gh.Poster, target gh.PR, in mergePolicyInput) (bool, error) {
 	if in.gatesPassed {
 		if err := poster.SetMergePolicy(ctx, target, true, "Auto-approve gates passed",
-			"Exemplar found nothing to flag on this commit, and every auto-approve gate passed."); err != nil {
+			"Every auto-approve gate passed: no blocking, important or Security finding on this commit (suggestions do not block)."); err != nil {
 			return true, fmt.Errorf("worker: set merge policy: %w", err)
 		}
 		return true, nil
