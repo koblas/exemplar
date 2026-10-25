@@ -29,7 +29,7 @@ export NIX_ENFORCE_PURITY := 0
 
 FUZZTIME ?= 30s
 CONFIG   := examples/exemplar-config
-K8S_BUILDS := base direct both postgres
+K8S_BUILDS := base direct both postgres pgbouncer
 
 ##@ Go
 
@@ -119,19 +119,21 @@ images: ## Build the service and learning images (nothing is pushed)
 	docker build -f deploy/docker/Dockerfile --build-arg VERSION=$(VERSION) -t exemplar:dev .
 	docker build -f deploy/docker/learning.Dockerfile -t exemplar-learning:dev .
 
-# "both" is the default build plus the ingress component, and "postgres" the
-# default build plus the in-cluster Postgres component, as in CI. Their
+# "both" is the default build plus the ingress component, "postgres" the
+# default build plus the in-cluster Postgres component, and "pgbouncer" that
+# plus the runners' pooler, as in CI. Their
 # overlays are written into deploy/k8s (they refer to ../base) and removed
 # afterwards.
 .PHONY: manifests
 manifests: ## Render each Kustomize build and the example overlay to out/ and schema-check them
 	@command -v kubectl >/dev/null || { echo "kubectl is required (not provided by devenv)" >&2; exit 1; }
 	@mkdir -p $(OUT)
-	both=deploy/k8s/.make-both; pg=deploy/k8s/.make-postgres; trap 'rm -rf "$$both" "$$pg"' EXIT; mkdir -p "$$both" "$$pg"; \
+	both=deploy/k8s/.make-both; pg=deploy/k8s/.make-postgres; pgb=deploy/k8s/.make-pgbouncer; trap 'rm -rf "$$both" "$$pg" "$$pgb"' EXIT; mkdir -p "$$both" "$$pg" "$$pgb"; \
 	printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: [../base]\ncomponents: [../components/ingress]\n' > "$$both/kustomization.yaml"; \
 	printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: [../base]\ncomponents: [../components/postgres]\n' > "$$pg/kustomization.yaml"; \
+	printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: [../base]\ncomponents: [../components/postgres, ../components/pgbouncer]\n' > "$$pgb/kustomization.yaml"; \
 	for v in $(K8S_BUILDS); do \
-	  dir=deploy/k8s/$$v; [ "$$v" = both ] && dir=$$both; [ "$$v" = postgres ] && dir=$$pg; \
+	  dir=deploy/k8s/$$v; [ "$$v" = both ] && dir=$$both; [ "$$v" = postgres ] && dir=$$pg; [ "$$v" = pgbouncer ] && dir=$$pgb; \
 	  kubectl kustomize "$$dir" > $(OUT)/rendered-$$v.yaml; \
 	  go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/rendered-$$v.yaml; \
 	done; \

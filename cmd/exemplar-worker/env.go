@@ -31,9 +31,13 @@ type workerEnv struct {
 	app *gh.App
 }
 
-// envFromOS reads the shared settings, and the App when withApp.
+// envFromOS reads the shared settings, and the App when withApp. Without
+// it (a runner) the database URL is the runner's.
 func envFromOS(withApp bool) (*workerEnv, error) {
 	e := &workerEnv{dbURL: os.Getenv("EXEMPLAR_DATABASE_URL"), gwURL: os.Getenv("EXEMPLAR_GATEWAY_URL")}
+	if !withApp {
+		e.dbURL = runnerDatabaseURL(os.Getenv)
+	}
 	if e.dbURL == "" || e.gwURL == "" {
 		return nil, fmt.Errorf("EXEMPLAR_DATABASE_URL and EXEMPLAR_GATEWAY_URL are %w", errRequired)
 	}
@@ -52,6 +56,17 @@ func envFromOS(withApp bool) (*workerEnv, error) {
 		return nil, err
 	}
 	return e, nil
+}
+
+// runnerDatabaseURL is EXEMPLAR_RUNNER_DATABASE_URL, a pooler in
+// transaction mode (spec §2.4.2 C7), or EXEMPLAR_DATABASE_URL without one.
+// Only run-job reads it: control's per-repo slots are session-scoped
+// advisory locks, so serve always connects directly.
+func runnerDatabaseURL(getenv func(string) string) string {
+	if url := getenv("EXEMPLAR_RUNNER_DATABASE_URL"); url != "" {
+		return url
+	}
+	return getenv("EXEMPLAR_DATABASE_URL")
 }
 
 // claims seals runner claims with the key both control and runners derive.
