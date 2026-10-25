@@ -1,0 +1,126 @@
+# Per-host egress on GKE (FQDNNetworkPolicy, networking.gke.io/v1alpha1;
+# needs GKE Dataplane V2 with FQDN network policy enabled on the cluster).
+# Each policy lets the pods its NetworkPolicy in deploy/k8s/core (or the
+# tunnel component) selects reach the named hosts; the overlay removes
+# those NetworkPolicies' "any public address" rule. Replace the hosts: GitHub
+# Enterprise Server's host for the github.com names, your model providers,
+# your Jira site. deploy/manifests_test.go checks every workload that had
+# the broad rule has a policy here.
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: exemplar-gateway-hosts
+  namespace: exemplar
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: exemplar-gateway}}
+  egress:
+    # Model providers.
+    - matches:
+        - name: api.anthropic.com
+        # Provider B:
+        # - name: <provider-b-host>
+      ports: [{protocol: TCP, port: 443}]
+    # GitHub (GitHub Enterprise Server: its host instead).
+    - matches:
+        - name: github.com
+        - name: api.github.com
+        - name: codeload.github.com
+        - name: objects.githubusercontent.com
+      ports: [{protocol: TCP, port: 443}]
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: exemplar-worker-hosts
+  namespace: exemplar
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: exemplar-worker}}
+  egress:
+    # GitHub (GitHub Enterprise Server: its host instead).
+    - matches:
+        - name: github.com
+        - name: api.github.com
+        - name: codeload.github.com
+        - name: objects.githubusercontent.com
+      ports: [{protocol: TCP, port: 443}]
+    # Ticket context (Jira).
+    - matches:
+        - name: acme.atlassian.net
+      ports: [{protocol: TCP, port: 443}]
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: exemplar-runner-hosts
+  namespace: exemplar
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: exemplar-runner}}
+  egress:
+    # GitHub (GitHub Enterprise Server: its host instead).
+    - matches:
+        - name: github.com
+        - name: api.github.com
+        - name: codeload.github.com
+        - name: objects.githubusercontent.com
+      ports: [{protocol: TCP, port: 443}]
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: exemplar-search-hosts
+  namespace: exemplar
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: exemplar-search}}
+  egress:
+    # GitHub (GitHub Enterprise Server: its host instead).
+    - matches:
+        - name: github.com
+        - name: api.github.com
+        - name: codeload.github.com
+        - name: objects.githubusercontent.com
+      ports: [{protocol: TCP, port: 443}]
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: exemplar-learn-hosts
+  namespace: exemplar
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: exemplar-learn}}
+  egress:
+    # GitHub (GitHub Enterprise Server: its host instead).
+    - matches:
+        - name: github.com
+        - name: api.github.com
+        - name: codeload.github.com
+        - name: objects.githubusercontent.com
+      ports: [{protocol: TCP, port: 443}]
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: exemplar-api-hosts
+  namespace: exemplar
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: exemplar-api}}
+  egress:
+    # GitHub (GitHub Enterprise Server: its host instead).
+    - matches:
+        - name: github.com
+        - name: api.github.com
+        - name: codeload.github.com
+        - name: objects.githubusercontent.com
+      ports: [{protocol: TCP, port: 443}]
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: exemplar-cloudflared-hosts
+  namespace: exemplar
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: exemplar-cloudflared}}
+  egress:
+    # Cloudflare's tunnel edge (QUIC, falling back to HTTP/2).
+    - matches:
+        - pattern: "*.v2.argotunnel.com"
+      ports: [{protocol: UDP, port: 7844}, {protocol: TCP, port: 7844}]

@@ -784,7 +784,7 @@ func envNames(t *testing.T) map[string]bool {
 // every image the base names, pins each by digest, and lists only paths
 // that exist. CI renders it with kustomize; this catches drift without one.
 func TestExampleOverlays(t *testing.T) {
-	for _, dir := range []string{"../examples/k8s/acme", "../examples/k8s/quickstart", "../examples/k8s/quickstart-direct"} {
+	for _, dir := range []string{"../examples/k8s/acme", "../examples/k8s/quickstart", "../examples/k8s/quickstart-direct", "../examples/k8s/gke-autopilot"} {
 		t.Run(filepath.Base(dir), func(t *testing.T) { checkOverlay(t, dir) })
 	}
 }
@@ -860,4 +860,159 @@ func checkOverlay(t *testing.T, dir string) {
 			t.Errorf("example: %v", err)
 		}
 	}
+}
+
+// broadHTTPS reports whether an egress rule allows any public address,
+// the plain NetworkPolicy stand-in for per-host lists.
+func broadHTTPS(rule any) bool {
+	for _, to := range list(rule, "to") {
+		if str(to, "ipBlock", "cidr") == "0.0.0.0/0" {
+			return true
+		}
+	}
+	return false
+}
+
+// TestAutopilotOverlay keeps examples/k8s/gke-autopilot in step with the
+// base (spec §2.4.3): its patches remove exactly each NetworkPolicy's
+// broad egress rule, every pod that had one gets an FQDNNetworkPolicy
+// naming hosts on the same ports, and reviews and compile run under GKE
+// Sandbox. It reads the overlay as written; CI renders it with kustomize.
+func TestAutopilotOverlay(t *testing.T) {
+	const dir = "../examples/k8s/gke-autopilot"
+	docs, _ := load(t, "k8s/base")
+	broad := map[string]int{}    // NetworkPolicy -> index of its broad rule
+	selector := map[string]obj{} // NetworkPolicy -> podSelector
+	ports := map[string][]string{}
+	for _, d := range docs {
+		if str(d, "kind") != "NetworkPolicy" {
+			continue
+		}
+		for i, r := range list(d, "spec", "egress") {
+			if broadHTTPS(r) {
+				name := str(d, "metadata", "name")
+				if _, dup := broad[name]; dup {
+					t.Errorf("%s has two broad egress rules; the overlay removes one", name)
+				}
+				broad[name], selector[name] = i, as[obj](t, get(d, "spec", "podSelector"), name+": podSelector")
+				for _, p := range list(r, "ports") {
+					ports[name] = append(ports[name], str(p, "protocol")+"/"+strconv.Itoa(int(as[uint64](t, get(p, "port"), name+": port"))))
+				}
+			}
+		}
+	}
+	if len(broad) == 0 {
+		t.Fatal("no NetworkPolicy has a broad egress rule; the overlay's removals are stale")
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "kustomization.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var k obj
+	if err := yaml.Unmarshal(raw, &k); err != nil {
+		t.Fatal(err)
+	}
+	removed := map[string]int{}
+	gvisor := map[string]bool{}
+	for _, p := range list(k, "patches") {
+		kind, name := str(p, "target", "kind"), str(p, "target", "name")
+		var ops []obj
+		if s := str(p, "patch"); s != "" {
+			if err := yaml.Unmarshal([]byte(s), &ops); err != nil {
+				t.Fatalf("%s/%s patch: %v", kind, name, err)
+			}
+		}
+		for _, op := range ops {
+			path := str(op, "path")
+			switch {
+			case kind == "NetworkPolicy" && str(op, "op") == "remove" && strings.HasPrefix(path, "/spec/egress/"):
+				i, err := strconv.Atoi(strings.TrimPrefix(path, "/spec/egress/"))
+				if err != nil {
+					t.Fatalf("%s: %s", name, path)
+				}
+				removed[name] = i
+			case strings.HasSuffix(path, "/runtimeClassName") && get(op, "value") == "gvisor":
+				gvisor[kind+"/"+name] = true
+			}
+		}
+	}
+	for name, i := range broad {
+		if got, ok := removed[name]; !ok || got != i {
+			t.Errorf("NetworkPolicy %s: its broad egress rule is /spec/egress/%d, the overlay removes %v (%v)", name, i, got, ok)
+		}
+	}
+	for name := range removed {
+		if _, ok := broad[name]; !ok {
+			t.Errorf("the overlay removes an egress rule of %s, which has no broad rule", name)
+		}
+	}
+	for _, w := range []string{"PodTemplate/exemplar-runner", "CronJob/exemplar-learn-compile"} {
+		if !gvisor[w] {
+			t.Errorf("%s does not run under GKE Sandbox (runtimeClassName gvisor)", w)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "fqdn-policies.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if regexp.MustCompile(`:\s+[&*]\w`).Match(data) {
+		t.Error("fqdn-policies.yaml uses a YAML anchor; spell blocks out for kustomize")
+	}
+	covered := map[string]bool{}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	for {
+		var d obj
+		if err := dec.Decode(&d); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if str(d, "kind") != "FQDNNetworkPolicy" || str(d, "apiVersion") != "networking.gke.io/v1alpha1" {
+			t.Errorf("fqdn-policies.yaml: %s %s", str(d, "apiVersion"), str(d, "kind"))
+			continue
+		}
+		name := str(d, "metadata", "name")
+		var got []string
+		for _, r := range list(d, "spec", "egress") {
+			if len(list(r, "matches")) == 0 {
+				t.Errorf("%s: an egress rule with no hosts", name)
+			}
+			for _, m := range list(r, "matches") {
+				if pat := str(m, "pattern"); pat == "*" || str(m, "name") == "" && pat == "" {
+					t.Errorf("%s: host match %v names no host", name, m)
+				}
+			}
+			for _, p := range list(r, "ports") {
+				got = append(got, str(p, "protocol")+"/"+strconv.Itoa(int(as[uint64](t, get(p, "port"), name+": port"))))
+			}
+		}
+		for np, sel := range selector {
+			if !slices.Equal(sortedKeys(as[obj](t, get(sel, "matchLabels"), np)), sortedKeys(as[obj](t, get(d, "spec", "podSelector", "matchLabels"), name))) ||
+				str(sel, "matchLabels", "app.kubernetes.io/name") != str(d, "spec", "podSelector", "matchLabels", "app.kubernetes.io/name") {
+				continue
+			}
+			covered[np] = true
+			for _, want := range ports[np] {
+				if !slices.Contains(got, want) {
+					t.Errorf("%s: no host allowed on %s, which %s's broad rule allowed", name, want, np)
+				}
+			}
+		}
+	}
+	for np := range broad {
+		if !covered[np] {
+			t.Errorf("NetworkPolicy %s loses its broad egress rule but has no FQDNNetworkPolicy for its pods", np)
+		}
+	}
+}
+
+func sortedKeys(m obj) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
 }
