@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -n \"${CLAUDE_ENV_FILE:-}\" ]; then cd \"$CLAUDE_PROJECT_DIR\" && devenv_env=$(devenv --quiet print-dev-env --json) && devenv_exports=$(printf '%s' \"$devenv_env\" | jq -r '.variables | to_entries[] | select(.value.type == \"exported\") | \"export \\(.key)=\\(.value.value | @sh)\"') && printf '%s\\n' \"$devenv_exports\" >> \"$CLAUDE_ENV_FILE\"; fi",
+            "command": "if [ -n \"${CLAUDE_ENV_FILE:-}\" ]; then cd \"$CLAUDE_PROJECT_DIR\" && devenv_env=$(devenv --quiet print-dev-env --json) && devenv_exports=$(printf '%s' \"$devenv_env\" | jq -r '.variables | to_entries[] | select(.value.type == \"exported\") | select(.key | IN(\"HOME\", \"TMPDIR\", \"TEMP\", \"TMP\", \"TEMPDIR\", \"NIX_BUILD_TOP\", \"NIX_ENFORCE_PURITY\", \"NIX_LOG_FD\", \"SHELL\", \"TERM\", \"PWD\", \"OLDPWD\", \"SHLVL\", \"SOURCE_DATE_EPOCH\") | not) | if .key == \"PATH\" then \"export PATH=\\(.value.value | @sh):\\\"$PATH\\\"\" else \"export \\(.key)=\\(.value.value | @sh)\" end') && printf '%s\\n' \"$devenv_exports\" >> \"$CLAUDE_ENV_FILE\"; fi",
             "timeout": 120
           }
         ]
