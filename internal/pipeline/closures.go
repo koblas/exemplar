@@ -97,9 +97,26 @@ func inDiff(p *engine.Prepared, path string) bool {
 func CloseFindings(ctx context.Context, st *store.Store, poster *gh.Poster, pr gh.PR, cs []Closure) (int, error) {
 	closed := 0
 	var errs []error
+	closing := map[int64]bool{}
+	for _, c := range cs {
+		closing[c.Finding.ID] = true
+	}
+	threadDone := map[string]bool{}
 	for _, c := range cs {
 		thread := c.Finding.GhThreadID
-		if id := c.Finding.GhCommentID; id != nil {
+		// A class-of-bug group shares one thread (FR-C9): it is replied to
+		// and resolved with its last open member, once.
+		shared := false
+		if k := c.Finding.GroupKey; k != nil && *k != "" {
+			open, err := groupStaysOpen(ctx, st, c.Finding.ID, closing)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("finding %d: %w", c.Finding.ID, err))
+				continue
+			}
+			shared = open || threadDone[*k]
+			threadDone[*k] = true
+		}
+		if id := c.Finding.GhCommentID; id != nil && !shared {
 			t := ""
 			if thread != nil {
 				t = *thread
@@ -122,4 +139,22 @@ func CloseFindings(ctx context.Context, st *store.Store, poster *gh.Poster, pr g
 		closed++
 	}
 	return closed, errors.Join(errs...)
+}
+
+// groupStaysOpen reports whether a member of id's group other than those
+// being closed is still open.
+func groupStaysOpen(ctx context.Context, st *store.Store, id int64, closing map[int64]bool) (bool, error) {
+	if st == nil {
+		return false, nil
+	}
+	members, err := st.GroupMembers(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("group members: %w", err)
+	}
+	for _, m := range members {
+		if !closing[m] {
+			return true, nil
+		}
+	}
+	return false, nil
 }

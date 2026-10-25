@@ -171,7 +171,9 @@ type FindingByCommentRow struct {
 	RuleID string
 }
 
-// The production finding whose posted comment starts a review thread.
+// The production finding whose posted comment starts a review thread; the
+// latest first. A grouped comment's members share it (FR-C9): callers
+// take the first and expand to the group when they record feedback.
 func (q *Queries) FindingByComment(ctx context.Context, arg FindingByCommentParams) ([]FindingByCommentRow, error) {
 	rows, err := q.db.Query(ctx, findingByComment, arg.Repo, arg.PrNumber, arg.GhCommentID)
 	if err != nil {

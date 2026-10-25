@@ -1137,7 +1137,7 @@ type Cite struct {
 
 **Importance priors** (PRD FR-B9). Before ranking, a finding's importance threshold is the rule's or lane's `importance_min` adjusted by any matching **path-level prior** in the effective config: `importance_priors` entries in the repo file (`{prefix, category, importance_min | suppress}`), proposed by `exemplar-learn priors` from clustered *Not important here* dismissals (§8.11) and merged by an owner. `suppress` stores the finding with `suppressed_reason='importance_prior'`; a raised threshold applies to the verifier's per-finding importance, which stays (FR-V2). Priors never lower a threshold for Security or `blocking` findings. The prior that applied is recorded on the finding for the owner digest.
 
-**Class-of-bug grouping** (FR-C9) runs after dedupe and before ranking: occurrences of one rule or class above `posting.class_threshold` become one grouped finding (§6.2), scored once at the highest member's score.
+**Class-of-bug grouping** (FR-C9) runs after dedupe and before ranking: occurrences of one rule or class above `posting.class_threshold` become one grouped finding (§6.2), scored once at the highest member's score. **As built,** the group is one rule's occurrences (a bug class's id is its rule id); the leader is the first in the stable severity, path, line order, members take its budget, round-cap and shadow outcome, and the grouped comment has no suggestion block. Per-rule `posting_mode` (§6.9 step 7) and grouping exempt overflow into one comment per file are not built; Security and blocking findings post individually and take no budget slot.
 
 **Ranking.** Each surviving finding is scored:
 

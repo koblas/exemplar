@@ -127,12 +127,40 @@ func (q *Queries) FinishRuleRun(ctx context.Context, arg FinishRuleRunParams) er
 	return err
 }
 
+const groupMembers = `-- name: GroupMembers :many
+SELECT m.id FROM findings f
+JOIN findings m ON m.repo = f.repo AND m.pr_number = f.pr_number AND m.group_key = f.group_key
+WHERE f.id = $1 AND f.group_key IS NOT NULL AND m.state = 'posted'
+ORDER BY m.id
+`
+
+// The open, posted members of a finding's group, the finding included.
+func (q *Queries) GroupMembers(ctx context.Context, findingID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, groupMembers, findingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertFinding = `-- name: InsertFinding :one
 INSERT INTO findings (rule_run_id, repo, pr_number, rule_id, lane, severity, cc_label, path, side,
                       start_line, end_line, fingerprint, message, verify_verdict, verify_importance,
                       verify_model, verify_same_family, verify_evidence, suggested_fix, fix_valid,
-                      rank_score, state, suppressed_reason, anchor_code, anchor_ordinal)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+                      rank_score, state, suppressed_reason, anchor_code, anchor_ordinal, group_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 ON CONFLICT (rule_run_id, fingerprint) DO UPDATE
 SET state = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.state ELSE findings.state END,
     suppressed_reason = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.suppressed_reason ELSE findings.suppressed_reason END
@@ -165,6 +193,7 @@ type InsertFindingParams struct {
 	SuppressedReason *string
 	AnchorCode       *string
 	AnchorOrdinal    *int32
+	GroupKey         *string
 }
 
 // A retried run keeps the state its finding already reached, unless that
@@ -196,6 +225,7 @@ func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) (i
 		arg.SuppressedReason,
 		arg.AnchorCode,
 		arg.AnchorOrdinal,
+		arg.GroupKey,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -288,7 +318,7 @@ func (q *Queries) LastCompleteReview(ctx context.Context, arg LastCompleteReview
 }
 
 const listFindingsByReview = `-- name: ListFindingsByReview :many
-SELECT f.id, f.rule_run_id, f.repo, f.pr_number, f.rule_id, f.lane, f.severity, f.cc_label, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.message, f.verify_verdict, f.verify_importance, f.verify_model, f.verify_same_family, f.verify_evidence, f.suggested_fix, f.fix_valid, f.rank_score, f.state, f.suppressed_reason, f.gh_comment_id, f.gh_thread_id, f.sarif_alert_number, f.created_at, f.anchor_code, f.anchor_ordinal FROM findings f JOIN rule_runs r ON r.id = f.rule_run_id
+SELECT f.id, f.rule_run_id, f.repo, f.pr_number, f.rule_id, f.lane, f.severity, f.cc_label, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.message, f.verify_verdict, f.verify_importance, f.verify_model, f.verify_same_family, f.verify_evidence, f.suggested_fix, f.fix_valid, f.rank_score, f.state, f.suppressed_reason, f.gh_comment_id, f.gh_thread_id, f.sarif_alert_number, f.created_at, f.anchor_code, f.anchor_ordinal, f.group_key FROM findings f JOIN rule_runs r ON r.id = f.rule_run_id
 WHERE r.review_id = $1
 ORDER BY f.path, f.start_line, f.id
 `
@@ -333,6 +363,7 @@ func (q *Queries) ListFindingsByReview(ctx context.Context, reviewID int64) ([]F
 			&i.CreatedAt,
 			&i.AnchorCode,
 			&i.AnchorOrdinal,
+			&i.GroupKey,
 		); err != nil {
 			return nil, err
 		}
@@ -445,7 +476,7 @@ func (q *Queries) MoveFinding(ctx context.Context, arg MoveFindingParams) error 
 
 const openFindings = `-- name: OpenFindings :many
 SELECT f.id, f.rule_id, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.anchor_code, f.anchor_ordinal,
-       f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid, r.id AS review_id
+       f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid, r.id AS review_id, f.group_key
 FROM findings f
 JOIN rule_runs rr ON rr.id = f.rule_run_id
 JOIN reviews r ON r.id = rr.review_id
@@ -474,6 +505,7 @@ type OpenFindingsRow struct {
 	SuggestedFix  *string
 	FixValid      *bool
 	ReviewID      int64
+	GroupKey      *string
 }
 
 // A PR's posted findings that are still open, from production reviews
@@ -503,6 +535,7 @@ func (q *Queries) OpenFindings(ctx context.Context, arg OpenFindingsParams) ([]O
 			&i.SuggestedFix,
 			&i.FixValid,
 			&i.ReviewID,
+			&i.GroupKey,
 		); err != nil {
 			return nil, err
 		}
@@ -515,7 +548,7 @@ func (q *Queries) OpenFindings(ctx context.Context, arg OpenFindingsParams) ([]O
 }
 
 const openProductionFindingsByFingerprint = `-- name: OpenProductionFindingsByFingerprint :many
-SELECT f.id, f.rule_run_id, f.repo, f.pr_number, f.rule_id, f.lane, f.severity, f.cc_label, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.message, f.verify_verdict, f.verify_importance, f.verify_model, f.verify_same_family, f.verify_evidence, f.suggested_fix, f.fix_valid, f.rank_score, f.state, f.suppressed_reason, f.gh_comment_id, f.gh_thread_id, f.sarif_alert_number, f.created_at, f.anchor_code, f.anchor_ordinal FROM findings f
+SELECT f.id, f.rule_run_id, f.repo, f.pr_number, f.rule_id, f.lane, f.severity, f.cc_label, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.message, f.verify_verdict, f.verify_importance, f.verify_model, f.verify_same_family, f.verify_evidence, f.suggested_fix, f.fix_valid, f.rank_score, f.state, f.suppressed_reason, f.gh_comment_id, f.gh_thread_id, f.sarif_alert_number, f.created_at, f.anchor_code, f.anchor_ordinal, f.group_key FROM findings f
 JOIN rule_runs r ON r.id = f.rule_run_id
 JOIN reviews v ON v.id = r.review_id
 WHERE f.repo = $1 AND f.pr_number = $2 AND f.fingerprint = $3
@@ -570,6 +603,7 @@ func (q *Queries) OpenProductionFindingsByFingerprint(ctx context.Context, arg O
 			&i.CreatedAt,
 			&i.AnchorCode,
 			&i.AnchorOrdinal,
+			&i.GroupKey,
 		); err != nil {
 			return nil, err
 		}
@@ -583,7 +617,7 @@ func (q *Queries) OpenProductionFindingsByFingerprint(ctx context.Context, arg O
 
 const postedFindingsAtHead = `-- name: PostedFindingsAtHead :many
 SELECT f.id, f.rule_id, f.lane, f.severity, f.path, f.side, f.start_line, f.end_line, f.fingerprint,
-       f.message, f.gh_comment_id, f.gh_thread_id
+       f.message, f.gh_comment_id, f.gh_thread_id, f.group_key
 FROM findings f
 JOIN rule_runs rr ON rr.id = f.rule_run_id
 JOIN reviews r ON r.id = rr.review_id
@@ -611,6 +645,7 @@ type PostedFindingsAtHeadRow struct {
 	Message     string
 	GhCommentID *int64
 	GhThreadID  *string
+	GroupKey    *string
 }
 
 // Late-CI linter dedupe: the findings production reviews of
@@ -637,6 +672,7 @@ func (q *Queries) PostedFindingsAtHead(ctx context.Context, arg PostedFindingsAt
 			&i.Message,
 			&i.GhCommentID,
 			&i.GhThreadID,
+			&i.GroupKey,
 		); err != nil {
 			return nil, err
 		}
@@ -657,6 +693,29 @@ func (q *Queries) ReviewSpend(ctx context.Context, reviewID *int64) (float64, er
 	var spend float64
 	err := row.Scan(&spend)
 	return spend, err
+}
+
+const shareGroupComment = `-- name: ShareGroupComment :exec
+UPDATE findings SET gh_comment_id = $1
+WHERE repo = $2 AND pr_number = $3 AND group_key = $4 AND state = 'posted' AND gh_comment_id IS NULL
+`
+
+type ShareGroupCommentParams struct {
+	GhCommentID *int64
+	Repo        string
+	PrNumber    int32
+	GroupKey    *string
+}
+
+// A grouped comment's members share its comment (FR-C9).
+func (q *Queries) ShareGroupComment(ctx context.Context, arg ShareGroupCommentParams) error {
+	_, err := q.db.Exec(ctx, shareGroupComment,
+		arg.GhCommentID,
+		arg.Repo,
+		arg.PrNumber,
+		arg.GroupKey,
+	)
+	return err
 }
 
 const upsertRuleRun = `-- name: UpsertRuleRun :one

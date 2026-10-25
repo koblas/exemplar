@@ -166,7 +166,7 @@ func (w *FeedbackSignalWorker) inThread(ctx context.Context, a store.FeedbackSig
 	}
 	if _, err := pipeline.RecordEvents(ctx, w.cfg.Store, snap.Global.Feedback, []pipeline.Event{{
 		FindingID: id, Kind: kind, Actor: a.Actor, Role: role, Via: pipeline.ViaWebhook, ReasonText: a.Body,
-		Evidence: map[string]any{"comment_id": a.CommentID},
+		Evidence: map[string]any{"comment_id": a.CommentID}, Thread: true,
 	}}); err != nil {
 		return SignalOutcome{}, fmt.Errorf("worker: record events: %w", err)
 	}

@@ -8,7 +8,9 @@ ON CONFLICT (finding_id, kind, actor) DO NOTHING;
 SELECT * FROM feedback_events WHERE finding_id = $1 ORDER BY id;
 
 -- name: FindingByComment :many
--- The production finding whose posted comment starts a review thread.
+-- The production finding whose posted comment starts a review thread; the
+-- latest first. A grouped comment's members share it (FR-C9): callers
+-- take the first and expand to the group when they record feedback.
 SELECT f.id, f.rule_id FROM findings f
 JOIN rule_runs rr ON rr.id = f.rule_run_id
 JOIN reviews r ON r.id = rr.review_id

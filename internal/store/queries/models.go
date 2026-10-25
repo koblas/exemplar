@@ -289,6 +289,7 @@ type Finding struct {
 	CreatedAt        pgtype.Timestamptz
 	AnchorCode       *string
 	AnchorOrdinal    *int32
+	GroupKey         *string
 }
 
 type FindingOutcome struct {

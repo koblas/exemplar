@@ -22,8 +22,8 @@ SELECT * FROM rule_runs WHERE review_id = $1 ORDER BY id;
 INSERT INTO findings (rule_run_id, repo, pr_number, rule_id, lane, severity, cc_label, path, side,
                       start_line, end_line, fingerprint, message, verify_verdict, verify_importance,
                       verify_model, verify_same_family, verify_evidence, suggested_fix, fix_valid,
-                      rank_score, state, suppressed_reason, anchor_code, anchor_ordinal)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+                      rank_score, state, suppressed_reason, anchor_code, anchor_ordinal, group_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 ON CONFLICT (rule_run_id, fingerprint) DO UPDATE
 SET state = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.state ELSE findings.state END,
     suppressed_reason = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.suppressed_reason ELSE findings.suppressed_reason END
@@ -46,6 +46,18 @@ WHERE f.repo = $1 AND f.pr_number = $2 AND f.fingerprint = $3
 -- name: MarkFindingPosted :exec
 UPDATE findings SET state = 'posted', gh_comment_id = $2 WHERE id = $1;
 
+-- name: ShareGroupComment :exec
+-- A grouped comment's members share its comment (FR-C9).
+UPDATE findings SET gh_comment_id = @gh_comment_id
+WHERE repo = @repo AND pr_number = @pr_number AND group_key = @group_key AND state = 'posted' AND gh_comment_id IS NULL;
+
+-- name: GroupMembers :many
+-- The open, posted members of a finding's group, the finding included.
+SELECT m.id FROM findings f
+JOIN findings m ON m.repo = f.repo AND m.pr_number = f.pr_number AND m.group_key = f.group_key
+WHERE f.id = @finding_id AND f.group_key IS NOT NULL AND m.state = 'posted'
+ORDER BY m.id;
+
 -- name: InsertModelCall :exec
 INSERT INTO model_calls (review_id, rule_run_id, batch_id, repo, caller, stage, provider, model, failover,
                          data_classes, input_tokens, cached_tokens, output_tokens, cost_usd, latency_ms)
@@ -58,7 +70,7 @@ SELECT coalesce(sum(cost_usd), 0)::float8 AS spend FROM model_calls WHERE review
 -- A PR's posted findings that are still open, from production reviews
 -- (a fingerprint is posted at most once per PR).
 SELECT f.id, f.rule_id, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.anchor_code, f.anchor_ordinal,
-       f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid, r.id AS review_id
+       f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid, r.id AS review_id, f.group_key
 FROM findings f
 JOIN rule_runs rr ON rr.id = f.rule_run_id
 JOIN reviews r ON r.id = rr.review_id
@@ -107,7 +119,7 @@ UPDATE findings SET start_line = $2, end_line = $3 WHERE id = $1 AND state = 'po
 -- Late-CI linter dedupe: the findings production reviews of
 -- this head posted that are still open, with what the judge needs.
 SELECT f.id, f.rule_id, f.lane, f.severity, f.path, f.side, f.start_line, f.end_line, f.fingerprint,
-       f.message, f.gh_comment_id, f.gh_thread_id
+       f.message, f.gh_comment_id, f.gh_thread_id, f.group_key
 FROM findings f
 JOIN rule_runs rr ON rr.id = f.rule_run_id
 JOIN reviews r ON r.id = rr.review_id
