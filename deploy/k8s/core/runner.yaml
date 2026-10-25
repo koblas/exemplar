@@ -46,6 +46,10 @@ template:
         env:
           - name: EXEMPLAR_DATABASE_URL
             valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+          # A pooler in transaction mode (components/pgbouncer, or the
+          # cloud's); without runner-url the runner connects directly.
+          - name: EXEMPLAR_RUNNER_DATABASE_URL
+            valueFrom: {secretKeyRef: {name: exemplar-database, key: runner-url, optional: true}}
           - name: EXEMPLAR_GH_API_URL
             valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GH_API_URL, optional: true}}
           - name: EXEMPLAR_GH_WEB_URL

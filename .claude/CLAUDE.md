@@ -152,6 +152,10 @@ application unless requested. Update this guidance as the service takes shape.
 - `/security-hunt [scope|all]`: six-phase security review with subagents (map, hunt by
   class, dedupe, validate, report) into gitignored `.security/`; reads
   `docs/security/known-non-issues.md`. Expensive; the user runs it, CI never does.
+- `/bd-ticket <work or id>`: file or reshape a beads issue (backlink, State, Approach,
+  Done when, parent epic, phase/order labels, deps). `/pr-close [ids]`: run the gate,
+  write the PR description (what landed, decisions, tests with the §16.1 technique
+  used or skipped, what is still missing as issues), `bd close --reason`, export.
 - `/docs <behavior change or page>`: document a change in the right Divio quadrant,
   then run `make docs`. `/docs-audit [area]`: read-only report of quadrant mixing,
   coverage gaps, internal references and stale notes.

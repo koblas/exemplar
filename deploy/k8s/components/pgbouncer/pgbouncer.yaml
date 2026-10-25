@@ -1,0 +1,146 @@
+# exemplar-pgbouncer: PgBouncer in transaction mode for review runners.
+# The exemplar-pgbouncer Secret, supplied per installation, holds
+#   databases.ini  the [databases] section: where Postgres is, e.g.
+#                  [databases]
+#                  exemplar = host=exemplar-postgres.exemplar.svc port=5432 dbname=exemplar
+#   userlist.txt   "exemplar" "<password>": the runners' user, plaintext or
+#                  its SCRAM secret; PgBouncer checks runners against it and
+#                  logs in to Postgres with it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: exemplar-pgbouncer
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-pgbouncer, app.kubernetes.io/part-of: exemplar}
+automountServiceAccountToken: false
+---
+# Transaction mode: a server connection is a runner's only for one
+# transaction. pgx's named prepared statements (sqlc's queries, River's)
+# need max_prepared_statements, PgBouncer 1.21 and later; a cloud pooler
+# without them needs default_query_exec_mode=exec in runner-url.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-pgbouncer
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-pgbouncer, app.kubernetes.io/part-of: exemplar}
+data:
+  pgbouncer.ini: |
+    [pgbouncer]
+    listen_addr = *
+    listen_port = 5432
+    unix_socket_dir =
+    auth_type = scram-sha-256
+    auth_file = /etc/pgbouncer/secret/userlist.txt
+    pool_mode = transaction
+    max_prepared_statements = 200
+    ; Each runner's pool holds up to 4 connections (run-job); 2000 clients
+    ; is 500 runners per replica. Postgres sees at most default_pool_size
+    ; server connections per replica: size it under max_connections.
+    max_client_conn = 2000
+    default_pool_size = 20
+    server_tls_sslmode = prefer
+    ignore_startup_parameters = extra_float_digits
+    log_connections = 0
+    log_disconnections = 0
+    %include /etc/pgbouncer/secret/databases.ini
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exemplar-pgbouncer
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-pgbouncer, app.kubernetes.io/part-of: exemplar}
+spec:
+  selector: {app.kubernetes.io/name: exemplar-pgbouncer}
+  ports:
+    - {name: postgres, port: 5432, targetPort: postgres}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exemplar-pgbouncer
+  namespace: exemplar
+  labels:
+    app.kubernetes.io/name: exemplar-pgbouncer
+    app.kubernetes.io/part-of: exemplar
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: exemplar-pgbouncer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: exemplar-pgbouncer
+        app.kubernetes.io/part-of: exemplar
+    spec:
+      serviceAccountName: exemplar-pgbouncer
+      automountServiceAccountToken: false
+      # The preStop shutdown takes at most 35 s; SIGTERM then finds it
+      # stopped.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 998
+        runAsGroup: 996
+        # The Secret's files are group-readable only (0440): owned by this
+        # group, PgBouncer can read them.
+        fsGroup: 996
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: pgbouncer
+          # CloudNativePG's PgBouncer 1.26.0 on Debian trixie; the multi-arch
+          # index digest. The image's pgbouncer user is 998:996.
+          image: ghcr.io/cloudnative-pg/pgbouncer:1.26.0-202610071304-trixie@sha256:ce54f1133c509f1db8a8092c3f1c761d8c9292065ed6b6698786bb966da4dab9
+          command: ["/usr/bin/pgbouncer"]
+          args: ["/etc/pgbouncer/config/pgbouncer.ini"]
+          ports:
+            - {name: postgres, containerPort: 5432}
+          readinessProbe:
+            tcpSocket: {port: postgres}
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: postgres}
+            periodSeconds: 10
+            failureThreshold: 6
+          # SIGTERM waits for every client to disconnect, and a runner's
+          # pool stays connected for its whole review. Instead: wait for
+          # the Service to drop the pod, then SIGINT, which waits only for
+          # transactions in flight and closes idle clients.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5; kill -INT 1; i=0; while kill -0 1 2>/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done"]
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /etc/pgbouncer/config, readOnly: true}
+            - {name: secret, mountPath: /etc/pgbouncer/secret, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap: {name: exemplar-pgbouncer}
+        - name: secret
+          secret:
+            secretName: exemplar-pgbouncer
+            defaultMode: 0440
+        - name: tmp
+          emptyDir: {sizeLimit: 16Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: exemplar-pgbouncer
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-pgbouncer, app.kubernetes.io/part-of: exemplar}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: exemplar-pgbouncer}

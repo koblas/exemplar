@@ -375,9 +375,17 @@ type sim struct {
 	tasks []Task
 }
 
+// simConns is the pool of control's store in the sim. An overlap holds
+// two reviews' dedicated connections (each its head lock and repo slot)
+// while the second dispatch mints its claim, so pgxpool's default of
+// max(4, NumCPU) deadlocks on a 4-CPU machine: the parked review waits for
+// the second, which waits for a connection. serve sizes its pool for its
+// slots the same way (cmd/exemplar-worker).
+const simConns = 8
+
 func newSim(t *testing.T, seed uint64) *sim {
 	t.Helper()
-	st := storetest.New(t)
+	st := storetest.NewWithConns(t, simConns)
 	outage := &atomic.Bool{}
 	e := setupWith(t, repo, func(next http.RoundTripper) http.RoundTripper { return &simOutage{next: next, on: outage} })
 	e.w.cfg.Store = st

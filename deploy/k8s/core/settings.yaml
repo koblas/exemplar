@@ -1,6 +1,7 @@
 # Non-secret settings shared by the services. Secrets are referenced by
 # name only and supplied outside this repository (see docs/reference/workloads.md):
-#   exemplar-database        url
+#   exemplar-database        url, runner-url (optional: review runners' URL through a pooler in
+#                            transaction mode, components/pgbouncer; never control's)
 #   exemplar-github-app      app-id, client-id, client-secret, private-key, webhook-secret,
 #                            installation-id: from exemplar-api's setup page (docs/tutorials/quickstart.md)
 #   exemplar-exports-app     app-id, private-key (optional: the separate exports app)
@@ -10,6 +11,8 @@
 #   exemplar-oidc            client-secret (optional: the OIDC sign-in client's)
 #   exemplar-cloudflared     credentials.json, tunnel-id (the tunnel's, Cloudflare Tunnel builds only)
 #   exemplar-postgres        password (the in-cluster Postgres superuser's, components/postgres only)
+#   exemplar-pgbouncer       databases.ini, userlist.txt (the pooler's upstream and runner user,
+#                            components/pgbouncer only)
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -1,0 +1,22 @@
+# exemplar-pgbouncer: in on 5432 from review runners only; out to Postgres
+# on 5432 (in-cluster or managed, so any address) and DNS. The runners' own
+# policy already allows 5432 out to any address.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exemplar-pgbouncer
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-pgbouncer, app.kubernetes.io/part-of: exemplar}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: exemplar-pgbouncer}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: exemplar-runner}
+      ports:
+        - {protocol: TCP, port: 5432}
+  egress:
+    - ports:
+        - {protocol: TCP, port: 5432}
