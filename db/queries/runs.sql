@@ -22,8 +22,9 @@ SELECT * FROM rule_runs WHERE review_id = $1 ORDER BY id;
 INSERT INTO findings (rule_run_id, repo, pr_number, rule_id, lane, severity, cc_label, path, side,
                       start_line, end_line, fingerprint, message, verify_verdict, verify_importance,
                       verify_model, verify_same_family, verify_evidence, suggested_fix, fix_valid,
-                      rank_score, state, suppressed_reason, anchor_code, anchor_ordinal, group_key)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+                      rank_score, state, suppressed_reason, anchor_code, anchor_ordinal, group_key,
+                      verify_quorum_n, verify_quorum_agreed)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
 ON CONFLICT (rule_run_id, fingerprint) DO UPDATE
 SET state = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.state ELSE findings.state END,
     suppressed_reason = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.suppressed_reason ELSE findings.suppressed_reason END

@@ -41,6 +41,18 @@ class Concurrency(BaseModel):
     agents_per_review: int = Field(..., ge=1, le=3)
 
 
+class Quorum(BaseModel):
+    """
+    Verifiers asked (n) and confirmations needed (k) for bug-lane findings and rules with verify: quorum.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    n: int | None = Field(None, ge=2)
+    k: int | None = Field(None, ge=1)
+
+
 class CommentBudget(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -180,6 +192,10 @@ class Verifier(BaseModel):
     )
     importance_min: Unit
     max_candidates_per_call: int = Field(..., ge=1)
+    quorum: Quorum | None = Field(
+        None,
+        description="Verifiers asked (n) and confirmations needed (k) for bug-lane findings and rules with verify: quorum.",
+    )
 
 
 class BugLane(BaseModel):

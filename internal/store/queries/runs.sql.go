@@ -159,8 +159,9 @@ const insertFinding = `-- name: InsertFinding :one
 INSERT INTO findings (rule_run_id, repo, pr_number, rule_id, lane, severity, cc_label, path, side,
                       start_line, end_line, fingerprint, message, verify_verdict, verify_importance,
                       verify_model, verify_same_family, verify_evidence, suggested_fix, fix_valid,
-                      rank_score, state, suppressed_reason, anchor_code, anchor_ordinal, group_key)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+                      rank_score, state, suppressed_reason, anchor_code, anchor_ordinal, group_key,
+                      verify_quorum_n, verify_quorum_agreed)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
 ON CONFLICT (rule_run_id, fingerprint) DO UPDATE
 SET state = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.state ELSE findings.state END,
     suppressed_reason = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.suppressed_reason ELSE findings.suppressed_reason END
@@ -168,32 +169,34 @@ RETURNING id
 `
 
 type InsertFindingParams struct {
-	RuleRunID        int64
-	Repo             string
-	PrNumber         int32
-	RuleID           string
-	Lane             string
-	Severity         string
-	CcLabel          string
-	Path             string
-	Side             string
-	StartLine        int32
-	EndLine          int32
-	Fingerprint      string
-	Message          string
-	VerifyVerdict    *string
-	VerifyImportance *float32
-	VerifyModel      *string
-	VerifySameFamily bool
-	VerifyEvidence   []byte
-	SuggestedFix     *string
-	FixValid         *bool
-	RankScore        *float32
-	State            string
-	SuppressedReason *string
-	AnchorCode       *string
-	AnchorOrdinal    *int32
-	GroupKey         *string
+	RuleRunID          int64
+	Repo               string
+	PrNumber           int32
+	RuleID             string
+	Lane               string
+	Severity           string
+	CcLabel            string
+	Path               string
+	Side               string
+	StartLine          int32
+	EndLine            int32
+	Fingerprint        string
+	Message            string
+	VerifyVerdict      *string
+	VerifyImportance   *float32
+	VerifyModel        *string
+	VerifySameFamily   bool
+	VerifyEvidence     []byte
+	SuggestedFix       *string
+	FixValid           *bool
+	RankScore          *float32
+	State              string
+	SuppressedReason   *string
+	AnchorCode         *string
+	AnchorOrdinal      *int32
+	GroupKey           *string
+	VerifyQuorumN      *int32
+	VerifyQuorumAgreed *int32
 }
 
 // A retried run keeps the state its finding already reached, unless that
@@ -226,6 +229,8 @@ func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) (i
 		arg.AnchorCode,
 		arg.AnchorOrdinal,
 		arg.GroupKey,
+		arg.VerifyQuorumN,
+		arg.VerifyQuorumAgreed,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -318,7 +323,7 @@ func (q *Queries) LastCompleteReview(ctx context.Context, arg LastCompleteReview
 }
 
 const listFindingsByReview = `-- name: ListFindingsByReview :many
-SELECT f.id, f.rule_run_id, f.repo, f.pr_number, f.rule_id, f.lane, f.severity, f.cc_label, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.message, f.verify_verdict, f.verify_importance, f.verify_model, f.verify_same_family, f.verify_evidence, f.suggested_fix, f.fix_valid, f.rank_score, f.state, f.suppressed_reason, f.gh_comment_id, f.gh_thread_id, f.sarif_alert_number, f.created_at, f.anchor_code, f.anchor_ordinal, f.group_key FROM findings f JOIN rule_runs r ON r.id = f.rule_run_id
+SELECT f.id, f.rule_run_id, f.repo, f.pr_number, f.rule_id, f.lane, f.severity, f.cc_label, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.message, f.verify_verdict, f.verify_importance, f.verify_model, f.verify_same_family, f.verify_evidence, f.suggested_fix, f.fix_valid, f.rank_score, f.state, f.suppressed_reason, f.gh_comment_id, f.gh_thread_id, f.sarif_alert_number, f.created_at, f.anchor_code, f.anchor_ordinal, f.group_key, f.verify_quorum_n, f.verify_quorum_agreed FROM findings f JOIN rule_runs r ON r.id = f.rule_run_id
 WHERE r.review_id = $1
 ORDER BY f.path, f.start_line, f.id
 `
@@ -364,6 +369,8 @@ func (q *Queries) ListFindingsByReview(ctx context.Context, reviewID int64) ([]F
 			&i.AnchorCode,
 			&i.AnchorOrdinal,
 			&i.GroupKey,
+			&i.VerifyQuorumN,
+			&i.VerifyQuorumAgreed,
 		); err != nil {
 			return nil, err
 		}
@@ -548,7 +555,7 @@ func (q *Queries) OpenFindings(ctx context.Context, arg OpenFindingsParams) ([]O
 }
 
 const openProductionFindingsByFingerprint = `-- name: OpenProductionFindingsByFingerprint :many
-SELECT f.id, f.rule_run_id, f.repo, f.pr_number, f.rule_id, f.lane, f.severity, f.cc_label, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.message, f.verify_verdict, f.verify_importance, f.verify_model, f.verify_same_family, f.verify_evidence, f.suggested_fix, f.fix_valid, f.rank_score, f.state, f.suppressed_reason, f.gh_comment_id, f.gh_thread_id, f.sarif_alert_number, f.created_at, f.anchor_code, f.anchor_ordinal, f.group_key FROM findings f
+SELECT f.id, f.rule_run_id, f.repo, f.pr_number, f.rule_id, f.lane, f.severity, f.cc_label, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.message, f.verify_verdict, f.verify_importance, f.verify_model, f.verify_same_family, f.verify_evidence, f.suggested_fix, f.fix_valid, f.rank_score, f.state, f.suppressed_reason, f.gh_comment_id, f.gh_thread_id, f.sarif_alert_number, f.created_at, f.anchor_code, f.anchor_ordinal, f.group_key, f.verify_quorum_n, f.verify_quorum_agreed FROM findings f
 JOIN rule_runs r ON r.id = f.rule_run_id
 JOIN reviews v ON v.id = r.review_id
 WHERE f.repo = $1 AND f.pr_number = $2 AND f.fingerprint = $3
@@ -604,6 +611,8 @@ func (q *Queries) OpenProductionFindingsByFingerprint(ctx context.Context, arg O
 			&i.AnchorCode,
 			&i.AnchorOrdinal,
 			&i.GroupKey,
+			&i.VerifyQuorumN,
+			&i.VerifyQuorumAgreed,
 		); err != nil {
 			return nil, err
 		}

@@ -54,7 +54,7 @@ func (e *Engine) VerifyOnly(ctx context.Context, p *Prepared, cands []Candidate,
 			Anchor: scope.Anchor{Path: c.Path, Side: side, StartLine: c.StartLine, EndLine: c.EndLine},
 		}
 	}
-	vrs := e.verify(ctx, p, findings, map[*Finding]string{}, CallMeta{Caller: caller, Repo: p.PR.Repo})
+	vrs := e.verify(ctx, p, findings, map[*Finding]string{}, CallMeta{Caller: caller, Repo: p.PR.Repo}, nil, nil).runs
 	out := make([]Verified, len(findings))
 	for i, f := range findings {
 		out[i] = Verified{Verdict: f.VerifyVerdict, Importance: f.VerifyImportance, Model: f.VerifyModel}

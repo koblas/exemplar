@@ -64,6 +64,9 @@ type CallMeta struct {
 	Repo      string
 	ReviewID  int64
 	RuleRunID int64
+	// RouteOffset is the verifier's place in a quorum: its call starts at
+	// that provider of providers.verifier (llm.HeaderRouteOffset).
+	RouteOffset int
 }
 
 // AgentSpec is one agent conversation.
@@ -230,6 +233,9 @@ func (h *Harness) metaOptions(spec AgentSpec, tb *toolbox) []option.RequestOptio
 	}
 	if m.RuleRunID > 0 {
 		opts = append(opts, option.WithHeader(llm.HeaderRuleRunID, strconv.FormatInt(m.RuleRunID, 10)))
+	}
+	if m.RouteOffset > 0 {
+		opts = append(opts, option.WithHeader(llm.HeaderRouteOffset, strconv.Itoa(m.RouteOffset)))
 	}
 	return opts
 }
