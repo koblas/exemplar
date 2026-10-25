@@ -44,10 +44,6 @@ bins: ## Build every cmd/ binary into out/bin
 	  go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(OUT)/bin/$$b ./cmd/$$b; \
 	done
 
-.PHONY: vet
-vet: ## go vet
-	go vet ./...
-
 .PHONY: test
 test: ## Run tests (Postgres and engine tests skip without Docker/engines)
 	go test ./...
@@ -166,7 +162,7 @@ hooks: ## Use .githooks (commit-msg lint) in this clone
 ##@ Aggregates
 
 .PHONY: check
-check: build vet lint fmt-check test ## Quick local gate: build, vet, lint, format, tests
+check: build lint fmt-check test ## Quick local gate: build, lint (includes govet), format, tests
 
 .PHONY: docs
 docs: docs-test ## Build the documentation site to out/site (mkdocs.yml site_dir), failing on broken links (as ci.yml's docs job)
@@ -183,7 +179,7 @@ docs-serve: ## Preview the documentation site with live reload
 .PHONY: ci
 ci: export EXEMPLAR_REQUIRE_DB = 1
 ci: export EXEMPLAR_REQUIRE_ENGINES = 1
-ci: build vet test test-race lint sqlc-check vuln fuzz adversarial py-check commitlint docs ## What ci.yml runs, minus images/manifests (DB and engine tests must not skip)
+ci: build test test-race lint sqlc-check vuln fuzz adversarial py-check commitlint docs ## What ci.yml runs, minus images/manifests (DB and engine tests must not skip)
 
 .PHONY: clean
 clean: ## Remove out/
