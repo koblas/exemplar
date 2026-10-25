@@ -54,6 +54,10 @@ const (
 	// SuppressAlreadyPosted: an earlier review of this PR posted the same
 	// fingerprint, which stays open there.
 	SuppressAlreadyPosted = "already_posted"
+	// SuppressNotPosted: the finding was stored to post, but its review
+	// never reached GitHub (superseded or killed before its post); set by
+	// MarkFindingsNotPosted, so a later review posts it.
+	SuppressNotPosted = "not_posted"
 	// SuppressRepoShadow: the finding would have posted, but the repo is
 	// reviewed in shadow. Shadow-rule findings carry no reason.
 	SuppressRepoShadow = "repo_shadow"

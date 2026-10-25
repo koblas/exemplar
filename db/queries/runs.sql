@@ -17,12 +17,16 @@ WHERE id = $1;
 SELECT * FROM rule_runs WHERE review_id = $1 ORDER BY id;
 
 -- name: InsertFinding :one
+-- A retried run keeps the state its finding already reached, unless that
+-- finding never reached GitHub: then this run decides it again.
 INSERT INTO findings (rule_run_id, repo, pr_number, rule_id, lane, severity, cc_label, path, side,
                       start_line, end_line, fingerprint, message, verify_verdict, verify_importance,
                       verify_model, verify_same_family, verify_evidence, suggested_fix, fix_valid,
                       rank_score, state, suppressed_reason, anchor_code, anchor_ordinal)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-ON CONFLICT (rule_run_id, fingerprint) DO UPDATE SET state = findings.state
+ON CONFLICT (rule_run_id, fingerprint) DO UPDATE
+SET state = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.state ELSE findings.state END,
+    suppressed_reason = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.suppressed_reason ELSE findings.suppressed_reason END
 RETURNING id;
 
 -- name: ListFindingsByReview :many
@@ -54,12 +58,19 @@ SELECT coalesce(sum(cost_usd), 0)::float8 AS spend FROM model_calls WHERE review
 -- A PR's posted findings that are still open, from production reviews
 -- (a fingerprint is posted at most once per PR).
 SELECT f.id, f.rule_id, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.anchor_code, f.anchor_ordinal,
-       f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid
+       f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid, r.id AS review_id
 FROM findings f
 JOIN rule_runs rr ON rr.id = f.rule_run_id
 JOIN reviews r ON r.id = rr.review_id
 WHERE f.repo = $1 AND f.pr_number = $2 AND f.state = 'posted' AND r.caller = 'production'
 ORDER BY f.id;
+
+-- name: MarkFindingsNotPosted :exec
+-- Findings a review stored as posted whose GitHub review never landed
+-- (superseded or killed between Finish and Post): dropped, so no later
+-- review takes them as already posted.
+UPDATE findings SET state = 'dropped', suppressed_reason = 'not_posted'
+WHERE id = ANY(@ids::bigint[]) AND state = 'posted' AND gh_comment_id IS NULL;
 
 -- name: CloseFinding :exec
 -- An open finding was addressed or its rule retired (state resolved), or
@@ -75,14 +86,17 @@ ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1;
 
 -- name: CarryableRuns :many
 -- A review's rule runs, each with the run that did the work (itself, or
--- the one it was carried from) and that run's candidate counts.
+-- the one it was carried from), that run's candidate counts, and whether
+-- any of its findings never reached GitHub (it must run again to post them).
 SELECT rr.rule_id, rr.rule_version, rr.lane, rr.status, rr.coverage, rr.scoped_files,
        coalesce(rr.carried_from, rr.id)::bigint AS origin_id,
        (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id))::int AS candidates,
        -- The candidates that gate a clean run by severity (FR-A13); a Security
        -- rule's gate whatever their severity, which the caller knows by rule.
        (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id)
-          AND f.severity IN ('blocking', 'important'))::int AS candidates_gating
+          AND f.severity IN ('blocking', 'important'))::int AS candidates_gating,
+       EXISTS (SELECT 1 FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id)
+          AND f.suppressed_reason = 'not_posted')::bool AS unposted
 FROM rule_runs rr WHERE rr.review_id = $1;
 
 -- name: MoveFinding :exec

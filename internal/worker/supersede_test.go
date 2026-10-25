@@ -3,6 +3,7 @@ package worker
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -124,4 +125,71 @@ func TestRunningReviewCancelled(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// A review that stored its finding but died at its post does not keep
+// the next head from posting it, unless the post had landed (its comment
+// mapping lost with the runner): then the finding is on the PR already.
+func TestUnpostedFindingPostsOnNextHead(t *testing.T) {
+	t.Parallel()
+	// Where a runner dies: the review's post, before or after GitHub took
+	// it, or the comment listing that maps a landed post.
+	post := func(r *http.Request) bool {
+		return r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reviews")
+	}
+	list := func(r *http.Request) bool {
+		return r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/reviews/") && strings.HasSuffix(r.URL.Path, "/comments")
+	}
+	type death struct {
+		at    func(*http.Request) bool
+		apply bool
+	}
+	for _, tc := range []struct {
+		name   string
+		deaths []death  // one run of the first head each
+		posted int      // the next head's comments
+		states []string // the finding's rows, oldest first
+	}{
+		{"never posted", []death{{post, false}}, 1, []string{"dropped:-:not_posted", "posted:1000:"}},
+		{"posted, mapping lost", []death{{post, true}}, 0, []string{"posted:-:", "dropped:-:already_posted"}},
+		// The retry posts what the first run did not, then loses the mapping.
+		{"retried, mapping lost", []death{{post, false}, {list, false}}, 0, []string{"posted:-:", "dropped:-:already_posted"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			e := setup(t, repo)
+			e.w.cfg.Store = storetest.New(t)
+			e.fake.listPosted = true
+			for _, d := range tc.deaths {
+				// A dead runner's later calls (a retried read) never arrive.
+				dead := false
+				e.fake.mu.Lock()
+				e.fake.intercept = func(r *http.Request) (bool, bool) {
+					if !dead && d.at(r) {
+						dead = true
+						return true, d.apply
+					}
+					return dead, false
+				}
+				e.fake.mu.Unlock()
+				if out, err := e.w.Review(t.Context(), args(e)); err == nil {
+					t.Fatalf("review survived its death: %+v", out)
+				}
+			}
+			e.fake.mu.Lock()
+			e.fake.intercept = nil
+			e.fake.mu.Unlock()
+			e.push(t, map[string]string{"main.go": headMain, "README.md": "docs\n"})
+			out, err := e.w.Review(t.Context(), args(e))
+			if err != nil || out.Status != StatusReviewed || out.Posted != tc.posted {
+				t.Fatalf("next head = %+v, %v", out, err)
+			}
+			e.fake.mu.Lock()
+			ids := e.fake.commentIDs()
+			e.fake.mu.Unlock()
+			if got := e.state(t); len(ids) != 1 || !slices.Equal(got, tc.states) {
+				t.Errorf("%d comments on the PR, findings %v; want 1, %v", len(ids), got, tc.states)
+			}
+		})
+	}
 }

@@ -16,7 +16,9 @@ SELECT rr.rule_id, rr.rule_version, rr.lane, rr.status, rr.coverage, rr.scoped_f
        -- The candidates that gate a clean run by severity (FR-A13); a Security
        -- rule's gate whatever their severity, which the caller knows by rule.
        (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id)
-          AND f.severity IN ('blocking', 'important'))::int AS candidates_gating
+          AND f.severity IN ('blocking', 'important'))::int AS candidates_gating,
+       EXISTS (SELECT 1 FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id)
+          AND f.suppressed_reason = 'not_posted')::bool AS unposted
 FROM rule_runs rr WHERE rr.review_id = $1
 `
 
@@ -30,10 +32,12 @@ type CarryableRunsRow struct {
 	OriginID         int64
 	Candidates       int32
 	CandidatesGating int32
+	Unposted         bool
 }
 
 // A review's rule runs, each with the run that did the work (itself, or
-// the one it was carried from) and that run's candidate counts.
+// the one it was carried from), that run's candidate counts, and whether
+// any of its findings never reached GitHub (it must run again to post them).
 func (q *Queries) CarryableRuns(ctx context.Context, reviewID int64) ([]CarryableRunsRow, error) {
 	rows, err := q.db.Query(ctx, carryableRuns, reviewID)
 	if err != nil {
@@ -53,6 +57,7 @@ func (q *Queries) CarryableRuns(ctx context.Context, reviewID int64) ([]Carryabl
 			&i.OriginID,
 			&i.Candidates,
 			&i.CandidatesGating,
+			&i.Unposted,
 		); err != nil {
 			return nil, err
 		}
@@ -128,7 +133,9 @@ INSERT INTO findings (rule_run_id, repo, pr_number, rule_id, lane, severity, cc_
                       verify_model, verify_same_family, verify_evidence, suggested_fix, fix_valid,
                       rank_score, state, suppressed_reason, anchor_code, anchor_ordinal)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-ON CONFLICT (rule_run_id, fingerprint) DO UPDATE SET state = findings.state
+ON CONFLICT (rule_run_id, fingerprint) DO UPDATE
+SET state = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.state ELSE findings.state END,
+    suppressed_reason = CASE WHEN findings.suppressed_reason = 'not_posted' THEN EXCLUDED.suppressed_reason ELSE findings.suppressed_reason END
 RETURNING id
 `
 
@@ -160,6 +167,8 @@ type InsertFindingParams struct {
 	AnchorOrdinal    *int32
 }
 
+// A retried run keeps the state its finding already reached, unless that
+// finding never reached GitHub: then this run decides it again.
 func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) (int64, error) {
 	row := q.db.QueryRow(ctx, insertFinding,
 		arg.RuleRunID,
@@ -391,6 +400,19 @@ func (q *Queries) MarkFindingPosted(ctx context.Context, arg MarkFindingPostedPa
 	return err
 }
 
+const markFindingsNotPosted = `-- name: MarkFindingsNotPosted :exec
+UPDATE findings SET state = 'dropped', suppressed_reason = 'not_posted'
+WHERE id = ANY($1::bigint[]) AND state = 'posted' AND gh_comment_id IS NULL
+`
+
+// Findings a review stored as posted whose GitHub review never landed
+// (superseded or killed between Finish and Post): dropped, so no later
+// review takes them as already posted.
+func (q *Queries) MarkFindingsNotPosted(ctx context.Context, ids []int64) error {
+	_, err := q.db.Exec(ctx, markFindingsNotPosted, ids)
+	return err
+}
+
 const minimizeFinding = `-- name: MinimizeFinding :execrows
 UPDATE findings SET state = 'minimized', suppressed_reason = 'linter_duplicate' WHERE id = $1 AND state = 'posted'
 `
@@ -423,7 +445,7 @@ func (q *Queries) MoveFinding(ctx context.Context, arg MoveFindingParams) error 
 
 const openFindings = `-- name: OpenFindings :many
 SELECT f.id, f.rule_id, f.path, f.side, f.start_line, f.end_line, f.fingerprint, f.anchor_code, f.anchor_ordinal,
-       f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid
+       f.gh_comment_id, f.gh_thread_id, r.head_sha, f.suggested_fix, f.fix_valid, r.id AS review_id
 FROM findings f
 JOIN rule_runs rr ON rr.id = f.rule_run_id
 JOIN reviews r ON r.id = rr.review_id
@@ -451,6 +473,7 @@ type OpenFindingsRow struct {
 	HeadSha       string
 	SuggestedFix  *string
 	FixValid      *bool
+	ReviewID      int64
 }
 
 // A PR's posted findings that are still open, from production reviews
@@ -479,6 +502,7 @@ func (q *Queries) OpenFindings(ctx context.Context, arg OpenFindingsParams) ([]O
 			&i.HeadSha,
 			&i.SuggestedFix,
 			&i.FixValid,
+			&i.ReviewID,
 		); err != nil {
 			return nil, err
 		}
