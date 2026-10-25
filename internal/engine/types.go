@@ -43,6 +43,9 @@ const (
 	StatePosted    = "posted"
 	StateShadow    = "shadow"
 	StateDropped   = "dropped"
+	// StateSummarized: it would have posted, but the PR is past its round
+	// cap; it goes to the round summary comment instead (FR-C8).
+	StateSummarized = "summarized"
 
 	SuppressRefuted     = "refuted"
 	SuppressUncertain   = "uncertain"
@@ -57,6 +60,8 @@ const (
 	// SuppressRepoShadow: the finding would have posted, but the repo is
 	// reviewed in shadow. Shadow-rule findings carry no reason.
 	SuppressRepoShadow = "repo_shadow"
+	// SuppressRoundCap: held back by the round cap (StateSummarized).
+	SuppressRoundCap = "round_cap"
 	// SuppressLinterDuplicate: a configured linter already reports it on
 	// the head. It counts against neither the rule's
 	// precision nor the author's feedback.

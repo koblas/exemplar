@@ -187,3 +187,41 @@ func TestEventWorkerRoutes(t *testing.T) {
 		t.Fatalf("after close = %+v", got)
 	}
 }
+
+// A person's review or review comment, or the PR leaving draft, resets
+// the round count (FR-C8); bots, edits and pushes do not.
+func TestRouteRoundResets(t *testing.T) {
+	t.Parallel()
+	review := func(action, userType string) string {
+		return fmt.Sprintf(`{"action": %q, "installation": {"id": 42}, "repository": {"full_name": "acme/app"},
+			"pull_request": {"number": 7, "state": "open"}, "review": {"id": 9, "user": {"type": %q}}}`, action, userType)
+	}
+	comment := func(userType, body string) string {
+		return fmt.Sprintf(`{"action": "created", "installation": {"id": 42}, "repository": {"full_name": "acme/app"},
+			"pull_request": {"number": 7}, "comment": {"id": 5, "in_reply_to_id": 3, "body": %q, "user": {"login": "dev", "type": %q}}}`, body, userType)
+	}
+	for _, tc := range []struct {
+		name, event, payload, reason string
+	}{
+		{"review submitted", "pull_request_review", review("submitted", "User"), ResetReview},
+		{"review edited", "pull_request_review", review("edited", "User"), ""},
+		{"bot review", "pull_request_review", review("submitted", "Bot"), ""},
+		{"review comment", "pull_request_review_comment", comment("User", "looks off"), ResetReviewComment},
+		{"feedback command", "pull_request_review_comment", comment("User", "/exemplar wrong"), ResetReviewComment},
+		{"bot comment", "pull_request_review_comment", comment("Bot", "x"), ""},
+		{"ready for review", "pull_request", pullRequest("ready_for_review", "open"), ResetReadyForReview},
+		{"push", "pull_request", pullRequest("synchronize", "open"), ""},
+		{"opened", "pull_request", pullRequest("opened", "open"), ""},
+	} {
+		r, err := RouteEvent(tc.event, []byte(tc.payload))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		switch {
+		case tc.reason == "" && r.RoundReset != nil:
+			t.Errorf("%s: reset %+v", tc.name, r.RoundReset)
+		case tc.reason != "" && (r.RoundReset == nil || r.RoundReset.Reason != tc.reason || r.RoundReset.Repo != "acme/app" || r.RoundReset.PR != 7):
+			t.Errorf("%s: reset %+v, want %s", tc.name, r.RoundReset, tc.reason)
+		}
+	}
+}

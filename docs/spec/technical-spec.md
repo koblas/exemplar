@@ -459,6 +459,7 @@ CREATE TABLE reviews (
   bug_lane       boolean NOT NULL DEFAULT false,
   round          int,                               -- 1.. when this run posted a new finding; NULL otherwise (FR-C8, §6.2)
   round_capped   boolean NOT NULL DEFAULT false,    -- inline posting suppressed by rounds.max
+                                                    -- As built: resets are rows in round_resets (repo, pr_number, at, reason: review | review_comment | ready_for_review), written by event routing
   cost_usd       numeric(10,4) NOT NULL DEFAULT 0,
   started_at     timestamptz,
   finished_at    timestamptz,

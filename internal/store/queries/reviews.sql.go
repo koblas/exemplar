@@ -17,7 +17,7 @@ INSERT INTO reviews (repo, pr_number, head_sha, base_sha, prev_review_id, config
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9)
 ON CONFLICT (repo, pr_number, head_sha, config_version, caller, attempt)
 DO UPDATE SET repo = EXCLUDED.repo
-RETURNING id, repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, coverage, degraded, shed, incomplete_reason, verdict, bug_lane, cost_usd, started_at, finished_at, attempt, agent, agent_reads
+RETURNING id, repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, coverage, degraded, shed, incomplete_reason, verdict, bug_lane, cost_usd, started_at, finished_at, attempt, agent, agent_reads, round, round_capped
 `
 
 type CreateReviewParams struct {
@@ -69,6 +69,8 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		&i.Attempt,
 		&i.Agent,
 		&i.AgentReads,
+		&i.Round,
+		&i.RoundCapped,
 	)
 	return i, err
 }
@@ -145,7 +147,7 @@ func (q *Queries) GetGHEvent(ctx context.Context, deliveryID uuid.UUID) (GhEvent
 }
 
 const getReview = `-- name: GetReview :one
-SELECT id, repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, coverage, degraded, shed, incomplete_reason, verdict, bug_lane, cost_usd, started_at, finished_at, attempt, agent, agent_reads FROM reviews WHERE id = $1
+SELECT id, repo, pr_number, head_sha, base_sha, prev_review_id, config_version, search_snapshot, caller, status, coverage, degraded, shed, incomplete_reason, verdict, bug_lane, cost_usd, started_at, finished_at, attempt, agent, agent_reads, round, round_capped FROM reviews WHERE id = $1
 `
 
 func (q *Queries) GetReview(ctx context.Context, id int64) (Review, error) {
@@ -174,6 +176,8 @@ func (q *Queries) GetReview(ctx context.Context, id int64) (Review, error) {
 		&i.Attempt,
 		&i.Agent,
 		&i.AgentReads,
+		&i.Round,
+		&i.RoundCapped,
 	)
 	return i, err
 }
@@ -288,6 +292,27 @@ func (q *Queries) MarkReviewSuperseded(ctx context.Context, id int64) error {
 	return err
 }
 
+const recordRoundReset = `-- name: RecordRoundReset :exec
+INSERT INTO round_resets (repo, pr_number, at, reason) VALUES ($1, $2, $3, $4)
+`
+
+type RecordRoundResetParams struct {
+	Repo     string
+	PrNumber int32
+	At       pgtype.Timestamptz
+	Reason   string
+}
+
+func (q *Queries) RecordRoundReset(ctx context.Context, arg RecordRoundResetParams) error {
+	_, err := q.db.Exec(ctx, recordRoundReset,
+		arg.Repo,
+		arg.PrNumber,
+		arg.At,
+		arg.Reason,
+	)
+	return err
+}
+
 const reviewedHead = `-- name: ReviewedHead :one
 SELECT EXISTS (
   SELECT 1 FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3 AND caller = 'production'
@@ -307,6 +332,50 @@ func (q *Queries) ReviewedHead(ctx context.Context, arg ReviewedHeadParams) (boo
 	var reviewed bool
 	err := row.Scan(&reviewed)
 	return reviewed, err
+}
+
+const roundState = `-- name: RoundState :one
+SELECT
+  (SELECT count(*) FROM reviews r
+     WHERE r.repo = $1 AND r.pr_number = $2 AND r.caller = 'production' AND r.round IS NOT NULL
+       AND coalesce(r.started_at, r.finished_at, now()) > coalesce(
+         (SELECT max(x.at) FROM round_resets x WHERE x.repo = $1 AND x.pr_number = $2), '-infinity'::timestamptz))::int AS since_reset,
+  (SELECT coalesce(max(r.round), 0) FROM reviews r
+     WHERE r.repo = $1 AND r.pr_number = $2 AND r.caller = 'production')::int AS last_round
+`
+
+type RoundStateParams struct {
+	Repo     string
+	PrNumber int32
+}
+
+type RoundStateRow struct {
+	SinceReset int32
+	LastRound  int32
+}
+
+// A PR's production rounds since its latest reset (a run that started
+// before the reset belongs to the rounds before it), and its highest round.
+func (q *Queries) RoundState(ctx context.Context, arg RoundStateParams) (RoundStateRow, error) {
+	row := q.db.QueryRow(ctx, roundState, arg.Repo, arg.PrNumber)
+	var i RoundStateRow
+	err := row.Scan(&i.SinceReset, &i.LastRound)
+	return i, err
+}
+
+const setReviewRound = `-- name: SetReviewRound :exec
+UPDATE reviews SET round = $1, round_capped = $2 WHERE id = $3
+`
+
+type SetReviewRoundParams struct {
+	Round       *int32
+	RoundCapped bool
+	ID          int64
+}
+
+func (q *Queries) SetReviewRound(ctx context.Context, arg SetReviewRoundParams) error {
+	_, err := q.db.Exec(ctx, setReviewRound, arg.Round, arg.RoundCapped, arg.ID)
+	return err
 }
 
 const startReview = `-- name: StartReview :exec

@@ -94,6 +94,12 @@ bug_lane:
 comment_budget:
   per_pr: 7
   per_file: 3
+# Review rounds per PR: after this many pushes that each posted new
+# findings, new ones (except blocking and Security) go to one summary
+# comment until a person reviews the PR or it leaves draft. A repo file may
+# lower it.
+rounds:
+  max: 3
 # Share of PRs that also get a generic, rule-free review for comparison. Its
 # findings are stored, never posted. Sampled evenly across each repo and
 # PR size (up to 50, up to 300, over 300 changed lines).

@@ -62,6 +62,10 @@ type Options struct {
 	ReviewID int64
 	// Caller is reviews.caller: production, eval, baseline, ...
 	Caller string
+	// RoundCapped is set when the PR is past its round cap (FR-C8): new
+	// findings that would post, but blocking and Security ones, are
+	// summarized instead.
+	RoundCapped bool
 	// VerifierCalibrated is set when the installation's verifier
 	// calibration passed for the deployed verifier inputs: same-family
 	// verification then does not gate (FR-E10).
@@ -145,6 +149,9 @@ type Result struct {
 	Verdict string // APPROVE or NO_OP
 	// Held back by the comment budget, for the check run.
 	HeldBack int
+	// Summarized counts new findings the round cap moved to the summary
+	// comment.
+	Summarized int
 	// Linters is what linter dedupe did; nil when it did not run.
 	Linters *DedupeTrace
 	// Humans is what human-comment dedupe did; nil when it did not run.
@@ -331,7 +338,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		linters = newLinterDeduper(e, p.Effective.Rules, meta, opt.Linters)
 	}
 	humans := newHumanDeduper(e, meta, p.PR.Author, opt.HumanComments)
-	e.assemble(ctx, p, all, opt.PostedFingerprints, dedupers{linters: linters, humans: humans}, res)
+	e.assemble(ctx, p, all, opt.PostedFingerprints, opt.RoundCapped, dedupers{linters: linters, humans: humans}, res)
 	if linters != nil && linters.loaded {
 		res.Linters = linters.trace
 	}
@@ -414,7 +421,7 @@ func (e *Engine) runCompiled(ctx context.Context, p *Prepared, s ScopedRule, m C
 
 // assemble dedupes, fingerprints, applies the comment budget and decides
 // which findings post. Only active rules post; shadow rules are stored.
-func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, posted map[string]bool, dd dedupers, res *Result) {
+func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, posted map[string]bool, roundCapped bool, dd dedupers, res *Result) {
 	status, fixPolicy := map[string]string{}, map[string]string{}
 	for _, r := range p.Effective.Rules {
 		status[r.ID] = r.Status
@@ -498,9 +505,14 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, post
 			perFile[f.Anchor.Path]++
 		}
 		f.State = StatePosted
-		if p.Effective.RepoConfig.Shadow {
+		switch {
+		case p.Effective.RepoConfig.Shadow:
 			// It would have posted; the repo is in shadow.
 			f.State, f.Suppressed = StateShadow, SuppressRepoShadow
+		case roundCapped && !exempt:
+			// Past the round cap, after the budget: to the summary comment.
+			f.State, f.Suppressed = StateSummarized, SuppressRoundCap
+			res.Summarized++
 		}
 		res.Findings = append(res.Findings, *f)
 	}

@@ -21,6 +21,7 @@ Unknown fields are rejected.
 | `verifier` | object | yes | The verification stage. See [`verifier`](#verifier). |
 | `comment_budget` | object | yes | Caps on posted comments. See [`comment_budget`](#comment_budget). |
 | `linter_wait_seconds` | integer, minimum 0 | no | How long a review waits for the repo's linters to report before posting. Default 120 when unset. |
+| `rounds` | object | no | The review-round limit per PR. See [`rounds`](#rounds). |
 | `bug_lane` | object | no | Bug hunting: agents look for common classes of bugs, independent of any rule. See [`bug_lane`](#bug_lane). |
 | `baseline` | object | yes | The sampled, rule-free baseline reviewer. See [`baseline`](#baseline). |
 | `eval_thresholds` | object | yes | Bars a rule or prompt change must clear in eval CI before it merges. See [`eval_thresholds`](#eval_thresholds). |
@@ -110,6 +111,14 @@ Every value is a number from 0 to 1. No other keys are allowed.
 |---|---|---|---|
 | `importance_min` | number, 0 to 1 | yes | Findings the verifier scores below this importance are stored but not posted. |
 | `max_candidates_per_call` | integer, minimum 1 | yes | Findings checked together in one verifier call. |
+
+### `rounds`
+
+The number of review rounds a PR gets before new findings stop posting inline. A round is a push whose review posted at least one new finding. Past the limit, new findings except blocking and Security ones go to one summary comment (`<!-- exemplar:round-summary -->`), and are stored as `summarized` with `suppressed_reason` `round_cap`. A person's review or review comment, or the PR leaving draft, resets the count.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `max` | integer, minimum 1 | no | Rounds since the last reset before inline posting stops. Default 3. A repo file may lower it. |
 
 ### `comment_budget`
 

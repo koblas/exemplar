@@ -35,7 +35,11 @@ The check run is neutral with "Review did not complete" and a **Re-run** action.
 
 ## Findings are stored but not posted
 
-The finding's page in the web UI shows its state and, when suppressed, the reason: refuted by the verifier, below `importance_min`, a linter duplicate, agreed by a human comment, over the comment budget, or the rule is in shadow. A rule that was skipped as one too many shows up in the check run as "not run on this review".
+The finding's page in the web UI shows its state and, when suppressed, the reason: refuted by the verifier, below `importance_min`, a linter duplicate, agreed by a human comment, over the comment budget, held back by the round cap (listed in the "review rounds" comment), or the rule is in shadow. A rule that was skipped as one too many shows up in the check run as "not run on this review".
+
+## New findings appear only in a "review rounds" comment
+
+The PR passed its round limit: `rounds.max` pushes (three by default) each raised new findings with no review from a person in between. New findings except blocking and Security ones are listed in one summary comment until someone reviews the PR, comments on it, or it leaves draft; then they post inline on the next push. If it happens often for one rule, its findings or suggestions are probably not converging: look at the rule's acceptance on the rule-health board. A repo can lower the limit with `rounds.max` in its repo file ([reference](../../reference/config/global.md#rounds)).
 
 ## `exemplar-search` is behind or missing
 

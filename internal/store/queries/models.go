@@ -516,6 +516,8 @@ type Review struct {
 	Attempt          int32
 	Agent            *string
 	AgentReads       []string
+	Round            *int32
+	RoundCapped      bool
 }
 
 type ReviewDailyStat struct {
@@ -530,6 +532,14 @@ type ReviewDailyStat struct {
 	Approvals   int64
 	Degraded    int64
 	CoverageAvg float64
+}
+
+type RoundReset struct {
+	ID       int64
+	Repo     string
+	PrNumber int32
+	At       pgtype.Timestamptz
+	Reason   string
 }
 
 type Rule struct {

@@ -42,9 +42,27 @@ type Route struct {
 	Signals []store.FeedbackSignalArgs
 	// MergePolicy re-decides exemplar/merge-policy after a review changed.
 	MergePolicy []store.MergePolicyArgs
+	// RoundReset, when set, resets the PR's round count (FR-C8): a person
+	// reviewed or commented, or the PR left draft.
+	RoundReset *RoundReset
 	// Ignored says why nothing is enqueued.
 	Ignored string
 }
+
+// RoundReset is one reset of a PR's round count; the event's receipt
+// time is when it happened.
+type RoundReset struct {
+	Repo   string
+	PR     int
+	Reason string // review | review_comment | ready_for_review
+}
+
+// Reasons a PR's round count resets.
+const (
+	ResetReview         = "review"
+	ResetReviewComment  = "review_comment"
+	ResetReadyForReview = "ready_for_review"
+)
 
 // Supersede names the reviews an event makes obsolete: every pr_review of
 // Repo#PR whose head is not KeepHead ("" when the PR closed: all of them).
@@ -307,7 +325,11 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		if a.InstallationID == 0 || a.Repo == "" || a.PR < 1 || a.HeadSHA == "" {
 			return Route{}, fmt.Errorf("pull_request payload %w installation, repository, number or head", errPayloadLacks)
 		}
-		return Route{Reviews: []store.PRReviewArgs{a}, Supersede: &Supersede{Repo: a.Repo, PR: a.PR, KeepHead: a.HeadSHA}}, nil
+		r := Route{Reviews: []store.PRReviewArgs{a}, Supersede: &Supersede{Repo: a.Repo, PR: a.PR, KeepHead: a.HeadSHA}}
+		if e.Action == "ready_for_review" {
+			r.RoundReset = &RoundReset{Repo: a.Repo, PR: a.PR, Reason: ResetReadyForReview}
+		}
+		return r, nil
 	case "pull_request_review_comment":
 		var e reviewCommentEvent
 		if err := json.Unmarshal(payload, &e); err != nil {
@@ -338,7 +360,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 					return Route{Ignored: "review comment on no line"}, nil
 				}
 			}
-			return Route{Signals: []store.FeedbackSignalArgs{sig}}, nil
+			return Route{Signals: []store.FeedbackSignalArgs{sig}, RoundReset: commentReset(e)}, nil
 		case c.InReplyTo == 0:
 			return Route{Ignored: "command outside a thread"}, nil
 		}
@@ -349,7 +371,7 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		if a.InstallationID == 0 || a.Repo == "" || a.PR < 1 || a.CommentID == 0 || a.Actor == "" {
 			return Route{}, fmt.Errorf("pull_request_review_comment payload %w installation, repository, number, comment or user", errPayloadLacks)
 		}
-		return Route{FeedbackCommands: []store.FeedbackCommandArgs{a}}, nil
+		return Route{FeedbackCommands: []store.FeedbackCommandArgs{a}, RoundReset: commentReset(e)}, nil
 	case "pull_request_review":
 		var e reviewEvent
 		if err := json.Unmarshal(payload, &e); err != nil {
@@ -367,7 +389,11 @@ func RouteEvent(event string, payload []byte) (Route, error) {
 		if a.InstallationID == 0 || a.Repo == "" || a.PR < 1 {
 			return Route{}, fmt.Errorf("pull_request_review payload %w installation, repository or number", errPayloadLacks)
 		}
-		return Route{MergePolicy: []store.MergePolicyArgs{a}}, nil
+		r := Route{MergePolicy: []store.MergePolicyArgs{a}}
+		if e.Action == "submitted" {
+			r.RoundReset = &RoundReset{Repo: a.Repo, PR: a.PR, Reason: ResetReview}
+		}
+		return r, nil
 	case "pull_request_review_thread":
 		var e threadEvent
 		if err := json.Unmarshal(payload, &e); err != nil {
@@ -563,6 +589,13 @@ func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs
 				return fmt.Errorf("enqueue merge policy: %w", err)
 			}
 		}
+		if r := route.RoundReset; r != nil {
+			if err := q.RecordRoundReset(ctx, queries.RecordRoundResetParams{
+				Repo: r.Repo, PrNumber: int32(r.PR), At: ev.ReceivedAt, Reason: r.Reason,
+			}); err != nil {
+				return fmt.Errorf("record round reset: %w", err)
+			}
+		}
 		if err := q.MarkGHEventProcessed(ctx, id); err != nil {
 			return fmt.Errorf("mark event processed: %w", err)
 		}
@@ -577,4 +610,13 @@ func (w *EventWorker) Work(ctx context.Context, job *river.Job[store.GHEventArgs
 		"signals", len(route.Signals), "merge_policy", len(route.MergePolicy),
 		"superseded", cancelled, "ignored", route.Ignored)
 	return nil
+}
+
+// commentReset is the round reset a person's review comment makes; nil
+// for a comment without a PR.
+func commentReset(e reviewCommentEvent) *RoundReset {
+	if e.Repository.FullName == "" || e.PullRequest.Number < 1 {
+		return nil
+	}
+	return &RoundReset{Repo: e.Repository.FullName, PR: e.PullRequest.Number, Reason: ResetReviewComment}
 }

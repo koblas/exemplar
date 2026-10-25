@@ -313,3 +313,22 @@ func TestBugLaneClassesAllowlisted(t *testing.T) {
 		t.Fatalf("unknown class = %v", err)
 	}
 }
+
+// A repo may lower the round cap, never raise it (FR-C8).
+func TestRoundsCap(t *testing.T) {
+	ok := baseTree(t)
+	ok["repos/exemplar-sandbox/playground.yaml"] = &fstest.MapFile{Data: []byte("enabled: true\nrounds: { max: 2 }\n")}
+	snap, err := LoadSnapshot(ok, "v")
+	if err != nil {
+		t.Fatalf("lowered cap rejected: %v", err)
+	}
+	eff, err := snap.Effective("exemplar-sandbox/playground", nil)
+	if err != nil || eff.RoundsMax() != 2 || snap.Global.RoundsMax() != 3 {
+		t.Fatalf("rounds = %v, global %d, %v", eff, snap.Global.RoundsMax(), err)
+	}
+	bad := baseTree(t)
+	bad["repos/exemplar-sandbox/playground.yaml"] = &fstest.MapFile{Data: []byte("enabled: true\nrounds: { max: 9 }\n")}
+	if _, err := LoadSnapshot(bad, "v"); err == nil || !strings.Contains(err.Error(), "rounds.max 9 is above global.yaml's 3") {
+		t.Errorf("raised cap = %v", err)
+	}
+}

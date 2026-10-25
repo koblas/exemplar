@@ -69,6 +69,10 @@
         "min_merge_safety_score": { "$ref": "#/$defs/unit", "description": "Stage 2 merge_safety_score bar: 0.7 by default; a repo may raise it but not lower it (spec §6.13)." }
       }
     },
-    "approval_mode": { "enum": ["native_approve", "merge_policy_check"] }
+    "approval_mode": { "enum": ["native_approve", "merge_policy_check"] },
+    "rounds": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "max": { "type": "integer", "minimum": 1 } }
+    }
   }
 }

@@ -72,3 +72,20 @@ SELECT EXISTS (
 -- name: MarkReviewSuperseded :exec
 -- A newer push replaced this review's head.
 UPDATE reviews SET status = 'superseded', finished_at = coalesce(finished_at, now()) WHERE id = $1;
+
+-- name: RoundState :one
+-- A PR's production rounds since its latest reset (a run that started
+-- before the reset belongs to the rounds before it), and its highest round.
+SELECT
+  (SELECT count(*) FROM reviews r
+     WHERE r.repo = @repo AND r.pr_number = @pr_number AND r.caller = 'production' AND r.round IS NOT NULL
+       AND coalesce(r.started_at, r.finished_at, now()) > coalesce(
+         (SELECT max(x.at) FROM round_resets x WHERE x.repo = @repo AND x.pr_number = @pr_number), '-infinity'::timestamptz))::int AS since_reset,
+  (SELECT coalesce(max(r.round), 0) FROM reviews r
+     WHERE r.repo = @repo AND r.pr_number = @pr_number AND r.caller = 'production')::int AS last_round;
+
+-- name: SetReviewRound :exec
+UPDATE reviews SET round = @round, round_capped = @round_capped WHERE id = @id;
+
+-- name: RecordRoundReset :exec
+INSERT INTO round_resets (repo, pr_number, at, reason) VALUES (@repo, @pr_number, @at, @reason);

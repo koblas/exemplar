@@ -87,6 +87,10 @@
       "properties": { "per_pr": { "type": "integer", "minimum": 1 }, "per_file": { "type": "integer", "minimum": 1 } }
     },
     "linter_wait_seconds": { "type": "integer", "minimum": 0 },
+    "rounds": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "max": { "type": "integer", "minimum": 1 } }
+    },
     "bug_lane": {
       "type": "object", "additionalProperties": false, "required": ["min_changed_lines", "importance_min", "classes"],
       "properties": {

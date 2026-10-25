@@ -19,6 +19,7 @@ Unknown fields are rejected. Rules and repo config are read from the default bra
 | `exports` | object | no | Rule exports to coding-agent instruction files. See [`exports`](#exports). |
 | `context` | object | no | Repository context for exemplar-search. See [`context`](#context). |
 | `auto_approve` | object | no | Per-repo auto-approve settings. See [`auto_approve`](#auto_approve). |
+| `rounds` | object | no | `max`: a lower review-round limit for this repo than `global.yaml`'s [`rounds.max`](global.md#rounds); a higher one is rejected. |
 | `approval_mode` | `native_approve`, `merge_policy_check` | no | How the repo's branch rules count Exemplar's approval. `native_approve` (default): Exemplar's `APPROVE` counts toward required approvals; the rules must dismiss stale approvals on push. `merge_policy_check`: the ruleset requires the `exemplar/merge-policy` check instead, which passes when a person with write access approved. Set per ruleset from `exemplar sandbox probe-approval`. |
 
 ### `forks`
