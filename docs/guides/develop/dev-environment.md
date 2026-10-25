@@ -24,6 +24,8 @@ make test-race
 make ci          # everything ci.yml runs except the image and manifest jobs
 ```
 
+On a pull request, CI's `changes` job decides what runs. One that only touches the beads export (`.beads/`), the documentation (`docs/` outside its Go tests, `mkdocs.yml`) or the top-level Markdown files runs the `commits` job, and the `docs` job when the site changed; the code jobs show as skipped. Anything else, including a change to a workflow, runs every job, as does every push to `main`.
+
 **Postgres tests** start a pgvector container with testcontainers-go, so they need Docker or Podman. They skip without one unless `EXEMPLAR_REQUIRE_DB=1`. With `EXEMPLAR_REQUIRE_ENGINES=1` (as in CI), engine-dependent tests fail instead of skipping. If cgo builds fail with `NIX_BUILD_TOP: unbound variable`, set `NIX_ENFORCE_PURITY=0` (the Makefile does).
 
 **Python** lives in `learning/`:
