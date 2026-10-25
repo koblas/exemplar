@@ -364,7 +364,14 @@ type sim struct {
 
 func newSim(t *testing.T, seed uint64) *sim {
 	t.Helper()
-	st := storetest.New(t)
+	// The control process's pool is sized as exemplar-worker sizes its
+	// own (cmd/exemplar-worker/main.go): two connections per review slot
+	// (the repo slot and the head lock), one per runner of the quota, 14
+	// for the rest, and one per in-process review. An overlap holds the
+	// two reviews' four connections while it mints the second claim, and
+	// pgx's default pool, 4 on a 4-core CI runner, would deadlock there.
+	const simReviewSlots, simQuota, simConcurrency = 2, 0, 2
+	st := storetest.NewWithConns(t, 2*simReviewSlots+simQuota+14+simConcurrency)
 	outage := &atomic.Bool{}
 	e := setupWith(t, repo, func(next http.RoundTripper) http.RoundTripper { return &simOutage{next: next, on: outage} })
 	e.w.cfg.Store = st

@@ -76,12 +76,21 @@ func Run(m *testing.M) int {
 }
 
 // New creates a fresh database in the package's container, migrates it, and
-// drops it when the test ends.
+// drops it when the test ends. Its pool has pgx's default size, at least 4
+// and otherwise the host's CPU count; a test that holds connections
+// across concurrent work sizes the pool itself with NewWithConns.
 func New(tb testing.TB) *store.Store {
+	tb.Helper()
+	return NewWithConns(tb, 0)
+}
+
+// NewWithConns is New with a pool of at least minConns connections, as
+// store.OpenWithConns.
+func NewWithConns(tb testing.TB, minConns int32) *store.Store {
 	tb.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	s, err := store.Open(ctx, EmptyURL(tb))
+	s, err := store.OpenWithConns(ctx, EmptyURL(tb), minConns)
 	if err != nil {
 		tb.Fatalf("open test database: %v", err)
 	}
