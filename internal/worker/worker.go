@@ -437,7 +437,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	case p.Effective.RepoConfig.ApprovalMode == gates.ApprovalMergePolicy:
 		out.Approved = w.mergePolicy(ctx, reader, opt.TeamMember, poster, target, p, out.Decision == gates.DecisionApproved)
 	case out.Decision == gates.DecisionApproved:
-		if out.Approved, err = w.approve(ctx, reader, poster, target, p, rec.ReviewID); err != nil {
+		if out.Approved, err = w.approve(ctx, reader, poster, target, p, rec.ReviewID, out.Posted); err != nil {
 			return out, err
 		}
 	}
@@ -612,7 +612,9 @@ func (w *Worker) supersede(ctx context.Context, poster *gh.Poster, target gh.PR,
 // approve submits the APPROVE for a native_approve repo, after checking
 // the head has not moved during the review (an approval must never land
 // on a newer push than the one reviewed).
-func (w *Worker) approve(ctx context.Context, reader *github.Client, poster *gh.Poster, target gh.PR, p *engine.Prepared, reviewID int64) (bool, error) {
+// approve approves the head; suggestions are the findings posted with it,
+// which a clean run allows (FR-A13).
+func (w *Worker) approve(ctx context.Context, reader *github.Client, poster *gh.Poster, target gh.PR, p *engine.Prepared, reviewID int64, suggestions int) (bool, error) {
 	if mode := p.Effective.RepoConfig.ApprovalMode; mode != "" && mode != gates.ApprovalNative {
 		w.cfg.Log.Warn("approval mode not native; not approving", "repo", target.Owner+"/"+target.Repo, "pr", target.Number, "mode", mode)
 		return false, nil
@@ -624,7 +626,11 @@ func (w *Worker) approve(ctx context.Context, reader *github.Client, poster *gh.
 	if now.HeadSHA != target.HeadSHA || now.State != "open" {
 		return false, nil
 	}
-	if _, _, err := poster.Approve(ctx, target, reviewID, "Exemplar found nothing to flag, and every auto-approve gate passed."); err != nil {
+	body := "Exemplar found nothing to flag, and every auto-approve gate passed."
+	if suggestions > 0 {
+		body = fmt.Sprintf("Every auto-approve gate passed. Exemplar left %d suggestion(s); none blocks this approval.", suggestions)
+	}
+	if _, _, err := poster.Approve(ctx, target, reviewID, body); err != nil {
 		return false, fmt.Errorf("approve: %w", err)
 	}
 	return true, nil

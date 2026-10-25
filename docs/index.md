@@ -51,7 +51,7 @@ hide:
 
     ---
 
-    The PR touched only allowed paths, came from an allowed author, was reviewed to full coverage with zero findings, and passed a deterministic merge-safety score and a two-model risk check. It merges without waiting on a reviewer.
+    The PR touched only allowed paths, came from an allowed author, was reviewed to full coverage with no blocking, important or Security finding (suggestions may post beside the approval), and passed a deterministic merge-safety score and a two-model risk check. It merges without waiting on a reviewer.
 
 -   :material-account-arrow-right: **Routed to humans, with the reasons**
 

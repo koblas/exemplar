@@ -55,4 +55,6 @@ In `global.yaml`, set `auto_approve: true` and, for Stage 2, `providers.categori
 
 ## 4. Watch it
 
+A finding of `suggestion` severity does not keep a PR from approval: it posts as a comment beside the `APPROVE`, and the check run counts it ("2 suggestion(s) posted beside the approval"). A rule's severity and category decide this, so raise a rule to `important` if its findings should route PRs to humans.
+
 The audit page (`/ui/audit`) lists every decision with its Stage 1 reasons, merge-safety score and Stage 2 result, linked to the PR, and each repository's kill switch. The `auto-approve` and `counter-metrics` boards show reverts and incidents on auto-approved merges against human-approved ones. The platform team, or a member of one of the repo's `approvable_owners`, can turn a repo off with one click; turning it back on is a config PR.

@@ -38,7 +38,7 @@ func PlanCarry(scoped []engine.ScopedRule, prev []queries.CarryableRunsRow, chan
 			slices.ContainsFunc(s.Files, func(f string) bool { return touched[f] }) {
 			continue
 		}
-		out[s.Rule.ID] = engine.CarriedRun{FromRunID: r.OriginID, Version: r.RuleVersion, Candidates: int(r.Candidates)}
+		out[s.Rule.ID] = engine.CarriedRun{FromRunID: r.OriginID, Version: r.RuleVersion, Candidates: int(r.Candidates), Gating: int(r.CandidatesGating)}
 	}
 	return out
 }

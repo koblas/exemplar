@@ -35,7 +35,7 @@ Exemplar is a self-correcting AI code reviewer that **encodes your organization'
 
 **Absorb the volume.**
 
-5. **Every PR gets a verdict: approved, or routed to humans with reasons.** A pull request that touched only allowed paths, came from an allowed author, was reviewed to full coverage with zero findings, and passed a deterministic merge-safety score and a two-model risk categorisation is approved without a human. Everything else goes to human review, and the record says which gate it failed, so reviewers open the PR knowing why it needs them. The gates are deterministic, auditable, and off until you turn them on per repository.
+5. **Every PR gets a verdict: approved, or routed to humans with reasons.** A pull request that touched only allowed paths, came from an allowed author, was reviewed to full coverage with no blocking, important or Security finding, and passed a deterministic merge-safety score and a two-model risk categorisation is approved without a human. Everything else goes to human review, and the record says which gate it failed, so reviewers open the PR knowing why it needs them. The gates are deterministic, auditable, and off until you turn them on per repository.
 6. **It learns from what people say back.** Structured dismissals ("wrong", "not here", "already covered") feed per-rule precision. A rule people keep rejecting is demoted. A correction in a reply opens a rule-edit proposal for the owner, through the same gate.
 7. **The same rules reach the code before the PR.** Rules export to coding-agent instruction files and a local pre-PR check, so agents and IDEs conform before review, and the violations never arrive as review load at all.
 

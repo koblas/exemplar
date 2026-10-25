@@ -69,3 +69,20 @@ func TestStage1InputHasNoModelText(t *testing.T) {
 		}
 	}
 }
+
+// A run whose only candidates are suggestions is clean (FR-A13): only
+// Candidates, the blocking, important and Security count, gates.
+func TestStage1SuggestionsAreClean(t *testing.T) {
+	t.Parallel()
+	in := Stage1Input{
+		Complete: true, Coverage: 1, Candidates: 0, CandidatesAll: 5, NotFork: true, WithinSize: true,
+		PathPolicy: true, AuthorPolicy: true, BugLaneCovered: true, GlobalAutoApprove: true, RepoAutoApprove: true,
+	}
+	if r := EvaluateStage1(in); slices.Contains(r.Reasons, ReasonCandidates) {
+		t.Errorf("suggestions blocked: %v", r.Reasons)
+	}
+	in.Candidates = 1
+	if r := EvaluateStage1(in); r.Eligible || !slices.Contains(r.Reasons, ReasonCandidates) {
+		t.Errorf("a blocking candidate did not block: %+v", r)
+	}
+}

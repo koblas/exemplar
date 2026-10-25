@@ -75,10 +75,14 @@ ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1;
 
 -- name: CarryableRuns :many
 -- A review's rule runs, each with the run that did the work (itself, or
--- the one it was carried from) and that run's candidate count.
+-- the one it was carried from) and that run's candidate counts.
 SELECT rr.rule_id, rr.rule_version, rr.lane, rr.status, rr.coverage, rr.scoped_files,
        coalesce(rr.carried_from, rr.id)::bigint AS origin_id,
-       (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id))::int AS candidates
+       (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id))::int AS candidates,
+       -- The candidates that gate a clean run by severity (FR-A13); a Security
+       -- rule's gate whatever their severity, which the caller knows by rule.
+       (SELECT count(*) FROM findings f WHERE f.rule_run_id = coalesce(rr.carried_from, rr.id)
+          AND f.severity IN ('blocking', 'important'))::int AS candidates_gating
 FROM rule_runs rr WHERE rr.review_id = $1;
 
 -- name: MoveFinding :exec

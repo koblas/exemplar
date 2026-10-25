@@ -117,9 +117,10 @@ type CarriedRun struct {
 	// FromRunID is the rule run that did the work.
 	FromRunID int64
 	Version   string
-	// Candidates are that run's candidate findings, which the
-	// deterministic gates count.
+	// Candidates are that run's candidate findings; Gating are those of
+	// blocking or important severity, which a clean run may not have.
 	Candidates int
+	Gating     int
 }
 
 // Result is a finished review.
@@ -201,7 +202,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 	}
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(max(1, p.Effective.Global.Concurrency.AgentsPerReview))
-	carriedCandidates := 0
+	carriedCandidates, carriedGating := 0, 0
 	for i, s := range p.Scoped {
 		if c, ok := opt.Carry[s.Rule.ID]; ok && !candidate && s.Lane == LaneExemplar && c.Version == s.Rule.VersionSHA && c.FromRunID != 0 {
 			runs[i] = agentRun{run: RunResult{
@@ -209,6 +210,11 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 				Status: RunOK, Coverage: 1, Carried: true, CarriedFrom: c.FromRunID,
 			}}
 			carriedCandidates += c.Candidates
+			if isSecurity(s.Rule.Category) {
+				carriedGating += c.Candidates
+			} else {
+				carriedGating += c.Gating
+			}
 			res.CarriedFrom = opt.CarryFrom
 			continue
 		}
@@ -276,9 +282,15 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		all = append(all, &f)
 	}
 
-	// Auto-approve counts candidates before verification (system rule 6).
-	// Carried rules count their earlier candidates.
-	candidates := len(all) + carriedCandidates
+	// Auto-approve counts candidates before verification (system rule 6):
+	// a clean run has none of blocking or important severity and no
+	// Security one (FR-A13). Carried rules count their earlier candidates.
+	candidates, candidatesAll := carriedGating, len(all)+carriedCandidates
+	for _, f := range all {
+		if gating(f) {
+			candidates++
+		}
+	}
 
 	// Validate anchors in code; invalid anchors are dropped, never moved.
 	for _, f := range all {
@@ -328,6 +340,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		Complete:               res.Incomplete == "",
 		Coverage:               res.Coverage,
 		Candidates:             candidates,
+		CandidatesAll:          candidatesAll,
 		Unreviewed:             len(p.Excluded),
 		Degraded:               res.Degraded,
 		SameFamilyVerification: sameFamily,
@@ -468,7 +481,7 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, post
 			continue
 		}
 		// Security and blocking findings are exempt from the budget.
-		exempt := f.Severity == schema.SeverityBlocking || strings.EqualFold(f.Category, "Security")
+		exempt := f.Severity == schema.SeverityBlocking || isSecurity(f.Category)
 		if !exempt && (perPR >= budget.PerPR || perFile[f.Anchor.Path] >= budget.PerFile) {
 			f.State, f.Suppressed = StateDropped, SuppressBudget
 			res.HeldBack++
@@ -539,4 +552,13 @@ func (e *Engine) Baseline(ctx context.Context, p *Prepared, opt Options) (*Resul
 	res.Coverage = ar.run.Coverage
 	res.Stage1 = gates.EvaluateStage1(gates.Stage1Input{})
 	return res, nil
+}
+
+// isSecurity reports whether category is Security.
+func isSecurity(category string) bool { return strings.EqualFold(category, "Security") }
+
+// gating reports whether f keeps a run from being clean: blocking or
+// important severity, or Security at any severity (FR-A13).
+func gating(f *Finding) bool {
+	return f.Severity == schema.SeverityBlocking || f.Severity == schema.SeverityImportant || isSecurity(f.Category)
 }
