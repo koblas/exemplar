@@ -15,7 +15,8 @@ import (
 )
 
 // Dispatcher is the River worker for a job kind a runner does: it takes
-// the per-repo slot (pr_review only), chooses the config version, mints
+// the per-repo slot (pr_review only) and a runner-quota slot (when there
+// is a quota), chooses the config version, mints
 // the job's tokens into a single-use claim, hands the job to a Launcher
 // and maps the runner's exit back to River. River keeps timeouts,
 // retries, uniqueness and supersede.
@@ -25,9 +26,15 @@ type Dispatcher[T river.JobArgs] struct {
 	launch   Launcher
 	snapshot func(context.Context) (*config.Snapshot, error)
 	timeout  time.Duration
-	// slot, when set, names the repo whose per-repo slot the job holds.
+	// slot, when set, names the repo whose per-repo slot the job holds;
+	// head, when set, takes the lock of the job's PR head.
 	slot  func(T) string
+	head  func(context.Context, T) (func(), bool, error)
 	slots *Slots
+	// quota, when above 0, is the runner quota: the job holds one of its
+	// slots (in quotaSlots) while its runner is in flight.
+	quota      int
+	quotaSlots *Slots
 	// grant is the job's tokens; claims holds them for the runner. Both
 	// nil only in tests, where the runner uses its own GitHub.
 	grant  func(context.Context, T, *config.Snapshot) (Grant, error)
@@ -52,7 +59,10 @@ type DispatchConfig struct {
 	// Abandon closes out a review job whose last attempt failed
 	// (Abandoner.Abandon); nil only in tests.
 	Abandon func(context.Context, store.PRReviewArgs, error)
-	Log     *slog.Logger
+	// RunnerQuota, when above 0, caps runners in flight across every
+	// control replica (serve --runner-quota); it needs Store.
+	RunnerQuota int
+	Log         *slog.Logger
 }
 
 func newDispatcher[T river.JobArgs](cfg DispatchConfig, timeout time.Duration, grant func(Granter) func(context.Context, T, *config.Snapshot) (Grant, error)) (*Dispatcher[T], error) {
@@ -67,6 +77,12 @@ func newDispatcher[T river.JobArgs](cfg DispatchConfig, timeout time.Duration, g
 		log = slog.New(slog.DiscardHandler)
 	}
 	d := &Dispatcher[T]{launch: cfg.Launcher, snapshot: cfg.Snapshot, timeout: timeout, claims: cfg.Claims, log: log}
+	if cfg.RunnerQuota > 0 {
+		if cfg.Store == nil {
+			return nil, fmt.Errorf("%w: a runner quota needs the store", errMissingDependency)
+		}
+		d.quota, d.quotaSlots = cfg.RunnerQuota, NewSlots(cfg.Store.Pool)
+	}
 	if cfg.Granter != nil {
 		d.grant = grant(*cfg.Granter)
 	}
@@ -91,6 +107,9 @@ func NewReviewDispatcher(cfg DispatchConfig) (*Dispatcher[store.PRReviewArgs], e
 	if cfg.Store != nil {
 		d.slots = NewSlots(cfg.Store.Pool)
 		d.slot = func(a store.PRReviewArgs) string { return a.Repo }
+		d.head = func(ctx context.Context, a store.PRReviewArgs) (func(), bool, error) {
+			return d.slots.AcquireHead(ctx, a.Repo, a.PR, a.HeadSHA)
+		}
 	}
 	d.abandon = cfg.Abandon
 	return d, nil
@@ -135,6 +154,18 @@ func (d *Dispatcher[T]) work(ctx context.Context, job *river.Job[T]) error {
 	if err != nil {
 		return err
 	}
+	if d.head != nil {
+		// One review of a head at a time, attempts and duplicates included.
+		release, ok, err := d.head(ctx, job.Args)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			d.log.Debug("another review of this head is running; waiting", "job", job.ID)
+			return river.JobSnooze(SlotWait)
+		}
+		defer release()
+	}
 	if d.slot != nil {
 		// Per-repo fairness: wait for one of the repo's slots.
 		repo := d.slot(job.Args)
@@ -144,6 +175,18 @@ func (d *Dispatcher[T]) work(ctx context.Context, job *river.Job[T]) error {
 		}
 		if !ok {
 			d.log.Debug("repo at its review limit; waiting", "repo", repo, "job", job.ID)
+			return river.JobSnooze(SlotWait)
+		}
+		defer release()
+	}
+	if d.quota > 0 {
+		// The runner quota: runners in flight across every replica.
+		release, ok, err := d.quotaSlots.AcquireQuota(ctx, d.quota)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			d.log.Info("runner quota reached; waiting", "quota", d.quota, "job", job.ID, "kind", job.Kind)
 			return river.JobSnooze(SlotWait)
 		}
 		defer release()

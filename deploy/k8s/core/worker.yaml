@@ -107,6 +107,8 @@ spec:
             - --drain=5s
             - --stop-timeout=60s
             - --launcher=kubernetes
+            # Runners in flight across every control replica (2 x 4 today).
+            - --runner-quota=8
           ports:
             - {name: http, containerPort: 8080}
           # OTel destinations (internal/telemetry): optional, set per installation.

@@ -75,3 +75,59 @@ func TestInstruments(t *testing.T) {
 		}
 	}
 }
+
+func TestObserveQueues(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	otel.SetMeterProvider(mp)
+	defer func() { _ = mp.Shutdown(context.Background()) }()
+	unregister, err := ObserveQueues(func(context.Context) ([]QueueStat, error) {
+		return []QueueStat{
+			{Queue: "reviews", State: "available", Jobs: 3, OldestWaiting: 4 * time.Minute},
+			{Queue: "reviews", State: "scheduled", Jobs: 2, OldestWaiting: 6 * time.Minute}, // snoozed on the quota
+			{Queue: "reviews", State: "running", Jobs: 4},
+			{Queue: "events", State: "running", Jobs: 1},
+		}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = unregister() }()
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(t.Context(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	depth, age := map[string]int64{}, map[string]float64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			switch m.Name {
+			case "exemplar.queue.depth":
+				g, ok := m.Data.(metricdata.Gauge[int64])
+				if !ok {
+					t.Fatalf("depth is %T", m.Data)
+				}
+				for _, p := range g.DataPoints {
+					q, _ := p.Attributes.Value("queue")
+					s, _ := p.Attributes.Value("state")
+					depth[q.AsString()+"/"+s.AsString()] = p.Value
+				}
+			case "exemplar.queue.oldest_age":
+				g, ok := m.Data.(metricdata.Gauge[float64])
+				if !ok {
+					t.Fatalf("oldest age is %T", m.Data)
+				}
+				for _, p := range g.DataPoints {
+					q, _ := p.Attributes.Value("queue")
+					age[q.AsString()] = p.Value
+				}
+			}
+		}
+	}
+	if len(depth) != 4 || depth["reviews/available"] != 3 || depth["reviews/running"] != 4 {
+		t.Errorf("depth = %v", depth)
+	}
+	if len(age) != 2 || age["reviews"] != 360 || age["events"] != 0 {
+		t.Errorf("oldest age = %v", age)
+	}
+}

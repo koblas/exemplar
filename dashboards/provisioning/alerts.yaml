@@ -109,3 +109,40 @@ groups:
         labels: {team: platform}
         annotations:
           summary: Stage 1 must refuse degraded and incomplete reviews; an approval from one means a gate is broken. Turn auto-approve off globally.
+  - orgId: 1
+    name: exemplar-operations
+    folder: Exemplar
+    interval: 5m
+    rules:
+      - uid: exemplar-review-queue-stalled
+        title: Reviews have waited over 30 minutes to start
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 3600, to: 0}
+            datasourceUid: exemplar-pg
+            model:
+              refId: A
+              editorMode: code
+              format: table
+              rawQuery: true
+              rawSql: |-
+                SELECT count(*)::float8 AS stalled FROM river_job
+                WHERE kind = 'pr_review' AND state IN ('available', 'scheduled', 'retryable', 'pending')
+                  AND scheduled_at <= now() + interval '1 minute' AND created_at < now() - interval '30 minutes'
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels: {team: platform}
+        annotations:
+          summary: Review jobs are due to run (snoozed ones waiting on the runner quota or a repo's slots included) and have not started for over 30 minutes. Check the worker's logs for "runner quota reached" or launch errors, the runner quota (--runner-quota) against the queue depth, and the cluster's capacity for runner Jobs.

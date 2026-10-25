@@ -2,7 +2,7 @@
 // (River, routing, the cheap queues and the periodic jobs) and dispatches
 // each review to a runner; run-job is one runner.
 //
-//	exemplar-worker serve --config DIR --work-dir /var/lib/exemplar/work [--addr :8080] [--concurrency 4] [--launcher in-process|kubernetes]
+//	exemplar-worker serve --config DIR --work-dir /var/lib/exemplar/work [--addr :8080] [--concurrency 4] [--launcher in-process|kubernetes] [--runner-quota N]
 //	exemplar-worker run-job --job ID --config-version V --work-dir /var/lib/exemplar/work
 //	exemplar-worker enqueue --repo org/repo --pr 123 --head SHA --installation ID
 //
@@ -82,6 +82,7 @@ var (
 	errRequired       = errors.New("required")
 	errBadConcurrency = errors.New("--concurrency must be at least 1")
 	errBadLauncher    = errors.New("--launcher must be in-process or kubernetes")
+	errBadQuota       = errors.New("--runner-quota must be 0 (none) or more, and needs --launcher=kubernetes")
 )
 
 func main() {
@@ -108,6 +109,17 @@ func main() {
 	}
 }
 
+// reviewWorkers is the reviews queue's MaxWorkers on this replica: the
+// runner quota when there is one, so any replica may fan out to the whole
+// quota while its slots hold the total (spec §2.4.2 C5), and
+// --concurrency otherwise.
+func reviewWorkers(concurrency, quota int) int {
+	if quota > 0 {
+		return quota
+	}
+	return concurrency
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: exemplar-worker serve|run-job|enqueue [flags]")
 	os.Exit(2)
@@ -121,6 +133,7 @@ func runServe(args []string) error {
 	concurrency := fs.Int("concurrency", 4, "reviews run at once: in this process, or as runners in flight")
 	launcherName := fs.String("launcher", launcherInProcess, "where reviews run: in-process, or kubernetes (a Job per review)")
 	runnerTemplate := fs.String("runner-template", kubelaunch.RunnerName, "the PodTemplate runner Jobs are made from (--launcher=kubernetes)")
+	quota := fs.Int("runner-quota", 0, "runners in flight across every control replica, 0 for no quota (--launcher=kubernetes); each replica then takes up to this many reviews")
 	platformTeam := fs.String("platform-team", "@platform/devex", "team that may take every web UI owner action")
 	reload := fs.Duration("reload", time.Minute, "how often to re-read --config")
 	drain := fs.Duration("drain", 5*time.Second, "how long readiness reports false before stopping")
@@ -137,6 +150,10 @@ func runServe(args []string) error {
 	if *launcherName != launcherInProcess && *launcherName != launcherKubernetes {
 		return errBadLauncher
 	}
+	if *quota < 0 || *quota > 0 && *launcherName != launcherKubernetes {
+		return errBadQuota
+	}
+	reviewSlots := reviewWorkers(*concurrency, *quota)
 	env, err := envFromOS(true)
 	if err != nil {
 		return err
@@ -161,10 +178,11 @@ func runServe(args []string) error {
 	var snap atomic.Pointer[config.Snapshot]
 	snap.Store(first)
 
-	// Each running review holds a connection for its per-repo queue slot,
-	// besides what the review itself (in-process), River, the event,
-	// linter-check and feedback workers and the periodic jobs use.
-	conns := int32(*concurrency) + 14
+	// Each running review holds two connections, for its per-repo queue
+	// slot and its PR head's lock, and each runner in flight one for its
+	// quota slot, besides what the review itself (in-process), River, the
+	// event, linter-check and feedback workers and the periodic jobs use.
+	conns := 2*int32(reviewSlots) + int32(*quota) + 14
 	if *launcherName == launcherInProcess {
 		conns += int32(*concurrency)
 	}
@@ -179,6 +197,13 @@ func runServe(args []string) error {
 	if err := worker.PutSnapshot(ctx, st, first); err != nil {
 		return fmt.Errorf("store config: %w", err)
 	}
+	unobserve, err := telemetry.ObserveQueues(func(ctx context.Context) ([]telemetry.QueueStat, error) {
+		return worker.QueueStats(ctx, st.Pool)
+	})
+	if err != nil {
+		return fmt.Errorf("observe queues: %w", err)
+	}
+	defer func() { _ = unobserve() }()
 	snapshot := func(context.Context) (*config.Snapshot, error) { return snap.Load(), nil }
 	wcfg, err := env.workerConfig(st, *workDir, worker.AppClients{App: env.app}, log)
 	if err != nil {
@@ -226,8 +251,9 @@ func runServe(args []string) error {
 	}
 	dcfg := worker.DispatchConfig{
 		Launcher: launch, Snapshot: snapshot, Store: st, Log: log, Claims: claims,
-		Granter: &worker.Granter{Minter: app, Store: st, ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO")},
-		Abandon: worker.Abandoner{Store: st, GitHub: wcfg.GitHub, Log: log}.Abandon,
+		Granter:     &worker.Granter{Minter: app, Store: st, ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO")},
+		Abandon:     worker.Abandoner{Store: st, GitHub: wcfg.GitHub, Log: log}.Abandon,
+		RunnerQuota: *quota,
 	}
 	reviews, err := worker.NewReviewDispatcher(dcfg)
 	if err != nil {
@@ -325,7 +351,7 @@ func runServe(args []string) error {
 	river.AddWorker(workers, linkClicks)
 	client, err := river.NewClient(riverpgxv5.New(st.Pool), &river.Config{
 		Queues: map[string]river.QueueConfig{
-			store.ReviewQueue:       {MaxWorkers: *concurrency},
+			store.ReviewQueue:       {MaxWorkers: reviewSlots},
 			store.EventQueue:        {MaxWorkers: 4}, // routing only: cheap, one transaction each
 			store.LinterQueue:       {MaxWorkers: 4}, // late-CI linter dedupe: a few GitHub calls and judge calls each
 			store.EvaluateQueue:     {MaxWorkers: 2}, // `exemplar review`: full reviews, apart from PRs
@@ -373,7 +399,7 @@ func runServe(args []string) error {
 	wg.Go(func() { reloadConfig(workCtx, *configDir, *reload, st, &snap, log) })
 	errc := make(chan error, 1)
 	go func() {
-		log.Info("exemplar-worker serving", "addr", *addr, "concurrency", *concurrency, "launcher", *launcherName, "config", first.Version)
+		log.Info("exemplar-worker serving", "addr", *addr, "concurrency", reviewSlots, "launcher", *launcherName, "runner_quota", *quota, "config", first.Version)
 		if err := hs.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
 		}

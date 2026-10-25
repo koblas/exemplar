@@ -42,7 +42,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 - **The PRD asks** that reviews queue per repo, that a burst (a mass rebase, a release-branch cut) drains in order with incremental review, and that queue depth be visible to the platform team.
 - **The spec (§6.15, "Backpressure") makes that concrete:** at most `queues.per_repo_concurrency` reviews of a repo at once, 32 for the monorepo, so one busy repo can't starve the rest.
 - **Built:** the limit, in [per-repo concurrency](phase-0.md#head-start-per-repo-concurrency-2026-10-13), as part of the online review path that Phase 2 stands up.
-- **Not built:** queue-depth visibility, which waits for the Grafana boards.
+- **Built:** queue-depth visibility: the operations board's queue panels, `exemplar.queue.depth` and `exemplar.queue.oldest_age` over OTel, and a stalled-review-queue alert (spec §2.4.2 C5).
 
 ## Roadmap
 

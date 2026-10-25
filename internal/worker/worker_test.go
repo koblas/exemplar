@@ -103,6 +103,9 @@ type fakeGitHub struct {
 	// drops the connection unanswered, after applying the request when
 	// apply is set (a runner killed before or after GitHub took a write).
 	intercept func(r *http.Request) (abort, apply bool)
+	// park, when set, sees each request before mu is taken, so it may
+	// block a runner at a call while other runners' calls go on.
+	park atomic.Pointer[func(r *http.Request)]
 }
 
 func newFakeGitHub(t *testing.T, repoName, head, base string) *fakeGitHub {
@@ -122,6 +125,9 @@ func (f *fakeGitHub) writeJSON(w http.ResponseWriter, v any) {
 
 func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if park := f.park.Load(); park != nil {
+		(*park)(r)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.intercept != nil {

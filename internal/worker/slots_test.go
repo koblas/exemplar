@@ -80,6 +80,69 @@ func TestSlotsAcrossReplicas(t *testing.T) {
 	}
 }
 
+// A PR head's lock is held by one review at a time, across replicas;
+// another head of the PR, or another PR, is not affected.
+func TestHeadLock(t *testing.T) {
+	t.Parallel()
+	st := storetest.New(t)
+	ctx := t.Context()
+	a, b := NewSlots(st.Pool), NewSlots(otherReplica(t, st))
+	release, ok, err := a.AcquireHead(ctx, "acme/app", 7, "abc")
+	if err != nil || !ok {
+		t.Fatalf("acquire = %v, %v", ok, err)
+	}
+	if _, ok, err := b.AcquireHead(ctx, "ACME/App", 7, "abc"); ok || err != nil {
+		t.Fatalf("second review of the head = %v, %v", ok, err)
+	}
+	for _, other := range []struct {
+		pr   int
+		head string
+	}{{7, "def"}, {8, "abc"}} {
+		r, ok, err := b.AcquireHead(ctx, "acme/app", other.pr, other.head)
+		if err != nil || !ok {
+			t.Fatalf("PR %d head %s = %v, %v", other.pr, other.head, ok, err)
+		}
+		r()
+	}
+	release()
+	r, ok, err := b.AcquireHead(ctx, "acme/app", 7, "abc")
+	if err != nil || !ok {
+		t.Fatalf("after release = %v, %v", ok, err)
+	}
+	r()
+}
+
+// A second review of a head that is being reviewed waits (snoozes)
+// without launching a runner, whatever its attempt.
+func TestDispatchWaitsForHead(t *testing.T) {
+	t.Parallel()
+	st := storetest.New(t)
+	snap := exampleSnapshot(t)
+	release, ok, err := NewSlots(otherReplica(t, st)).AcquireHead(t.Context(), repo, 1, "abc")
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	defer release()
+	launched := 0
+	d, err := NewReviewDispatcher(DispatchConfig{
+		Launcher: launchFunc(func(context.Context, Task) (Exit, error) { launched++; return ExitDone, nil }),
+		Snapshot: func(context.Context) (*config.Snapshot, error) { return snap, nil }, Store: st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := func(head string) error {
+		return d.Work(t.Context(), &river.Job[store.PRReviewArgs]{JobRow: &rivertype.JobRow{ID: 1}, Args: store.PRReviewArgs{Repo: repo, PR: 1, HeadSHA: head, Attempt: 2}})
+	}
+	var snooze *rivertype.JobSnoozeError
+	if err := work("abc"); !errors.As(err, &snooze) || snooze.Duration != SlotWait || launched != 0 {
+		t.Fatalf("work = %v, launched %d", err, launched)
+	}
+	if err := work("def"); err != nil || launched != 1 {
+		t.Fatalf("another head = %v, launched %d", err, launched)
+	}
+}
+
 // A repo at its limit: the dispatcher snoozes the review without
 // launching a runner.
 func TestDispatchWaitsForSlot(t *testing.T) {
