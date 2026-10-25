@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -130,7 +131,7 @@ func (c *Claims) Mint(ctx context.Context, t Task, g Grant) (string, error) {
 
 // Redeem returns job id's grant and config version, once, for its nonce.
 func (c *Claims) Redeem(ctx context.Context, id int64, nonce string) (Grant, string, error) {
-	row, err := c.st.RedeemRunnerClaim(ctx, queries.RedeemRunnerClaimParams{JobID: id, NonceHash: nonceHash(nonce)})
+	row, err := c.st.RedeemRunnerClaim(ctx, queries.RedeemRunnerClaimParams{JobID: id, NonceHash: nonceHash(nonce), Now: pgtype.Timestamptz{Time: time.Now(), Valid: true}})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Grant{}, "", fmt.Errorf("%w: job %d", errClaimRefused, id)
 	}
@@ -169,6 +170,8 @@ type ClaimClients struct {
 	Grant Grant
 	// BaseURL overrides https://api.github.com/ (GHES).
 	BaseURL string
+	// Transport carries the clients' requests; nil is http.DefaultTransport.
+	Transport http.RoundTripper
 }
 
 // token finds the grant's token of flavor f for repo on installation
@@ -199,7 +202,7 @@ func (c ClaimClients) client(inst int64, repo string, f gh.Flavor) (*github.Clie
 	if err != nil {
 		return nil, err
 	}
-	cl, err := gh.NewTokenClient(inst, tok, c.BaseURL, 0)
+	cl, err := gh.NewTokenClient(c.Transport, inst, tok, c.BaseURL, 0)
 	if err != nil {
 		return nil, fmt.Errorf("worker: %s client: %w", f, err)
 	}

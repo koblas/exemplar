@@ -100,13 +100,14 @@ func (q *Queries) PutRunnerClaim(ctx context.Context, arg PutRunnerClaimParams) 
 const redeemRunnerClaim = `-- name: RedeemRunnerClaim :one
 UPDATE runner_claims SET claimed_at = now()
 WHERE job_id = $1 AND nonce_hash = $2
-  AND claimed_at IS NULL AND released_at IS NULL AND tokens IS NOT NULL AND expires_at > now()
+  AND claimed_at IS NULL AND released_at IS NULL AND tokens IS NOT NULL AND expires_at > greatest($3::timestamptz, now())
 RETURNING tokens, config_version
 `
 
 type RedeemRunnerClaimParams struct {
 	JobID     int64
 	NonceHash []byte
+	Now       pgtype.Timestamptz
 }
 
 type RedeemRunnerClaimRow struct {
@@ -115,8 +116,11 @@ type RedeemRunnerClaimRow struct {
 }
 
 // Once: a claimed, released or expired row, or another nonce, matches nothing.
+// Expired by the later of the database's clock and the runner's (@now, as
+// expires_at is set from the control process's), so neither clock alone
+// can stretch a claim.
 func (q *Queries) RedeemRunnerClaim(ctx context.Context, arg RedeemRunnerClaimParams) (RedeemRunnerClaimRow, error) {
-	row := q.db.QueryRow(ctx, redeemRunnerClaim, arg.JobID, arg.NonceHash)
+	row := q.db.QueryRow(ctx, redeemRunnerClaim, arg.JobID, arg.NonceHash, arg.Now)
 	var i RedeemRunnerClaimRow
 	err := row.Scan(&i.Tokens, &i.ConfigVersion)
 	return i, err

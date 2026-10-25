@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -82,6 +83,9 @@ type Runner struct {
 	Claims *Claims
 	// BaseURL is GitHub's API base for claim clients (GHES).
 	BaseURL string
+	// Transport carries the claim clients' requests; nil is
+	// http.DefaultTransport.
+	Transport http.RoundTripper
 }
 
 // Run runs job id with config version, redeeming its claim with nonce, and
@@ -136,7 +140,7 @@ func (r *Runner) run(ctx context.Context, id int64, version, nonce string) (Exit
 		if claimed != version {
 			return ExitCancel, fmt.Errorf("%w: claim is for config %s, not %s", errClaimRefused, claimed, version)
 		}
-		cfg.GitHub = ClaimClients{Grant: grant, BaseURL: r.BaseURL}
+		cfg.GitHub = ClaimClients{Grant: grant, BaseURL: r.BaseURL, Transport: r.Transport}
 	}
 
 	ctx, cancel := context.WithCancelCause(ctx)
