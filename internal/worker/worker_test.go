@@ -70,6 +70,7 @@ type fakeGitHub struct {
 	checks           []map[string]any
 	checkUpdates     []map[string]any
 	checksDone       map[int]bool // check run ids an update completed
+	dupChecks        int          // review check runs created while another was in progress on the head
 	existingApproval bool
 	dismissed        int
 	replies          []map[string]any
@@ -450,11 +451,24 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.reviews = append(f.reviews, body())
 		fmt.Fprintf(w, `{"id": %d}`, 100+len(f.reviews))
 	case r.Method == http.MethodPost && r.URL.Path == "/repos/"+f.repo+"/check-runs":
-		f.checks = append(f.checks, body())
+		c := body()
+		if id, _ := c["external_id"].(string); strings.HasPrefix(id, gh.ReviewCheckPrefix) {
+			for i, o := range f.checks {
+				if old, _ := o["external_id"].(string); o["head_sha"] == c["head_sha"] && strings.HasPrefix(old, gh.ReviewCheckPrefix) && !f.checksDone[i+1] {
+					f.dupChecks++
+					break
+				}
+			}
+		}
+		f.checks = append(f.checks, c)
 		fmt.Fprintf(w, `{"id": %d}`, len(f.checks))
 	case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/check-runs/"):
 		u := body()
-		if id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/check-runs/")); err == nil && u["status"] == "completed" {
+		id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/check-runs/"))
+		if ext, ok := u["external_id"]; ok && err == nil && id >= 1 && id <= len(f.checks) {
+			f.checks[id-1]["external_id"] = ext // a take-over renames the run
+		}
+		if err == nil && u["status"] == "completed" {
 			if f.checksDone == nil {
 				f.checksDone = map[int]bool{}
 			}

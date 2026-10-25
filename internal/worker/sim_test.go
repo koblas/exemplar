@@ -1401,10 +1401,15 @@ func (s *sim) check() {
 			s.violation = fmt.Sprintf("review %d posted on a head a push left", i)
 		}
 	}
-	checks, reviews, violation := len(f.checks), len(f.reviews), s.violation
+	checks, reviews, violation, dups := len(f.checks), len(f.reviews), s.violation, f.dupChecks
 	f.mu.Unlock()
 	if violation != "" {
 		s.fatalf("%s", violation)
+	}
+	// A retried, killed or duplicated review takes over the check run
+	// already in progress on its head rather than starting a second one.
+	if dups != 0 {
+		s.fatalf("%d review check runs started while another was in progress on the head", dups)
 	}
 	for k, n := range posted {
 		if n > 1 {

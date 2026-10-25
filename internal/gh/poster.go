@@ -3,6 +3,7 @@ package gh
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -135,8 +136,31 @@ const CheckName = "exemplar"
 // incomplete review.
 const RerunAction = "rerun"
 
-// StartCheck creates the in-progress check run for a head.
+// ReviewCheckPrefix starts the external id of every review's check run
+// ("review-<id>"), as opposed to the "not reviewed" check.
+const ReviewCheckPrefix = "review-"
+
+// StartCheck starts the in-progress check run for a head. A review check
+// run another attempt left in progress on the head (a killed or retried
+// attempt, or a duplicate review) is taken over and renamed to
+// externalID rather than joined by a second one; the newest is taken and
+// any older ones stay for the review that owns them to complete.
 func (p *Poster) StartCheck(ctx context.Context, pr PR, externalID string) (int64, error) {
+	open, err := p.openChecks(ctx, pr, func(id string) bool { return strings.HasPrefix(id, ReviewCheckPrefix) })
+	if err != nil {
+		return 0, err
+	}
+	if len(open) > 0 {
+		id := slices.Max(open)
+		if _, _, err := p.gh.Checks.UpdateCheckRun(ctx, pr.Owner, pr.Repo, id, github.UpdateCheckRunOptions{
+			Name:       CheckName,
+			ExternalID: new(externalID),
+			Status:     new("in_progress"),
+		}); err != nil {
+			return 0, fmt.Errorf("gh: take over check run %d: %w", id, err)
+		}
+		return id, nil
+	}
 	run, _, err := p.gh.Checks.CreateCheckRun(ctx, pr.Owner, pr.Repo, github.CreateCheckRunOptions{
 		Name:       CheckName,
 		HeadSHA:    pr.HeadSHA,
@@ -153,6 +177,12 @@ func (p *Poster) StartCheck(ctx context.Context, pr PR, externalID string) (int6
 // OpenChecks returns the ids of Exemplar's check runs on pr's head with
 // externalID that have not completed.
 func (p *Poster) OpenChecks(ctx context.Context, pr PR, externalID string) ([]int64, error) {
+	return p.openChecks(ctx, pr, func(id string) bool { return id == externalID })
+}
+
+// openChecks returns the ids of Exemplar's check runs on pr's head whose
+// external id matches and that have not completed.
+func (p *Poster) openChecks(ctx context.Context, pr PR, match func(externalID string) bool) ([]int64, error) {
 	opts := &github.ListCheckRunsOptions{CheckName: new(CheckName), Filter: new("all"), PerPage: 100}
 	var out []int64
 	for {
@@ -161,7 +191,7 @@ func (p *Poster) OpenChecks(ctx context.Context, pr PR, externalID string) ([]in
 			return nil, fmt.Errorf("gh: check runs of %s/%s@%s: %w", pr.Owner, pr.Repo, pr.HeadSHA, err)
 		}
 		for _, r := range runs.CheckRuns {
-			if r.GetExternalID() == externalID && r.GetStatus() != "completed" {
+			if match(r.GetExternalID()) && r.GetStatus() != "completed" {
 				out = append(out, r.GetID())
 			}
 		}
