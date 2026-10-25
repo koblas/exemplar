@@ -199,6 +199,8 @@ func TestGatewayRejectsBadRequests(t *testing.T) {
 		{"unknown caller", map[string]string{HeaderCaller: "someone"}, msgBody, 400},
 		{"unknown stage", map[string]string{HeaderStage: "planner"}, msgBody, 400},
 		{"bad review id", map[string]string{HeaderReviewID: "-1"}, msgBody, 400},
+		{"route offset off the verifier", map[string]string{HeaderRouteOffset: "1"}, msgBody, 400},
+		{"bad route offset", map[string]string{HeaderStage: StageVerifier, HeaderRouteOffset: "-1"}, msgBody, 400},
 		{"not json", nil, "nope", 400},
 	}
 	for _, tt := range tests {
@@ -249,5 +251,25 @@ func TestCostUnknownModel(t *testing.T) {
 func TestIsRetryable(t *testing.T) {
 	if IsRetryable(errors.New("x")) || !IsRetryable(&ProviderError{Retryable: true}) {
 		t.Fatal("IsRetryable wrong")
+	}
+}
+
+// A quorum's verifiers start at different providers (FR-V7): offset j
+// starts at providers.verifier[j mod len], the rest are its failover.
+func TestGatewayRouteOffset(t *testing.T) {
+	a := &fakeProvider{name: ProviderClaude}
+	b := &fakeProvider{name: "fake-b"}
+	g := newTestGateway(t, a, b, nil, 10)
+	for off, want := range map[string]string{"": "fake-b", "0": "fake-b", "1": ProviderClaude, "2": "fake-b", "3": ProviderClaude} {
+		w := call(t, g, map[string]string{HeaderStage: StageVerifier, HeaderRouteOffset: off}, msgBody)
+		if w.Code != 200 || w.Header().Get(HeaderProvider) != want || w.Header().Get(HeaderFailover) != "false" {
+			t.Errorf("offset %q: status %d, provider %q, want %s", off, w.Code, w.Header().Get(HeaderProvider), want)
+		}
+	}
+	// The rotated list still fails over.
+	a.fail = &ProviderError{Status: 529, Retryable: true}
+	w := call(t, g, map[string]string{HeaderStage: StageVerifier, HeaderRouteOffset: "1"}, msgBody)
+	if w.Code != 200 || w.Header().Get(HeaderProvider) != "fake-b" || w.Header().Get(HeaderFailover) != "true" {
+		t.Errorf("rotated failover: status %d, headers %v", w.Code, w.Header())
 	}
 }

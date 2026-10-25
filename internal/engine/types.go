@@ -66,6 +66,12 @@ const (
 	SuppressRepoShadow = "repo_shadow"
 	// SuppressRoundCap: held back by the round cap (StateSummarized).
 	SuppressRoundCap = "round_cap"
+	// SuppressQuorum: fewer than verifier.quorum.k verifiers confirmed a
+	// quorum candidate (FR-V7).
+	SuppressQuorum = "quorum"
+	// SuppressQuorumShed: the quorum's extra calls were shed under the
+	// run's soft cost ceiling before it could decide (§6.15 step 0).
+	SuppressQuorumShed = "quorum_shed"
 	// SuppressLinterDuplicate: a configured linter already reports it on
 	// the head. It counts against neither the rule's
 	// precision nor the author's feedback.
@@ -135,6 +141,10 @@ type Finding struct {
 	VerifyModel       string
 	VerifySameFamily  bool
 	VerifyEvidenceRaw []byte
+	// VerifyQuorumN and VerifyQuorumAgreed are set on quorum candidates
+	// (FR-V7): verifiers asked, and how many confirmed.
+	VerifyQuorumN      int
+	VerifyQuorumAgreed int
 
 	State      string
 	Suppressed string

@@ -1,5 +1,5 @@
 {
-  "description": "Findings and acceptance by lane, verifier refutation, held-back counts and fixes (spec §12.5).",
+  "description": "Findings and acceptance by lane, verifier refutation, bug-lane quorum agreement, held-back counts and fixes (spec §12.5).",
   "editable": false,
   "panels": [
     {
@@ -145,6 +145,35 @@
         }
       ],
       "title": "Acceptance by lane",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "exemplar-pg"
+      },
+      "description": "Bug-lane candidates by how many of the verifier quorum confirmed them (k of n post), and how many were held back because the quorum's extra calls were shed under the cost ceiling. A class with many 1-of-n is producing weak candidates.",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "exemplar-pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT f.rule_id AS \"Bug class\", count(*) AS \"Candidates\",\n  count(*) FILTER (WHERE f.verify_quorum_agreed = f.verify_quorum_n) AS \"All confirmed\",\n  count(*) FILTER (WHERE f.verify_quorum_agreed \u003e 0 AND f.verify_quorum_agreed \u003c f.verify_quorum_n) AS \"Some confirmed\",\n  count(*) FILTER (WHERE f.verify_quorum_agreed = 0) AS \"None confirmed\",\n  count(*) FILTER (WHERE f.suppressed_reason = 'quorum') AS \"Failed quorum\",\n  count(*) FILTER (WHERE f.suppressed_reason = 'quorum_shed') AS \"Quorum shed\",\n  round(avg(f.verify_quorum_agreed::numeric / f.verify_quorum_n), 3) AS \"Mean share\"\nFROM findings f JOIN rule_runs rr ON rr.id = f.rule_run_id JOIN reviews r ON r.id = rr.review_id\nWHERE r.caller = 'production' AND f.lane = 'bug' AND f.verify_quorum_n IS NOT NULL AND $__timeFilter(f.created_at)\nGROUP BY f.rule_id ORDER BY \"Candidates\" DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Bug-lane quorum agreement",
       "type": "table"
     }
   ],

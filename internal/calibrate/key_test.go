@@ -43,6 +43,7 @@ func TestVerifierKey(t *testing.T) {
 	for name, change := range map[string]func(*config.Snapshot){
 		"rule":      func(s *config.Snapshot) { s.Rules = s.Rules[1:] },
 		"repo file": func(s *config.Snapshot) { s.Repos["acme/new"] = schema.RepoConfig{Enabled: true} },
+		"quorum":    func(s *config.Snapshot) { s.Global.Verifier.Quorum = &schema.Quorum{N: 5, K: 4} },
 		"label order": func(s *config.Snapshot) {
 			s.VerifierLabels[0], s.VerifierLabels[1] = s.VerifierLabels[1], s.VerifierLabels[0]
 		},

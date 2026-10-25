@@ -60,6 +60,9 @@ type Rule struct {
 	// linter rule ids that report the same issue as this rule, for linter
 	// dedupe.
 	LinterMap map[string][]string `json:"linter_map,omitempty"`
+	// Verify is "quorum" when the rule's findings go to the verifier
+	// quorum (FR-V7) instead of one verifier.
+	Verify string `json:"verify,omitempty"`
 }
 
 // Matcher is the deterministic matcher of a compiled rule.
@@ -175,6 +178,35 @@ type MergeSafety struct {
 type VerifierConfig struct {
 	ImportanceMin        float64 `json:"importance_min"`
 	MaxCandidatesPerCall int     `json:"max_candidates_per_call"`
+	Quorum               *Quorum `json:"quorum,omitempty"`
+}
+
+// Quorum is the bug lane's verifier quorum (FR-V7): N verifiers are
+// asked and K must confirm.
+type Quorum struct {
+	N int `json:"n,omitempty"`
+	K int `json:"k,omitempty"`
+}
+
+// Default quorum when global.yaml sets none.
+const (
+	DefaultQuorumN = 3
+	DefaultQuorumK = 2
+)
+
+// QuorumNK is the verifier quorum, n verifiers and k confirmations, with
+// defaults for what global.yaml leaves out.
+func (v VerifierConfig) QuorumNK() (int, int) {
+	n, k := DefaultQuorumN, DefaultQuorumK
+	if q := v.Quorum; q != nil {
+		if q.N >= 2 {
+			n = q.N
+		}
+		if q.K >= 1 {
+			k = q.K
+		}
+	}
+	return n, k
 }
 
 // CommentBudget caps posted comments.

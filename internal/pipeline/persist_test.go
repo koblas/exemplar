@@ -66,6 +66,18 @@ func TestCommentBodyLinks(t *testing.T) {
 	}
 }
 
+// Findings the verifier quorum held back are named in the check run.
+func TestCheckTextQuorum(t *testing.T) {
+	t.Parallel()
+	res := &engine.Result{Findings: []engine.Finding{
+		{Suppressed: engine.SuppressQuorum}, {Suppressed: engine.SuppressQuorumShed}, {Suppressed: engine.SuppressQuorumShed},
+	}}
+	text := checkText(&engine.Prepared{}, res)
+	if !strings.Contains(text, "1 finding(s) held back: fewer than the verifier quorum") || !strings.Contains(text, "2 finding(s) held back: the verifier quorum was shed") {
+		t.Errorf("check text = %s", text)
+	}
+}
+
 func TestScopeNote(t *testing.T) {
 	t.Parallel()
 	withExtra := &engine.Prepared{Effective: &config.Effective{RepoConfig: schema.RepoConfig{

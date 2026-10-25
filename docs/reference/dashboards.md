@@ -12,7 +12,7 @@ Grafana boards and alert rules in [`dashboards/`](https://github.com/koblas/exem
 | `auto-approve.json` | Decisions per day, and every decision with Stage 1 reasons, merge safety and Stage 2, linked to the PR; auto-approved merges later reverted or incident-linked; each repo's kill switch as its latest decision saw it. |
 | `telemetry.json` | From OTel metrics (the `exemplar-metrics` datasource): enqueue-to-first-comment p50/p95, review duration, model calls by outcome with the 429/5xx share, model latency by stage, GitHub rate limit remaining and responses by status. |
 | `counter-metrics.json` | Change failure (reverted or incident-linked) of auto-approved against human-approved merges, revert rate and merges by week, incidents on quiet quick merges, and every failed merge. |
-| `lanes.json` | Findings by lane and state, held back by reason, verifier refutation by rule, fixes (with fix, valid, applied), acceptance by lane. |
+| `lanes.json` | Findings by lane and state, held back by reason, verifier refutation by rule, fixes (with fix, valid, applied), acceptance by lane, and bug-lane quorum agreement per bug class (all, some or no verifiers confirmed; failed quorum; quorum shed; mean share). |
 | `baseline.json` | Exemplar against the baseline reviewer on the same PR heads. |
 | `shift-left.json` | Rule exports: repos exporting, current, more than two config versions behind, hand-edited files; drift per repo with its export PR; files by target and state; upstream effectiveness per exported rule. |
 

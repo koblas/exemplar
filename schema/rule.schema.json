@@ -47,6 +47,7 @@
     },
     "eval_cases": { "type": "string" },
     "model_tier": { "enum": ["standard", "high"] },
+    "verify": { "enum": ["single", "quorum"] },
     "context": { "enum": ["full", "text-only"] },
     "eval": { "enum": ["historical", "synthetic"] },
     "linter_map": {
