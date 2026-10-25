@@ -3,6 +3,7 @@
 Build, test and lint commands are in the [Makefile](Makefile) (`make help`);
 `make check` is the quick local gate and CI (`.github/workflows/ci.yml`) runs
 the rest. A pull request that only touches the beads export (`.beads/`), the
+Claude Code configuration (`.claude/`: skills, `CLAUDE.md`, settings), the
 user documentation (`docs/` outside its Go tests, `mkdocs.yml`) or the
 top-level Markdown files runs just the `commits` job, and the `docs` job when
 the site changed; anything else runs every job.
