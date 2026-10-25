@@ -35,6 +35,16 @@ type Effective struct {
 	Rules []Rule
 }
 
+// RoundsMax is the round cap for this repo: global.yaml's, or the repo's
+// lower one.
+func (e *Effective) RoundsMax() int {
+	n := e.Global.RoundsMax()
+	if r := e.RepoConfig.Rounds; r != nil && r.Max >= 1 && r.Max < n {
+		n = r.Max
+	}
+	return n
+}
+
 // CheckEligible reports whether repo may be reviewed at all. Callers must
 // check this before anything about the repo reaches a model provider.
 func (s *Snapshot) CheckEligible(repo string) error {

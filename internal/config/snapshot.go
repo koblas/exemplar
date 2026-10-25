@@ -235,6 +235,10 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 		}
 	}
 	for repo, rc := range s.Repos {
+		// A repo may lower the round cap, never raise it (FR-C8).
+		if rc.Rounds != nil && rc.Rounds.Max > s.Global.RoundsMax() {
+			probs.add("repos/"+repo+".yaml", fmt.Errorf("%w: rounds.max %d is above global.yaml's %d", ErrInvalidValue, rc.Rounds.Max, s.Global.RoundsMax()))
+		}
 		for _, g := range rc.SensitivePaths {
 			if !doublestar.ValidatePattern(g) {
 				probs.add("repos/"+repo+".yaml", fmt.Errorf("%w: sensitive_paths pattern %q is invalid", ErrInvalidValue, g))

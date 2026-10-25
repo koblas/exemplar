@@ -355,10 +355,16 @@ func checkSummary(p *engine.Prepared, res *engine.Result) string {
 	if open > 0 {
 		s += fmt.Sprintf(" %d finding(s) from earlier pushes still apply.", open)
 	}
+	if res.Summarized > 0 {
+		s += fmt.Sprintf(" The round cap is reached: %d new finding(s) are listed in the round summary comment instead of inline.", res.Summarized)
+	}
 	return s
 }
 
 func checkSummaryNew(p *engine.Prepared, res *engine.Result, posted int) string {
+	if posted == 0 && res.Summarized > 0 {
+		return "Nothing posted inline."
+	}
 	if posted == 0 {
 		if res.Coverage >= 1 {
 			return "No findings."
@@ -398,6 +404,9 @@ func checkText(p *engine.Prepared, res *engine.Result) string {
 	}
 	for _, x := range p.Excluded {
 		fmt.Fprintf(&b, "- Not reviewed: `%s` (%s)\n", x.Path, x.Reason)
+	}
+	if res.Summarized > 0 {
+		fmt.Fprintf(&b, "- %d finding(s) held back by the round cap (`round_cap`), listed in the round summary comment.\n", res.Summarized)
 	}
 	b.WriteString("\nCost and duration are informational.\n")
 	return b.String()

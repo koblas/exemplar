@@ -38,6 +38,7 @@ Security-category findings are also uploaded as code-scanning alerts. Dismissing
 - A "request changes" from Exemplar. It comments, or stays silent, or where a repository opts in, approves.
 - Comments on naming, formatting or anything a linter in the repository already reports.
 - More than the comment budget (seven per PR and three per file by default); the check run lists what was held back and why.
+- New inline comments push after push without end. After three pushes that each raised new findings, new ones (except blocking and Security) are listed in one "review rounds" comment instead, updated on each push. Ask a reviewer to look, or reply on the PR: a person's review or review comment starts the count again.
 - A comment on a draft PR or a fork PR unless the repository opted in.
 
 If a finding looks like it was injected (a comment that quotes your PR description back at you as a rule, say), it wasn't: rule ids, citations and severities come from `exemplar-config`, never from the model. Reply `/exemplar wrong` and tell the owner.

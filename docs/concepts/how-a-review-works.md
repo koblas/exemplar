@@ -73,6 +73,7 @@ Model output is untrusted. Code checks that every finding anchors to lines that 
 - A finding that overlaps a human reviewer's earlier comment is recorded as agreement, not posted again.
 - A finding that overlaps an annotation from one of the repo's configured `linters` (and the rule's `linter_map`) is a linter duplicate and dropped. The review waits up to `linter_wait_seconds` for those check runs; late linter results close the finding afterwards.
 - Findings are ranked by severity and importance and cut to `comment_budget.per_pr` and `comment_budget.per_file`. Security and blocking findings are always posted; if they alone exceed the budget they are grouped into one comment per file.
+- A PR has a limit on review rounds. A round is a push whose review posted at least one new finding. After `rounds.max` rounds (three by default) with no review or review comment from a person, later pushes are still reviewed and still close the findings they settle, but new findings, except blocking and Security ones, are not posted inline. They go into one summary comment on the PR, kept up to date, that lists every finding still open and the new ones held back, and says the change may need a different approach or a reviewer. A person's review or review comment, or the PR leaving draft, starts the count again, and held-back findings post inline on the next push.
 
 ## What gets posted
 

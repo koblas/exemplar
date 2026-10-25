@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/go-github/v88/github"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
@@ -31,6 +33,7 @@ import (
 	"github.com/koblas/exemplar/internal/engine"
 	"github.com/koblas/exemplar/internal/gates"
 	"github.com/koblas/exemplar/internal/gh"
+	"github.com/koblas/exemplar/internal/pipeline"
 	"github.com/koblas/exemplar/internal/redact"
 	"github.com/koblas/exemplar/internal/schema"
 	"github.com/koblas/exemplar/internal/store"
@@ -72,15 +75,19 @@ type fakeGitHub struct {
 	// run completes once there have been more than linterRunning.
 	linterPolls   int
 	linterRunning int
-	minimized     []string        // node ids of minimized comments
-	humanComments string          // the PR's review comments (JSON); none when empty
-	issueComments string          // the PR's conversation comments (JSON); none when empty
-	teamMembers   map[string]bool // logins in every team
-	readOnly      map[string]bool // logins with read but not write access
-	noAccess      map[string]bool // logins that cannot read the repo
-	reactions     []string        // "<comment id>:<content>"
-	sarifs        []string        // uploaded SARIF logs, decoded
-	alerts        string          // open code-scanning alerts (JSON); none when empty
+	minimized     []string // node ids of minimized comments
+	humanComments string   // the PR's review comments (JSON); none when empty
+	issueComments string   // the PR's conversation comments (JSON); none when empty
+	// botComments are conversation comments the app wrote, and how often
+	// each was edited.
+	botComments []string
+	botEdits    int
+	teamMembers map[string]bool // logins in every team
+	readOnly    map[string]bool // logins with read but not write access
+	noAccess    map[string]bool // logins that cannot read the repo
+	reactions   []string        // "<comment id>:<content>"
+	sarifs      []string        // uploaded SARIF logs, decoded
+	alerts      string          // open code-scanning alerts (JSON); none when empty
 	// reactionsOn are reactions on the first posted comment, as
 	// "<login>:<User|Bot>:<content>".
 	reactionsOn []string
@@ -280,11 +287,30 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = w.Write([]byte(`{"state": "active"}`))
 	case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/repos/%s/issues/%d/comments", f.repo, prNum):
-		if f.issueComments == "" {
-			_, _ = w.Write([]byte("[]"))
-		} else {
-			_, _ = w.Write([]byte(f.issueComments))
+		var all []any
+		if f.issueComments != "" {
+			_ = json.Unmarshal([]byte(f.issueComments), &all)
 		}
+		for i, c := range f.botComments {
+			all = append(all, map[string]any{"id": 9000 + i, "body": c, "user": map[string]any{"login": "exemplar[bot]", "type": "Bot"}})
+		}
+		data, err := json.Marshal(append([]any{}, all...))
+		if err != nil {
+			f.t.Errorf("encode comments: %v", err)
+		}
+		_, _ = w.Write(data)
+	case r.Method == http.MethodPost && r.URL.Path == fmt.Sprintf("/repos/%s/issues/%d/comments", f.repo, prNum):
+		f.botComments = append(f.botComments, fmt.Sprint(body()["body"]))
+		_, _ = fmt.Fprintf(w, `{"id": %d}`, 9000+len(f.botComments)-1)
+	case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/issues/comments/"):
+		i, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/issues/comments/"))
+		if i-9000 < 0 || i-9000 >= len(f.botComments) {
+			http.NotFound(w, r)
+			return
+		}
+		f.botComments[i-9000] = fmt.Sprint(body()["body"])
+		f.botEdits++
+		_, _ = fmt.Fprintf(w, `{"id": %d}`, i)
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/pulls/comments/") && strings.HasSuffix(r.URL.Path, "/reactions"):
 		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/pulls/comments/"), "/reactions")
 		f.reactions = append(f.reactions, id+":"+fmt.Sprint(body()["content"]))
@@ -870,5 +896,74 @@ func TestReviewSameFamilyAfterCalibration(t *testing.T) {
 	other.Global.Providers.Verifier = []schema.ProviderModel{{Provider: "bedrock", Model: "x"}}
 	if verifierCalibrated(ctx, st, &other) {
 		t.Error("another key's result counted")
+	}
+}
+
+// Past rounds.max rounds since a person last reviewed, a new finding goes
+// to the one round summary comment instead of inline; a reset lets the
+// next push post inline again (FR-C8).
+func TestReviewRoundCap(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	st := storetest.New(t)
+	e := setup(t, repo)
+	e.w.cfg.Store = st
+	// Three earlier pushes each posted a new finding: rounds 1-3.
+	for i := 1; i <= 3; i++ {
+		if _, err := st.Pool.Exec(ctx, `INSERT INTO reviews (repo, pr_number, head_sha, base_sha, config_version, caller, status, attempt, round, started_at)
+			VALUES ($1, $2, $3, 'b', 'cfg-test', 'production', 'done', 1, $4, now() - make_interval(hours => 10 - $4))`,
+			repo, prNum, fmt.Sprintf("%040d", i), i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(attempt int) Outcome {
+		t.Helper()
+		a := args(e)
+		a.Attempt = attempt
+		out, err := e.w.Review(ctx, a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	out := run(0)
+	if !out.RoundCapped || out.Posted != 0 || out.Round != 0 {
+		t.Fatalf("capped run = %+v", out)
+	}
+	if len(e.fake.reviews) != 1 {
+		t.Fatalf("reviews = %d", len(e.fake.reviews))
+	}
+	if comments, _ := e.fake.reviews[0]["comments"].([]any); len(comments) != 0 {
+		t.Errorf("posted inline past the cap: %v", comments)
+	}
+	if len(e.fake.botComments) != 1 || !strings.Contains(e.fake.botComments[0], pipeline.RoundSummaryMarker) ||
+		!strings.Contains(e.fake.botComments[0], "`propagate-context`") || !strings.Contains(e.fake.botComments[0], "3 review rounds") {
+		t.Fatalf("round summary = %v", e.fake.botComments)
+	}
+	text, _ := e.fake.checkUpdates[0]["output"].(map[string]any)
+	if s, _ := text["summary"].(string); !strings.Contains(s, "round cap is reached") {
+		t.Errorf("check summary = %q", s)
+	}
+	var state, reason string
+	err := st.Pool.QueryRow(ctx, `SELECT state, coalesce(suppressed_reason, '') FROM findings WHERE rule_id = 'propagate-context'`).Scan(&state, &reason)
+	if err != nil || state != "summarized" || reason != "round_cap" {
+		t.Errorf("stored finding = %s %s, %v", state, reason, err)
+	}
+	// Another push past the cap edits the same comment.
+	run(2)
+	if len(e.fake.botComments) != 1 {
+		t.Errorf("a second summary comment: %d", len(e.fake.botComments))
+	}
+	// A person reviewed: the next push posts inline and is round 4.
+	if err := st.RecordRoundReset(ctx, queries.RecordRoundResetParams{
+		Repo: repo, PrNumber: prNum, Reason: "review",
+		At: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	out = run(3)
+	if out.RoundCapped || out.Posted != 1 || out.Round != 4 {
+		t.Errorf("after a reset = %+v", out)
 	}
 }

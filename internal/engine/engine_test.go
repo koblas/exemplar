@@ -1328,3 +1328,22 @@ func TestGatingCandidates(t *testing.T) {
 		}
 	}
 }
+
+// Past the round cap, a finding that would post goes to the summary
+// instead; a blocking Security one (the leaked secret) still posts (FR-C8).
+func TestReviewRoundCapped(t *testing.T) {
+	t.Parallel()
+	e := setup(t, "Fetch inventory", "Adds a fetch.")
+	eng, _ := newEngine(e, Script{Generator: contextViolation(""), Quote: func(path string, line int) string { return headLineNoT(e.prep, path, line) }})
+	res, err := eng.Review(t.Context(), e.prep, Options{ReviewID: 7, Caller: "eval", RoundCapped: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctxF := findByRule(res.Findings, "propagate-context")
+	if len(ctxF) != 1 || ctxF[0].State != StateSummarized || ctxF[0].Suppressed != SuppressRoundCap || res.Summarized != 1 {
+		t.Fatalf("propagate-context = %+v, summarized %d", ctxF, res.Summarized)
+	}
+	if sec := findByRule(res.Findings, SecretRuleID); len(sec) != 1 || sec[0].State != StatePosted {
+		t.Fatalf("secret = %+v", sec)
+	}
+}

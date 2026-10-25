@@ -97,7 +97,9 @@ type GlobalConfig struct {
 	CommentBudget    CommentBudget  `json:"comment_budget"`
 	// LinterWait is how long a review waits for the repo's linters to
 	// report before posting; nil means DefaultLinterWait.
-	LinterWait     *int            `json:"linter_wait_seconds,omitempty"`
+	LinterWait *int `json:"linter_wait_seconds,omitempty"`
+	// Rounds caps review rounds per PR; nil means DefaultRoundsMax.
+	Rounds         *Rounds         `json:"rounds,omitempty"`
 	BugLane        *GlobalBugLane  `json:"bug_lane,omitempty"`
 	Baseline       Baseline        `json:"baseline"`
 	EvalThresholds EvalThresholds  `json:"eval_thresholds"`
@@ -255,6 +257,26 @@ type RepoConfig struct {
 	Context             *RepoContext     `json:"context,omitempty"`
 	AutoApprove         *RepoAutoApprove `json:"auto_approve,omitempty"`
 	ApprovalMode        string           `json:"approval_mode,omitempty"`
+	// Rounds may lower global.yaml's round cap, never raise it.
+	Rounds *Rounds `json:"rounds,omitempty"`
+}
+
+// DefaultRoundsMax is the round cap when global.yaml sets none (FR-C8).
+const DefaultRoundsMax = 3
+
+// Rounds is the round cap: after Max review rounds that posted new
+// findings, a PR's new findings go to one summary comment until a person
+// reviews it (FR-C8).
+type Rounds struct {
+	Max int `json:"max,omitempty"`
+}
+
+// RoundsMax is global.yaml's round cap.
+func (g GlobalConfig) RoundsMax() int {
+	if g.Rounds == nil || g.Rounds.Max < 1 {
+		return DefaultRoundsMax
+	}
+	return g.Rounds.Max
 }
 
 // Forks controls fork PR review.

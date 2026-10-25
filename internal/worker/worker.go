@@ -193,6 +193,10 @@ type Outcome struct {
 	SARIF bool
 	// Fixed counts findings this head addressed, as the light model judged.
 	Fixed int
+	// Round is this run's round number (0 when it posted no new finding);
+	// RoundCapped is set when the PR was past its round cap (FR-C8).
+	Round       int
+	RoundCapped bool
 }
 
 // Review reviews one PR head.
@@ -321,6 +325,15 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 			opt.PostedFingerprints[f.Fingerprint] = true
 		}
 	}
+	// The round cap (FR-C8): past rounds.max rounds since a person last
+	// reviewed, new findings go to the round summary comment.
+	var rounds queries.RoundStateRow
+	if w.cfg.Store != nil && !shadow {
+		if rounds, err = w.cfg.Store.RoundState(ctx, queries.RoundStateParams{Repo: a.Repo, PrNumber: int32(a.PR)}); err != nil {
+			return w.failed(ctx, poster, target, checkID, rec, out, err)
+		}
+		opt.RoundCapped = int(rounds.SinceReset) >= p.Effective.RoundsMax()
+	}
 	opt.Carry, opt.CarryFrom = w.carry(ctx, p, open)
 	opt.MergeSafety = w.mergeSafety(ctx, reader, p)
 	gate := w.lazyGate(a)
@@ -412,6 +425,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		return w.failed(ctx, poster, target, checkID, rec, out, err)
 	}
 	out.Status, out.Posted = StatusReviewed, po.Comments
+	out.Round, out.RoundCapped = w.recordRound(ctx, a, p, rec, res, poster, target, open, rounds, opt.RoundCapped, po.Comments)
 	// Security findings as code-scanning alerts. The review
 	// is posted, so a failure is logged, not retried.
 	if out.SARIF, err = pipeline.UploadSARIF(ctx, w.cfg.Store, poster, p, res); err != nil {
@@ -777,4 +791,35 @@ func (w *Worker) reanchor(ctx context.Context, reader *github.Client, poster *gh
 		still = append(still, f)
 	}
 	return still
+}
+
+// recordRound numbers the run's round, when it posted a new finding, and,
+// past the cap, updates the round summary comment. The review is already
+// posted, so failures are logged, not retried.
+func (w *Worker) recordRound(ctx context.Context, a store.PRReviewArgs, p *engine.Prepared, rec *pipeline.Record, res *engine.Result,
+	poster *gh.Poster, target gh.PR, open []pipeline.OpenFinding, rounds queries.RoundStateRow, capped bool, posted int,
+) (int, bool) {
+	if w.cfg.Store == nil {
+		return 0, capped
+	}
+	var round *int32
+	if posted > 0 {
+		round = new(rounds.LastRound + 1)
+	}
+	if err := w.cfg.Store.SetReviewRound(ctx, queries.SetReviewRoundParams{ID: rec.ReviewID, Round: round, RoundCapped: capped}); err != nil {
+		w.cfg.Log.Warn("review round not recorded", "repo", a.Repo, "pr", a.PR, "err", err)
+	}
+	if capped && (len(open) > 0 || posted > 0 || res.Summarized > 0) {
+		s := pipeline.RoundSummary{
+			Rounds: int(rounds.SinceReset), Max: p.Effective.RoundsMax(), Open: open, Result: res,
+			LinkBase: strings.TrimSuffix(w.cfg.CloneURL(a.Repo), ".git"), Head: a.HeadSHA,
+		}
+		if err := pipeline.PostRoundSummary(ctx, poster, target, s); err != nil {
+			w.cfg.Log.Warn("round summary not posted", "repo", a.Repo, "pr", a.PR, "err", err)
+		}
+	}
+	if round == nil {
+		return 0, capped
+	}
+	return int(*round), capped
 }
