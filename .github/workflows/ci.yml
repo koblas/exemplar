@@ -13,8 +13,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The plain and race runs are separate legs so they run at the same time.
   test:
+    name: test (${{ matrix.mode }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [plain, race]
     env:
       # Postgres tests start their own pgvector container (testcontainers-go)
       # on the runner's Docker; fail rather than skip if it is unavailable.
@@ -27,6 +33,21 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          # setup-go's cache key is shared by every job here, and whichever
+          # job finishes first saves it (docs, vuln, generated), so the
+          # test legs would restore none of their own build. Each leg keeps
+          # its own cache instead, saved from main after the tests.
+          cache: false
+      - name: Restore Go cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-${{ matrix.mode }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ matrix.mode }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ matrix.mode }}-${{ runner.os }}-
       # Same versions as devenv.nix.
       - name: Install engines
         run: |
@@ -34,9 +55,22 @@ jobs:
           npm install -g @ast-grep/cli@0.45.1
           pipx install semgrep==1.172.0
           ast-grep --version && semgrep --version && ctags --version | head -1 && clang-format --version && rg --version | head -1
-      - run: go build ./...
-      - run: go test ./...
-      - run: go test -race ./...
+      - if: matrix.mode == 'plain'
+        run: go build ./...
+      - if: matrix.mode == 'plain'
+        run: go test ./...
+      - if: matrix.mode == 'race'
+        run: go test -race ./...
+      # Saved from main only: pull requests restore main's cache, and a save
+      # per pull request run would push it out of the repository's quota.
+      - name: Save Go cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-${{ matrix.mode }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   generated:
     runs-on: ubuntu-latest
