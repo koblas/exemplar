@@ -12,11 +12,12 @@ import (
 )
 
 const uICandidates = `-- name: UICandidates :many
-SELECT c.id, c.title, c.description, c.cluster_size, c.distinct_reviewers, c.score, c.owner, c.status,
+SELECT c.id, c.title, c.description, c.cluster_size, c.distinct_reviewers, c.score, c.owner, c.status, c.source_kind,
+  coalesce(c.seed_author, '')::text AS seed_author,
   coalesce(c.config_pr_url, '')::text AS config_pr_url,
   coalesce((SELECT array_agg(DISTINCT m.repo) FROM candidate_sources s JOIN mined_comments m ON m.id = s.comment_id WHERE s.candidate_id = c.id), '{}')::text[] AS repos
 FROM candidates c WHERE c.status IN ('new', 'pr_open')
-ORDER BY c.score DESC LIMIT $1
+ORDER BY c.source_kind = 'owner_seed' DESC, c.score DESC LIMIT $1
 `
 
 type UICandidatesRow struct {
@@ -28,11 +29,14 @@ type UICandidatesRow struct {
 	Score             float32
 	Owner             string
 	Status            string
+	SourceKind        string
+	SeedAuthor        string
 	ConfigPrUrl       string
 	Repos             []string
 }
 
-// Open candidates by score, with the repos their source comments came from.
+// Open candidates, owner seeds first, then by score, with the repos their
+// source comments came from (a seed has none).
 func (q *Queries) UICandidates(ctx context.Context, limit int32) ([]UICandidatesRow, error) {
 	rows, err := q.db.Query(ctx, uICandidates, limit)
 	if err != nil {
@@ -51,6 +55,8 @@ func (q *Queries) UICandidates(ctx context.Context, limit int32) ([]UICandidates
 			&i.Score,
 			&i.Owner,
 			&i.Status,
+			&i.SourceKind,
+			&i.SeedAuthor,
 			&i.ConfigPrUrl,
 			&i.Repos,
 		); err != nil {

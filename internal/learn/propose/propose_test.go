@@ -151,6 +151,12 @@ func testProposeThrottlesPerOwner(t *testing.T) {
 	if got := status(t, s); got["pr_open"] != 4 || got["new"] != 2 {
 		t.Fatalf("statuses = %v", got)
 	}
+	// Each proposal records its branch and rule file, for the promotion sweep.
+	var missing int
+	if err := s.Pool.QueryRow(t.Context(), `SELECT count(*) FROM candidates WHERE status = 'pr_open'
+		AND NOT (config_pr_branch LIKE 'exemplar/candidate-%' AND rule_path = 'rules/reliability/' || rule_id || '.yaml')`).Scan(&missing); err != nil || missing != 0 {
+		t.Fatalf("%d proposals without branch and rule path, %v", missing, err)
+	}
 	// Each PR adds one shadow rule on its own branch.
 	for key, data := range repo.files {
 		if !strings.HasPrefix(key, "exemplar/candidate-") || !strings.Contains(key, ":rules/reliability/") || !strings.Contains(string(data), "status: shadow") {

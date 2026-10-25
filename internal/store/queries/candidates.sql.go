@@ -102,18 +102,28 @@ func (q *Queries) CandidateSourceDetails(ctx context.Context, candidateID int64)
 }
 
 const markCandidateProposed = `-- name: MarkCandidateProposed :execrows
-UPDATE candidates SET status = 'pr_open', config_pr_url = $2, updated_at = now()
+UPDATE candidates SET status = 'pr_open', config_pr_url = $2, config_pr_branch = $3, rule_id = $4, rule_path = $5,
+  updated_at = now()
 WHERE id = $1 AND status = 'new'
 `
 
 type MarkCandidateProposedParams struct {
-	ID          int64
-	ConfigPrUrl *string
+	ID             int64
+	ConfigPrUrl    *string
+	ConfigPrBranch *string
+	RuleID         *string
+	RulePath       *string
 }
 
 // Only a candidate still 'new' moves to pr_open, so two writers cannot both claim it.
 func (q *Queries) MarkCandidateProposed(ctx context.Context, arg MarkCandidateProposedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markCandidateProposed, arg.ID, arg.ConfigPrUrl)
+	result, err := q.db.Exec(ctx, markCandidateProposed,
+		arg.ID,
+		arg.ConfigPrUrl,
+		arg.ConfigPrBranch,
+		arg.RuleID,
+		arg.RulePath,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -121,7 +131,7 @@ func (q *Queries) MarkCandidateProposed(ctx context.Context, arg MarkCandidatePr
 }
 
 const openCandidatePRsByOwner = `-- name: OpenCandidatePRsByOwner :many
-SELECT owner, count(*)::int AS open FROM candidates WHERE status = 'pr_open' GROUP BY owner
+SELECT owner, count(*)::int AS open FROM candidates WHERE status = 'pr_open' AND source_kind = 'comments' GROUP BY owner
 `
 
 type OpenCandidatePRsByOwnerRow struct {
@@ -129,6 +139,8 @@ type OpenCandidatePRsByOwnerRow struct {
 	Open  int32
 }
 
+// The throttle counts mined proposals only: an owner's own seeds neither
+// use up nor wait for the mined allowance.
 func (q *Queries) OpenCandidatePRsByOwner(ctx context.Context) ([]OpenCandidatePRsByOwnerRow, error) {
 	rows, err := q.db.Query(ctx, openCandidatePRsByOwner)
 	if err != nil {
@@ -152,7 +164,7 @@ func (q *Queries) OpenCandidatePRsByOwner(ctx context.Context) ([]OpenCandidateP
 const proposableCandidates = `-- name: ProposableCandidates :many
 SELECT id, ext, title, description, cluster_size, distinct_reviewers, score, score_detail, owner
 FROM candidates
-WHERE status = 'new'
+WHERE status = 'new' AND source_kind = 'comments'
 ORDER BY score DESC, id
 LIMIT $1
 `
@@ -169,7 +181,7 @@ type ProposableCandidatesRow struct {
 	Owner             string
 }
 
-// Highest-scoring candidates not yet proposed.
+// Highest-scoring mined candidates not yet proposed (a seed already has its PR).
 func (q *Queries) ProposableCandidates(ctx context.Context, limit int32) ([]ProposableCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, proposableCandidates, limit)
 	if err != nil {

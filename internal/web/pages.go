@@ -123,13 +123,15 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 {{end}}{{template "foot"}}{{end}}
 
 {{define "candidates"}}{{template "head" .}}
-<p class="muted">Open candidates by score, with the repos you can read among those their source comments came from.</p>
+<p class="muted">Open candidates: rules owners wrote by hand (owner seeds) first, then mined ones by score, with the repos you can read among those their source comments came from.</p>
 <table><thead><tr><th>Score</th><th>Candidate</th><th>Cluster</th><th>Reviewers</th><th>Owner</th><th>Status</th><th>Repos</th><th></th></tr></thead><tbody>
 {{range .Body}}<tr><td class="n">{{printf "%.2f" .Score}}</td><td>{{if .Hidden}}<span class="muted">Candidate {{.ID}}: text hidden, ` +
 	`some source comments are in repos you cannot read.</span>{{else}}<strong>{{.Title}}</strong><br><span class="muted">{{.Description}}</span>{{end}}` +
 	`{{if .ConfigPrUrl}}<br>` +
 	`<a href="{{.ConfigPrUrl}}">Config PR</a>{{end}}</td>
-<td class="n">{{.ClusterSize}}</td><td class="n">{{.DistinctReviewers}}</td><td>{{.Owner}}</td><td>{{.Status}}</td><td>{{range $i, $r := .Visible}}{{if $i}}, {{end}}{{$r}}{{end}}</td>
+<td class="n">{{.ClusterSize}}</td><td class="n">{{.DistinctReviewers}}</td><td>{{.Owner}}</td><td>{{.Status}}</td>` +
+	`<td>{{if eq .SourceKind "owner_seed"}}owner seed{{if .SeedAuthor}} by @{{.SeedAuthor}}{{end}}` +
+	`{{else}}{{range $i, $r := .Visible}}{{if $i}}, {{end}}{{$r}}{{end}}{{end}}</td>
 <td><form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_candidate"><input type="hidden" name="target" value="{{.ID}}">` +
 	`<input type="hidden" name="t" value="{{.Token}}">
 <input name="reason" maxlength="1000" required placeholder="why"> <button type="submit">Kill</button></form></td></tr>

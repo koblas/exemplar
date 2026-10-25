@@ -165,7 +165,7 @@ func BuildDraft(c Candidate, now time.Time) (*Draft, error) {
 	if cite := citation(c.Sources); cite != nil {
 		r.Citation = cite
 	}
-	files, err := evalFiles(ruleID, c.EvalCases)
+	files, err := EvalFiles(ruleID, c.EvalCases)
 	if err != nil {
 		return nil, err
 	}
@@ -415,10 +415,10 @@ type evalExpectYAML struct {
 	Lines []int  `yaml:"lines,flow"`
 }
 
-// evalFiles renders the generated cases as evals/<rule-id>/cases.yaml plus
+// EvalFiles renders the generated cases as evals/<rule-id>/cases.yaml plus
 // one patch file per injected case, validated against
 // schema/eval-cases.schema.json.
-func evalFiles(ruleID string, cases []EvalCase) (map[string][]byte, error) {
+func EvalFiles(ruleID string, cases []EvalCase) (map[string][]byte, error) {
 	if len(cases) == 0 {
 		return map[string][]byte{}, nil
 	}

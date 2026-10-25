@@ -89,6 +89,13 @@ func generateEvals(ctx context.Context, cfg evalgen.Config, st *store.Store, inj
 	if err != nil {
 		return fmt.Errorf("run eval generation: %w", err)
 	}
+	reports, err = gen.RunSeeds(ctx)
+	for _, r := range reports {
+		printJSON(r)
+	}
+	if err != nil {
+		return fmt.Errorf("run seed eval generation: %w", err)
+	}
 	return nil
 }
 
