@@ -1,0 +1,118 @@
+# The PRs the demo opens live (docs/plans/demo.md, beats A and B), each by
+# the author. files replace or add whole files on a branch off main.
+#
+# beat A: findings. refund_http.go breaks two of the org's rules at once
+#   (propagate-context: http.Get with no ctx in a handler; no-raw-sql-concat:
+#   SQL built from input). notify.go is the refutation bait: it looks like a
+#   context violation, but ctx is passed through, so a finding there should
+#   be refuted by the verifier and show as held back in the check run.
+# beat B: a README typo from the allowed author is auto-approved; a change
+#   under internal/auth (sensitive_paths) is routed to humans with reasons.
+- beat: A
+  branch: demo/refund-endpoint
+  title: Add the refund endpoint
+  body: Exposes refunds over HTTP and tells the card processor about them.
+  files:
+    internal/payments/refund_http.go: |
+      package payments
+
+      import (
+      	"database/sql"
+      	"encoding/json"
+      	"net/http"
+      )
+
+      // RefundHandler refunds a payment and confirms it with the processor.
+      func RefundHandler(db *sql.DB) http.HandlerFunc {
+      	return func(w http.ResponseWriter, r *http.Request) {
+      		id := r.URL.Query().Get("payment")
+      		if _, err := db.Exec("UPDATE payments SET refunded = true WHERE id = '" + id + "'"); err != nil {
+      			http.Error(w, "refund failed", http.StatusInternalServerError)
+      			return
+      		}
+      		resp, err := http.Get("https://processor.example.com/refunds/" + id)
+      		if err != nil {
+      			http.Error(w, "processor unavailable", http.StatusBadGateway)
+      			return
+      		}
+      		defer resp.Body.Close()
+      		_ = json.NewEncoder(w).Encode(map[string]string{"status": "refunded"})
+      	}
+      }
+    internal/payments/notify.go: |
+      package payments
+
+      import (
+      	"context"
+      	"net/http"
+      )
+
+      // notify tells the processor about a refund. The request is built from
+      // the caller's ctx, so cancellation and deadlines reach it.
+      func notify(ctx context.Context, c *http.Client, url string) error {
+      	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+      	if err != nil {
+      		return err
+      	}
+      	resp, err := c.Do(req)
+      	if err != nil {
+      		return err
+      	}
+      	return resp.Body.Close()
+      }
+
+- beat: B
+  branch: demo/readme-typo
+  title: Fix a typo in the README
+  body: "\"recieves\" is spelled \"receives\"; nothing else changes."
+  approve: true
+  files:
+    README.md: |
+      # Ledger
+
+      Ledger records invoices and payments for the demo organisation. It is a
+      small HTTP service: `internal/httpserver` routes requests, `internal/payments`
+      holds the payment logic and `internal/auth` checks sessions.
+
+      ## Running it
+
+          go run ./cmd/ledger
+
+      The service listens on `:8080` and reads its database URL from `LEDGER_DB`.
+      It receives no secrets on the command line.
+
+- beat: B
+  branch: demo/session-expiry
+  title: Expire sessions after twelve hours
+  body: Sessions now carry an expiry; older cookies are rejected.
+  approve: false
+  files:
+    internal/auth/session.go: |
+      // Package auth checks Ledger's session cookies.
+      package auth
+
+      import (
+      	"crypto/subtle"
+      	"errors"
+      	"net/http"
+      	"time"
+      )
+
+      // ErrNoSession is returned when a request carries no valid session.
+      var ErrNoSession = errors.New("no valid session")
+
+      // MaxAge is how long a session lasts.
+      const MaxAge = 12 * time.Hour
+
+      // Check reports whether r carries the expected session token issued
+      // within MaxAge.
+      func Check(r *http.Request, want string, issued time.Time) error {
+      	c, err := r.Cookie("ledger_session")
+      	if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(want)) != 1 {
+      		return ErrNoSession
+      	}
+      	if time.Since(issued) > MaxAge {
+      		return ErrNoSession
+      	}
+      	return nil
+      }
