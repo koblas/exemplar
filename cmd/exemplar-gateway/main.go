@@ -92,7 +92,9 @@ func run() error {
 	api := otelhttp.NewHandler(gw.Handler(), "messages")
 	mux.Handle("/v1/messages", api)
 	mux.Handle("/v1/messages/", api)
-	mux.Handle("/v1/embeddings", otelhttp.NewHandler(gw.Handler(), "embeddings"))
+	embed := otelhttp.NewHandler(gw.Handler(), "embeddings")
+	mux.Handle("/v1/embeddings", embed)
+	mux.Handle("/v1/embeddings/", embed)
 	// Liveness never depends on providers or the database.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {

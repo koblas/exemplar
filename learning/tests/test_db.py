@@ -32,18 +32,19 @@ class FakeConn:
 
 
 def test_current_schema_passes() -> None:
-    conn = FakeConn(5, ALL_TABLES)
-    assert db.check_schema(conn) == 5  # type: ignore[arg-type]
+    conn = FakeConn(db.REQUIRED_MIGRATION, ALL_TABLES)
+    assert db.check_schema(conn) == db.REQUIRED_MIGRATION  # type: ignore[arg-type]
 
 
 def test_old_schema_refused() -> None:
-    with pytest.raises(db.SchemaTooOldError, match="migration 4"):
-        db.check_schema(FakeConn(4, ALL_TABLES))  # type: ignore[arg-type]
+    old = db.REQUIRED_MIGRATION - 1
+    with pytest.raises(db.SchemaTooOldError, match=f"migration {old}"):
+        db.check_schema(FakeConn(old, ALL_TABLES))  # type: ignore[arg-type]
 
 
 def test_missing_table_refused() -> None:
     with pytest.raises(db.SchemaTooOldError, match="extractions"):
-        db.check_schema(FakeConn(5, ALL_TABLES - {"extractions"}))  # type: ignore[arg-type]
+        db.check_schema(FakeConn(db.REQUIRED_MIGRATION, ALL_TABLES - {"extractions"}))  # type: ignore[arg-type]
 
 
 def test_database_url_required(monkeypatch: pytest.MonkeyPatch) -> None:

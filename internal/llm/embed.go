@@ -215,6 +215,24 @@ func (g *Gateway) serveEmbeddings(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
+// embeddingModel handles GET /v1/embeddings/model: the provider and model
+// that POST /v1/embeddings would use, so the embed job can tell which
+// stored vectors came from another model and need embedding again.
+func (g *Gateway) embeddingModel(w http.ResponseWriter, r *http.Request) {
+	if !g.authorized(w, r) {
+		return
+	}
+	if g.cfg.Providers.Embed == nil || g.cfg.Embedder == nil {
+		writeError(w, http.StatusServiceUnavailable, "exemplar_all_providers_unavailable", errEmbedDisabled.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	//nolint:errchkjson // a fixed map of strings and an int always encodes; a failed write to the client has no recovery
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"provider": g.cfg.Providers.Embed.Provider, "model": g.cfg.Providers.Embed.Model, "dimensions": EmbedDimensions,
+	})
+}
+
 func checkVectors(res *EmbedResult, n int) error {
 	if len(res.Vectors) != n {
 		return &ProviderError{Status: http.StatusOK, Err: fmt.Errorf("%w: %d vectors for %d texts", errEmbedCount, len(res.Vectors), n)}

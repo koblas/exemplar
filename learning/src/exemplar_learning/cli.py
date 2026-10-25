@@ -68,7 +68,9 @@ def _embed(args: argparse.Namespace) -> int:
         db.check_schema(conn)
         conn.commit()
         rep = embed_job.run(conn, embedder, args.batch_size)
-    print(json.dumps(asdict(rep)))
+    out = asdict(rep)
+    del out["refused_ids"]
+    print(json.dumps(out))
     return 0
 
 

@@ -122,6 +122,7 @@ func (g *Gateway) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/messages", g)
 	mux.HandleFunc("POST /v1/embeddings", g.serveEmbeddings)
+	mux.HandleFunc("GET /v1/embeddings/model", g.embeddingModel)
 	mux.HandleFunc("POST /v1/messages/batches", g.createBatch)
 	mux.HandleFunc("GET /v1/messages/batches/{id}", g.getBatch)
 	mux.HandleFunc("POST /v1/messages/batches/{id}/cancel", g.cancelBatch)
