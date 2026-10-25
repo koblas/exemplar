@@ -56,7 +56,7 @@ Every service is a Go binary from one module (`cmd/*`), shipped in one image. Th
 | [`exemplar-search`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-search) | StatefulSet | Holds the git mirror and a zoekt index with ctags symbols, and answers `search_text`, `find_definition`, `find_references`, `dependents` and `read_file` over an internal API. | GitHub (fetch); accepts traffic from worker only |
 | [`exemplar-api`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-api) | Deployment | Sign-in (GitHub OAuth and/or OIDC), signed feedback links, the `/ui/` web UI, and `/v1/evaluate` for the CLI and services. Enqueues work for the worker instead of running the engine itself. | Postgres, GitHub (OAuth) |
 | [`exemplar-learn`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar-learn) | CronJobs | The learning plane: `ingest`, `path-events`, `extract`, `evals`, `compile`, `propose`, `demote`, `expiry`, `teach`, `digest`, `export`. | Postgres, GitHub, gateway |
-| [`learning/`](https://github.com/koblas/exemplar/tree/main/learning) (Python) | CronJobs | `cluster` and `rank` over tables in Postgres. No API surface. (`embed` waits on an approved embedding provider.) | Postgres only |
+| [`learning/`](https://github.com/koblas/exemplar/tree/main/learning) (Python) | CronJobs | `embed`, `cluster` and `rank` over tables in Postgres. No API surface. | Postgres, gateway |
 | [`exemplar`](https://github.com/koblas/exemplar/tree/main/cmd/exemplar) | CLI | Config validation, evals, replay, mutations, calibration, `try`, and `login`/`review` against `/v1/evaluate`. | `exemplar-api` |
 | `exemplar-cloudflared` | Deployment | The default way in: a Cloudflare Tunnel connector, so the cluster needs no public ingress. Replaced or joined by an Ingress in [`deploy/k8s/direct`](https://github.com/koblas/exemplar/tree/main/deploy/k8s/direct). | Cloudflare edge, webhook, api |
 
@@ -105,7 +105,7 @@ Besides `pr_review`, the event router turns webhooks into `feedback_signal`, `fe
 flowchart LR
   A["Review history,<br/>incidents, reverts"] --> B["ingest, path-events"]
   B --> C["extract<br/>(Go, via gateway)"]
-  C --> D["cluster, rank<br/>(Python)"]
+  C --> D["embed, cluster, rank<br/>(Python)"]
   D --> E["compile<br/>to ast-grep / Semgrep"]
   E --> F["evals, propose"]
   F --> G["Draft PR in<br/>exemplar-config"]
@@ -166,5 +166,5 @@ What a coding agent is told, what it can check locally, and what the PR bot enfo
 | [`internal/api`](https://github.com/koblas/exemplar/tree/main/internal/api), [`internal/web`](https://github.com/koblas/exemplar/tree/main/internal/web) | HTTP API, sign-in, and the web UI. |
 | [`internal/store`](https://github.com/koblas/exemplar/tree/main/internal/store), [`db/`](https://github.com/koblas/exemplar/tree/main/db) | Postgres access (sqlc), job args, migrations. |
 | [`internal/config`](https://github.com/koblas/exemplar/tree/main/internal/config), [`schema/`](https://github.com/koblas/exemplar/tree/main/schema) | `exemplar-config` loading; JSON Schema contracts shared with Python. |
-| [`learning/`](https://github.com/koblas/exemplar/tree/main/learning) | Python `cluster` and `rank` jobs (uv project). |
+| [`learning/`](https://github.com/koblas/exemplar/tree/main/learning) | Python `embed`, `cluster` and `rank` jobs (uv project). |
 | [`deploy/`](https://github.com/koblas/exemplar/tree/main/deploy), [`dashboards/`](https://github.com/koblas/exemplar/tree/main/dashboards) | Images, Kustomize manifests, Grafana boards and alerts. |

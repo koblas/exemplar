@@ -7,7 +7,7 @@ The Kubernetes manifests in [`deploy/`](https://github.com/koblas/exemplar/tree/
 | Path | What |
 |---|---|
 | `docker/Dockerfile` | The Go services image: every `cmd/` binary, plus git, ripgrep, universal-ctags, ast-grep 0.45.1, Semgrep 1.172.0, unshare and prlimit. Base images are pinned by digest, ast-grep by checksum. Built for linux/amd64 only. |
-| `docker/learning.Dockerfile` | The Python learning image (`learning/`: cluster, rank), with dependencies from `uv.lock`. |
+| `docker/learning.Dockerfile` | The Python learning image (`learning/`: embed, cluster, rank), with dependencies from `uv.lock`. |
 | `k8s/core/` | Plain manifests for everything but inbound, with a `kustomization.yaml` (and the image pins). Not built alone. |
 | `k8s/components/cloudflare-tunnel/` | Inbound through a Cloudflare Tunnel: the `exemplar-cloudflared` Deployment, its routes, and the NetworkPolicies that let it reach the webhook and the API. |
 | `k8s/components/ingress/` | Inbound through an Ingress controller: the two Ingresses and the NetworkPolicies that admit `ingress-nginx`. |
@@ -26,11 +26,11 @@ GitHub and people reach exemplar-webhook and exemplar-api one of three ways. Cor
 
 | Build | How | Admits | Resources |
 |---|---|---|---|
-| `base` (default) | `exemplar-cloudflared` dials out to Cloudflare on 7844 (QUIC, falling back to HTTP/2 over TCP). Cloudflare balances between its 2 replicas. | Only `exemplar-cloudflared` pods | 59 |
-| `direct` | Ingresses on the cluster's controller | Only the `ingress-nginx` namespace | 56 |
-| `base` + `components/ingress` | Both | Both | 63 |
-| `base` + `components/postgres` | As `base`, with the in-cluster database | As `base` | 63 |
-| `base` + `components/postgres` + `components/pgbouncer` | As `base`, with the in-cluster database and the runners' pooler | As `base` | 69 |
+| `base` (default) | `exemplar-cloudflared` dials out to Cloudflare on 7844 (QUIC, falling back to HTTP/2 over TCP). Cloudflare balances between its 2 replicas. | Only `exemplar-cloudflared` pods | 60 |
+| `direct` | Ingresses on the cluster's controller | Only the `ingress-nginx` namespace | 57 |
+| `base` + `components/ingress` | Both | Both | 64 |
+| `base` + `components/postgres` | As `base`, with the in-cluster database | As `base` | 64 |
+| `base` + `components/postgres` + `components/pgbouncer` | As `base`, with the in-cluster database and the runners' pooler | As `base` | 70 |
 
 The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMap, reviewed with the rest of the manifests rather than set in the dashboard. The rules match by path, not host name: only `^/webhook$` reaches the webhook, as the Ingress's `Exact` path does, and everything else reaches the API. Only the host names an installation routes to the tunnel (`cloudflared tunnel route dns`) reach it at all. cloudflared runs as its own Deployment, never a sidecar, so the tunnel credentials stay out of the webhook and API pods and the webhook's egress stays Postgres only. Cloudflare ends TLS at its edge and sees requests in clear text; the webhook still checks each delivery's HMAC, and its rejection log's `remote` is a cloudflared pod's address, not GitHub's. The edge rules an installation adds are on [How to install for production](../guides/install/production.md#4-write-the-overlay).
 
@@ -40,12 +40,12 @@ The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMa
 |---|---|---|---|---|---|---|
 | `exemplar-webhook` | Deployment + Service + (Ingress) | 2 | 8080 `http`, Service 80 | `/healthz`, `/readyz` | 15 s → 30 s | Public for GitHub at `/webhook`; egress to Postgres only |
 | `exemplar-api` | Deployment + Service + (Ingress) | 2 | 8080 `http`, Service 80; 8081 `setup` (loopback, no Service) | `/healthz`, `/readyz` | 15 s → 30 s | Public for people, behind org SSO at the edge; egress to Postgres and GitHub OAuth |
-| `exemplar-gateway` | Deployment + Service | 2 | 8080 `http`, Service 80 | `/healthz`, `/readyz` | 25 s → 40 s | The only holder of provider keys; marks itself unready and starts shutting down at the same moment, so a request routed in that window is retried by the caller |
+| `exemplar-gateway` | Deployment + Service | 2 | 8080 `http`, Service 80 | `/healthz`, `/readyz` | 25 s → 40 s | The only holder of provider keys; serves `POST /v1/messages` (and batches) and `POST /v1/embeddings`; marks itself unready and starts shutting down at the same moment, so a request routed in that window is retried by the caller |
 | `exemplar-worker` | Deployment | 2 (×4 reviews each) | 8080 `http` (probes only) | `/healthz`, `/readyz` | 80 s → 120 s | Control: routes events, runs the cheap queues and River's periodic jobs on its leader, and dispatches reviews to runners ([Runners](#runners)) |
 | `exemplar-runner` | PodTemplate → a Job per review | One per review in flight | none | none | 60 s grace | `--launcher=kubernetes` only. One review, then exits; no config checkout, no Kubernetes API token |
 | `exemplar-search` | StatefulSet + 2 Services | 2, on different nodes | 8080 `http`, Services 8080 and 80 | `/healthz`, `/readyz` | 25 s → 45 s | Local SSD per replica (`local-ssd`, 500Gi placeholder). Optional: an overlay may delete it and empty `EXEMPLAR_SEARCH_URL` ([How to run without exemplar-search](../guides/install/without-search.md)) |
 | `exemplar-learn` | 12 CronJobs | | | | | ingest, path-events, extract, calibrate, evals, compile (suspended), propose, demote, expiry, teach, digest, export |
-| `exemplar-learning` | 2 CronJobs | | | | | cluster, rank (Python) |
+| `exemplar-learning` | 3 CronJobs | | | | | embed, cluster, rank (Python) |
 | `exemplar-postgres` | StatefulSet + Service | 1 | 5432 | `pg_isready` over TCP; startup probe allows 10 min; preStop `pg_ctl stop --mode=fast --timeout=30` | 30 s → 45 s | `components/postgres` only. pgvector 0.8.0 on Postgres 16, pinned by digest. In from the Postgres clients on 5432; nothing out |
 | `exemplar-pgbouncer` | Deployment + Service + PodDisruptionBudget | 2 | 5432 `postgres`, Service 5432 | TCP on 5432 | preStop: 5 s for the Service to drop the pod, then SIGINT (waits for transactions in flight and closes idle clients), at most 30 s more → 45 s | `components/pgbouncer` only. CloudNativePG's PgBouncer 1.26.0, pinned by digest, as its `pgbouncer` user (UID 998). In from runners only; out to Postgres on 5432. SIGTERM alone would wait for every runner to disconnect |
 | `exemplar-cloudflared` | Deployment | 2 | 2000 metrics | `/healthcheck` (liveness), `/ready` (an edge connection) | 20 s → 30 s | Tunnel builds only. cloudflared 2026.9.3, pinned by digest. Egress to Cloudflare on 7844 and to the webhook and API |
@@ -104,6 +104,7 @@ Only the worker's `worker` container mounts a service account token (a projected
 | `exemplar-learn-ingest` | `15 * * * *` | Mines review-thread roots from eligible repos, resuming from each repo's cursor. |
 | `exemplar-learn-extract` | `*/30 * * * *` | Collects finished extraction batches and submits one new batch to the gateway, skipping comments from repositories the config no longer makes eligible. |
 | `exemplar-learn-path-events` | `30 2 * * *` | Records paths touched by reverts and incident-linked PRs. |
+| `exemplar-learn-embed` | `0 3 * * *` | Python: embeds extractions that have no embedding (title, description and preferred approach) through the gateway's `POST /v1/embeddings`, in batches that each commit, so a run cut short leaves the rest for the next. Fails while the gateway has no `VOYAGE_API_KEY`. |
 | `exemplar-learn-cluster` | `30 3 * * *` | Python: clusters embedded extractions. |
 | `exemplar-learn-calibrate` | `15 4 * * *` | Verifier calibration (and the categorizer's, when configured) through the deployed providers, recorded in `calibration_results`; skipped when the same verifier inputs already passed. A passing verifier result lets same-family findings through the auto-approve gate. |
 | `exemplar-learn-rank` | `30 4 * * *` | Python: scores the latest cluster run into candidates. |
@@ -116,7 +117,7 @@ Only the worker's `worker` container mounts a service account token (a projected
 | `exemplar-learn-digest` | `0 8 * * 1` | Weekly rule-health issues per owner. |
 | `exemplar-learn-export` | `15 8 * * *` | Daily rule exports. |
 
-Every CronJob has `concurrencyPolicy: Forbid`, and every `exemplar-learn` subcommand and `exemplar-learning` `cluster` and `rank` also takes a Postgres advisory lock named after the job (`exemplar/job/<name>`) on a connection of its own before doing anything, `--dry-run` runs included. A run that finds the lock held, by a manual run, a scheduled one, or a copy on another scheduler, logs `another run holds the job lock; exiting` and exits 0. The lock goes with its connection, so a killed run frees it.
+Every CronJob has `concurrencyPolicy: Forbid`, and every `exemplar-learn` subcommand and `exemplar-learning` `embed`, `cluster` and `rank` also takes a Postgres advisory lock named after the job (`exemplar/job/<name>`) on a connection of its own before doing anything, `--dry-run` runs included. A run that finds the lock held, by a manual run, a scheduled one, or a copy on another scheduler, logs `another run holds the job lock; exiting` and exits 0. The lock goes with its connection, so a killed run frees it.
 
 The worker's own periodic jobs (`reconcile_deliveries`, `sweep_prs`, `poll_reactions` every 30 minutes, `retention`, `refresh_stats`) run on River's maintenance queue on the leader and need no CronJob.
 

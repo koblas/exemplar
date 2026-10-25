@@ -41,6 +41,18 @@ class Concurrency(BaseModel):
     agents_per_review: int = Field(..., ge=1, le=3)
 
 
+class Embed(BaseModel):
+    """
+    The embedding model for extractions. One entry, no failover: vectors from different models are not comparable.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    provider: str = Field(..., min_length=1)
+    model: str = Field(..., min_length=1)
+
+
 class Quorum(BaseModel):
     """
     Verifiers asked (n) and confirmations needed (k) for bug-lane findings and rules with verify: quorum.
@@ -165,6 +177,10 @@ class Providers(BaseModel):
     verifier: ProviderList
     light: ProviderList
     categorizer: Categorizer | None = None
+    embed: Embed | None = Field(
+        None,
+        description="The embedding model for extractions. One entry, no failover: vectors from different models are not comparable.",
+    )
 
 
 class Weights(BaseModel):

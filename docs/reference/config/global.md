@@ -64,6 +64,7 @@ Each list is tried in order: when a provider times out, errors or is rate limite
 | `verifier` | array of provider entry, at least 1 | yes | Independently checks each finding before it is posted. Meant to be a different model family from the generator; when both are the same family every finding is flagged `same_family`, which blocks auto-approve. |
 | `light` | array of provider entry, at least 1 | yes | Cheap, quick calls such as scoring how much a finding matters. |
 | `categorizer` | object | no | The auto-approve risk categorizer's pair of independent providers. See [`providers.categorizer`](#providerscategorizer). |
+| `embed` | object | no | The embedding model for extractions, served on the gateway's `POST /v1/embeddings`. See [`providers.embed`](#providersembed). |
 
 #### Provider entry
 
@@ -86,6 +87,15 @@ Constraints:
 |---|---|---|---|
 | `a` | provider entry | yes | The first of the two independent providers. |
 | `b` | provider entry | yes | The second of the two independent providers. It must be a different model family from `a` (for example `openai` beside `claude`): with both on one family the review confidence is always 0, so nothing is auto-approved. |
+
+#### `providers.embed`
+
+One entry, with no failover: vectors from two models cannot be compared, so clusters would mix them. Unset, the gateway's `POST /v1/embeddings` answers 503 and the learning plane stops after `extract`. The gateway asks for 1024-dimension document vectors and refuses a response of any other size.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `provider` | string, non-empty | yes | A registered embedding provider (`voyage`, which needs `VOYAGE_API_KEY`). |
+| `model` | string, non-empty | yes | The model id, such as `voyage-code-3`. |
 
 ### `merge_safety`
 
@@ -252,6 +262,7 @@ providers:
   # categorizer:
   #   a: { provider: claude, model: claude-sonnet-5-5 }
   #   b: { provider: openai, model: gpt-5.5 }
+  embed: { provider: voyage, model: voyage-code-3 }
 verifier:
   importance_min: 0.5
   max_candidates_per_call: 8

@@ -84,6 +84,7 @@ Besides the shared settings: `EXEMPLAR_LINK_KEY_FILE` (as for the API; the worke
 | `EXEMPLAR_GATEWAY_RPM` | nothing | Requests per minute allowed per caller; unset or 0 means no limit. |
 | `EXEMPLAR_CLAUDE_BASE_URL` | nothing | Overrides `https://api.anthropic.com` (tests, private endpoints). The key itself is `ANTHROPIC_API_KEY`, from Secret `exemplar-providers`, key `anthropic-api-key`. |
 | `EXEMPLAR_OPENAI_BASE_URL` | nothing | Overrides `https://api.openai.com/v1` (tests, private endpoints). The key itself is `OPENAI_API_KEY`, from Secret `exemplar-providers`, key `openai-api-key`. |
+| `EXEMPLAR_VOYAGE_BASE_URL` | nothing | Overrides `https://api.voyageai.com` for `providers.embed` (tests, private endpoints). The key itself is `VOYAGE_API_KEY`, from Secret `exemplar-providers`, key `voyage-api-key`; without it the gateway starts and `POST /v1/embeddings` answers 503. |
 | `EXEMPLAR_BEDROCK_REGION` | nothing | The Bedrock region; `AWS_REGION` is the fallback. Credentials follow the AWS default chain (workload identity, instance role, `AWS_*`, a shared profile) or a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK`. |
 | `EXEMPLAR_BEDROCK_BASE_URL` | nothing | Overrides the regional endpoint (tests, VPC endpoints). |
 | `EXEMPLAR_BEDROCK_PROFILE` | nothing | A named AWS profile, for local runs only. |
@@ -98,7 +99,7 @@ Besides the shared settings and `EXEMPLAR_SEARCH_TOKEN`:
 
 ## exemplar-learn and the learning jobs
 
-The CronJobs set the shared settings per job. The Python `cluster` and `rank` jobs read `EXEMPLAR_DATABASE_URL`, `EXEMPLAR_GATEWAY_URL`, `EXEMPLAR_GATEWAY_TOKEN` and `EXEMPLAR_ROOT_KEY_FILE`.
+The CronJobs set the shared settings per job. The Python `embed`, `cluster` and `rank` jobs read `EXEMPLAR_DATABASE_URL`, `EXEMPLAR_GATEWAY_URL`, `EXEMPLAR_GATEWAY_TOKEN` and `EXEMPLAR_ROOT_KEY_FILE`.
 
 | Variable | Read by | Set by | Meaning |
 |---|---|---|---|
