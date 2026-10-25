@@ -18,6 +18,11 @@ Handle this task: $ARGUMENTS
    For lifecycle changes, align readiness, draining, and shutdown deadlines.
 4. Add or update nearby tests covering success, failure, and relevant cancellation
    paths. Use `httptest` for HTTP behavior and avoid timing-dependent sleeps.
+   Then add the technique the change calls for (spec §16.1, "Which technique a
+   change needs"): a simulation invariant for worker state machines, a metamorphic
+   relation for review output, a fuzz target for parsers of outside input, a seeded
+   property test for invariants over an input domain, a configuration-matrix row
+   for new settings, a benchmark for hot paths. Say which you added or skipped.
 5. Format touched files and run the focused package tests first. Then run applicable
    broader checks: `go test ./...`, `go test -race ./...`, `go vet ./...`, and
    `go build ./...`. Follow existing CI gates if different; report toolchain blockers.
