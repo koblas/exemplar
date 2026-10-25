@@ -35,7 +35,9 @@
 //
 // evals: generates eval cases for new candidates: positives from source
 // comments, negatives from CODEOWNER-approved PRs, and (unless --no-inject)
-// injected violations validated in code. Injection needs the gateway and
+// injected violations validated in code. Open owner-written seeds get
+// negatives from approved PRs touching their file_patterns and injected
+// positives. Injection needs the gateway and
 // reads repos with read-only tokens when EXEMPLAR_GH_* is set. Sources
 // and negative PRs from repos the config no longer makes eligible are
 // skipped, as compile does.
@@ -48,7 +50,10 @@
 // gateway, and EXEMPLAR_GH_* to read case files.
 //
 // propose: opens draft PRs in exemplar-config for the top candidates, at
-// most 3 open per owner team. Needs EXEMPLAR_DATABASE_URL and, unless
+// most 3 open per owner team. Unless --dry-run it first records
+// owner-written seeds (rule files an open config PR adds with status
+// candidate), delivers their generated eval cases to their PRs, and marks
+// proposals promoted once merged as shadow or active. Needs EXEMPLAR_DATABASE_URL and, unless
 // --dry-run, the review app's EXEMPLAR_GH_APP_ID, EXEMPLAR_GH_INSTALLATION_ID,
 // EXEMPLAR_GH_PRIVATE_KEY_FILE and EXEMPLAR_CONFIG_REPO; it writes with the
 // config-writer token, which can reach exemplar-config only.

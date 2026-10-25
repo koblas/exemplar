@@ -61,7 +61,7 @@ Exemplar never requests changes, so `blocking` is a label and a ranking, not a m
 
 `owner` is a team (`@org/team`) that exists on GitHub and matches `CODEOWNERS` for the file. Its members approve the PR, adjudicate feedback, and get the weekly digest. `review_by` is the date the rule expires unless re-confirmed; without it, `expiry.default_months` from `global.yaml` applies.
 
-`status` starts at `shadow`. Promote to `active` in a later PR once the shadow findings look right.
+`status` starts at `shadow`. Promote to `active` in a later PR once the shadow findings look right. A new rule you want Exemplar to generate eval cases for starts at `candidate` instead ([How to seed a rule by hand](seed-a-rule.md)).
 
 ## 5. Cite it
 

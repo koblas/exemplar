@@ -9,7 +9,8 @@ is big enough:
 - continuing a ``killed`` candidate: leave it alone, so a killed
   constraint is never resurrected by reclustering;
 - otherwise: create a ``new`` candidate.
-``new`` candidates no cluster continues are marked ``retired``.
+``new`` candidates no cluster continues are marked ``retired``. Owner seeds
+(``source_kind`` ``owner_seed``) have no cluster and are left alone.
 """
 
 from __future__ import annotations
@@ -92,7 +93,7 @@ def load_existing(conn: psycopg.Connection) -> list[match.Existing]:
     rows = conn.execute(
         """SELECT c.id, c.status, coalesce(array_agg(s.comment_id) FILTER (WHERE s.comment_id IS NOT NULL), '{}')
            FROM candidates c LEFT JOIN candidate_sources s ON s.candidate_id = c.id
-           WHERE c.status <> 'retired'
+           WHERE c.status <> 'retired' AND c.source_kind = 'comments'
            GROUP BY c.id, c.status"""
     ).fetchall()
     return [match.Existing(cid, status, frozenset(ids)) for cid, status, ids in rows]

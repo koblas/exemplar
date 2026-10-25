@@ -79,6 +79,10 @@ func TestUI(t *testing.T) {
 	mixed := id(`INSERT INTO candidates (ext, title, description, cluster_size, distinct_reviewers, score, score_detail, owner, cluster_hash, last_run_id)
 		VALUES ('go', 'Candidate from both', 'mixed detail', 5, 3, 0.5, '{}', '@acme/sec', 'mixed', $1)`, run)
 	exec(`INSERT INTO candidate_sources (candidate_id, comment_id) VALUES ($1, 100), ($1, 101)`, mixed)
+	// An owner seed: its text is a rule file in exemplar-config.
+	exec(`INSERT INTO candidates (source_kind, ext, title, description, cluster_size, distinct_reviewers, score, score_detail, owner, status,
+		rule_id, rule_path, rule_yaml, seed_author) VALUES ('owner_seed', '*', 'Seed by dana', 'seed detail', 0, 0, 0, '{}', '@acme/sec', 'pr_open',
+		'seed', 'rules/seed.yaml', 'id: seed', 'dana')`)
 	exec(`INSERT INTO model_calls (stage, provider, model, data_classes, caller, cost_usd) VALUES ('generator', 'anthropic', 'm', '{}', 'production', 1.25), ('generator', ` +
 		`'anthropic', 'm', '{}', 'cli', 0.5)`)
 	if _, err := st.Pool.Exec(ctx, `REFRESH MATERIALIZED VIEW rule_weekly_stats`); err != nil {
@@ -182,7 +186,9 @@ func TestUI(t *testing.T) {
 		_, body, _ := get("/ui/candidates")
 		// A candidate's text is drawn from its source comments: shown only
 		// to viewers who can read every one of their repos.
-		has(t, body, []string{"Candidate from acme/app", "text hidden"}, []string{"Candidate from acme/secret", "Candidate from both", "mixed detail", "acme/secret"})
+		// An owner seed is shown to every viewer.
+		has(t, body, []string{"Candidate from acme/app", "text hidden", "Seed by dana", "owner seed by @dana"},
+			[]string{"Candidate from acme/secret", "Candidate from both", "mixed detail", "acme/secret"})
 	})
 	t.Run("audit", func(t *testing.T) {
 		_, body, _ := get("/ui/audit")

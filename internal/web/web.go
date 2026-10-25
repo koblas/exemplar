@@ -418,6 +418,13 @@ func (h *Handler) candidates(_ http.ResponseWriter, r *http.Request, v *viewer) 
 	}
 	var out []candidateRow
 	for _, c := range rows {
+		token := h.token(v.Login, "kill_candidate", strconv.FormatInt(c.ID, 10))
+		// An owner seed's text is its rule file in exemplar-config, not
+		// drawn from any repo's comments.
+		if c.SourceKind == "owner_seed" {
+			out = append(out, candidateRow{UICandidatesRow: c, Token: token})
+			continue
+		}
 		var vis []string
 		for _, repo := range c.Repos {
 			if v.can(repo) {
@@ -428,7 +435,7 @@ func (h *Handler) candidates(_ http.ResponseWriter, r *http.Request, v *viewer) 
 		// viewers who can read at least one of their repos, its text only
 		// for those who can read all of them.
 		if len(vis) > 0 {
-			row := candidateRow{UICandidatesRow: c, Visible: vis, Hidden: len(vis) < len(c.Repos), Token: h.token(v.Login, "kill_candidate", strconv.FormatInt(c.ID, 10))}
+			row := candidateRow{UICandidatesRow: c, Visible: vis, Hidden: len(vis) < len(c.Repos), Token: token}
 			if row.Hidden {
 				row.Title, row.Description = "", ""
 			}

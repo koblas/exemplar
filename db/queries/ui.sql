@@ -45,12 +45,14 @@ SELECT kind, actor, role, weight, via, coalesce(reason_text, '')::text AS reason
 FROM feedback_events WHERE finding_id = $1 ORDER BY observed_at, id;
 
 -- name: UICandidates :many
--- Open candidates by score, with the repos their source comments came from.
-SELECT c.id, c.title, c.description, c.cluster_size, c.distinct_reviewers, c.score, c.owner, c.status,
+-- Open candidates, owner seeds first, then by score, with the repos their
+-- source comments came from (a seed has none).
+SELECT c.id, c.title, c.description, c.cluster_size, c.distinct_reviewers, c.score, c.owner, c.status, c.source_kind,
+  coalesce(c.seed_author, '')::text AS seed_author,
   coalesce(c.config_pr_url, '')::text AS config_pr_url,
   coalesce((SELECT array_agg(DISTINCT m.repo) FROM candidate_sources s JOIN mined_comments m ON m.id = s.comment_id WHERE s.candidate_id = c.id), '{}')::text[] AS repos
 FROM candidates c WHERE c.status IN ('new', 'pr_open')
-ORDER BY c.score DESC LIMIT $1;
+ORDER BY c.source_kind = 'owner_seed' DESC, c.score DESC LIMIT $1;
 
 -- name: UIDecisions :many
 SELECT r.id AS review_id, coalesce(r.finished_at, r.started_at) AS at, r.repo, r.pr_number, r.head_sha, d.decision,

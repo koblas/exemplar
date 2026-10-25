@@ -1,13 +1,15 @@
 -- name: ProposableCandidates :many
--- Highest-scoring candidates not yet proposed.
+-- Highest-scoring mined candidates not yet proposed (a seed already has its PR).
 SELECT id, ext, title, description, cluster_size, distinct_reviewers, score, score_detail, owner
 FROM candidates
-WHERE status = 'new'
+WHERE status = 'new' AND source_kind = 'comments'
 ORDER BY score DESC, id
 LIMIT $1;
 
 -- name: OpenCandidatePRsByOwner :many
-SELECT owner, count(*)::int AS open FROM candidates WHERE status = 'pr_open' GROUP BY owner;
+-- The throttle counts mined proposals only: an owner's own seeds neither
+-- use up nor wait for the mined allowance.
+SELECT owner, count(*)::int AS open FROM candidates WHERE status = 'pr_open' AND source_kind = 'comments' GROUP BY owner;
 
 -- name: CandidateSourceDetails :many
 -- Links and context for the candidate PR: no comment bodies, which may come
@@ -29,5 +31,6 @@ ORDER BY pe.kind, pe.ref;
 
 -- name: MarkCandidateProposed :execrows
 -- Only a candidate still 'new' moves to pr_open, so two writers cannot both claim it.
-UPDATE candidates SET status = 'pr_open', config_pr_url = $2, updated_at = now()
+UPDATE candidates SET status = 'pr_open', config_pr_url = $2, config_pr_branch = $3, rule_id = $4, rule_path = $5,
+  updated_at = now()
 WHERE id = $1 AND status = 'new';
