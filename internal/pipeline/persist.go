@@ -230,7 +230,7 @@ func Post(ctx context.Context, st *store.Store, poster *gh.Poster, p *engine.Pre
 	v := verdict(res)
 	if err := poster.CompleteCheck(ctx, pr, checkID, gh.CheckResult{
 		Conclusion: "neutral", Title: fmt.Sprintf("%d finding(s) · %s", len(comments), v.Title()),
-		Summary: v.Line() + "\n\n" + summary, Text: checkText(p, res),
+		Summary: v.Line() + "\n\n" + summary + scopeNote(p, res), Text: checkText(p, res),
 	}); err != nil {
 		return nil, fmt.Errorf("complete check run: %w", err)
 	}
@@ -368,6 +368,20 @@ func checkSummaryNew(p *engine.Prepared, res *engine.Result, posted int) string 
 	s := fmt.Sprintf("Exemplar reviewed %d file(s) and posted %d finding(s) (coverage %.0f%%).", len(p.Files), posted, res.Coverage*100)
 	if res.HeldBack > 0 {
 		s += fmt.Sprintf(" %d lower-priority finding(s) held back by the comment budget.", res.HeldBack)
+	}
+	return s
+}
+
+// scopeNote states, on an install without exemplar-search, what the review
+// could not look at: callers in other repositories, naming the repo's
+// context.extra_repos when it has them.
+func scopeNote(p *engine.Prepared, res *engine.Result) string {
+	if !res.SearchOff {
+		return ""
+	}
+	s := "\n\nCross-repository callers were not checked (search is not configured)."
+	if p.Effective != nil && p.Effective.RepoConfig.Context != nil && len(p.Effective.RepoConfig.Context.ExtraRepos) > 0 {
+		s += " Not searched: " + strings.Join(p.Effective.RepoConfig.Context.ExtraRepos, ", ") + "."
 	}
 	return s
 }

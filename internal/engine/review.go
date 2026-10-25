@@ -129,6 +129,10 @@ type Result struct {
 	Linters *DedupeTrace
 	// Humans is what human-comment dedupe did; nil when it did not run.
 	Humans *DedupeTrace
+	// SearchOff is set when no exemplar-search is configured: agents had
+	// no find_references or path_history, and no caller in another
+	// repository was checked.
+	SearchOff bool
 }
 
 // dedupers are assemble's model-judged dedupes; either may be nil.
@@ -153,6 +157,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 	}
 	meta := CallMeta{Caller: opt.Caller, Repo: p.PR.Repo, ReviewID: opt.ReviewID}
 	e.pinSearch(ctx, p)
+	res.SearchOff = e.refs == nil
 
 	// The auto-approve pre-check: the deterministic gates that do not
 	// depend on findings. A candidate forces the bug lane.
