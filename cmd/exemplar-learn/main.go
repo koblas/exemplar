@@ -99,7 +99,10 @@
 // EXEMPLAR_GATEWAY_TOKEN, and EXEMPLAR_GH_* to clone recorded labels' PRs.
 //
 // Every step is idempotent, so a crashed or repeated run never loses or
-// duplicates work.
+// duplicates work. Each subcommand also takes a Postgres advisory lock
+// named after it before doing anything (dry runs included): a run that
+// finds another run of the same subcommand holding it logs that and
+// exits 0, so a manual run never overlaps a scheduled one.
 package main
 
 import (
@@ -128,45 +131,56 @@ var (
 	errRevertScanFailed   = errors.New("revert scan failed")
 )
 
+// commands are the subcommands; each name is also its job lock's name.
+var commands = map[string]func([]string) error{
+	"ingest":      runIngest,
+	"path-events": runPathEvents,
+	"extract":     runExtract,
+	"compile":     runCompile,
+	"evals":       runEvals,
+	"propose":     runPropose,
+	"demote":      runDemote,
+	"expiry":      runExpiry,
+	"digest":      runDigest,
+	"teach":       runTeach,
+	"export":      runExport,
+	"calibrate":   runCalibrate,
+}
+
 func main() {
-	if len(os.Args) < 2 {
+	var run func([]string) error
+	if len(os.Args) >= 2 {
+		run = commands[os.Args[1]]
+	}
+	if run == nil {
 		fmt.Fprintln(os.Stderr, "usage: exemplar-learn ingest|path-events|extract|evals|compile|propose|demote|expiry|digest|teach|export|calibrate [flags]")
 		os.Exit(2)
 	}
-	var err error
-	switch os.Args[1] {
-	case "ingest":
-		err = runIngest(os.Args[2:])
-	case "path-events":
-		err = runPathEvents(os.Args[2:])
-	case "extract":
-		err = runExtract(os.Args[2:])
-	case "compile":
-		err = runCompile(os.Args[2:])
-	case "evals":
-		err = runEvals(os.Args[2:])
-	case "propose":
-		err = runPropose(os.Args[2:])
-	case "demote":
-		err = runDemote(os.Args[2:])
-	case "expiry":
-		err = runExpiry(os.Args[2:])
-	case "digest":
-		err = runDigest(os.Args[2:])
-	case "teach":
-		err = runTeach(os.Args[2:])
-	case "export":
-		err = runExport(os.Args[2:])
-	case "calibrate":
-		err = runCalibrate(os.Args[2:])
-	default:
-		fmt.Fprintln(os.Stderr, "usage: exemplar-learn ingest|path-events|extract|evals|compile|propose|demote|expiry|digest|teach|export|calibrate [flags]")
-		os.Exit(2)
-	}
+	err := runLocked(context.Background(), os.Args[1], os.Getenv("EXEMPLAR_DATABASE_URL"), func() error { return run(os.Args[2:]) })
 	if err != nil {
 		slog.Error("exemplar-learn failed", "command", os.Args[1], "err", err)
 		os.Exit(1)
 	}
+}
+
+// runLocked runs fn holding the job lock named job (spec §2.4.2 C4). When
+// another run holds it, fn does not run and the run succeeds. Without a
+// database URL there is nothing to lock, and fn reports the missing
+// setting itself.
+func runLocked(ctx context.Context, job, dbURL string, fn func() error) error {
+	if dbURL == "" {
+		return fn()
+	}
+	release, ok, err := store.TryJobLock(ctx, dbURL, job)
+	if err != nil {
+		return fmt.Errorf("take the %s job lock: %w", job, err)
+	}
+	if !ok {
+		slog.Info("another run holds the job lock; exiting", "command", job)
+		return nil
+	}
+	defer release()
+	return fn()
 }
 
 func runExtract(args []string) error {

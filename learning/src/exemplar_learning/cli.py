@@ -5,6 +5,9 @@
 
 - ``rank``: score the latest cluster run into owned candidates.
 
+``cluster`` and ``rank`` hold a Postgres advisory lock named after the job;
+a run that finds another run holding it logs that and exits 0.
+
 ``embed`` joins them once an embedding provider is approved.
 """
 
@@ -24,6 +27,13 @@ from exemplar_learning.cluster import graph, job
 from exemplar_learning.cluster.judge import GatewayJudge
 from exemplar_learning.rank import job as rank_job
 from exemplar_learning.rank import score
+
+log = logging.getLogger("exemplar_learning.cli")
+
+
+def _skip(name: str) -> int:
+    log.info("another %s run holds the job lock; exiting", name)
+    return 0
 
 
 def _check(_: argparse.Namespace) -> int:
@@ -55,11 +65,14 @@ def _cluster(args: argparse.Namespace) -> int:
         merge_threshold=args.merge_threshold,
     )
     with (
+        db.job_lock("cluster") as held,
         db.connect() as conn,
         psycopg.connect(
             db.database_url(), autocommit=True, application_name="exemplar-learning-cache"
         ) as cache_conn,
     ):
+        if not held:
+            return _skip("cluster")
         db.check_schema(conn)
         conn.commit()
         rep = job.run(conn, cache_conn, judge, lambda: judge.model, params)
@@ -73,7 +86,9 @@ def _rank(args: argparse.Namespace) -> int:
         half_life_days=args.half_life_days,
         default_owner=args.default_owner,
     )
-    with db.connect() as conn:
+    with db.job_lock("rank") as held, db.connect() as conn:
+        if not held:
+            return _skip("rank")
         db.check_schema(conn)
         conn.commit()
         rep = rank_job.run(conn, params)

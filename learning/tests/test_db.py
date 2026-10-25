@@ -50,3 +50,35 @@ def test_database_url_required(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("EXEMPLAR_DATABASE_URL", raising=False)
     with pytest.raises(RuntimeError, match="EXEMPLAR_DATABASE_URL"):
         db.database_url()
+
+
+# The Go jobs' key for "cluster" (internal/store/joblock_test.go).
+GO_CLUSTER_KEY = -6205359000760017648
+
+
+def test_job_lock_key_matches_go() -> None:
+    assert db.job_lock_key("cluster") == GO_CLUSTER_KEY
+    assert db.job_lock_key("rank") != GO_CLUSTER_KEY
+
+
+def test_job_lock_is_exclusive(database: str) -> None:
+    with db.job_lock("cluster", database) as first:
+        assert first
+        with db.job_lock("cluster", database) as second:
+            assert not second
+        with db.job_lock("rank", database) as other:
+            assert other
+    with db.job_lock("cluster", database) as again:
+        assert again
+
+
+def test_cli_skips_a_held_job(database: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from exemplar_learning import cli
+
+    monkeypatch.setenv("EXEMPLAR_DATABASE_URL", database)
+    called = []
+    monkeypatch.setattr(cli.rank_job, "run", lambda *a: called.append(a))
+    with db.job_lock("rank", database) as held:
+        assert held
+        assert cli.main(["rank"]) == 0
+    assert called == []
