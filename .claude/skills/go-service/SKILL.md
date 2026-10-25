@@ -24,7 +24,7 @@ Handle this task: $ARGUMENTS
    property test for invariants over an input domain, a configuration-matrix row
    for new settings, a benchmark for hot paths. Say which you added or skipped.
 5. Format touched files and run the focused package tests first. Then run applicable
-   broader checks: `go test ./...`, `go test -race ./...`, `go vet ./...`, and
+   broader checks: `go test ./...`, `go test -race ./...`, `golangci-lint run` (includes govet), and
    `go build ./...`. Follow existing CI gates if different; report toolchain blockers.
 6. Check affected manifest contracts if ports, probes, environment variables, or
    shutdown behavior changed. Summarize changes, verification, and remaining risks.

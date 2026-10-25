@@ -83,9 +83,10 @@ application unless requested. Update this guidance as the service takes shape.
 - The root `Makefile` (and `learning/Makefile`) wraps the CI commands; `make help`
   lists targets. `make check` is the quick gate, `make ci` mirrors ci.yml. Keep the
   Makefiles and `.github/workflows/ci.yml` in step when either changes.
-- Default Go checks: `go test ./...`, `go test -race ./...`, `go vet ./...`, and
+- Default Go checks: `go test ./...`, `go test -race ./...`, `golangci-lint run`, and
   `go build ./...`. Start with the touched package's tests, then broaden as needed.
-- Use `golangci-lint run` once a Go module exists; follow repository lint configuration.
+- `golangci-lint run` follows `.golangci.yml` and includes `govet`; there is no
+  separate `go vet` step in the Makefile or CI.
 - Format touched Go files with `gofmt`; do not reformat unrelated files.
 - Use existing manifest tooling. Render Helm or Kustomize locally before checking
   the rendered resources. Do not assume a cluster is available.

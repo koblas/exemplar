@@ -84,5 +84,5 @@ make docs
 ```
 
 runs `go test ./docs` and the strict build. Fix every error. Then
-`go vet ./...` if Go test code changed. Report what pages changed and which
+`golangci-lint run` if Go test code changed. Report what pages changed and which
 quadrant each item went to.
