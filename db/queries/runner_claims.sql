@@ -9,9 +9,12 @@ ON CONFLICT (job_id) DO UPDATE SET
 
 -- name: RedeemRunnerClaim :one
 -- Once: a claimed, released or expired row, or another nonce, matches nothing.
+-- Expired by the later of the database's clock and the runner's (@now, as
+-- expires_at is set from the control process's), so neither clock alone
+-- can stretch a claim.
 UPDATE runner_claims SET claimed_at = now()
 WHERE job_id = @job_id AND nonce_hash = @nonce_hash
-  AND claimed_at IS NULL AND released_at IS NULL AND tokens IS NOT NULL AND expires_at > now()
+  AND claimed_at IS NULL AND released_at IS NULL AND tokens IS NOT NULL AND expires_at > greatest(@now::timestamptz, now())
 RETURNING tokens, config_version;
 
 -- name: ReleaseRunnerClaim :exec

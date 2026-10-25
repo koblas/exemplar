@@ -79,9 +79,18 @@ func Run(m *testing.M) int {
 // drops it when the test ends.
 func New(tb testing.TB) *store.Store {
 	tb.Helper()
+	return NewWithConns(tb, 0)
+}
+
+// NewWithConns is New with a pool of at least minConns connections, as
+// store.OpenWithConns. pgxpool's default is max(4, NumCPU), so a test
+// that holds connections (advisory-lock slots) sets its own size to run
+// the same on every machine.
+func NewWithConns(tb testing.TB, minConns int32) *store.Store {
+	tb.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	s, err := store.Open(ctx, EmptyURL(tb))
+	s, err := store.OpenWithConns(ctx, EmptyURL(tb), minConns)
 	if err != nil {
 		tb.Fatalf("open test database: %v", err)
 	}

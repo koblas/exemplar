@@ -279,13 +279,17 @@ func (a *App) clientWithToken(installationID int64, token string) (*github.Clien
 // NewTokenClient is a REST client on an installation token minted
 // elsewhere (a review runner's claim), throttled by its own limiter of
 // requestsPerHour (5000 when zero) and GitHub's secondary rate-limit
-// signals. baseURL overrides https://api.github.com/ (GHES).
-func NewTokenClient(installationID int64, token, baseURL string, requestsPerHour int) (*github.Client, error) {
+// signals. base carries its requests (http.DefaultTransport when nil);
+// baseURL overrides https://api.github.com/ (GHES).
+func NewTokenClient(base http.RoundTripper, installationID int64, token, baseURL string, requestsPerHour int) (*github.Client, error) {
 	if requestsPerHour <= 0 {
 		requestsPerHour = 5000
 	}
+	if base == nil {
+		base = http.DefaultTransport
+	}
 	lim := rate.NewLimiter(rate.Limit(float64(requestsPerHour)/3600), 50)
-	return tokenClient(http.DefaultTransport, lim, installationID, token, baseURL)
+	return tokenClient(base, lim, installationID, token, baseURL)
 }
 
 func tokenClient(base http.RoundTripper, lim *rate.Limiter, installationID int64, token, baseURL string) (*github.Client, error) {

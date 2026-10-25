@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -54,8 +55,11 @@ var headMain = header + "func handler(ctx context.Context) {\n\tresp, err := htt
 
 // fakeGitHub answers the REST calls a review makes and records writes.
 type fakeGitHub struct {
-	t                *testing.T
-	srv              *httptest.Server
+	t *testing.T
+	// url and transport reach the fake: served in memory (memTransport), so
+	// a synctest bubble's clock can move while its requests are idle.
+	url              string
+	transport        memTransport
 	repo             string
 	state, head      string
 	base             string
@@ -110,10 +114,77 @@ type fakeGitHub struct {
 
 func newFakeGitHub(t *testing.T, repoName, head, base string) *fakeGitHub {
 	t.Helper()
-	f := &fakeGitHub{t: t, repo: repoName, state: "open", head: head, base: base}
-	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
-	t.Cleanup(f.srv.Close)
+	f := &fakeGitHub{t: t, repo: repoName, state: "open", head: head, base: base, url: "http://github.invalid/"}
+	f.transport = memTransport{h: f.handle, running: &sync.WaitGroup{}}
+	t.Cleanup(f.transport.running.Wait)
 	return f
+}
+
+// errConnReset is a request whose connection dropped unanswered.
+var errConnReset = errors.New("fake github: connection reset")
+
+// memTransport serves requests with h in memory, as a server would. The
+// handler runs on its own goroutine with the request's body already read;
+// a request whose context ends first fails with the context's error while
+// the handler goes on (the server took it), and a request whose context
+// already ended is never sent. A handler that aborts (http.ErrAbortHandler)
+// is a dropped connection.
+type memTransport struct {
+	h       http.HandlerFunc
+	running *sync.WaitGroup
+}
+
+func (m memTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if err := r.Context().Err(); err != nil {
+		return nil, err
+	}
+	var body []byte
+	if r.Body != nil {
+		b, err := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("fake github: read body: %w", err)
+		}
+		body = b
+	}
+	req := r.Clone(r.Context())
+	req.Body = io.NopCloser(bytes.NewReader(body))
+	type result struct {
+		resp *http.Response
+		err  error
+	}
+	done := make(chan result, 1)
+	m.running.Go(func() {
+		w := httptest.NewRecorder()
+		res := result{}
+		func() {
+			defer func() {
+				if p := recover(); p != nil {
+					if p != http.ErrAbortHandler { //nolint:errorlint // the sentinel itself is what aborts
+						panic(p)
+					}
+					res.err = errConnReset
+				}
+			}()
+			m.h(w, req)
+		}()
+		if res.err == nil {
+			res.resp = w.Result()
+		}
+		done <- res
+	})
+	select {
+	case res := <-done:
+		return res.resp, res.err
+	case <-r.Context().Done():
+		// The handler's answer wins when both are ready.
+		select {
+		case res := <-done:
+			return res.resp, res.err
+		default:
+		}
+		return nil, r.Context().Err()
+	}
 }
 
 // writeJSON encodes v as the response, failing the test if it cannot.
@@ -411,8 +482,8 @@ func (f *fakeGitHub) commentIDs() []int {
 }
 
 func (f *fakeGitHub) client() *github.Client {
-	base := f.srv.URL + "/"
-	c, err := github.NewClient(github.WithURLs(&base, &base))
+	base := f.url
+	c, err := github.NewClient(github.WithURLs(&base, &base), github.WithTransport(f.transport))
 	if err != nil {
 		f.t.Fatal(err)
 	}
