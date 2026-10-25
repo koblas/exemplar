@@ -57,7 +57,7 @@ In `global.yaml`, set `auto_approve: true` and, for Stage 2, `providers.categori
 kubectl --context <your-cluster> -n exemplar create job --from=cronjob/exemplar-learn-calibrate calibrate-now
 ```
 
-Its log ends with one JSON result per stage: `"passed": true` for the verifier lifts the same-family block. A failing result is recorded too and keeps the block; the run itself succeeds.
+If the scheduled run is still going, this one logs that another run holds the job lock and exits without calibrating; wait for it. Its log ends with one JSON result per stage: `"passed": true` for the verifier lifts the same-family block. A failing result is recorded too and keeps the block; the run itself succeeds.
 
 ## 4. Watch it
 

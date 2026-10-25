@@ -106,6 +106,8 @@ Only the worker's `worker` container mounts a service account token (a projected
 | `exemplar-learn-digest` | `0 8 * * 1` | Weekly rule-health issues per owner. |
 | `exemplar-learn-export` | `15 8 * * *` | Daily rule exports. |
 
+Every CronJob has `concurrencyPolicy: Forbid`, and every `exemplar-learn` subcommand and `exemplar-learning` `cluster` and `rank` also takes a Postgres advisory lock named after the job (`exemplar/job/<name>`) on a connection of its own before doing anything, `--dry-run` runs included. A run that finds the lock held, by a manual run, a scheduled one, or a copy on another scheduler, logs `another run holds the job lock; exiting` and exits 0. The lock goes with its connection, so a killed run frees it.
+
 The worker's own periodic jobs (`reconcile_deliveries`, `sweep_prs`, `poll_reactions` every 30 minutes, `retention`, `refresh_stats`) run on River's maintenance queue on the leader and need no CronJob.
 
 ## Setup mode

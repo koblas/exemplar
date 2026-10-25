@@ -47,6 +47,37 @@ def connect(url: str | None = None) -> Iterator[psycopg.Connection]:
         yield conn
 
 
+def job_lock_key(name: str) -> int:
+    """The advisory-lock key of a scheduled job: FNV-1a 64 of
+    ``exemplar/job/<name>`` as a signed bigint, the key the Go jobs use
+    (store.JobLockKey)."""
+    h = 0xCBF29CE484222325
+    for b in f"exemplar/job/{name}".encode():
+        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return h - (1 << 64) if h >= 1 << 63 else h
+
+
+@contextmanager
+def job_lock(name: str, url: str | None = None) -> Iterator[bool]:
+    """Hold the job lock of ``name`` for the block (spec §2.4.2 C4).
+
+    Yields whether it was taken; it never waits, so a run that finds
+    another run of the job holding it can skip. The lock lives on a
+    connection of its own and goes with it, also when the process dies.
+    """
+    key = job_lock_key(name)
+    with psycopg.connect(
+        url or database_url(), autocommit=True, application_name="exemplar-learning-lock"
+    ) as conn:
+        row = conn.execute("SELECT pg_try_advisory_lock(%s)", (key,)).fetchone()
+        held = bool(row and row[0])
+        try:
+            yield held
+        finally:
+            if held:
+                conn.execute("SELECT pg_advisory_unlock(%s)", (key,))
+
+
 def schema_version(conn: psycopg.Connection) -> int:
     row = conn.execute(
         "SELECT coalesce(max(version_id), 0) FROM goose_db_version WHERE is_applied"
