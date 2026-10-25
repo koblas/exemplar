@@ -3,6 +3,7 @@ package gh
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -339,5 +340,53 @@ func TestConfigRepoOpenPRs(t *testing.T) {
 	}
 	if p := prs[1]; !p.Fork || !p.Bot || len(p.Added) != 0 {
 		t.Errorf("fork PR = %+v", p)
+	}
+}
+
+func TestConfigRepoLatestHumanCommentAndReopen(t *testing.T) {
+	var edited, commented string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/exemplar-config/issues/7/comments":
+			writeJSON(w, []map[string]any{
+				{"body": "first", "user": map[string]any{"login": "erin", "type": "User"}},
+				{"body": "Covered by errcheck.", "user": map[string]any{"login": "dana", "type": "User"}},
+				{"body": "  ", "user": map[string]any{"login": "pat", "type": "User"}},
+				{"body": "bot note", "user": map[string]any{"login": "exemplar[bot]", "type": "Bot"}},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/exemplar-config/issues/8/comments":
+			writeJSON(w, []map[string]any{})
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/acme/exemplar-config/pulls/7":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			edited, _ = body["state"].(string)
+			writeJSON(w, map[string]any{"number": 7})
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/exemplar-config/issues/7/comments":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			commented, _ = body["body"].(string)
+			writeJSON(w, map[string]any{"id": 1})
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/acme/exemplar-config/pulls/9":
+			http.Error(w, `{"message":"branch deleted"}`, http.StatusUnprocessableEntity)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	base := srv.URL + "/"
+	client, _ := github.NewClient(github.WithURLs(&base, &base), github.WithAuthToken("ghs_cfg"))
+	r, _ := NewConfigRepo(client, "acme/exemplar-config", "exemplar[bot]")
+	login, body, found, err := r.LatestHumanComment(t.Context(), 7)
+	if err != nil || !found || login != "dana" || body != "Covered by errcheck." {
+		t.Errorf("LatestHumanComment = %q %q %v %v", login, body, found, err)
+	}
+	if _, _, found, err := r.LatestHumanComment(t.Context(), 8); err != nil || found {
+		t.Errorf("no comments = %v %v", found, err)
+	}
+	if err := r.ReopenPR(t.Context(), 7, "why?"); err != nil || edited != "open" || commented != "why?" {
+		t.Errorf("ReopenPR = %v, state %q, comment %q", err, edited, commented)
+	}
+	if err := r.ReopenPR(t.Context(), 9, "why?"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("reopen of a deleted branch = %v, want ErrNotFound", err)
 	}
 }

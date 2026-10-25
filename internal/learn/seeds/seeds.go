@@ -10,9 +10,12 @@
 //   - delivers generated cases to the seed's PR: committed on the app's
 //     own branches, posted as a comment on a person's, never replacing
 //     cases the owner wrote (Deliver);
-//   - marks proposals promoted once their PR merged and the rule is shadow
-//     or active on the default branch, and retires seeds whose PR closed
-//     without merging (Sweep).
+//   - settles proposals whose PR is no longer open (Sweep): promoted once
+//     merged with the rule shadow or active on the default branch; killed
+//     when closed with the killed label and a person's comment as the
+//     reason; otherwise a seed is retired and a mined proposal's PR is
+//     reopened to ask for both, since a retired mined candidate would be
+//     re-created and proposed again by the next ranking.
 //
 // Nothing about a seed skips the gate: its PR runs the same checks as a
 // mined one, and nothing enforces until an owner merges it.
@@ -86,7 +89,13 @@ type Repo interface {
 	Comment(ctx context.Context, number int, body string) error
 	PRByBranch(ctx context.Context, branch string) (gh.ConfigItem, bool, error)
 	PullRequest(ctx context.Context, number int) (gh.PullRequest, error)
+	LatestHumanComment(ctx context.Context, number int) (login, body string, found bool, err error)
+	ReopenPR(ctx context.Context, number int, comment string) error
 }
+
+// KilledLabel on a config PR closed without merging kills its candidate,
+// with the latest comment by a person as the reason (spec §8.7).
+const KilledLabel = "killed"
 
 // Job syncs, delivers and sweeps.
 type Job struct {
@@ -280,10 +289,8 @@ func comment(ruleID string, paths []string, files map[string][]byte) string {
 	return b.String()
 }
 
-// Sweep settles proposals whose PR is no longer open: merged with the rule
-// shadow or active on the default branch is promoted; a seed whose PR
-// closed unmerged is retired. A mined proposal closed unmerged is left
-// for its owner to kill with a reason.
+// Sweep settles proposals whose PR is no longer open (see the package
+// comment). A proposal it cannot settle stays pr_open.
 func (j *Job) Sweep(ctx context.Context) ([]Outcome, error) {
 	rows, err := j.Store.OpenProposals(ctx)
 	if err != nil {
@@ -320,13 +327,10 @@ func (j *Job) Sweep(ctx context.Context) ([]Outcome, error) {
 				return outs, fmt.Errorf("seeds: mark promoted: %w", err)
 			}
 			out.Action, out.Reason = "promoted", "merged as "+status
-		case r.SourceKind == "owner_seed":
-			if n, err = j.Store.RetireSeed(ctx, r.ID); err != nil {
-				return outs, fmt.Errorf("seeds: retire: %w", err)
-			}
-			out.Action, out.Reason = "retired", "the PR closed without merging"
 		default:
-			continue
+			if n, err = j.closed(ctx, r, item, &out); err != nil {
+				return outs, err
+			}
 		}
 		if n == 0 {
 			continue
@@ -335,6 +339,54 @@ func (j *Job) Sweep(ctx context.Context) ([]Outcome, error) {
 		outs = append(outs, out)
 	}
 	return outs, nil
+}
+
+// closed settles a proposal whose PR closed without merging.
+func (j *Job) closed(ctx context.Context, r queries.OpenProposalsRow, item gh.ConfigItem, out *Outcome) (int64, error) {
+	pr, err := j.Repo.PullRequest(ctx, item.Number)
+	if err != nil {
+		return 0, fmt.Errorf("seeds: read %s: %w", item.URL, err)
+	}
+	if slices.ContainsFunc(pr.Labels, func(l string) bool { return strings.EqualFold(l, KilledLabel) }) {
+		login, body, found, err := j.Repo.LatestHumanComment(ctx, item.Number)
+		if err != nil {
+			return 0, fmt.Errorf("seeds: comments on %s: %w", item.URL, err)
+		}
+		if found {
+			reason := strings.TrimSpace(body)
+			if rs := []rune(reason); len(rs) > 1000 {
+				reason = string(rs[:1000])
+			}
+			reason = fmt.Sprintf("%s (killed by @%s on %s)", reason, login, item.URL)
+			n, err := j.Store.KillCandidate(ctx, queries.KillCandidateParams{ID: r.ID, KillReason: &reason})
+			if err != nil {
+				return 0, fmt.Errorf("seeds: kill: %w", err)
+			}
+			out.Action, out.Reason = "killed", reason
+			return n, nil
+		}
+	}
+	if r.SourceKind == "owner_seed" {
+		n, err := j.Store.RetireSeed(ctx, r.ID)
+		if err != nil {
+			return 0, fmt.Errorf("seeds: retire: %w", err)
+		}
+		out.Action, out.Reason = "retired", "the PR closed without merging"
+		return n, nil
+	}
+	msg := "Exemplar reopened this candidate PR: closing it without merging needs the `" + KilledLabel +
+		"` label and a comment saying why. The reason teaches the extractor what not to propose, and the " +
+		"candidate keeps its place in the owner's open-PR limit until it is merged or killed. Add both, then close it again."
+	switch err := j.Repo.ReopenPR(ctx, item.Number, msg); {
+	case errors.Is(err, gh.ErrNotFound):
+		// A deleted branch cannot be reopened; kill it from the web UI.
+		out.Action, out.Reason = "skipped", "closed without a reason and cannot be reopened: kill the candidate from the web UI"
+		return 1, nil
+	case err != nil:
+		return 0, fmt.Errorf("seeds: reopen %s: %w", item.URL, err)
+	}
+	out.Action, out.Reason = "reopened", "closed without the "+KilledLabel+" label and a reason"
+	return 1, nil
 }
 
 // ruleStatus is the status of the rule file at path on ref, "" if absent

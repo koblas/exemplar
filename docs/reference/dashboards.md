@@ -10,7 +10,7 @@ Grafana boards and alert rules in [`dashboards/`](https://github.com/koblas/exem
 | `adjudication.json` | The owner queue (author wrong/disagree without an adjudication) per team, with its oldest age; uphold and overturn by rule. |
 | `operations.json` | Reviews, incomplete and degraded runs, coverage; cost and duration (informational, no targets); rule runs that did not complete; River queue depth by queue and by repo; model calls by stage and provider. |
 | `auto-approve.json` | Decisions per day, and every decision with Stage 1 reasons, merge safety and Stage 2, linked to the PR; auto-approved merges later reverted or incident-linked; each repo's kill switch as its latest decision saw it. |
-| `telemetry.json` | From OTel metrics (the `exemplar-metrics` datasource): enqueue-to-first-comment p50/p95, review duration, model calls by outcome with the 429/5xx share, model latency by stage, GitHub rate limit remaining and responses by status. |
+| `telemetry.json` | From OTel metrics (the `exemplar-metrics` datasource): enqueue-to-first-comment p50/p95, review duration, model calls by outcome with the 429/5xx share, model latency by stage, GitHub rate limit remaining and responses by status, queue depth and the oldest waiting job by queue (`exemplar.queue.depth`, `exemplar.queue.oldest_age`). |
 | `counter-metrics.json` | Change failure (reverted or incident-linked) of auto-approved against human-approved merges, revert rate and merges by week, incidents on quiet quick merges, and every failed merge. |
 | `lanes.json` | Findings by lane and state, held back by reason, verifier refutation by rule, fixes (with fix, valid, applied), acceptance by lane, and bug-lane quorum agreement per bug class (all, some or no verifiers confirmed; failed quorum; quorum shed; mean share). |
 | `baseline.json` | Exemplar against the baseline reviewer on the same PR heads. |
@@ -25,6 +25,7 @@ Grafana boards and alert rules in [`dashboards/`](https://github.com/koblas/exem
 | Auto-approved merge reverted or incident-linked | within 28 days of the merge |
 | Auto-approved merges failing more often than human-approved ones | once there are 20 auto-approved merges |
 | Approval from a degraded or incomplete review | in the last day |
+| Reviews waiting over 30 minutes to start | a `pr_review` job due to run (snoozed ones waiting on the runner quota or a repo's slots included) was enqueued over 30 minutes ago, for 10 minutes; checked every 5 minutes |
 
 ## Access
 

@@ -19,7 +19,7 @@ Each proposed PR adds a rule file with its citations and an `evals/<rule>/cases.
 4. Let config CI's `eval`, `volume` and `linter-overlap` jobs speak.
 5. Merge with `status: shadow`; promote later.
 
-Closing the PR without merging is a signal too: the candidate goes back to the pool.
+To kill it from the PR instead, add the `killed` label, comment why, and close it. The next `propose` run kills the candidate with your latest comment as the reason, and it stops counting against your team's three open PRs. A PR closed without the label or without a comment from a person is reopened with a comment asking for both: a candidate dropped without a reason would only be mined and proposed again.
 
 ## 3. The weekly digest
 

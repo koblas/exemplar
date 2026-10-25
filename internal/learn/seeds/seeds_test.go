@@ -31,6 +31,10 @@ type fakePR struct {
 	state  string
 	merged bool
 	added  []string
+	labels []string
+	// human is the people's comments, oldest first ([login, body]).
+	human     [][2]string
+	reopenErr error
 }
 
 // fakeRepo is exemplar-config: files per branch ("main" is the default),
@@ -127,10 +131,33 @@ func (f *fakeRepo) PullRequest(_ context.Context, number int) (gh.PullRequest, e
 			if p.bot {
 				typ = "Bot"
 			}
-			return gh.PullRequest{Number: number, Author: p.author, AuthorType: typ}, nil
+			return gh.PullRequest{Number: number, Author: p.author, AuthorType: typ, Labels: p.labels}, nil
 		}
 	}
 	return gh.PullRequest{}, gh.ErrNotFound
+}
+
+func (f *fakeRepo) LatestHumanComment(_ context.Context, number int) (string, string, bool, error) {
+	for _, p := range f.prs {
+		if p.number == number && len(p.human) > 0 {
+			c := p.human[len(p.human)-1]
+			return c[0], c[1], true, nil
+		}
+	}
+	return "", "", false, nil
+}
+
+func (f *fakeRepo) ReopenPR(ctx context.Context, number int, comment string) error {
+	for _, p := range f.prs {
+		if p.number == number {
+			if p.reopenErr != nil {
+				return p.reopenErr
+			}
+			p.state = "open"
+			return f.Comment(ctx, number, comment)
+		}
+	}
+	return gh.ErrNotFound
 }
 
 // merge lands a PR's branch on main.
@@ -402,6 +429,97 @@ func TestSeedStaysOnItsPR(t *testing.T) {
 	}
 	if len(repo.puts) != 0 || len(repo.comments[first.number]) != 1 {
 		t.Errorf("person's exemplar/ branch: puts %v, comments %d", repo.puts, len(repo.comments[first.number]))
+	}
+}
+
+// A proposal whose PR closed without merging: the killed label and a
+// person's comment kill it with that reason; without both a mined
+// proposal's PR is reopened (a retired one would be proposed again) and a
+// seed is retired. One that cannot be reopened stays pr_open.
+func TestClosedProposals(t *testing.T) {
+	st := storetest.New(t)
+	ctx := t.Context()
+	repo := newRepo()
+	sc, err := redact.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := &seeds.Job{Store: st, Repo: repo, Scanner: sc}
+	var run int64
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO cluster_runs (params, status) VALUES ('{}', 'done') RETURNING id`).Scan(&run); err != nil {
+		t.Fatal(err)
+	}
+	mined := func(rule string) *fakePR {
+		t.Helper()
+		branch := "exemplar/candidate-" + rule
+		if _, err := st.Pool.Exec(ctx, `INSERT INTO candidates (ext, title, description, cluster_size, distinct_reviewers, score, score_detail,
+			owner, cluster_hash, last_run_id, status, config_pr_url, config_pr_branch, rule_id, rule_path)
+			VALUES ('.go', $1, 'd', 3, 2, 1, '{}', '@acme/pay', $1, $2, 'pr_open', 'u', $3, $1, 'rules/reliability/' || $1 || '.yaml')`,
+			rule, run, branch); err != nil {
+			t.Fatal(err)
+		}
+		p := repo.open(branch, "exemplar[bot]", true)
+		p.state = "closed"
+		return p
+	}
+	killed := mined("killed-with-reason")
+	killed.labels = []string{"Killed"}
+	killed.human = [][2]string{{"erin", "first thought"}, {"dana", "Already covered by errcheck."}}
+	bare := mined("closed-bare")
+	labelOnly := mined("label-no-reason")
+	labelOnly.labels = []string{"killed"}
+	gone := mined("branch-deleted")
+	gone.reopenErr = fmt.Errorf("%w: reopen", gh.ErrNotFound)
+
+	cand := strings.Replace(playgroundRule, "status: active", "status: candidate", 1)
+	repo.files["dana/seed"] = map[string]string{"rules/reliability/pay-check-errors.yaml": cand}
+	seed := repo.open("dana/seed", "dana", false, "rules/reliability/pay-check-errors.yaml")
+	// The first run settles the mined proposals and records the seed; dana
+	// then kills hers and the second run settles it.
+	outs, err := job.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed.state, seed.labels, seed.human = "closed", []string{"killed"}, [][2]string{{"dana", "Not worth a rule."}}
+	more, err := job.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outs = append(outs, more...)
+	want := map[string]string{
+		"sweep killed-with-reason": "killed", "sweep closed-bare": "reopened", "sweep label-no-reason": "reopened",
+		"sweep branch-deleted": "skipped", "sweep pay-check-errors": "killed", "sync pay-check-errors": "recorded",
+	}
+	if got := actions(outs); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("sweep = %v, want %v", got, want)
+	}
+	status := func(rule string) (string, string) {
+		t.Helper()
+		var s, reason string
+		if err := st.Pool.QueryRow(ctx, `SELECT status, coalesce(kill_reason, '') FROM candidates WHERE rule_id = $1`, rule).Scan(&s, &reason); err != nil {
+			t.Fatal(err)
+		}
+		return s, reason
+	}
+	if s, reason := status("killed-with-reason"); s != "killed" || !strings.HasPrefix(reason, "Already covered by errcheck. (killed by @dana on ") {
+		t.Errorf("killed = %s %q", s, reason)
+	}
+	for _, rule := range []string{"closed-bare", "label-no-reason", "branch-deleted"} {
+		if s, _ := status(rule); s != "pr_open" {
+			t.Errorf("%s = %s, want pr_open (still holding the throttle)", rule, s)
+		}
+	}
+	if s, reason := status("pay-check-errors"); s != "killed" || !strings.Contains(reason, "Not worth a rule.") {
+		t.Errorf("seed = %s %q", s, reason)
+	}
+	for _, p := range []*fakePR{bare, labelOnly} {
+		if p.state != "open" || len(repo.comments[p.number]) != 1 || !strings.Contains(repo.comments[p.number][0], "`killed` label") {
+			t.Errorf("PR %d: state %s, comments %q", p.number, p.state, repo.comments[p.number])
+		}
+	}
+	// Reopened PRs are open again: the next run leaves them alone.
+	if outs, err := job.Run(ctx); err != nil || actions(outs)["sweep closed-bare"] != "" {
+		t.Errorf("second run = %+v, %v", outs, err)
 	}
 }
 

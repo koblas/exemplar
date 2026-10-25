@@ -13,9 +13,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # What a pull request touches decides which jobs it needs. Only the beads
+  # export, the user documentation (docs/ outside its Go tests, mkdocs.yml)
+  # and the top-level Markdown files are not code: a pull request touching
+  # nothing else runs commits, plus docs when the site changed. Anything
+  # else, this file included, runs every job; so does every push to main.
+  # Skipped jobs report as skipped, which GitHub counts as passing.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+      docs: ${{ steps.classify.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v5
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Fails the job (and so the run) rather than skipping on a bad diff.
+          files=$(git diff --name-only "$BASE...$HEAD")
+          code=false docs=false
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              docs/*.go) code=true ;;
+              docs/* | mkdocs.yml) docs=true ;;
+              .beads/* | README.md | CHANGELOG.md | CONTRIBUTING.md | ARCHITECTURE.md) ;;
+              *) code=true ;;
+            esac
+            echo "$f"
+          done <<< "$files"
+          # go test ./docs checks the pages against the code.
+          if [ "$code" = true ]; then docs=true; fi
+          echo "code=$code docs=$docs"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "docs=$docs" >> "$GITHUB_OUTPUT"
+
   # The plain and race runs are separate legs so they run at the same time.
   test:
     name: test (${{ matrix.mode }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -73,6 +121,8 @@ jobs:
           key: go-test-${{ matrix.mode }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   generated:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -97,6 +147,8 @@ jobs:
   # The reference pages cover the code (go test ./docs) and the site
   # builds with no broken links (make docs).
   docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -107,6 +159,8 @@ jobs:
       - run: make docs
 
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -118,6 +172,8 @@ jobs:
           version: v2.15.0
 
   vuln:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -129,6 +185,8 @@ jobs:
   # Short fuzz runs on every change; seed corpora and saved regressions in
   # testdata/fuzz already run as ordinary tests in the test job.
   fuzz:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -141,6 +199,8 @@ jobs:
   # On every change: the adversarial set in compromised mode needs no
   # model access. Live mode runs where a gateway is available.
   adversarial:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -154,6 +214,8 @@ jobs:
   # Learning-plane Python jobs (learning/): lint, tests, and the check that
   # the generated contract models match schema/.
   python:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -174,6 +236,8 @@ jobs:
   # The deploy images build (nothing is pushed; images.yml publishes them
   # from main and v* tags), and the manifests are rendered and schema-checked.
   images:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

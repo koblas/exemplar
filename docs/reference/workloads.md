@@ -61,7 +61,10 @@ The worker (control), gateway, search and learn pods read `exemplar-config` from
 |---|---|---|
 | `--launcher` | `in-process` | Where runners run: `in-process` (inside the worker pod; the quickstart overlays) or `kubernetes` (a Job per review; the core manifests) |
 | `--runner-template` | `exemplar-runner` | The PodTemplate runner Jobs are made from (`kubernetes` only) |
-| `--concurrency` | `4` | `pr_review` jobs at once per worker pod: reviews in this process, or runner Jobs in flight |
+| `--concurrency` | `4` | `pr_review` jobs at once per worker pod: reviews in this process, or runner Jobs in flight when there is no runner quota |
+| `--runner-quota` | `0` (none) | `kubernetes` only. Runners in flight across every worker pod, reviews, evaluations and playground runs together. Each pod then takes up to this many `pr_review` jobs, so one pod can fan out to the whole quota. The core manifests set `8`; the quickstart overlays set `0` |
+
+With a runner quota, a job takes one of the quota's slots (Postgres advisory locks, like the per-repo slots, so they hold across worker pods) before its runner launches and keeps it until the runner ends. When every slot is held, the job waits 20 s without using an attempt, and the worker logs `runner quota reached; waiting`. Each held slot is one more Postgres connection on the worker pod.
 
 With `kubernetes`, the worker makes a Job named `exemplar-runner-<job>-<attempt>` from `runner.yaml`'s PodTemplate, adds `run-job --job <id> --config-version <version>` to the `runner` container's args, and polls it. The Job never retries (`backoffLimit: 0`; River retries), has an `activeDeadlineSeconds` of the job's timeout plus 2 minutes (reviews 30 minutes, evaluations 50 minutes, playground runs 1 minute), and is deleted 10 minutes after it ends. Before a Job starts, every earlier Job of the same River job is deleted and waited for (up to 60 s, else the job waits 20 s and tries again), so two runners never review the same job at once. A superseded review's runner sees the cancel on its River row within 5 s and posts its notice; past 30 s its Job is deleted. A job past its timeout has its Job deleted at once. When the worker itself stops, running Jobs are left; River retries the job and the retry deletes them, so a rolling update of the worker restarts the reviews in flight.
 
@@ -99,7 +102,7 @@ Only the worker's `worker` container mounts a service account token (a projected
 | `exemplar-learn-rank` | `30 4 * * *` | Python: scores the latest cluster run into candidates. |
 | `exemplar-learn-evals` | `0 5 * * *` | Generates eval cases for new candidates, and for open owner seeds whose rule or PR changed. |
 | `exemplar-learn-compile` | `30 5 * * *` | Suspended: compiles candidates to ast-grep or Semgrep in a sandbox ([How to enable the compile CronJob](../guides/operate/compile-cronjob.md)). |
-| `exemplar-learn-propose` | `30 6 * * *` | Records owner seeds from open `exemplar-config` PRs, delivers their generated eval cases, marks merged proposals promoted, then opens draft PRs for the top mined candidates, at most 3 open per owner team. |
+| `exemplar-learn-propose` | `30 6 * * *` | Settles proposals whose PR closed (merged: promoted; `killed` label and a comment: killed; otherwise a seed is retired and a mined PR reopened), records owner seeds from open `exemplar-config` PRs, delivers their generated eval cases, then opens draft PRs for the top mined candidates, at most 3 open per owner team. |
 | `exemplar-learn-demote` | `0 7 * * *` | Nightly auto-demotion. |
 | `exemplar-learn-expiry` | `30 7 * * *` | Daily rule expiry. |
 | `exemplar-learn-teach` | `45 7 * * *` | Nightly teach-the-bot proposals. |

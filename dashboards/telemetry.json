@@ -251,6 +251,70 @@
         },
         "overrides": []
       }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "exemplar-metrics"
+      },
+      "description": "Unfinished River jobs per queue and state; snoozed jobs (waiting on the runner quota or a repo's slots) are scheduled. Every control replica reports the same value, hence max.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "id": 8,
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "exemplar-metrics"
+          },
+          "editorMode": "code",
+          "expr": "max by (queue, state) (exemplar_queue_depth)",
+          "legendFormat": "{{queue}} {{state}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Queue depth by queue and state",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "exemplar-metrics"
+      },
+      "description": "How long each queue's oldest job due to run, snoozed ones included, has waited to start. Reviews waiting long means the runner quota, a repo's slots or the cluster's capacity is the bottleneck.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "id": 9,
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "exemplar-metrics"
+          },
+          "editorMode": "code",
+          "expr": "max by (queue) (exemplar_queue_oldest_age_seconds)",
+          "legendFormat": "{{queue}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest waiting job by queue",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
     }
   ],
   "refresh": "1m",

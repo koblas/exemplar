@@ -59,10 +59,12 @@ patches:
       - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 20Gi}
       - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 2Gi}, limits: {cpu: "2", memory: 8Gi}}}
   # Reviews run inside the worker pod (no runner Jobs): args/7 is
-  # --launcher (deploy/manifests_test.go checks the index).
+  # --launcher and args/8 --runner-quota, which in-process does not take
+  # (deploy/manifests_test.go checks the indexes).
   - target: {kind: Deployment, name: exemplar-worker}
     patch: |-
       - {op: replace, path: /spec/template/spec/containers/0/args/7, value: --launcher=in-process}
+      - {op: replace, path: /spec/template/spec/containers/0/args/8, value: --runner-quota=0}
       - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 5Gi}, limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 20Gi}}}
   - target: {kind: StatefulSet, name: exemplar-postgres}
     patch: |-
