@@ -56,7 +56,7 @@ Unknown fields are rejected.
 
 ### `providers`
 
-Each list is tried in order: when a provider times out, errors or is rate limited, the call moves to the next one. Providers must be registered in `internal/llm` (`claude`, `bedrock`). The gateway builds every provider listed and skips one whose credentials are missing, as long as each stage keeps a provider that works.
+Each list is tried in order: when a provider times out, errors or is rate limited, the call moves to the next one. Providers must be registered in `internal/llm` (`claude`, `bedrock`, `openai`). `claude` and `bedrock` serve Claude (the `anthropic` family); `openai` is a second family, so a verifier or categorizer side on it is independent of a Claude generator. The gateway builds every provider listed and skips one whose credentials are missing, as long as each stage keeps a provider that works.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -69,7 +69,7 @@ Each list is tried in order: when a provider times out, errors or is rate limite
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `provider` | string, non-empty | yes | A registered provider name (`claude`, `bedrock`). |
+| `provider` | string, non-empty | yes | A registered provider name (`claude`, `bedrock`, `openai`). |
 | `model` | string, non-empty | see constraints | A single model id. |
 | `standard` | string, non-empty | see constraints | The standard-tier model id. |
 | `high` | string, non-empty | see constraints | The high-tier model id. |
@@ -78,13 +78,14 @@ Constraints:
 
 - An entry names either `model`, or both `standard` and `high`. Generator entries name a model per tier; other stages name one model.
 - Bedrock model ids take the `anthropic.` prefix; some regions need a cross-region inference profile id.
+- OpenAI model ids are `gpt-*` or the o-series (`o3`, `o4-mini`, ...).
 
 #### `providers.categorizer`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `a` | provider entry | yes | The first of the two independent providers. |
-| `b` | provider entry | yes | The second of the two independent providers. |
+| `b` | provider entry | yes | The second of the two independent providers. It must be a different model family from `a` (for example `openai` beside `claude`): with both on one family the review confidence is always 0, so nothing is auto-approved. |
 
 ### `merge_safety`
 
@@ -243,10 +244,14 @@ providers:
     # - { provider: bedrock, standard: anthropic.claude-sonnet-5-5, high: anthropic.claude-opus-5-5 }
   verifier:
     - { provider: claude,  model: claude-opus-5-5 }
+    # - { provider: openai,  model: gpt-5.5 }
     # - { provider: bedrock, model: anthropic.claude-opus-5-5 }
   light:
     - { provider: claude,  model: claude-haiku-5-5 }
     # - { provider: bedrock, model: anthropic.claude-haiku-5-5 }
+  # categorizer:
+  #   a: { provider: claude, model: claude-sonnet-5-5 }
+  #   b: { provider: openai, model: gpt-5.5 }
 verifier:
   importance_min: 0.5
   max_candidates_per_call: 8
