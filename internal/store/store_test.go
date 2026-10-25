@@ -190,3 +190,19 @@ func TestBatchStore(t *testing.T) {
 		t.Fatalf("record batch call: %v", err)
 	}
 }
+
+// A test store's pool is pinned to storetest.Conns whatever the machine's
+// CPU count, so tests that hold connections run as on CI; a test that
+// needs more asks for it.
+func TestTestStorePoolSize(t *testing.T) {
+	t.Parallel()
+	if got := storetest.New(t).Pool.Config().MaxConns; got != storetest.Conns {
+		t.Errorf("New pool = %d, want %d", got, storetest.Conns)
+	}
+	if got := storetest.NewWithConns(t, 8).Pool.Config().MaxConns; got != 8 {
+		t.Errorf("NewWithConns(8) pool = %d, want 8", got)
+	}
+	if got := storetest.NewWithConns(t, 2).Pool.Config().MaxConns; got != storetest.Conns {
+		t.Errorf("NewWithConns(2) pool = %d, want %d", got, storetest.Conns)
+	}
+}
