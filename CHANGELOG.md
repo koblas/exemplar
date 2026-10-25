@@ -6,6 +6,27 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.4.0](https://github.com/koblas/exemplar/compare/v0.3.0...v0.4.0) (2026-10-25)
+
+
+### Features
+
+* **engine:** answer find_references and path_history from the checkout without search ([dd8ff49](https://github.com/koblas/exemplar/commit/dd8ff495cdec70fd1d966fbe1ffe493c95315437))
+* **engine:** answer find_references and path_history from the checkout without search ([323b86a](https://github.com/koblas/exemplar/commit/323b86acde147ef454ae1c1fc84144653b44a819))
+* **gates:** a clean run ignores suggestion findings ([377c45f](https://github.com/koblas/exemplar/commit/377c45fa4187239d62c52099acc236c4693cb827))
+* **gates:** a clean run ignores suggestion findings ([8460455](https://github.com/koblas/exemplar/commit/8460455a19e0b9d079e41bfe38d158c7ec527419))
+* **gates:** same-family verification stops gating once the verifier is calibrated ([313c1ee](https://github.com/koblas/exemplar/commit/313c1ee2eb63c9e1ab7c79b27f2ed025b2c2238f))
+* **gates:** same-family verification stops gating once the verifier is calibrated ([1b6459b](https://github.com/koblas/exemplar/commit/1b6459beefc7ae42a9204418162a571c273efabb))
+* **pipeline:** say what a review without search did not check ([1eef231](https://github.com/koblas/exemplar/commit/1eef2316d66806ff91ce609e6b8d0ffff71956ba))
+* **pipeline:** say what a review without search did not check ([e6b95df](https://github.com/koblas/exemplar/commit/e6b95dffdbcfef31d810cf7493fb122598c8a804))
+
+
+### Bug Fixes
+
+* **engine:** turn off git's background maintenance in checkouts and fixtures ([21871f4](https://github.com/koblas/exemplar/commit/21871f4b72aaead6fff86e3aba0767870b3da90f))
+* **synth:** skip files that vanish while copying a cached fixture ([0a597db](https://github.com/koblas/exemplar/commit/0a597db1498006bd94c91928a265d88571efd72b))
+* **synth:** skip files that vanish while copying a cached fixture ([3a2d309](https://github.com/koblas/exemplar/commit/3a2d3097b73961e307eadb8d75adc0dd871babcc))
+
 ## [0.3.0](https://github.com/koblas/exemplar/compare/v0.2.2...v0.3.0) (2026-10-24)
 
 
