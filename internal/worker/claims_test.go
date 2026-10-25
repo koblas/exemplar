@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/go-github/v88/github"
@@ -58,6 +59,36 @@ func newClaims(t *testing.T, st *store.Store) *Claims {
 		t.Fatal(err)
 	}
 	return c
+}
+
+// A claim opens until its earliest token expires, by the runner's clock
+// as much as the database's: one redeemed late is refused.
+func TestClaimExpires(t *testing.T) {
+	t.Parallel()
+	wall := time.Now()
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(wall)) // never behind the database's clock
+		ctx := t.Context()
+		c := newClaims(t, storetest.New(t))
+		grant := Grant{Tokens: []GrantToken{{Repos: []string{repo}, Installation: inst, Flavor: "worker", Token: "t", ExpiresAt: time.Now().Add(10 * time.Minute)}}}
+		mint := func(id int64) string {
+			t.Helper()
+			nonce, err := c.Mint(ctx, Task{JobID: id, Attempt: 1, ConfigVersion: "cfg-test"}, grant)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return nonce
+		}
+		early, late := mint(1), mint(2)
+		time.Sleep(5 * time.Minute)
+		if _, _, err := c.Redeem(ctx, 1, early); err != nil {
+			t.Fatalf("redeem in time = %v", err)
+		}
+		time.Sleep(6 * time.Minute)
+		if _, _, err := c.Redeem(ctx, 2, late); !errors.Is(err, errClaimRefused) {
+			t.Errorf("redeem after expiry = %v", err)
+		}
+	})
 }
 
 func TestClaimsRedeemOnce(t *testing.T) {
@@ -272,7 +303,7 @@ func TestRiverDispatchWithClaims(t *testing.T) {
 	e := setup(t, repo)
 	e.w.cfg.Store = st
 	claims := newClaims(t, st)
-	runner := &Runner{Config: e.w.cfg, Snapshot: Snapshots(st, e.w.cfg.Snapshot), Claims: claims, BaseURL: e.fake.srv.URL + "/"}
+	runner := &Runner{Config: e.w.cfg, Snapshot: Snapshots(st, e.w.cfg.Snapshot), Claims: claims, BaseURL: e.fake.url, Transport: e.fake.transport}
 	runner.Config.GitHub = nil // only the claim's clients
 	minter := &fakeMinter{}
 	d, err := NewReviewDispatcher(DispatchConfig{

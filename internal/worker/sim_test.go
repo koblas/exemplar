@@ -40,7 +40,9 @@ import (
 // receiver's store, the event router (EventWorker), the review dispatcher,
 // the claims and an in-process runner by a seeded schedule of deliveries
 // and redeliveries, event jobs worked twice, Re-runs, missed dedupes,
-// model outages, two runners at once (contending for the repo's review
+// model outages, GitHub hanging past the client's timeout (then applying
+// the call late or dropping it), runners starting late (in time or past
+// the job's timeout), two runners at once (contending for the repo's review
 // slots, or reviewing at once), runners killed at GitHub writes or at their own Postgres
 // writes (on any attempt, so jobs are discarded; a hard kill is a SIGKILL,
 // which also cuts the runner off Postgres), pushes to newer heads (between runs and mid-review) and
@@ -60,18 +62,24 @@ import (
 // and ignored), black out the model, discard and abandon a job,
 // redeliver, route an event twice, land a push at each of its points,
 // kill a runner hard at a GitHub call and at each of its Postgres kill
-// points, and overlap two runs at each park point: snoozed for a full repo
-// or a busy head, or both reviewing. The seeds after 5 add what 1-5 miss.
-var simSeeds = []uint64{1, 2, 3, 4, 5, 43, 68, 120, 140, 141}
+// points, overlap two runs at each park point (snoozed for a full repo or
+// a busy head, or both reviewing), hang GitHub at each stall point (the
+// call then applied and dropped), and start a runner late, in time and
+// past its job's timeout. The seeds after 5 add what 1-5 miss.
+var simSeeds = []uint64{1, 2, 3, 4, 5, 14, 21, 57, 80, 120, 123, 141, 159, 177}
 
 // simBusySeed is the CI seed with the most chaos, replayed for
 // TestWorkerSimReproduces.
-const simBusySeed = 141
+const simBusySeed = 159
 
 // simParks are where an overlap's first runner waits while a second one
 // runs: before its check run, at the pre-post head check (after the check
 // run started) and before its post.
 var simParks = []string{"start-check", "get-pr", "post-review"}
+
+// simStalls are where GitHub hangs during a run, past the client's
+// 30-second timeout; then it applies the call late or drops it.
+var simStalls = []string{"start-check", "get-pr", "post-review", "complete-check", "list-comments"}
 
 // simSteps is how many scheduled steps a seed runs before the drain.
 const simSteps = 10
@@ -322,9 +330,14 @@ type sim struct {
 	db *simDB
 	// limit is the repo's review limit (queues.per_repo_concurrency), 1
 	// or 2 by seed.
-	limit  int
-	d      *Dispatcher[store.PRReviewArgs]
-	events *EventWorker
+	limit int
+	// lateBy delays the next runner's start (its pod pending).
+	lateBy time.Duration
+	// runCalls are the GitHub calls the last runner made (the control
+	// process's own, abandoning its job, not included). Guarded by e.fake.mu.
+	runCalls int
+	d        *Dispatcher[store.PRReviewArgs]
+	events   *EventWorker
 	// outage, while set, fails every generator call (simOutage).
 	outage *atomic.Bool
 	trace  []string
@@ -397,7 +410,7 @@ func newSim(t *testing.T, seed uint64) *sim {
 	rcfg.Store = db.st
 	s := &sim{
 		t: t, seed: seed, rnd: rand.New(rand.NewPCG(seed, 0x5eed)), e: e, st: st, river: client, claims: claims, left: map[string]int{}, outage: outage, db: db,
-		runner: &Runner{Config: rcfg, Jobs: runnerJobs, Snapshot: Snapshots(db.st, e.w.cfg.Snapshot), Claims: runnerClaims, BaseURL: e.fake.srv.URL + "/"},
+		runner: &Runner{Config: rcfg, Jobs: runnerJobs, Snapshot: Snapshots(db.st, e.w.cfg.Snapshot), Claims: runnerClaims, BaseURL: e.fake.url, Transport: e.fake.transport},
 	}
 	e.fake.intercept = s.intercept
 	s.limit = 1 + s.rnd.IntN(2)
@@ -665,9 +678,17 @@ func (s *sim) Launch(ctx context.Context, task Task) (Exit, error) {
 		})
 	}
 	s.e.fake.mu.Unlock()
+	if d := s.lateBy; d > 0 {
+		s.lateBy = 0
+		time.Sleep(d)
+	}
+	s.e.fake.mu.Lock()
+	before := s.requests
+	s.e.fake.mu.Unlock()
 	exit := s.runner.Run(ctx, task.JobID, task.ConfigVersion, task.Nonce)
 	s.e.fake.mu.Lock()
 	defer s.e.fake.mu.Unlock()
+	s.runCalls = s.requests - before
 	s.tasks, s.current = append(s.tasks, task), nil
 	if s.killed {
 		exit = Exit(137)
@@ -924,7 +945,7 @@ func (s *sim) claimJob() (*river.Job[store.PRReviewArgs], bool) {
 
 // workJob runs claimed job to its end and settles it.
 func (s *sim) workJob(job *river.Job[store.PRReviewArgs], chaos bool) {
-	ctx, row, id := s.t.Context(), job.JobRow, job.ID
+	row, id := job.JobRow, job.ID
 	var kill *simKill
 	var push *simPush
 	outage := false
@@ -941,15 +962,16 @@ func (s *sim) workJob(job *river.Job[store.PRReviewArgs], chaos bool) {
 	}
 	s.outage.Store(outage)
 	defer s.outage.Store(false)
-	// River's producer cancels the context it gave Work.
-	ctx, cancel := context.WithCancelCause(ctx)
+	ctx, cancel, timeout := s.jobContext(job)
 	defer cancel(nil)
+	defer timeout()
 	s.e.fake.mu.Lock()
 	s.killAt, s.killed = kill, false
 	s.pushAt, s.pushed, s.started, s.cancelRun = push, false, false, cancel
 	before, posts, incomplete := supersededChecks(s.e.fake), len(s.e.fake.reviews), incompleteChecks(s.e.fake)
 	s.e.fake.mu.Unlock()
 	werr := s.d.Work(ctx, job)
+	s.unstalled(ctx, job)
 	state := s.settle(row, werr)
 	at := "none"
 	switch {
@@ -986,40 +1008,24 @@ func (s *sim) overlap() {
 		return
 	}
 	at := simParks[s.rnd.IntN(len(simParks))]
-	f := s.e.fake
-	parked, resume := make(chan struct{}), make(chan struct{})
-	var armed, started atomic.Bool
-	armed.Store(true)
-	park := func(r *http.Request) {
-		route := simRoute(f, r)
-		if route == "start-check" {
-			defer started.Store(true)
-		}
-		if route != at || at == "get-pr" && !started.Load() || !armed.CompareAndSwap(true, false) {
-			return
-		}
-		close(parked)
-		<-resume
-	}
-	f.park.Store(&park)
-	defer f.park.Store(nil)
-	f.mu.Lock()
-	s.killAt, s.killed, s.pushAt, s.pushed, s.started = nil, false, nil, false, false
-	f.mu.Unlock()
-	ctx, cancel := context.WithCancelCause(s.t.Context())
+	p := s.parkAt(at)
+	defer p.disarm()
+	s.calm()
+	ctx, cancel, timeout := s.jobContext(a)
 	defer cancel(nil)
+	defer timeout()
 	done := make(chan error, 1)
 	go func() { done <- s.d.Work(ctx, a) }()
 	select {
 	case err := <-done:
-		armed.Store(false)
+		p.disarm()
 		s.logf("overlap: job %d attempt %d finished before %s -> %s", a.ID, a.Attempt, at, s.settle(a.JobRow, err))
 		return
-	case <-parked:
+	case <-p.parked:
 	}
 	b, ok := s.claimJob()
 	if !ok {
-		close(resume)
+		close(p.release)
 		s.logf("overlap: job %d parked at %s, nothing else to run -> %s", a.ID, at, s.settle(a.JobRow, <-done))
 		return
 	}
@@ -1028,8 +1034,10 @@ func (s *sim) overlap() {
 	claimsBefore = s.count(claims, b.ID)
 	berr := s.d.Work(ctx, b)
 	bstate := s.settle(b.JobRow, berr)
-	close(resume)
-	astate := s.settle(a.JobRow, <-done)
+	close(p.release)
+	aerr := <-done
+	s.unstalled(ctx, a)
+	astate := s.settle(a.JobRow, aerr)
 	s.logf("overlap: limit %d, job %d (args attempt %d) parked at %s -> %s; job %d (args attempt %d, unique %v) -> %s",
 		s.limit, a.ID, a.Args.Attempt, at, astate, b.ID, b.Args.Attempt, s.unique(b.ID), bstate)
 	var snooze *rivertype.JobSnoozeError
@@ -1040,6 +1048,147 @@ func (s *sim) overlap() {
 	}
 	if snoozed && s.count(`SELECT attempt FROM river_job WHERE id = $1`, b.ID) != b.Attempt-1 {
 		s.fatalf("snoozed job %d spent an attempt", b.ID)
+	}
+}
+
+// simPark is a request parked by parkAt.
+type simPark struct {
+	parked, release chan struct{}
+	// drop, set before release, drops the call (a dropped connection);
+	// otherwise GitHub serves it.
+	drop   atomic.Bool
+	disarm func()
+}
+
+// parkAt parks the next request at route (get-pr: the pre-post read,
+// after the check run started), before the fake takes its lock, until
+// release is closed.
+func (s *sim) parkAt(route string) *simPark {
+	f := s.e.fake
+	p := &simPark{parked: make(chan struct{}), release: make(chan struct{})}
+	var armed, started atomic.Bool
+	armed.Store(true)
+	hook := func(r *http.Request) {
+		at := simRoute(f, r)
+		if at == "start-check" {
+			defer started.Store(true)
+		}
+		if at != route || route == "get-pr" && !started.Load() || !armed.CompareAndSwap(true, false) {
+			return
+		}
+		close(p.parked)
+		<-p.release
+		if p.drop.Load() {
+			panic(http.ErrAbortHandler)
+		}
+	}
+	f.park.Store(&hook)
+	p.disarm = func() {
+		armed.Store(false)
+		f.park.Store(nil)
+	}
+	return p
+}
+
+// calm clears the run state no chaos is armed in.
+func (s *sim) calm() {
+	s.e.fake.mu.Lock()
+	defer s.e.fake.mu.Unlock()
+	s.killAt, s.killed, s.pushAt, s.pushed, s.started = nil, false, nil, false, false
+}
+
+// jobContext is the context River's executor gives Work: cancellable with
+// a cause (a remote cancel), under the job's timeout. cancel and timeout
+// must both be called.
+func (s *sim) jobContext(job *river.Job[store.PRReviewArgs]) (context.Context, context.CancelCauseFunc, context.CancelFunc) {
+	ctx, cancel := context.WithCancelCause(s.t.Context())
+	ctx, timeout := context.WithTimeout(ctx, s.d.Timeout(job))
+	return ctx, cancel, timeout
+}
+
+// unstalled fails a run that reached its job timeout with nothing set to
+// stall it: once time can move, a deadlock looks like a timeout.
+func (s *sim) unstalled(ctx context.Context, job *river.Job[store.PRReviewArgs]) {
+	s.t.Helper()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		s.fatalf("job %d attempt %d ran into its %s timeout with nothing stalling it", job.ID, job.Attempt, s.d.Timeout(job))
+	}
+}
+
+// stall is GitHub hanging at a seeded call of a run, past the client's
+// timeout, so the run gives the call up; then GitHub applies it late (a
+// post may land after the runner moved on) or drops it. The run has no
+// other chaos.
+func (s *sim) stall() {
+	s.t.Helper()
+	job, ok := s.claimJob()
+	if !ok {
+		s.logf("stall: nothing to run")
+		return
+	}
+	at := simStalls[s.rnd.IntN(len(simStalls))]
+	hang := time.Duration(1+s.rnd.IntN(10)) * time.Minute
+	drop := s.rnd.IntN(2) == 0
+	p := s.parkAt(at)
+	defer p.disarm()
+	s.calm()
+	ctx, cancel, timeout := s.jobContext(job)
+	defer cancel(nil)
+	defer timeout()
+	done := make(chan error, 1)
+	go func() { done <- s.d.Work(ctx, job) }()
+	select {
+	case err := <-done:
+		p.disarm()
+		s.logf("stall: job %d attempt %d finished before %s -> %s", job.ID, job.Attempt, at, s.settle(job.JobRow, err))
+		return
+	case <-p.parked:
+	}
+	time.Sleep(hang)
+	p.drop.Store(drop)
+	close(p.release)
+	err := <-done
+	// The late call has landed or dropped before anything else runs.
+	s.e.fake.transport.running.Wait()
+	s.unstalled(ctx, job)
+	then := "applied"
+	if drop {
+		then = "dropped"
+	}
+	s.logf("stall: job %d attempt %d: GitHub hung %s at %s, then %s -> %s", job.ID, job.Attempt, hang, at, then, s.settle(job.JobRow, err))
+}
+
+// late is a runner that starts late, its pod pending: in time, or past
+// the job's timeout, when River has given up on the run and the runner
+// must do nothing.
+func (s *sim) late() {
+	s.t.Helper()
+	job, ok := s.claimJob()
+	if !ok {
+		s.logf("late: nothing to run")
+		return
+	}
+	by, past := 5*time.Minute, s.rnd.IntN(2) == 0
+	if past {
+		by = s.d.Timeout(job) + time.Duration(1+s.rnd.IntN(5))*time.Minute
+	}
+	s.calm()
+	ctx, cancel, timeout := s.jobContext(job)
+	defer cancel(nil)
+	defer timeout()
+	f := s.e.fake
+	f.mu.Lock()
+	s.runCalls = 0
+	f.mu.Unlock()
+	s.lateBy = by
+	err := s.d.Work(ctx, job)
+	f.mu.Lock()
+	calls := s.runCalls
+	f.mu.Unlock()
+	state := s.settle(job.JobRow, err)
+	s.logf("late: job %d attempt %d, runner %s late -> %s, the runner made %d GitHub calls", job.ID, job.Attempt, by, state, calls)
+	if timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded); timedOut != past || past && calls != 0 {
+		s.fatalf("runner %s late (timeout %s): timed out %v, %d GitHub calls", by, s.d.Timeout(job), timedOut, calls)
 	}
 }
 
@@ -1266,6 +1415,11 @@ func (s *sim) check() {
 			s.fatalf("review posted %d times: %s", n, k)
 		}
 	}
+	// A claim lives at least as long as its job may run: a runner River
+	// still waits for can always redeem it.
+	if n := s.count(`SELECT count(*) FROM runner_claims WHERE expires_at < created_at + make_interval(secs => $1)`, ReviewTimeout.Seconds()); n != 0 {
+		s.fatalf("%d claims expire before their job's timeout", n)
+	}
 	// Every claim was redeemed by its runner and released by its
 	// dispatcher: no tokens are left, and no nonce opens again.
 	if n := s.count(`SELECT count(*) FROM runner_claims WHERE tokens IS NOT NULL`); n != 0 {
@@ -1298,10 +1452,14 @@ func (s *sim) run() {
 			s.duplicate()
 		case p < 46:
 			s.push()
-		case p < 80:
+		case p < 74:
 			s.work(true)
-		case p < 88:
+		case p < 80:
 			s.overlap()
+		case p < 85:
+			s.stall()
+		case p < 88:
+			s.late()
 		default:
 			s.replay()
 		}
@@ -1360,7 +1518,10 @@ func TestWorkerSimReproduces(t *testing.T) {
 
 // simulate runs seed in a synctest bubble and returns its trace. The
 // bubble's clock starts in 2000; it is slept to the wall clock first, so
-// claim expiry (set from time.Now, checked by Postgres now()) holds.
+// it never runs behind Postgres's: claim expiry is set from time.Now and
+// checked against the later of the two clocks. GitHub is served in
+// memory, so the clock moves whenever every goroutine waits (a stall, a
+// late runner, a client or job timeout).
 func simulate(t *testing.T, seed uint64) []string {
 	t.Helper()
 	wall := time.Now()
