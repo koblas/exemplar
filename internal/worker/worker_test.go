@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,11 +23,13 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
+	"github.com/koblas/exemplar/internal/buglane"
 	"github.com/koblas/exemplar/internal/compiled"
 	"github.com/koblas/exemplar/internal/config"
 	"github.com/koblas/exemplar/internal/engine"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/redact"
+	"github.com/koblas/exemplar/internal/schema"
 	"github.com/koblas/exemplar/internal/store"
 	"github.com/koblas/exemplar/internal/store/storetest"
 	"github.com/koblas/exemplar/internal/synth"
@@ -720,5 +723,51 @@ func TestReviewCodeScanningDuplicate(t *testing.T) {
 	out, err := e.w.Review(t.Context(), args(e))
 	if err != nil || out.Posted != 0 || out.LinterDuplicates != 1 {
 		t.Fatalf("outcome = %+v, %v", out, err)
+	}
+}
+
+// Without exemplar-search, local context answers find_references from the
+// checkout: on a repository with no context.extra_repos the bug lane's
+// contract class runs, so the bug lane is covered and nothing is degraded;
+// with extra_repos it is skipped, and the uncovered bug lane keeps the PR
+// from auto-approval.
+func TestReviewWithoutSearchRunsContract(t *testing.T) {
+	t.Parallel()
+	for name, extra := range map[string][]string{"single repository": nil, "extra_repos": {"acme/lib"}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			st := storetest.New(t)
+			e := setup(t, repo)
+			e.w.cfg.Store = st
+			e.w.cfg.Engine.WithLocalContext(nil)
+			snap, _ := e.w.cfg.Snapshot(t.Context())
+			cp := *snap
+			cp.Global.BugLane.Classes = map[string]schema.BugLaneFlag{buglane.Contract: {Enabled: true}}
+			rc := cp.Repos[repo]
+			rc.BugLane = &schema.RepoBugLane{CriticalPaths: []string{"main.go"}}
+			if extra != nil {
+				rc.Context = &schema.RepoContext{ExtraRepos: extra}
+			}
+			cp.Repos = maps.Clone(cp.Repos)
+			cp.Repos[repo] = rc
+			e.w.cfg.Snapshot = func(context.Context) (*config.Snapshot, error) { return &cp, nil }
+			if _, err := e.w.Review(t.Context(), args(e)); err != nil {
+				t.Fatal(err)
+			}
+			// The skip's detail naming the repositories is checked in the engine.
+			var status string
+			var degraded, covered bool
+			if err := st.Pool.QueryRow(t.Context(), `SELECT rr.status, d.stage1->'input'->>'Degraded' = 'true', d.stage1->'input'->>'BugLaneCovered' = 'true'
+				FROM rule_runs rr JOIN reviews r ON r.id = rr.review_id JOIN approval_decisions d ON d.review_id = r.id
+				WHERE r.repo = $1 AND rr.rule_id = $2`, repo, buglane.Contract).Scan(&status, &degraded, &covered); err != nil {
+				t.Fatal(err)
+			}
+			if extra == nil && (status != "ok" || degraded || !covered) {
+				t.Errorf("single repository: contract %s, degraded %v, bug lane covered %v", status, degraded, covered)
+			}
+			if extra != nil && (status != "degraded_skip" || covered) {
+				t.Errorf("extra_repos: contract %s, bug lane covered %v", status, covered)
+			}
+		})
 	}
 }

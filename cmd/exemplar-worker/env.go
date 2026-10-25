@@ -92,7 +92,14 @@ func (e *workerEnv) workerConfig(st *store.Store, workDir string, github worker.
 		}
 		eng.WithReferences(search).WithPathHistory(hist)
 	} else {
-		log.Warn("EXEMPLAR_SEARCH_URL not set: agents get no find_references or path_history, and bug.contract is skipped")
+		// No search volume: find_references and path_history answer from each
+		// review's own checkout, incidents and reverts from path_events.
+		events, err := pathhistory.New(st, nil)
+		if err != nil {
+			return worker.Config{}, fmt.Errorf("create path history: %w", err)
+		}
+		eng.WithLocalContext(events)
+		log.Warn("EXEMPLAR_SEARCH_URL not set: find_references and path_history answer from each review's checkout; other repositories are not searched")
 	}
 
 	// Mode eval and the playground run rule bodies nobody merged: cap

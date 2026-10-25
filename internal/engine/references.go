@@ -7,9 +7,11 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/koblas/exemplar/internal/search/api"
 	"github.com/koblas/exemplar/internal/search/index"
+	"github.com/koblas/exemplar/internal/search/mirror"
 )
 
 // References answers the find_references tool from exemplar-search
@@ -37,10 +39,15 @@ type searchPin struct {
 	err error
 }
 
-// pinSearch pins p's review to the repo's current search snapshot.
+// pinSearch pins p's review to the repo's current search snapshot, or,
+// without exemplar-search, to its own checkout when local context is on.
 func (e *Engine) pinSearch(ctx context.Context, p *Prepared) {
+	p.local = nil
 	if e.refs == nil {
 		p.search = nil
+		if e.local && p.Workspace != nil {
+			p.local = &localContext{ws: p.Workspace}
+		}
 		return
 	}
 	st, err := e.refs.SnapshotStatus(ctx, p.PR.Repo, p.PR.Repo)
@@ -48,8 +55,16 @@ func (e *Engine) pinSearch(ctx context.Context, p *Prepared) {
 }
 
 // searchUsable reports whether find_references can be offered, and why not.
-func (p *Prepared) searchUsable() (bool, string) {
+// Answered from the checkout, it covers this repository only: enough for
+// the contract class unless the repo names context.extra_repos, whose
+// callers no one searched.
+func (p *Prepared) searchUsable(forContract bool) (bool, string) {
 	switch {
+	case p.local != nil:
+		if extra := p.extraRepos(); forContract && len(extra) > 0 {
+			return false, "exemplar-search is not configured; not searched: " + strings.Join(extra, ", ")
+		}
+		return true, ""
 	case p.search == nil:
 		return false, "exemplar-search is not configured"
 	case p.search.err != nil:
@@ -61,11 +76,40 @@ func (p *Prepared) searchUsable() (bool, string) {
 // toolbox returns an agent's tools for p.
 func (e *Engine) toolbox(p *Prepared) *toolbox {
 	tb := newToolbox(p, e.scanner, e.history)
-	if ok, _ := p.searchUsable(); ok {
+	if p.local != nil {
+		tb.localRefs = true
+		tb.history = e.localEvents.WithCommits(p.local)
+		return tb
+	}
+	if ok, _ := p.searchUsable(false); ok {
 		tb.refs, tb.pin = e.refs, p.search
 		tb.overlay, tb.touched = p.Files, p.Touched()
 	}
 	return tb
+}
+
+func (p *Prepared) extraRepos() []string {
+	if p.Effective == nil || p.Effective.RepoConfig.Context == nil {
+		return nil
+	}
+	return p.Effective.RepoConfig.Context.ExtraRepos
+}
+
+// localContext is a review's checkout as the source of path_history
+// commits: deepened once, on the first request.
+type localContext struct {
+	ws   *Workspace
+	once sync.Once
+}
+
+// Commits implements pathhistory.Commits.
+func (l *localContext) Commits(ctx context.Context, _, rev, path string, n int) ([]mirror.Commit, error) {
+	l.once.Do(func() { _ = l.ws.Deepen(ctx, LocalHistoryDepth) }) // a refusal leaves the history there is
+	commits, err := l.ws.Log(ctx, rev, path, n)
+	if err != nil {
+		return nil, fmt.Errorf("engine: local history: %w", err)
+	}
+	return commits, nil
 }
 
 var findReferencesDef = toolDef{

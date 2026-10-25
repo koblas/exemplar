@@ -13,6 +13,7 @@ import (
 
 	"github.com/koblas/exemplar/internal/gitexec"
 	"github.com/koblas/exemplar/internal/scope"
+	"github.com/koblas/exemplar/internal/search/mirror"
 )
 
 // gitTimeout bounds each git command in a workspace.
@@ -138,6 +139,33 @@ func (ws *Workspace) git(ctx context.Context, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("workspace: %w", err)
 	}
 	return out, nil
+}
+
+// LocalHistoryDepth is how far Deepen extends the checkout's history.
+const LocalHistoryDepth = 200
+
+// Deepen extends the history of the base commit by n commits (trees and
+// commits only), for path_history without exemplar-search. It fails on a
+// remote that refuses fetching by SHA; the log then reads what is there.
+func (ws *Workspace) Deepen(ctx context.Context, n int) error {
+	_, err := ws.git(ctx, "fetch", "-q", "--filter=blob:none", "--deepen="+strconv.Itoa(n), "origin", ws.BaseSHA)
+	return err
+}
+
+// Log lists commits touching path as of rev, newest first, at most n
+// (mirror.MaxLog), from the checkout's own history.
+func (ws *Workspace) Log(ctx context.Context, rev, path string, n int) ([]mirror.Commit, error) {
+	if !isHexSHA(rev) {
+		return nil, fmt.Errorf("%w commit %q", errInvalidGitArg, rev)
+	}
+	if err := mirror.CleanPath(path); err != nil {
+		return nil, fmt.Errorf("%w path %q: %w", errInvalidGitArg, path, err)
+	}
+	out, err := ws.git(ctx, mirror.LogArgs(rev, path, n)...)
+	if err != nil {
+		return nil, err
+	}
+	return mirror.ParseLog(out), nil
 }
 
 func isHexSHA(s string) bool {

@@ -69,6 +69,9 @@ type toolbox struct {
 	// not configured or unreachable, in which case it is not offered.
 	refs References
 	pin  *searchPin
+	// localRefs answers find_references from the checkout instead
+	// (exemplar-search not configured).
+	localRefs bool
 	// overlay are the PR's reviewable files, searched at the head; touched
 	// are every path it touches, whose index hits are stale.
 	overlay, touched []string
@@ -110,7 +113,7 @@ func (t *toolbox) defs() []toolDef {
 	if t.history != nil {
 		defs = append(defs, pathHistoryDef)
 	}
-	if t.refs != nil {
+	if t.refs != nil || t.localRefs {
 		defs = append(defs, findReferencesDef)
 	}
 	return defs
@@ -210,11 +213,14 @@ func (t *toolbox) run(ctx context.Context, name string, input json.RawMessage) (
 			out = pathhistory.Format(res)
 		}
 	case "find_references":
-		if t.refs == nil {
+		switch {
+		case t.localRefs:
+			out, err = t.localReferences(ctx, in.Name, in.DefinedIn)
+		case t.refs != nil:
+			out, err = t.findReferences(ctx, in.Name, in.DefinedIn)
+		default:
 			err = fmt.Errorf("%w %q", errUnknownTool, name)
-			break
 		}
-		out, err = t.findReferences(ctx, in.Name, in.DefinedIn)
 		in.Path = ""
 	default:
 		err = fmt.Errorf("%w %q", errUnknownTool, name)

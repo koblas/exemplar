@@ -336,10 +336,21 @@ func (m *Manager) Log(ctx context.Context, repo, commit, p string, n int) ([]Com
 	if err != nil {
 		return nil, err
 	}
-	out, err := m.git(ctx, dir, "log", "--no-merges", "-n"+strconv.Itoa(n), "--format=%H%x1f%cI%x1f%s", sha, "--", p)
+	out, err := m.git(ctx, dir, LogArgs(sha, p, n)...)
 	if err != nil {
 		return nil, err
 	}
+	return ParseLog(out), nil
+}
+
+// LogArgs are the git arguments of a path's log as of commit, newest first,
+// in the form ParseLog reads. Callers check commit and p first.
+func LogArgs(commit, p string, n int) []string {
+	return []string{"log", "--no-merges", "-n" + strconv.Itoa(min(max(n, 1), MaxLog)), "--format=%H%x1f%cI%x1f%s", commit, "--", p}
+}
+
+// ParseLog reads LogArgs' output; subjects are capped.
+func ParseLog(out []byte) []Commit {
 	commits := []Commit{}
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		parts := strings.SplitN(line, "\x1f", 3)
@@ -356,5 +367,5 @@ func (m *Manager) Log(ctx context.Context, repo, commit, p string, n int) ([]Com
 		}
 		commits = append(commits, Commit{SHA: parts[0], At: at, Subject: subject})
 	}
-	return commits, nil
+	return commits
 }

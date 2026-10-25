@@ -117,11 +117,11 @@ func (e *Engine) runBug(ctx context.Context, p *Prepared, c buglane.Class, meta 
 	if c.NeedsReferences {
 		// This class is skipped whenever search cannot answer
 		// find_references fully; a skip blocks auto-approve.
-		if ok, why := p.searchUsable(); !ok {
+		if ok, why := p.searchUsable(true); !ok {
 			ar.run.Status, ar.run.Detail = RunDegradedSkip, why
 			return ar
 		}
-		if p.search.degraded {
+		if p.search != nil && p.search.degraded {
 			ar.run.Status, ar.run.Detail = RunDegradedSkip, "exemplar-search is in degraded mode"
 			return ar
 		}
