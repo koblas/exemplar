@@ -13,14 +13,17 @@ import (
 	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/gh"
 	"github.com/koblas/exemplar/internal/learn/propose"
+	"github.com/koblas/exemplar/internal/learn/seeds"
 	"github.com/koblas/exemplar/internal/redact"
 	"github.com/koblas/exemplar/internal/store"
 	"github.com/koblas/exemplar/internal/telemetry"
 )
 
-// runPropose opens draft PRs in exemplar-config for the top candidates.
+// runPropose opens draft PRs in exemplar-config for the top candidates,
+// after recording owner-written seeds from open config PRs, delivering
+// their generated eval cases and marking merged proposals promoted.
 // --dry-run builds and validates the drafts and prints them without any
-// GitHub access.
+// GitHub access (and skips the seeds).
 func runPropose(args []string) error {
 	fs := flag.NewFlagSet("propose", flag.ContinueOnError)
 	dryRun := fs.Bool("dry-run", false, "build and print drafts; write nothing")
@@ -57,8 +60,19 @@ func runPropose(args []string) error {
 
 	var repo propose.Repo
 	if !*dryRun {
-		if repo, err = configRepo(ctx); err != nil {
+		cfg, err := configRepo(ctx)
+		if err != nil {
 			return err
+		}
+		repo = cfg
+		// Owner-written seeds first: the sweep's promotions free the
+		// throttle the writer then honours.
+		souts, err := (&seeds.Job{Store: st, Repo: cfg, Scanner: sc, Log: log}).Run(ctx)
+		for _, o := range souts {
+			printJSON(o)
+		}
+		if err != nil {
+			return fmt.Errorf("run seeds: %w", err)
 		}
 	}
 	w := propose.New(propose.Config{MaxOpenPerOwner: *maxOpen, MaxPerRun: *maxRun, Logger: log}, st, repo, sc)

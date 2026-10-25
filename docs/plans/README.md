@@ -65,7 +65,8 @@ Waiting on outside inputs: work tracked in beads — see epic exemplar-bnt.
 - [`/exemplar try`](phase-0.md#phase-1-head-start-exemplar-try-2026-10-13);
 - [eval generation](phase-0.md#phase-1-head-start-eval-generation-2026-10-12) and [eval CI](phase-0.md#phase-1-head-start-eval-ci-2026-10-13);
 - [export approval](phase-0.md#phase-1-head-start-export-approval-and-summary-lint-2026-10-13);
-- [verifier calibration](phase-0.md#phase-1-head-start-verifier-calibration-2026-10-13).
+- [verifier calibration](phase-0.md#phase-1-head-start-verifier-calibration-2026-10-13);
+- owner-written seeds (FR-L1.8, D1.1) with generated eval cases and promotion on merge (beads `exemplar-wlg.2`).
 
 **Not met:** the exit criteria (≥ 30 active rules, extractor in band, ≥ 15% compiled), which need mined data.
 

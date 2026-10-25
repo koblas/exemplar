@@ -46,6 +46,7 @@ For the team that owns rules in `exemplar-config`.
 - [How to test a rule before merging](rules/test-a-rule.md): `exemplar try`, the playground, local evals.
 - [How to set up config CI](rules/config-ci.md): the variables and secrets each workflow job needs.
 - [How to review mined candidates](rules/review-candidates.md): the candidates page and proposed PRs.
+- [How to seed a rule by hand](rules/seed-a-rule.md): a rule you write, through the same candidate path.
 - [How to adjudicate feedback](rules/adjudicate.md): uphold, overturn, teach-the-bot proposals, the digest.
 
 ## PR authors

@@ -256,9 +256,54 @@ func TestPropose(t *testing.T) {
 	if !strings.Contains(got, "status: candidate") || strings.Contains(got, "status: active") || repo.drafts != 1 || repo.merged != 0 {
 		t.Errorf("new rule file = %q (drafts %d, merged %d)", got, repo.drafts, repo.merged)
 	}
+	// The new rule is an owner-written seed, pr_open on its draft PR.
+	seeds := func() map[string]string {
+		t.Helper()
+		rows, err := st.Pool.Query(ctx, `SELECT rule_id, status || ' ' || seed_author || ' ' || config_pr_url || ' ' || rule_path
+			FROM candidates WHERE source_kind = 'owner_seed'`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		out := map[string]string{}
+		for rows.Next() {
+			var id, v string
+			if err := rows.Scan(&id, &v); err != nil {
+				t.Fatal(err)
+			}
+			out[id] = v
+		}
+		return out
+	}
+	want := "pr_open alice " + repo.prs[0] + " rules/security/no-raw-sql-format.yaml"
+	if got := seeds(); len(got) != 1 || got["no-raw-sql-format"] != want {
+		t.Errorf("seeds = %v, want %q", got, want)
+	}
+	// A retried action that finds its PR already open (the seed was not
+	// recorded) records the seed on that PR.
+	if _, err := st.Pool.Exec(ctx, `DELETE FROM candidates WHERE source_kind = 'owner_seed'`); err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.CreateOwnerAction(ctx, queries.CreateOwnerActionParams{Action: ProposeRule, Target: itoa(run), Actor: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	retried := "https://github.com/acme/exemplar-config/pull/exemplar/owner/propose/no-raw-sql-format/" + itoa(id)
+	repo.prs = append(repo.prs, retried)
+	if o, err := r.Run(ctx, snap, id); err != nil || o.Result != "the draft PR is open" {
+		t.Errorf("retry = %+v, %v", o, err)
+	}
+	if got := seeds(); len(got) != 1 || !strings.HasPrefix(got["no-raw-sql-format"], "pr_open alice "+retried+" ") {
+		t.Errorf("seeds after retry = %v", got)
+	}
+	// Saved again from another try while that PR is open: refused.
+	propose("same new rule again", "alice", try("alice", fresh), StatusRefused, "already a candidate on "+retried)
 	edited := strings.Replace(string(example), "severity: blocking", "severity: important", 1)
 	propose("edit by a stranger", "alice", try("alice", edited), StatusRefused, "only @security/appsec")
 	propose("edit by the owner", "sam", try("sam", edited), StatusDone, "draft PR opened")
+	if got := seeds(); len(got) != 1 {
+		t.Errorf("an edit of an existing rule became a seed: %v", got)
+	}
 	propose("unchanged", "sam", try("sam", string(example)), StatusRefused, "the same as")
 	propose("invalid", "alice", try("alice", "id: x\n"), StatusRefused, "not valid")
 }

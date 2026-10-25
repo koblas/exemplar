@@ -299,3 +299,45 @@ func writeJSON(w http.ResponseWriter, v any) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
+
+func TestConfigRepoOpenPRs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/acme/exemplar-config/pulls":
+			if r.URL.Query().Get("state") != "open" {
+				http.Error(w, "want open PRs", http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, []map[string]any{
+				{
+					"number": 3, "html_url": "u3", "user": map[string]any{"login": "dana", "type": "User"},
+					"head": map[string]any{"ref": "seed", "sha": "h3", "repo": map[string]any{"full_name": "acme/exemplar-config"}},
+				},
+				{
+					"number": 4, "html_url": "u4", "user": map[string]any{"login": "exemplar[bot]", "type": "Bot"},
+					"head": map[string]any{"ref": "fork-branch", "sha": "h4", "repo": map[string]any{"full_name": "mallory/exemplar-config"}},
+				},
+			})
+		case "/repos/acme/exemplar-config/pulls/3/files":
+			writeJSON(w, []map[string]any{{"filename": "rules/a.yaml", "status": "added"}, {"filename": "rules/b.yaml", "status": "modified"}})
+		case "/repos/acme/exemplar-config/pulls/4/files":
+			writeJSON(w, []map[string]any{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	base := srv.URL + "/"
+	client, _ := github.NewClient(github.WithURLs(&base, &base), github.WithAuthToken("ghs_cfg"))
+	r, _ := NewConfigRepo(client, "acme/exemplar-config", "exemplar[bot]")
+	prs, err := r.OpenPRs(t.Context())
+	if err != nil || len(prs) != 2 {
+		t.Fatalf("OpenPRs = %+v, %v", prs, err)
+	}
+	if p := prs[0]; p.Fork || p.Bot || p.HeadRef != "seed" || p.HeadSHA != "h3" || p.Author != "dana" || len(p.Added) != 1 || p.Added[0] != "rules/a.yaml" {
+		t.Errorf("same-repo PR = %+v", p)
+	}
+	if p := prs[1]; !p.Fork || !p.Bot || len(p.Added) != 0 {
+		t.Errorf("fork PR = %+v", p)
+	}
+}

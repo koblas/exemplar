@@ -133,6 +133,7 @@ nav:
           - How to test a rule before merging: guides/rules/test-a-rule.md
           - How to set up config CI: guides/rules/config-ci.md
           - How to review mined candidates: guides/rules/review-candidates.md
+          - How to seed a rule by hand: guides/rules/seed-a-rule.md
           - How to adjudicate feedback: guides/rules/adjudicate.md
       - PR authors:
           - How to respond to a finding: guides/authors/respond-to-a-finding.md

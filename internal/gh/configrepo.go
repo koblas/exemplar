@@ -310,3 +310,68 @@ func (r *ConfigRepo) CloseIssue(ctx context.Context, number int, comment string)
 	}
 	return nil
 }
+
+// ConfigPR is an open PR in exemplar-config and the files it adds.
+type ConfigPR struct {
+	Number int
+	URL    string
+	Author string
+	// Bot is an author account of type Bot (the app's own PRs among them).
+	Bot     bool
+	HeadRef string
+	HeadSHA string
+	// Fork is a head branch outside exemplar-config (or a deleted fork).
+	Fork  bool
+	Added []string
+}
+
+// OpenPRs returns up to 300 open PRs, most recently updated first, each
+// with the files it adds (at most 300 per PR).
+func (r *ConfigRepo) OpenPRs(ctx context.Context) ([]ConfigPR, error) {
+	var out []ConfigPR
+	opts := &github.PullRequestListOptions{State: "open", Sort: "updated", Direction: "desc", PerPage: 100}
+	for range 3 {
+		page, resp, err := r.gh.PullRequests.List(ctx, r.owner, r.repo, opts)
+		if err != nil {
+			return nil, restErr(err, "open PRs of "+r.owner+"/"+r.repo)
+		}
+		for _, p := range page {
+			head := p.GetHead().GetRepo().GetFullName()
+			pr := ConfigPR{
+				Number: p.GetNumber(), URL: p.GetHTMLURL(), Author: p.GetUser().GetLogin(),
+				Bot: strings.EqualFold(p.GetUser().GetType(), "Bot"), HeadRef: p.GetHead().GetRef(), HeadSHA: p.GetHead().GetSHA(),
+				Fork: !strings.EqualFold(head, r.owner+"/"+r.repo),
+			}
+			if pr.Added, err = r.addedFiles(ctx, pr.Number); err != nil {
+				return nil, err
+			}
+			out = append(out, pr)
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return out, nil
+}
+
+func (r *ConfigRepo) addedFiles(ctx context.Context, number int) ([]string, error) {
+	var out []string
+	opts := &github.ListOptions{PerPage: 100}
+	for range 3 {
+		fs, resp, err := r.gh.PullRequests.ListFiles(ctx, r.owner, r.repo, number, opts)
+		if err != nil {
+			return nil, restErr(err, fmt.Sprintf("files of PR #%d", number))
+		}
+		for _, f := range fs {
+			if f.GetStatus() == "added" {
+				out = append(out, f.GetFilename())
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return out, nil
+}

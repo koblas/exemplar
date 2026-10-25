@@ -97,9 +97,9 @@ Only the worker's `worker` container mounts a service account token (a projected
 | `exemplar-learn-cluster` | `30 3 * * *` | Python: clusters embedded extractions. |
 | `exemplar-learn-calibrate` | `15 4 * * *` | Verifier calibration (and the categorizer's, when configured) through the deployed providers, recorded in `calibration_results`; skipped when the same verifier inputs already passed. A passing verifier result lets same-family findings through the auto-approve gate. |
 | `exemplar-learn-rank` | `30 4 * * *` | Python: scores the latest cluster run into candidates. |
-| `exemplar-learn-evals` | `0 5 * * *` | Generates eval cases for new candidates. |
+| `exemplar-learn-evals` | `0 5 * * *` | Generates eval cases for new candidates, and for open owner seeds whose rule or PR changed. |
 | `exemplar-learn-compile` | `30 5 * * *` | Suspended: compiles candidates to ast-grep or Semgrep in a sandbox ([How to enable the compile CronJob](../guides/operate/compile-cronjob.md)). |
-| `exemplar-learn-propose` | `30 6 * * *` | Opens draft PRs for the top candidates, at most 3 open per owner team. |
+| `exemplar-learn-propose` | `30 6 * * *` | Records owner seeds from open `exemplar-config` PRs, delivers their generated eval cases, marks merged proposals promoted, then opens draft PRs for the top mined candidates, at most 3 open per owner team. |
 | `exemplar-learn-demote` | `0 7 * * *` | Nightly auto-demotion. |
 | `exemplar-learn-expiry` | `30 7 * * *` | Daily rule expiry. |
 | `exemplar-learn-teach` | `45 7 * * *` | Nightly teach-the-bot proposals. |

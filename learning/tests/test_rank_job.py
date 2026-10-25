@@ -110,6 +110,14 @@ def test_rank_across_runs(database: str) -> None:
         conn.execute(
             "UPDATE candidates SET status = 'pr_open', config_pr_url = 'https://x/pr/1' WHERE title = 'Open'"
         )
+        # An owner seed has no cluster: the rank job neither retires nor
+        # matches it, even as 'new'.
+        conn.execute(
+            """INSERT INTO candidates (source_kind, ext, title, description, cluster_size, distinct_reviewers, score,
+                                       score_detail, owner, status, rule_id, rule_path, rule_yaml)
+               VALUES ('owner_seed', '*', 'Seed', 'd', 0, 0, 0, '{}', '@svc', 'new', 'seed-1',
+                       'rules/reliability/seed-1.yaml', 'id: seed-1')"""
+        )
         conn.commit()
         first = _candidates(conn)
 
@@ -136,8 +144,9 @@ def test_rank_across_runs(database: str) -> None:
         # Same candidate rows, no duplicates.
         assert cands["Timeouts v2"][0] == first["Timeouts"][0]
         assert cands["Timeouts v2"][2] == 4 and cands["Timeouts v2"][5] == [1, 2, 3, 11]
-        # Logging's cluster is gone: retired.
+        # Logging's cluster is gone: retired. The seed is untouched.
         assert cands["Logging"][1] == "retired"
+        assert cands["Seed"][1] == "new"
         # Killed stays killed, untouched (title and sources unchanged).
         assert "Killed v2" not in cands and cands["Killed"][1] == "killed"
         # Open PR: rescored, but title and sources frozen.

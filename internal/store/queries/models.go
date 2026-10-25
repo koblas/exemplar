@@ -31,22 +31,30 @@ type CalibrationResult struct {
 }
 
 type Candidate struct {
-	ID                int64
-	Ext               string
-	Title             string
-	Description       string
-	ClusterSize       int32
-	DistinctReviewers int32
-	Score             float32
-	ScoreDetail       []byte
-	Owner             string
-	Status            string
-	ConfigPrUrl       *string
-	KillReason        *string
-	ClusterHash       string
-	LastRunID         int64
-	CreatedAt         pgtype.Timestamptz
-	UpdatedAt         pgtype.Timestamptz
+	ID                   int64
+	Ext                  string
+	Title                string
+	Description          string
+	ClusterSize          int32
+	DistinctReviewers    int32
+	Score                float32
+	ScoreDetail          []byte
+	Owner                string
+	Status               string
+	ConfigPrUrl          *string
+	KillReason           *string
+	ClusterHash          *string
+	LastRunID            *int64
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+	SourceKind           string
+	RuleID               *string
+	RulePath             *string
+	RuleYaml             *string
+	SeedAuthor           *string
+	ConfigPrBranch       *string
+	SeedEvalsAt          pgtype.Timestamptz
+	SeedCasesDeliveredAt pgtype.Timestamptz
 }
 
 type CandidateEvalCase struct {

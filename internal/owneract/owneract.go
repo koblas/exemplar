@@ -15,7 +15,8 @@
 //   - propose_rule: the person who ran a playground try saves its rule as
 //     a draft config PR: a new rule file as a candidate (anyone), or the
 //     edited file of an existing global rule (its owners or the platform
-//     team). Draft PRs are never merged here; owners review them.
+//     team). Draft PRs are never merged here; owners review them. A new
+//     rule is an owner-written seed and is recorded as a candidate.
 package owneract
 
 import (
@@ -31,6 +32,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/koblas/exemplar/internal/config"
+	"github.com/koblas/exemplar/internal/learn/seeds"
 	"github.com/koblas/exemplar/internal/schema"
 	"github.com/koblas/exemplar/internal/store/queries"
 )
@@ -70,6 +72,8 @@ type Store interface {
 	GetCandidateOwner(ctx context.Context, id int64) (queries.GetCandidateOwnerRow, error)
 	KillCandidate(ctx context.Context, arg queries.KillCandidateParams) (int64, error)
 	GetPlaygroundRun(ctx context.Context, id int64) (queries.PlaygroundRun, error)
+	OpenSeed(ctx context.Context, ruleID *string) (string, error)
+	UpsertSeed(ctx context.Context, arg queries.UpsertSeedParams) (queries.UpsertSeedRow, error)
 }
 
 // Runner runs actions.
@@ -407,10 +411,32 @@ func (r Runner) propose(ctx context.Context, snap *config.Snapshot, a queries.Ow
 		return Outcome{}, fmt.Errorf("open config repo: %w", err)
 	}
 	branch := fmt.Sprintf("exemplar/owner/propose/%s/%d", strings.Trim(slugRE.ReplaceAllString(rule.ID, "-"), "-"), a.ID)
+	// A new rule is an owner-written seed (spec §8.1): recorded as a
+	// candidate on its PR, also when a retry finds the PR already open.
+	seed := func(url string) error {
+		if existing != nil {
+			return nil
+		}
+		if _, _, err := seeds.Upsert(ctx, r.Store, rule, content, path, url, branch, a.Actor); err != nil {
+			return fmt.Errorf("record seed: %w", err)
+		}
+		return nil
+	}
 	if url, found, err := repo.FindPR(ctx, branch); err != nil {
 		return Outcome{}, fmt.Errorf("find PR for %s: %w", branch, err)
 	} else if found {
+		if err := seed(url); err != nil {
+			return Outcome{}, err
+		}
 		return Outcome{Status: StatusDone, Result: "the draft PR is open", URL: url}, nil
+	}
+	if existing == nil {
+		switch url, err := r.Store.OpenSeed(ctx, &rule.ID); {
+		case err == nil:
+			return Outcome{}, refused{fmt.Sprintf("%s is already a candidate on %s; change it there or give the draft a new id", rule.ID, url)}
+		case !errors.Is(err, pgx.ErrNoRows):
+			return Outcome{}, fmt.Errorf("find open seed %s: %w", rule.ID, err)
+		}
 	}
 	base, sha, err := repo.DefaultBranch(ctx)
 	if err != nil {
@@ -437,9 +463,16 @@ func (r Runner) propose(ctx context.Context, snap *config.Snapshot, a queries.Ow
 		body += "\nReason: " + strings.TrimSpace(a.Reason) + "\n"
 	}
 	body += "\nIt needs eval cases (`evals/" + rule.ID + "/cases.yaml`) and the owners' review before it can merge.\n"
+	if existing == nil {
+		body += "\nAs a new rule it is an owner-written seed: Exemplar generates eval cases for it and commits them here " +
+			"unless the PR has its own.\n"
+	}
 	url, err := repo.OpenDraftPR(ctx, branch, base, title, body)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("open draft PR for %s: %w", branch, err)
+	}
+	if err := seed(url); err != nil {
+		return Outcome{}, err
 	}
 	return Outcome{Status: StatusDone, Result: "draft PR opened", URL: url}, nil
 }
