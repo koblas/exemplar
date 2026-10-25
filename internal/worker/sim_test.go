@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
@@ -36,8 +39,9 @@ import (
 // receiver's store, the event router (EventWorker), the review dispatcher,
 // the claims and an in-process runner by a seeded schedule of deliveries
 // and redeliveries, event jobs worked twice, Re-runs, missed dedupes,
-// model outages, runners killed at GitHub writes (on any attempt, so jobs
-// are discarded), pushes to newer heads (between runs and mid-review) and
+// model outages, runners killed at GitHub writes or at their own Postgres
+// writes (on any attempt, so jobs are discarded; a hard kill is a SIGKILL,
+// which also cuts the runner off Postgres), pushes to newer heads (between runs and mid-review) and
 // zombie runners replaying old claims. River's executor is played by the
 // sim, on River's own table, so a step is one state change; GitHub is
 // fakeGitHub. After every step the invariants hold:
@@ -51,41 +55,203 @@ import (
 // wall clock at the start, so the claims' expiry agrees with Postgres.
 
 // simSeeds are the seeds CI runs. Between them they Re-run (enqueued
-// and ignored), black out the model, discard a job, redeliver, route an
-// event twice and land a push at each of its points: 54 at start-check
-// and the post, 159 the discard and the ignored Re-run.
-var simSeeds = []uint64{1, 2, 3, 4, 5, 54, 159}
+// and ignored), black out the model, discard and abandon a job,
+// redeliver, route an event twice, land a push at each of its points,
+// hard-kill a runner at a GitHub call, and kill one at each of its
+// Postgres kill points: 69, 77 and 95 add what 1-5 miss.
+var simSeeds = []uint64{1, 2, 3, 4, 5, 69, 77, 95}
 
 // simBusySeed is the CI seed with the most chaos, replayed for
 // TestWorkerSimReproduces.
-const simBusySeed = 159
+const simBusySeed = 69
 
 // simSteps is how many scheduled steps a seed runs before the drain.
 const simSteps = 10
 
 // simKill is where a runner dies: at one of its GitHub calls, before
-// GitHub took it, or after (the response is lost).
+// GitHub took it or after (the response is lost), or at one of its
+// Postgres queries (db, by sqlc name), before it is sent or once it has
+// applied. A hard kill is a SIGKILL: the runner's Postgres connections
+// drop with it, so its deferred cleanup and in-flight writes never land;
+// a soft one only cancels the run, as a timeout or a shutdown does. A
+// kill at a query is always hard.
 type simKill struct {
 	route string
 	after bool
+	db    bool
+	hard  bool
 }
 
 func (k simKill) String() string {
+	out := k.route + "/before"
 	if k.after {
-		return k.route + "/after"
+		out = k.route + "/after"
 	}
-	return k.route + "/before"
+	if k.db {
+		out = "db:" + out
+	}
+	if k.hard {
+		out += " hard"
+	}
+	return out
 }
 
-// simKills are the kill points: named calls, so a seed kills at the same
-// place on every run whatever order the lanes' reads take.
+// simKills are the kill points: named calls and queries, so a seed kills
+// at the same place on every run whatever order the lanes' reads take.
+// The queries are the runner's sequential writes: redeeming its claim,
+// storing the review (Finish, which is not one transaction, so a kill
+// between its writes leaves part of them) and mapping posted comments.
 var simKills = []simKill{
-	{"start-check", false},
-	{"post-review", false},
-	{"post-review", true},
-	{"complete-check", false},
-	{"complete-check", true},
-	{"list-comments", false},
+	{route: "start-check"},
+	{route: "post-review"},
+	{route: "post-review", after: true},
+	{route: "complete-check"},
+	{route: "complete-check", after: true},
+	{route: "list-comments"},
+	{route: "RedeemRunnerClaim", db: true},
+	{route: "RedeemRunnerClaim", after: true, db: true},
+	{route: "InsertFinding", after: true, db: true},
+	{route: "FinishReview", db: true},
+	{route: "FinishReview", after: true, db: true},
+	{route: "MarkFindingPosted", db: true},
+}
+
+// errSimKilled is a hard-killed runner's Postgres.
+var errSimKilled = errors.New("sim: runner killed")
+
+// simDB is the runner's own Postgres pool, as a runner pod has. A hard
+// kill cuts it: its live connections drop and new ones are refused. It
+// traces the runner's queries to kill at a named one (at), and counts
+// those that still succeed once the runner is dead (afterDeath, which
+// must stay 0). The control process (the dispatcher, sim.st) keeps its
+// own pool.
+type simDB struct {
+	st *store.Store
+
+	mu         sync.Mutex
+	dead       bool
+	conns      map[net.Conn]bool
+	at         *simKill
+	fire       func()
+	afterDeath int
+}
+
+// newSimDB opens the runner's pool on st's database.
+func newSimDB(t *testing.T, st *store.Store) *simDB {
+	t.Helper()
+	d := &simDB{conns: map[net.Conn]bool{}}
+	cfg := st.Pool.Config()
+	cfg.ConnConfig.DialFunc = d.dial
+	cfg.ConnConfig.Tracer = d
+	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	d.st = &store.Store{Pool: pool, Queries: queries.New(pool)}
+	return d
+}
+
+func (d *simDB) dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	d.mu.Lock()
+	dead := d.dead
+	d.mu.Unlock()
+	if dead {
+		return nil, errSimKilled
+	}
+	c, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.dead {
+		_ = c.Close()
+		return nil, errSimKilled
+	}
+	d.conns[c] = true
+	return &simConn{Conn: c, d: d}, nil
+}
+
+// simConn is one of the runner's connections.
+type simConn struct {
+	net.Conn
+
+	d *simDB
+}
+
+func (c *simConn) Close() error {
+	c.d.mu.Lock()
+	delete(c.d.conns, c.Conn)
+	c.d.mu.Unlock()
+	return c.Conn.Close()
+}
+
+// cut drops the runner off Postgres.
+func (d *simDB) cut() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.dead = true
+	for c := range d.conns {
+		_ = c.Close()
+	}
+	clear(d.conns)
+}
+
+// revive is the next runner: a fresh pool, nothing armed. It returns how
+// many queries succeeded after the last one's death.
+func (d *simDB) revive() int {
+	d.mu.Lock()
+	n := d.afterDeath
+	d.dead, d.at, d.fire, d.afterDeath = false, nil, nil, 0
+	d.mu.Unlock()
+	d.st.Pool.Reset()
+	return n
+}
+
+// arm kills the runner (fire) at k's query.
+func (d *simDB) arm(k *simKill, fire func()) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.at, d.fire = k, fire
+}
+
+type simQueryKey struct{}
+
+// TraceQueryStart implements pgx.QueryTracer.
+func (d *simDB) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	_, name, _ := strings.Cut(data.SQL, "-- name: ")
+	name, _, _ = strings.Cut(name, " ")
+	d.trip(name, false)
+	return context.WithValue(ctx, simQueryKey{}, name)
+}
+
+// TraceQueryEnd implements pgx.QueryTracer.
+func (d *simDB) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
+	if data.Err != nil {
+		return
+	}
+	d.mu.Lock()
+	if d.dead {
+		d.afterDeath++
+	}
+	d.mu.Unlock()
+	name, _ := ctx.Value(simQueryKey{}).(string)
+	d.trip(name, true)
+}
+
+// trip fires the armed kill at query name, before it is sent or after it
+// applied.
+func (d *simDB) trip(name string, after bool) {
+	d.mu.Lock()
+	k, fire := d.at, d.fire
+	if k == nil || k.route != name || k.after != after {
+		d.mu.Unlock()
+		return
+	}
+	d.at = nil
+	d.mu.Unlock()
+	fire()
 }
 
 // simPush is where a push to a newer head lands in a running review: at
@@ -144,13 +310,15 @@ type sim struct {
 	river  *river.Client[pgx.Tx]
 	claims *Claims
 	runner *Runner
+	// db is the runner's Postgres, which a hard kill cuts.
+	db     *simDB
 	d      *Dispatcher[store.PRReviewArgs]
 	events *EventWorker
 	// outage, while set, fails every generator call (simOutage).
 	outage *atomic.Bool
 	trace  []string
 	step   int
-	// deliveries are the delivery ids received, oldest first.
+	// deliveries are the delivery ids the receiver stored, oldest first.
 	deliveries []uuid.UUID
 
 	// Guarded by e.fake.mu (intercept runs with it held).
@@ -195,9 +363,22 @@ func newSim(t *testing.T, seed uint64) *sim {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The runner reaches Postgres only through its own pool: its review,
+	// config snapshot, claim and job row.
+	db := newSimDB(t, st)
+	runnerClaims, err := NewClaims(db.st, []byte("test claim key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerJobs, err := river.NewClient(riverpgxv5.New(db.st.Pool), &river.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcfg := e.w.cfg
+	rcfg.Store = db.st
 	s := &sim{
-		t: t, seed: seed, rnd: rand.New(rand.NewPCG(seed, 0x5eed)), e: e, st: st, river: client, claims: claims, left: map[string]int{}, outage: outage,
-		runner: &Runner{Config: e.w.cfg, Jobs: client, Snapshot: Snapshots(st, e.w.cfg.Snapshot), Claims: claims, BaseURL: e.fake.srv.URL + "/"},
+		t: t, seed: seed, rnd: rand.New(rand.NewPCG(seed, 0x5eed)), e: e, st: st, river: client, claims: claims, left: map[string]int{}, outage: outage, db: db,
+		runner: &Runner{Config: rcfg, Jobs: runnerJobs, Snapshot: Snapshots(db.st, e.w.cfg.Snapshot), Claims: runnerClaims, BaseURL: e.fake.srv.URL + "/"},
 	}
 	e.fake.intercept = s.intercept
 	s.d, err = NewReviewDispatcher(DispatchConfig{
@@ -246,8 +427,8 @@ func (s *sim) intercept(r *http.Request) (bool, bool) {
 		s.probe(r.Context(), *s.current)
 	}
 	if k := s.killAt; k != nil && simRoute(s.e.fake, r) == k.route {
-		s.killed, s.killAt = true, nil
-		s.kill()
+		s.killAt = nil
+		s.die(k.hard)
 		return true, k.after
 	}
 	route := simRoute(s.e.fake, r)
@@ -307,6 +488,9 @@ func (s *sim) receive(ctx context.Context, id uuid.UUID, event, payload string) 
 	if err != nil {
 		return false, fmt.Errorf("receive %s: %w", event, err)
 	}
+	if stored {
+		s.deliveries = append(s.deliveries, id)
+	}
 	return stored, nil
 }
 
@@ -363,11 +547,11 @@ func (s *sim) deliverHead(ctx context.Context, id uuid.UUID, action, head string
 }
 
 // delivery is a new delivery id, drawn from the seed so a trace repeats.
+// A push armed in a run draws its id before it lands, if it does.
 func (s *sim) delivery() uuid.UUID {
 	var id uuid.UUID
 	binary.BigEndian.PutUint64(id[:8], s.rnd.Uint64())
 	binary.BigEndian.PutUint64(id[8:], s.rnd.Uint64())
-	s.deliveries = append(s.deliveries, id)
 	return id
 }
 
@@ -393,6 +577,16 @@ func (s *sim) probe(ctx context.Context, task Task) {
 	}
 }
 
+// die kills the running runner; hard also cuts it off Postgres. f.mu is
+// held.
+func (s *sim) die(hard bool) {
+	s.killed = true
+	if hard {
+		s.db.cut()
+	}
+	s.kill()
+}
+
 // Launch implements Launcher: the runner in this process, killed at the
 // step's kill point (a killed runner has no exit code: 137, as SIGKILL).
 func (s *sim) Launch(ctx context.Context, task Task) (Exit, error) {
@@ -400,6 +594,15 @@ func (s *sim) Launch(ctx context.Context, task Task) (Exit, error) {
 	defer cancel()
 	s.e.fake.mu.Lock()
 	s.kill, s.current, s.probed = cancel, &task, false
+	if k := s.killAt; k != nil && k.db {
+		// A kill at a query fires on the runner's goroutine, without f.mu.
+		s.killAt = nil
+		s.db.arm(k, func() {
+			s.e.fake.mu.Lock()
+			defer s.e.fake.mu.Unlock()
+			s.die(true)
+		})
+	}
 	s.e.fake.mu.Unlock()
 	exit := s.runner.Run(ctx, task.JobID, task.ConfigVersion, task.Nonce)
 	s.e.fake.mu.Lock()
@@ -407,6 +610,10 @@ func (s *sim) Launch(ctx context.Context, task Task) (Exit, error) {
 	s.tasks, s.current = append(s.tasks, task), nil
 	if s.killed {
 		exit = Exit(137)
+	}
+	// A dead runner wrote nothing more; the next one gets a fresh pool.
+	if n := s.db.revive(); n != 0 && s.violation == "" {
+		s.violation = fmt.Sprintf("job %d's runner ran %d queries after its hard kill", task.JobID, n)
 	}
 	// The run is over: the control process's own GitHub calls (abandoning
 	// the job) get through, and an unfired kill or push lands nowhere.
@@ -642,7 +849,9 @@ func (s *sim) work(chaos bool) bool {
 	outage := false
 	switch {
 	case chaos && s.rnd.IntN(2) == 0:
-		kill = &simKills[s.rnd.IntN(len(simKills))]
+		k := simKills[s.rnd.IntN(len(simKills))]
+		k.hard = k.db || s.rnd.IntN(2) == 0
+		kill = &k
 	case chaos && job.Args.HeadSHA == s.e.head && s.rnd.IntN(2) == 0:
 		push = &simPushes[s.rnd.IntN(len(simPushes))]
 		s.newHead, s.pushID = s.e.commit(s.t, nil), s.delivery()
