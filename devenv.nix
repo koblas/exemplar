@@ -82,15 +82,7 @@ in
   # processes.dev.exec = "${lib.getExe pkgs.watchexec} -n -- ls -la";
 
   # https://devenv.sh/services/
-  # Local Postgres for development; start it with `devenv up`. Migrations
-  # create the vector extension themselves.
-  services.postgres = {
-    enable = true;
-    package = pkgs.postgresql_16;
-    extensions = extensions: [ extensions.pgvector ];
-    listen_addresses = "127.0.0.1";
-    initialDatabases = [ { name = "exemplar"; } ];
-  };
+  # No Postgres service: tests start a pgvector container with testcontainers.
 
   # https://devenv.sh/scripts/
   scripts.hello.exec = ''

@@ -3,10 +3,9 @@
 Use the repository's devenv environment: `devenv shell`, or its direnv setup. It provides:
 
 - Go 1.27.3, golangci-lint, ast-grep, Semgrep, universal-ctags and ripgrep;
-- Postgres 16 with pgvector;
 - Python 3.13 with uv.
 
-It does not provide Docker, kubectl, Helm or Kustomize.
+It does not provide Postgres, Docker, kubectl, Helm or Kustomize; Postgres tests run it in a container.
 
 ## Run the checks
 
