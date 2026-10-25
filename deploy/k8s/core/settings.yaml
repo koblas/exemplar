@@ -7,7 +7,8 @@
 #   exemplar-exports-app     app-id, private-key (optional: the separate exports app)
 #   exemplar-root-key        key (at least 32 bytes: openssl rand -hex 32); the link, session,
 #                            gateway, search and pseudonym keys derive from it (internal/envcfg)
-#   exemplar-providers       anthropic-api-key
+#   exemplar-providers       anthropic-api-key, openai-api-key (each optional: the providers
+#                            global.yaml routes to)
 #   exemplar-oidc            client-secret (optional: the OIDC sign-in client's)
 #   exemplar-cloudflared     credentials.json, tunnel-id (the tunnel's, Cloudflare Tunnel builds only)
 #   exemplar-postgres        password (the in-cluster Postgres superuser's, components/postgres only)

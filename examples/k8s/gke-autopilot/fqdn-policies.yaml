@@ -17,8 +17,8 @@ spec:
     # Model providers.
     - matches:
         - name: api.anthropic.com
-        # Provider B:
-        # - name: <provider-b-host>
+        # Provider B (openai):
+        # - name: api.openai.com
       ports: [{protocol: TCP, port: 443}]
     # GitHub (GitHub Enterprise Server: its host instead).
     - matches:

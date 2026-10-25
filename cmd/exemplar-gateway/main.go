@@ -20,6 +20,7 @@
 //	         default chain (workload identity, instance role, AWS_* env) or a
 //	         Bedrock API key in AWS_BEARER_TOKEN_BEDROCK; EXEMPLAR_BEDROCK_BASE_URL
 //	         and EXEMPLAR_BEDROCK_PROFILE optional
+//	openai   OPENAI_API_KEY (from the KMS-backed secret); EXEMPLAR_OPENAI_BASE_URL optional
 //	EXEMPLAR_GATEWAY_ADDR      listen address (default :8080)
 //	EXEMPLAR_GATEWAY_RPM       requests per minute per model and per caller (default 600)
 package main
