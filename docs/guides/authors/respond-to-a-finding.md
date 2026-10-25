@@ -23,6 +23,8 @@ Reply in the thread with the reason that fits, or click the matching link in the
 
 Feedback is honoured from the PR's author, a member of the rule's owning team, or a human who reviewed or commented on the PR before the command. Anyone else gets a one-line reply and nothing is recorded. The links need you to be signed in to Exemplar with GitHub.
 
+A comment that lists **Also in N other place(s)** stands for every place listed: one rule found the same problem in each. A reply, command, link or reaction on it applies to all of them, so dismiss it only if your reason holds for every place. Fix the places and push; the thread resolves once the last one is addressed.
+
 A 👎 on the comment counts too, at half weight, and only against acceptance; a 👍 is recorded and counts for nothing. Resolving the thread alone is ambiguous and counts for neither. A plain reply is classified as agree, disagree or a question by a light model, and counts as such.
 
 ## Ignore it
@@ -38,6 +40,7 @@ Security-category findings are also uploaded as code-scanning alerts. Dismissing
 - A "request changes" from Exemplar. It comments, or stays silent, or where a repository opts in, approves.
 - Comments on naming, formatting or anything a linter in the repository already reports.
 - More than the comment budget (seven per PR and three per file by default); the check run lists what was held back and why.
+- A separate comment for each of many places one rule flags. More than three (by default) arrive as one comment listing the places, with no suggestion block.
 - New inline comments push after push without end. After three pushes that each raised new findings, new ones (except blocking and Security) are listed in one "review rounds" comment instead, updated on each push. Ask a reviewer to look, or reply on the PR: a person's review or review comment starts the count again.
 - A comment on a draft PR or a fork PR unless the repository opted in.
 

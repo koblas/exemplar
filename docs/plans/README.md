@@ -20,6 +20,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 - **`§6.15`** is a section of the spec.
 - **`FR-D6`** is a functional requirement in the [PRD](../spec/prd.md). The letter is the requirement family. Each family has its own PRD section, and is specified in one place in the spec (spec §1.1).
 - **`T-0.3`** is a Phase 0 acceptance test (spec §16).
+- **`D2.4`** is a phased deliverable in [PRD §14.1](../spec/prd.md#141-phased-deliverables); each issue in beads carries the `phase:N` label of the phase it belongs to.
 
 | Family | PRD area | PRD | Spec | Status |
 |---|---|---|---|---|

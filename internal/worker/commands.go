@@ -154,7 +154,7 @@ func (w *FeedbackCommandWorker) Handle(ctx context.Context, a store.FeedbackComm
 	}
 	n, err := pipeline.RecordEvents(ctx, w.cfg.Store, snap.Global.Feedback, []pipeline.Event{{
 		FindingID: finding.ID, Kind: kind, Actor: a.Actor, Role: role, Via: pipeline.ViaSlash, ReasonText: a.Reason,
-		Evidence: map[string]any{"comment_id": a.CommentID},
+		Evidence: map[string]any{"comment_id": a.CommentID}, Thread: true,
 	}})
 	if err != nil {
 		return CommandOutcome{}, fmt.Errorf("worker: record events: %w", err)

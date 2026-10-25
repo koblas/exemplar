@@ -440,6 +440,8 @@ type env struct {
 	main *atomic.Pointer[string]
 	// fix, when set, is the scripted finding's suggested_fix.
 	fix *atomic.Pointer[string]
+	// also repeats the scripted finding on these lines.
+	also *atomic.Pointer[[]int32]
 }
 
 func setup(t *testing.T, repoName string) env { t.Helper(); return setupWith(t, repoName, nil) }
@@ -469,6 +471,7 @@ func setupWith(t *testing.T, repoName string, wrap func(http.RoundTripper) http.
 	report := &atomic.Bool{}
 	report.Store(true)
 	fix := &atomic.Pointer[string]{}
+	also := &atomic.Pointer[[]int32]{}
 	dir := r.Dir
 	tr := &engine.ScriptedTransport{Script: engine.Script{
 		// propagate-context flags http.Get on line 9; other rules report nothing.
@@ -482,7 +485,15 @@ func setupWith(t *testing.T, repoName string, wrap func(http.RoundTripper) http.
 					}
 					extra = `, "suggested_fix": ` + string(b)
 				}
-				return files, fmt.Sprintf(`{"violations": [{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d, "explanation": "http.Get ignores ctx."%s}]}`, line.Load(), line.Load(), extra)
+				lines := []int32{line.Load()}
+				if a := also.Load(); a != nil {
+					lines = append(lines, *a...)
+				}
+				vs := make([]string, 0, len(lines))
+				for _, n := range lines {
+					vs = append(vs, fmt.Sprintf(`{"path": "main.go", "side": "RIGHT", "start_line": %d, "end_line": %d, "explanation": "http.Get ignores ctx."%s}`, n, n, extra))
+				}
+				return files, `{"violations": [` + strings.Join(vs, ", ") + `]}`
 			}
 			return files, `{"violations": []}`
 		},
@@ -536,7 +547,7 @@ func setupWith(t *testing.T, repoName string, wrap func(http.RoundTripper) http.
 	if err != nil {
 		t.Fatal(err)
 	}
-	return env{fake: fake, w: w, head: r.HeadSHA, dir: &dir, report: report, line: line, main: main, fix: fix}
+	return env{fake: fake, w: w, head: r.HeadSHA, dir: &dir, report: report, line: line, main: main, fix: fix, also: also}
 }
 
 func args(e env) store.PRReviewArgs {

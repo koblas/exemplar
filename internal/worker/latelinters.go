@@ -137,12 +137,32 @@ func (w *LinterCheckWorker) Check(ctx context.Context, a store.LinterCheckArgs) 
 	}
 	poster := gh.NewPoster(c)
 	var errs []error
+	dupIDs, noted := map[int64]bool{}, map[int64]bool{}
+	for i := range dups {
+		dupIDs[rows[i].ID] = true
+	}
 	for i := range rows {
 		check, ok := dups[i]
 		if !ok {
 			continue
 		}
 		r := rows[i]
+		// A class-of-bug group's comment is hidden only when every open
+		// member is a linter duplicate; until then the member is recorded
+		// alone (FR-C9).
+		if r.GroupKey != nil && *r.GroupKey != "" {
+			members, err := w.cfg.Store.GroupMembers(ctx, r.ID)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("finding %d: group members: %w", r.ID, err))
+				continue
+			}
+			if slices.ContainsFunc(members, func(id int64) bool { return !dupIDs[id] }) {
+				if _, err := w.cfg.Store.MinimizeFinding(ctx, r.ID); err != nil {
+					errs = append(errs, fmt.Errorf("finding %d: %w", r.ID, err))
+				}
+				continue
+			}
+		}
 		// Minimize, then record, then reply: a retry re-minimizes (a no-op)
 		// but never replies twice, since the finding is no longer posted.
 		if err := poster.MinimizeComment(ctx, target, *r.GhCommentID); err != nil {
@@ -158,6 +178,10 @@ func (w *LinterCheckWorker) Check(ctx context.Context, a store.LinterCheckArgs) 
 			continue // recorded by an earlier attempt
 		}
 		out.Minimized++
+		if noted[*r.GhCommentID] {
+			continue // a group's comment gets one note
+		}
+		noted[*r.GhCommentID] = true
 		note := fmt.Sprintf("`%s` reports this too, so Exemplar has hidden its comment as a duplicate.", check)
 		if err := poster.Reply(ctx, target, *r.GhCommentID, note); err != nil {
 			w.cfg.Log.Warn("linter duplicate minimized without a note", "repo", a.Repo, "pr", a.PR, "finding", r.ID, "err", err)

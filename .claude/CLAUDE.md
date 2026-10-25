@@ -54,7 +54,9 @@ application unless requested. Update this guidance as the service takes shape.
 - File newly found work as its own issue under the right epic, linked to the
   issue you were on: `bd create "<title>" -d "<backlink>" --parent <epic> --deps discovered-from:<id>`.
   Order work with `blocks` dependencies and `order:H1`…`order:H5` labels;
-  unadopted ideas are `deferred` with the `idea` label.
+  every issue carries a `phase:0`…`phase:6` label naming its PRD §14.1 phase
+  (an epic carries the phases of its children); unadopted ideas are `deferred`
+  with the `idea` label.
 - Close with `bd close <id> --reason "<what landed, PR or commit>"`.
 - At session end export and commit the data: `bd export -o .beads/issues.jsonl`
   from the checkout root, then commit `.beads/issues.jsonl` with the work (ask

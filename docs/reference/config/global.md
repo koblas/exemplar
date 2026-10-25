@@ -21,6 +21,7 @@ Unknown fields are rejected.
 | `verifier` | object | yes | The verification stage. See [`verifier`](#verifier). |
 | `comment_budget` | object | yes | Caps on posted comments. See [`comment_budget`](#comment_budget). |
 | `linter_wait_seconds` | integer, minimum 0 | no | How long a review waits for the repo's linters to report before posting. Default 120 when unset. |
+| `posting` | object | no | How occurrences of one rule are posted. See [`posting`](#posting). |
 | `rounds` | object | no | The review-round limit per PR. See [`rounds`](#rounds). |
 | `bug_lane` | object | no | Bug hunting: agents look for common classes of bugs, independent of any rule. See [`bug_lane`](#bug_lane). |
 | `baseline` | object | yes | The sampled, rule-free baseline reviewer. See [`baseline`](#baseline). |
@@ -112,6 +113,14 @@ Every value is a number from 0 to 1. No other keys are allowed.
 | `importance_min` | number, 0 to 1 | yes | Findings the verifier scores below this importance are stored but not posted. |
 | `max_candidates_per_call` | integer, minimum 1 | yes | Findings checked together in one verifier call. |
 
+### `posting`
+
+When one rule has more than `class_threshold` surviving findings in a review, they post as one comment at the first finding, which links every other place. The findings share the comment and its thread, and are stored with one `group_key`. The group takes one slot of the comment budget and counts as one finding for the round cap; a reply, command, reaction or feedback link on the comment is recorded for every finding in the group. Each finding is still re-checked on later pushes on its own, and the thread is resolved when the last one is addressed. A grouped comment carries no suggested fix.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `class_threshold` | integer, minimum 1 | no | Findings of one rule in a review above which they post as one grouped comment. Default 3. |
+
 ### `rounds`
 
 The number of review rounds a PR gets before new findings stop posting inline. A round is a push whose review posted at least one new finding. Past the limit, new findings except blocking and Security ones go to one summary comment (`<!-- exemplar:round-summary -->`), and are stored as `summarized` with `suppressed_reason` `round_cap`. A person's review or review comment, or the PR leaving draft, resets the count.
@@ -122,7 +131,7 @@ The number of review rounds a PR gets before new findings stop posting inline. A
 
 ### `comment_budget`
 
-Most comments Exemplar posts, per PR and per file, so reviews stay readable. Security and blocking findings are always posted; if they alone exceed the limit, they are grouped into one comment per file.
+Most comments Exemplar posts, per PR and per file, so reviews stay readable. Security and blocking findings are always posted and take no slot. A grouped comment (see [`posting`](#posting)) takes one slot.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
