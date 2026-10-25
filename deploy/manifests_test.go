@@ -371,13 +371,22 @@ func checkKubeAPI(t *testing.T, docs []obj, ws []workload) {
 			if w.name != "exemplar-runner" || str(w.spec, "restartPolicy") != "Never" {
 				t.Errorf("runner template %s: name or restartPolicy", w.name)
 			}
+			work := false
 			for _, v := range list(w.spec, "volumes") {
+				// The checkout volume is the pod's own, sized per Job
+				// (kubelaunch.WorkVolume).
+				if str(v, "name") == "work" {
+					work = str(v, "ephemeral", "volumeClaimTemplate", "spec", "resources", "requests", "storage") != ""
+				}
 				if str(v, "name") == "config" {
 					t.Errorf("%s mounts a config checkout; runners load config_snapshots", w.name)
 				}
 				if str(v, "secret", "secretName") == "exemplar-github-app" {
 					t.Errorf("%s mounts the App's Secret; runners redeem claims", w.name)
 				}
+			}
+			if !work {
+				t.Errorf("%s: no work volume as a generic ephemeral volume with a storage request", w.name)
 			}
 			for _, c := range containers(t, w.spec) {
 				for _, e := range list(c, "env") {

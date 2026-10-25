@@ -61,11 +61,12 @@ template:
           # Signed feedback links in comments.
           - name: EXEMPLAR_API_URL
             valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
-        # One review: a checkout plus git, ast-grep and Semgrep runs.
-        # Re-size from the monorepo benchmark; per-review volumes are C6.
+        # One review: git, ast-grep and Semgrep runs over the checkout on
+        # the work volume. Ephemeral storage covers /tmp and logs only.
+        # Re-size cpu and memory from the monorepo benchmark.
         resources:
-          requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 5Gi}
-          limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 12Gi}
+          requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 1Gi}
+          limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 4Gi}
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -77,8 +78,20 @@ template:
     volumes:
       - name: root-key
         secret: {secretName: exemplar-root-key, defaultMode: 0400}
-      # The review's checkout.
+      # The review's checkout: a volume of the pod's own, from the cluster's
+      # default StorageClass, deleted with the pod. exemplar-worker sizes
+      # it per Job from the repo's recorded checkouts (--runner-disk-min,
+      # --runner-disk-max); 8Gi is for a repo not reviewed yet. Per-pod
+      # disk is what per-pod-billed platforms request, and GKE Autopilot
+      # caps plain ephemeral storage at 10 GiB.
       - name: work
-        emptyDir: {sizeLimit: 8Gi}
+        ephemeral:
+          volumeClaimTemplate:
+            metadata:
+              labels: {app.kubernetes.io/name: exemplar-runner, app.kubernetes.io/part-of: exemplar}
+            spec:
+              accessModes: [ReadWriteOnce]
+              resources:
+                requests: {storage: 8Gi}
       - name: tmp
         emptyDir: {sizeLimit: 2Gi}

@@ -135,3 +135,56 @@ func TestQueueStats(t *testing.T) {
 		t.Errorf("stats = %+v", stats)
 	}
 }
+
+// A runner's checkout volume: twice the repo's largest recent checkout
+// plus 1 GiB, in GiB, within the bounds; the template's for a new repo.
+func TestDiskSize(t *testing.T) {
+	t.Parallel()
+	s := DiskSizing{Min: 2 * gib, Max: 50 * gib}
+	for _, tc := range []struct{ known, want int64 }{
+		{0, 0}, {100 << 20, 2 * gib}, {3 * gib, 7 * gib}, {3*gib + 1, 8 * gib}, {40 * gib, 50 * gib},
+	} {
+		if got := s.size(tc.known); got != tc.want {
+			t.Errorf("size(%d) = %d, want %d", tc.known, got, tc.want)
+		}
+	}
+}
+
+// A review records its checkout's size, the repo's recent largest sizes
+// its next runner, and the dispatcher passes it on.
+func TestCheckoutBytesSizeTheRunner(t *testing.T) {
+	t.Parallel()
+	st := storetest.New(t)
+	e := setup(t, repo)
+	e.w.cfg.Store = st
+	if out, err := e.w.Review(t.Context(), args(e)); err != nil || out.Status != StatusReviewed {
+		t.Fatalf("review = %+v, %v", out, err)
+	}
+	known, err := st.RepoCheckoutBytes(t.Context(), repo)
+	if err != nil || known <= 0 {
+		t.Fatalf("recorded checkout = %d, %v", known, err)
+	}
+	if n, err := st.RepoCheckoutBytes(t.Context(), "acme/unseen"); err != nil || n != 0 {
+		t.Errorf("an unseen repo = %d, %v", n, err)
+	}
+
+	snap := exampleSnapshot(t)
+	var got Task
+	d, err := NewReviewDispatcher(DispatchConfig{
+		Launcher: launchFunc(func(_ context.Context, task Task) (Exit, error) { got = task; return ExitDone, nil }),
+		Snapshot: func(context.Context) (*config.Snapshot, error) { return snap, nil },
+		Disk: &DiskSizing{Min: 2 * gib, Max: 50 * gib, Known: func(ctx context.Context, r string) int64 {
+			n, _ := st.RepoCheckoutBytes(ctx, r)
+			return n
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Work(t.Context(), &river.Job[store.PRReviewArgs]{JobRow: &rivertype.JobRow{ID: 9}, Args: store.PRReviewArgs{Repo: repo, PR: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if want := (DiskSizing{Min: 2 * gib, Max: 50 * gib}).size(known); got.WorkDisk != want || want != 2*gib {
+		t.Errorf("task disk = %d, want %d", got.WorkDisk, want)
+	}
+}

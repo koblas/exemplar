@@ -11,6 +11,7 @@ import (
 	"github.com/riverqueue/river/rivertype"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -34,6 +35,12 @@ func template() *corev1.PodTemplate {
 					Name: RunnerTarget, Image: "exemplar", Command: []string{"/usr/local/bin/exemplar-worker"},
 					Args: []string{"--work-dir=/var/lib/exemplar/work"},
 				}},
+				Volumes: []corev1.Volume{{Name: WorkVolume, Ephemeral: &corev1.EphemeralVolumeSource{
+					VolumeClaimTemplate: &corev1.PersistentVolumeClaimTemplate{Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("8Gi")}},
+					}},
+				}}},
 			},
 		},
 	}
@@ -286,6 +293,45 @@ func TestNewChecksTemplate(t *testing.T) {
 	bad.Template.Spec.Containers[0].Name = "worker"
 	if _, err := New(t.Context(), Config{Client: fake.NewClientset(bad), Namespace: ns}); !errors.Is(err, errNoTemplate) {
 		t.Errorf("template without a runner container = %v", err)
+	}
+	noWork := template()
+	noWork.Template.Spec.Volumes = nil
+	if _, err := New(t.Context(), Config{Client: fake.NewClientset(noWork), Namespace: ns}); !errors.Is(err, errNoTemplate) {
+		t.Errorf("template without a work volume = %v", err)
+	}
+}
+
+// A job's checkout volume is sized for it (spec §2.4.2 C6): the ephemeral
+// volume's request, or an emptyDir's limit; 0 keeps the template's.
+func TestWorkVolumeSize(t *testing.T) {
+	t.Parallel()
+	c := newCluster(t)
+	storage := func(j *batchv1.Job) string {
+		v := workVolume(j.Spec.Template.Spec.Volumes)
+		if v.Ephemeral != nil {
+			q := v.Ephemeral.VolumeClaimTemplate.Spec.Resources.Requests[corev1.ResourceStorage]
+			return q.String()
+		}
+		return v.EmptyDir.SizeLimit.String()
+	}
+	if got := storage(c.l.job(worker.Task{JobID: 1, WorkDisk: 7 << 30})); got != "7Gi" {
+		t.Errorf("sized = %s", got)
+	}
+	if got := storage(c.l.job(worker.Task{JobID: 2})); got != "8Gi" {
+		t.Errorf("unsized = %s", got)
+	}
+	// The template is not changed by a sized job.
+	if got := storage(c.l.job(worker.Task{JobID: 3})); got != "8Gi" {
+		t.Errorf("template after a sized job = %s", got)
+	}
+	empty := template()
+	empty.Template.Spec.Volumes = []corev1.Volume{{Name: WorkVolume, EmptyDir: &corev1.EmptyDirVolumeSource{}}}
+	l, err := New(t.Context(), Config{Client: fake.NewClientset(empty), Namespace: ns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := storage(l.job(worker.Task{JobID: 4, WorkDisk: 3 << 30})); got != "3Gi" {
+		t.Errorf("emptyDir = %s", got)
 	}
 }
 

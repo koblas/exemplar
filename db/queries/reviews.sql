@@ -98,3 +98,14 @@ UPDATE reviews SET round = @round, round_capped = @round_capped WHERE id = @id;
 
 -- name: RecordRoundReset :exec
 INSERT INTO round_resets (repo, pr_number, at, reason) VALUES (@repo, @pr_number, @at, @reason);
+
+-- name: SetCheckoutBytes :exec
+UPDATE reviews SET checkout_bytes = @checkout_bytes WHERE id = @id;
+
+-- name: RepoCheckoutBytes :one
+-- The largest checkout of the repo's last 20 reviews that recorded one;
+-- 0 for a repo with none recorded yet.
+SELECT coalesce(max(checkout_bytes), 0)::bigint AS bytes FROM (
+  SELECT checkout_bytes FROM reviews WHERE repo = @repo AND checkout_bytes IS NOT NULL
+  ORDER BY id DESC LIMIT 20
+) recent;
