@@ -69,6 +69,15 @@ SELECT EXISTS (
   SELECT 1 FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3 AND caller = 'production'
 ) AS reviewed;
 
+-- name: AbandonReview :one
+-- A head's review whose job failed its last attempt: recorded incomplete,
+-- so Re-run re-runs it. A superseded review stays superseded (no row).
+UPDATE reviews SET status = 'incomplete', incomplete_reason = $5, finished_at = coalesce(finished_at, now())
+WHERE id = (SELECT max(r.id) FROM reviews r
+            WHERE r.repo = $1 AND r.pr_number = $2 AND r.head_sha = $3 AND r.attempt = $4 AND r.caller = 'production')
+  AND status <> 'superseded'
+RETURNING id;
+
 -- name: MarkReviewSuperseded :exec
 -- A newer push replaced this review's head.
 UPDATE reviews SET status = 'superseded', finished_at = coalesce(finished_at, now()) WHERE id = $1;

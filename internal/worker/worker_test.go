@@ -65,6 +65,7 @@ type fakeGitHub struct {
 	reviews          []map[string]any
 	checks           []map[string]any
 	checkUpdates     []map[string]any
+	checksDone       map[int]bool // check run ids an update completed
 	existingApproval bool
 	dismissed        int
 	replies          []map[string]any
@@ -341,6 +342,21 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == pr+"/comments":
 		f.replies = append(f.replies, body())
 		_, _ = w.Write([]byte(`{"id": 1}`))
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/commits/") && r.URL.Query().Get("check_name") == gh.CheckName:
+		// Exemplar's own check runs on a commit.
+		sha := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/commits/"), "/check-runs")
+		runs := []map[string]any{}
+		for i, c := range f.checks {
+			if c["head_sha"] != sha {
+				continue
+			}
+			status := "in_progress"
+			if f.checksDone[i+1] {
+				status = "completed"
+			}
+			runs = append(runs, map[string]any{"id": i + 1, "name": c["name"], "head_sha": sha, "external_id": c["external_id"], "status": status})
+		}
+		f.writeJSON(w, map[string]any{"total_count": len(runs), "check_runs": runs})
 	case r.Method == http.MethodGet && r.URL.Path == "/repos/"+f.repo+"/commits/"+f.head+"/check-runs":
 		f.linterPolls++
 		status := "in_progress"
@@ -360,7 +376,14 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.checks = append(f.checks, body())
 		fmt.Fprintf(w, `{"id": %d}`, len(f.checks))
 	case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/repos/"+f.repo+"/check-runs/"):
-		f.checkUpdates = append(f.checkUpdates, body())
+		u := body()
+		if id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/repos/"+f.repo+"/check-runs/")); err == nil && u["status"] == "completed" {
+			if f.checksDone == nil {
+				f.checksDone = map[int]bool{}
+			}
+			f.checksDone[id] = true
+		}
+		f.checkUpdates = append(f.checkUpdates, u)
 		_, _ = w.Write([]byte(`{"id": 1}`))
 	default:
 		f.t.Errorf("unexpected GitHub call %s %s", r.Method, r.URL.Path)

@@ -32,7 +32,9 @@ type Dispatcher[T river.JobArgs] struct {
 	// nil only in tests, where the runner uses its own GitHub.
 	grant  func(context.Context, T, *config.Snapshot) (Grant, error)
 	claims *Claims
-	log    *slog.Logger
+	// abandon, when set, closes out a job whose last attempt failed.
+	abandon func(context.Context, T, error)
+	log     *slog.Logger
 }
 
 // DispatchConfig wires the dispatchers.
@@ -47,6 +49,9 @@ type DispatchConfig struct {
 	// in tests.
 	Claims  *Claims
 	Granter *Granter
+	// Abandon closes out a review job whose last attempt failed
+	// (Abandoner.Abandon); nil only in tests.
+	Abandon func(context.Context, store.PRReviewArgs, error)
 	Log     *slog.Logger
 }
 
@@ -87,6 +92,7 @@ func NewReviewDispatcher(cfg DispatchConfig) (*Dispatcher[store.PRReviewArgs], e
 		d.slots = NewSlots(cfg.Store.Pool)
 		d.slot = func(a store.PRReviewArgs) string { return a.Repo }
 	}
+	d.abandon = cfg.Abandon
 	return d, nil
 }
 
@@ -109,8 +115,22 @@ func NewPlaygroundDispatcher(cfg DispatchConfig) (*Dispatcher[store.PlaygroundAr
 // Timeout implements river.Worker.
 func (d *Dispatcher[T]) Timeout(*river.Job[T]) time.Duration { return d.timeout }
 
-// Work implements river.Worker.
+// Work implements river.Worker. A failure River would retry, on the
+// job's last attempt, is abandoned instead: River discards the job.
 func (d *Dispatcher[T]) Work(ctx context.Context, job *river.Job[T]) error {
+	err := d.work(ctx, job)
+	var cancel *rivertype.JobCancelError
+	var snooze *rivertype.JobSnoozeError
+	if d.abandon != nil && err != nil && job.Attempt >= job.MaxAttempts &&
+		!errors.As(err, &cancel) && !errors.As(err, &snooze) && !errors.Is(err, rivertype.ErrJobCancelledRemotely) {
+		actx, done := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer done()
+		d.abandon(actx, job.Args, err)
+	}
+	return err
+}
+
+func (d *Dispatcher[T]) work(ctx context.Context, job *river.Job[T]) error {
 	snap, err := d.snapshot(ctx)
 	if err != nil {
 		return err
