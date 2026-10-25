@@ -50,6 +50,9 @@ type Task struct {
 	Timeout time.Duration
 	// Nonce redeems the job's runner claim, once.
 	Nonce string
+	// WorkDisk is the runner's checkout volume in bytes, sized from the
+	// repo's recorded checkouts; 0 keeps the runner template's.
+	WorkDisk int64
 }
 
 // Launcher runs a Task to its end. It returns an error only when it could

@@ -24,3 +24,15 @@ func TestRunnerQuotaFlag(t *testing.T) {
 		}
 	}
 }
+
+func TestDiskBounds(t *testing.T) {
+	t.Parallel()
+	if d, err := diskBounds("2Gi", "50Gi"); err != nil || d.Min != 2<<30 || d.Max != 50<<30 {
+		t.Errorf("defaults = %+v, %v", d, err)
+	}
+	for _, tc := range [][2]string{{"0", "1Gi"}, {"4Gi", "2Gi"}, {"lots", "2Gi"}, {"1Gi", "huge"}} {
+		if _, err := diskBounds(tc[0], tc[1]); !errors.Is(err, errBadDisk) {
+			t.Errorf("%v: %v", tc, err)
+		}
+	}
+}

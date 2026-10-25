@@ -21,6 +21,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -35,6 +36,9 @@ const (
 	LabelKind    = "exemplar.dev/kind"
 	RunnerName   = "exemplar-runner"
 	RunnerTarget = "runner" // the template's container that runs run-job
+	// WorkVolume is the template's volume for the review's checkout: a
+	// generic ephemeral volume (or an emptyDir) sized per job.
+	WorkVolume = "work"
 	// NonceEnv carries the runner claim's nonce to run-job.
 	NonceEnv = "EXEMPLAR_RUNNER_NONCE"
 )
@@ -110,7 +114,40 @@ func New(ctx context.Context, cfg Config) (*Launcher, error) {
 	if runnerIndex(pt.Template.Spec.Containers) < 0 {
 		return nil, fmt.Errorf("%w %s has no %q container", errNoTemplate, cfg.Template, RunnerTarget)
 	}
+	if v := workVolume(pt.Template.Spec.Volumes); v == nil || v.Ephemeral == nil && v.EmptyDir == nil {
+		return nil, fmt.Errorf("%w %s has no %q ephemeral or emptyDir volume", errNoTemplate, cfg.Template, WorkVolume)
+	}
 	return &Launcher{cfg: cfg, tmpl: pt.Template}, nil
+}
+
+func workVolume(vs []corev1.Volume) *corev1.Volume {
+	for i := range vs {
+		if vs[i].Name == WorkVolume {
+			return &vs[i]
+		}
+	}
+	return nil
+}
+
+// sizeWork sets the checkout volume to bytes (spec §2.4.2 C6): the
+// ephemeral volume's storage request, or an emptyDir's size limit. 0
+// keeps the template's.
+func sizeWork(spec *corev1.PodSpec, bytes int64) {
+	v := workVolume(spec.Volumes)
+	if v == nil || bytes <= 0 {
+		return
+	}
+	q := resource.NewQuantity(bytes, resource.BinarySI)
+	switch {
+	case v.Ephemeral != nil && v.Ephemeral.VolumeClaimTemplate != nil:
+		r := &v.Ephemeral.VolumeClaimTemplate.Spec.Resources
+		if r.Requests == nil {
+			r.Requests = corev1.ResourceList{}
+		}
+		r.Requests[corev1.ResourceStorage] = *q
+	case v.EmptyDir != nil:
+		v.EmptyDir.SizeLimit = q
+	}
 }
 
 func runnerIndex(cs []corev1.Container) int {
@@ -169,6 +206,7 @@ func (l *Launcher) job(t worker.Task) *batchv1.Job {
 	c.Args = append([]string{"run-job", "--job=" + strconv.FormatInt(t.JobID, 10), "--config-version=" + t.ConfigVersion}, c.Args...)
 	// The claim's nonce: single-use, and useless once the tokens expire.
 	c.Env = append(c.Env, corev1.EnvVar{Name: NonceEnv, Value: t.Nonce})
+	sizeWork(&tmpl.Spec, t.WorkDisk)
 	deadline := int64((max(t.Timeout, 0) + deadlineMargin) / time.Second)
 	if t.Timeout <= 0 {
 		deadline = int64(defaultDeadline / time.Second)
