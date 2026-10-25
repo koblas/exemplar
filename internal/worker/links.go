@@ -75,7 +75,7 @@ func (w *FeedbackLinkWorker) Handle(ctx context.Context, a store.FeedbackLinkArg
 		return SignalOutcome{}, err
 	}
 	n, err := pipeline.RecordEvents(ctx, w.cfg.Store, snap.Global.Feedback, []pipeline.Event{{
-		FindingID: a.FindingID, Kind: kind, Actor: a.Actor, Role: role, Via: pipeline.ViaLink, ReasonText: a.Text,
+		FindingID: a.FindingID, Kind: kind, Actor: a.Actor, Role: role, Via: pipeline.ViaLink, ReasonText: a.Text, Thread: true,
 	}})
 	if err != nil {
 		return SignalOutcome{}, fmt.Errorf("worker: record events: %w", err)

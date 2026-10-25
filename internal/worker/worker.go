@@ -286,6 +286,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 		return out, fmt.Errorf("begin review: %w", err)
 	}
 	rec.Links = w.cfg.Links
+	rec.LinkBase = strings.TrimSuffix(w.cfg.CloneURL(a.Repo), ".git")
 	out.ReviewID = rec.ReviewID
 	// A shadow repo is reviewed in full and stored, but
 	// nothing is written to its PRs: no check run, comments, replies or

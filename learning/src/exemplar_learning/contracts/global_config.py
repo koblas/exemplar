@@ -49,6 +49,13 @@ class CommentBudget(BaseModel):
     per_file: int = Field(..., ge=1)
 
 
+class Posting(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    class_threshold: int | None = Field(None, ge=1)
+
+
 class Rounds(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -259,6 +266,7 @@ class GlobalConfig(BaseModel):
     verifier: Verifier
     comment_budget: CommentBudget
     linter_wait_seconds: int | None = Field(None, ge=0)
+    posting: Posting | None = None
     rounds: Rounds | None = None
     bug_lane: BugLane | None = None
     baseline: Baseline

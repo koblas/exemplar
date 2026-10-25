@@ -98,6 +98,8 @@ type GlobalConfig struct {
 	// LinterWait is how long a review waits for the repo's linters to
 	// report before posting; nil means DefaultLinterWait.
 	LinterWait *int `json:"linter_wait_seconds,omitempty"`
+	// Posting shapes how findings post; nil means the defaults.
+	Posting *Posting `json:"posting,omitempty"`
 	// Rounds caps review rounds per PR; nil means DefaultRoundsMax.
 	Rounds         *Rounds         `json:"rounds,omitempty"`
 	BugLane        *GlobalBugLane  `json:"bug_lane,omitempty"`
@@ -259,6 +261,24 @@ type RepoConfig struct {
 	ApprovalMode        string           `json:"approval_mode,omitempty"`
 	// Rounds may lower global.yaml's round cap, never raise it.
 	Rounds *Rounds `json:"rounds,omitempty"`
+}
+
+// DefaultClassThreshold is the most occurrences of one rule or bug class
+// a run posts as separate comments; more post as one grouped comment
+// (FR-C9).
+const DefaultClassThreshold = 3
+
+// Posting shapes how findings post.
+type Posting struct {
+	ClassThreshold int `json:"class_threshold,omitempty"`
+}
+
+// ClassThreshold is global.yaml's posting.class_threshold.
+func (g GlobalConfig) ClassThreshold() int {
+	if g.Posting == nil || g.Posting.ClassThreshold < 1 {
+		return DefaultClassThreshold
+	}
+	return g.Posting.ClassThreshold
 }
 
 // DefaultRoundsMax is the round cap when global.yaml sets none (FR-C8).

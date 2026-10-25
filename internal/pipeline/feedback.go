@@ -75,6 +75,10 @@ type Event struct {
 	// ReasonText is the free text a person gave with the signal.
 	ReasonText string
 	Evidence   map[string]any
+	// Thread marks a signal on the finding's comment thread (a reply,
+	// a resolution, a slash command, a feedback link): on a class-of-bug
+	// group's comment it applies to every open member (FR-C9).
+	Thread bool
 }
 
 // RecordEvents writes events, weighted by role. An event already recorded
@@ -86,6 +90,10 @@ func RecordEvents(ctx context.Context, st *store.Store, cfg *schema.FeedbackConf
 	}
 	n := 0
 	var errs []error
+	evs, err := expandGroups(ctx, st, evs)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	for _, ev := range evs {
 		var evidence []byte
 		if ev.Evidence != nil {
@@ -250,4 +258,32 @@ func RecordAppliedSuggestions(ctx context.Context, st *store.Store, p *engine.Pr
 		})
 	}
 	return RecordEvents(ctx, st, p.Effective.Global.Feedback, evs)
+}
+
+// expandGroups repeats each thread event for every open member of the
+// finding's class-of-bug group; other events pass through. A lookup that
+// fails keeps the event on its own finding.
+func expandGroups(ctx context.Context, st *store.Store, evs []Event) ([]Event, error) {
+	out := make([]Event, 0, len(evs))
+	var errs []error
+	for _, ev := range evs {
+		if !ev.Thread {
+			out = append(out, ev)
+			continue
+		}
+		ids, err := st.GroupMembers(ctx, ev.FindingID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("feedback event %s on finding %d: group: %w", ev.Kind, ev.FindingID, err))
+		}
+		if err != nil || len(ids) == 0 {
+			out = append(out, ev)
+			continue
+		}
+		for _, id := range ids {
+			m := ev
+			m.FindingID = id
+			out = append(out, m)
+		}
+	}
+	return out, errors.Join(errs...)
 }

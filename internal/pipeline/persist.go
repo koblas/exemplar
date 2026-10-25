@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,9 @@ type Record struct {
 	feedback *schema.FeedbackConfig
 	// Links, when set, signs each comment's feedback links.
 	Links *feedbacklink.Signer
+	// LinkBase is the repository's web URL, for line links in a grouped
+	// comment ("https://github.com/org/repo"); empty lists places as text.
+	LinkBase string
 }
 
 // Begin creates (or, on retry, finds) the review row and its rule runs.
@@ -145,7 +149,7 @@ func Finish(ctx context.Context, st *store.Store, rec *Record, res *engine.Resul
 			Message: f.Message, VerifyVerdict: strPtr(f.VerifyVerdict), VerifyImportance: f32(f.VerifyImportance),
 			VerifyModel: strPtr(f.VerifyModel), VerifySameFamily: f.VerifySameFamily, VerifyEvidence: f.VerifyEvidenceRaw,
 			SuggestedFix: strPtr(f.Fix), FixValid: f.FixValid, State: f.State, SuppressedReason: strPtr(f.Suppressed),
-			AnchorCode: strPtr(f.AnchorCode), AnchorOrdinal: ordinal(f),
+			AnchorCode: strPtr(f.AnchorCode), AnchorOrdinal: ordinal(f), GroupKey: strPtr(f.GroupKey),
 		})
 		if err != nil {
 			return fmt.Errorf("finding: %w", err)
@@ -212,12 +216,12 @@ func Post(ctx context.Context, st *store.Store, poster *gh.Poster, p *engine.Pre
 	}
 	var comments []gh.Comment
 	for _, f := range res.Findings {
-		if f.State != engine.StatePosted {
+		if f.State != engine.StatePosted || f.GroupMember() {
 			continue
 		}
 		comments = append(comments, gh.Comment{
 			Path: f.Anchor.Path, Side: string(f.Anchor.Side), StartLine: f.Anchor.StartLine, EndLine: f.Anchor.EndLine,
-			Body: commentBody(f, rec.Links),
+			Body: commentBody(f, rec, p.PR.HeadSHA),
 		})
 	}
 	summary := checkSummary(p, res)
@@ -259,16 +263,24 @@ func mapComments(ctx context.Context, st *store.Store, poster *gh.Poster, pr gh.
 		ids[k] = append(ids[k], c.ID)
 	}
 	for _, f := range res.Findings {
-		if f.State != engine.StatePosted || f.ID == 0 {
+		if f.State != engine.StatePosted || f.ID == 0 || f.GroupMember() {
 			continue
 		}
 		var commentID *int64
-		k := key(f.Anchor.Path, string(f.Anchor.Side), f.Anchor.EndLine, commentBody(f, rec.Links))
+		k := key(f.Anchor.Path, string(f.Anchor.Side), f.Anchor.EndLine, commentBody(f, rec, pr.HeadSHA))
 		if q := ids[k]; len(q) > 0 {
 			commentID, ids[k] = &q[0], q[1:]
 		}
 		if err := st.MarkFindingPosted(ctx, queries.MarkFindingPostedParams{ID: f.ID, GhCommentID: commentID}); err != nil {
 			return fmt.Errorf("mark finding %d posted: %w", f.ID, err)
+		}
+		// A group's members share the leader's comment and thread (FR-C9).
+		if f.GroupKey != "" && commentID != nil {
+			if err := st.ShareGroupComment(ctx, queries.ShareGroupCommentParams{
+				GhCommentID: commentID, Repo: rec.repo, PrNumber: int32(rec.pr), GroupKey: &f.GroupKey,
+			}); err != nil {
+				return fmt.Errorf("share group comment of finding %d: %w", f.ID, err)
+			}
 		}
 	}
 	return nil
@@ -318,10 +330,18 @@ func postableMessage(msg string) string {
 	return strings.ReplaceAll(msg, "@", "@"+zeroWidth)
 }
 
-func commentBody(f engine.Finding, links *feedbacklink.Signer) string {
+func commentBody(f engine.Finding, rec *Record, head string) string {
+	links := rec.Links
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s:** %s", f.CCLabel, postableMessage(f.Message))
-	if f.FixValid != nil && *f.FixValid {
+	if len(f.Members) > 0 {
+		// One comment for every occurrence of the rule (FR-C9); one fix
+		// cannot cover them all, so no suggestion.
+		fmt.Fprintf(&b, "\n\nAlso in %d other place(s); a reply here applies to all of them:\n", len(f.Members))
+		for _, a := range f.Members {
+			fmt.Fprintf(&b, "\n- %s", placeLink(rec.LinkBase, head, a.Path, a.StartLine, a.EndLine))
+		}
+	} else if f.FixValid != nil && *f.FixValid {
 		// Replaces exactly the anchored lines.
 		b.WriteString("\n\n```suggestion\n" + engine.SuggestionText(f) + "\n```")
 	}
@@ -408,6 +428,9 @@ func checkText(p *engine.Prepared, res *engine.Result) string {
 	if res.Summarized > 0 {
 		fmt.Fprintf(&b, "- %d finding(s) held back by the round cap (`round_cap`), listed in the round summary comment.\n", res.Summarized)
 	}
+	if res.Grouped > 0 {
+		fmt.Fprintf(&b, "- %d more occurrence(s) of a rule are listed in that rule's grouped comment instead of their own.\n", res.Grouped)
+	}
 	b.WriteString("\nCost and duration are informational.\n")
 	return b.String()
 }
@@ -441,4 +464,17 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// placeLink is path:lines, linked to the head when base is set.
+func placeLink(base, head, path string, start, end int) string {
+	lines, anchor := strconv.Itoa(start), "L"+strconv.Itoa(start)
+	if end > start {
+		lines += "-" + strconv.Itoa(end)
+		anchor += "-L" + strconv.Itoa(end)
+	}
+	if base == "" {
+		return "`" + path + ":" + lines + "`"
+	}
+	return fmt.Sprintf("[%s:%s](%s/blob/%s/%s#%s)", path, lines, base, head, path, anchor)
 }

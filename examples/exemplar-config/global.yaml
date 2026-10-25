@@ -94,6 +94,11 @@ bug_lane:
 comment_budget:
   per_pr: 7
   per_file: 3
+# More than this many occurrences of one rule or bug class in a review post
+# as one grouped comment listing every place, with one thread and one set
+# of feedback controls.
+posting:
+  class_threshold: 3
 # Review rounds per PR: after this many pushes that each posted new
 # findings, new ones (except blocking and Security) go to one summary
 # comment until a person reviews the PR or it leaves draft. A repo file may

@@ -332,3 +332,24 @@ func TestRoundsCap(t *testing.T) {
 		t.Errorf("raised cap = %v", err)
 	}
 }
+
+// posting.class_threshold defaults to 3 and rejects zero (FR-C9).
+func TestClassThreshold(t *testing.T) {
+	snap, err := LoadSnapshot(baseTree(t), "v")
+	if err != nil || snap.Global.ClassThreshold() != 3 {
+		t.Fatalf("example threshold = %v, %v", snap, err)
+	}
+	set := baseTree(t)
+	set[GlobalPath] = &fstest.MapFile{Data: []byte(strings.Replace(string(set[GlobalPath].Data), "class_threshold: 3", "class_threshold: 5", 1))}
+	if snap, err := LoadSnapshot(set, "v"); err != nil || snap.Global.ClassThreshold() != 5 {
+		t.Errorf("explicit threshold = %v", err)
+	}
+	if (schema.GlobalConfig{}).ClassThreshold() != schema.DefaultClassThreshold {
+		t.Error("absent posting is not the default")
+	}
+	bad := baseTree(t)
+	bad[GlobalPath] = &fstest.MapFile{Data: []byte(strings.Replace(string(bad[GlobalPath].Data), "class_threshold: 3", "class_threshold: 0", 1))}
+	if _, err := LoadSnapshot(bad, "v"); err == nil {
+		t.Error("class_threshold 0 accepted")
+	}
+}

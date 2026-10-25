@@ -138,7 +138,20 @@ type Finding struct {
 
 	State      string
 	Suppressed string
+
+	// GroupKey is set on every occurrence of a class-of-bug group (FR-C9):
+	// more than posting.class_threshold occurrences of one rule or bug
+	// class in a run post as one comment, at the leader.
+	GroupKey string
+	// Members are the other occurrences a group leader's comment lists.
+	Members []scope.Anchor
+	// groupLeader is set on a group's other members while assembling.
+	groupLeader *Finding
 }
+
+// GroupMember reports whether f is a class-of-bug group's member other
+// than its leader: it posts in the leader's comment, not its own.
+func (f *Finding) GroupMember() bool { return f.GroupKey != "" && len(f.Members) == 0 }
 
 // RunResult is one rule (or lane) run.
 type RunResult struct {

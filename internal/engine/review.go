@@ -3,6 +3,8 @@ package engine
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -152,6 +154,8 @@ type Result struct {
 	// Summarized counts new findings the round cap moved to the summary
 	// comment.
 	Summarized int
+	// Grouped counts findings folded into a class-of-bug group's comment.
+	Grouped int
 	// Linters is what linter dedupe did; nil when it did not run.
 	Linters *DedupeTrace
 	// Humans is what human-comment dedupe did; nil when it did not run.
@@ -338,7 +342,7 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		linters = newLinterDeduper(e, p.Effective.Rules, meta, opt.Linters)
 	}
 	humans := newHumanDeduper(e, meta, p.PR.Author, opt.HumanComments)
-	e.assemble(ctx, p, all, opt.PostedFingerprints, opt.RoundCapped, dedupers{linters: linters, humans: humans}, res)
+	e.assemble(ctx, p, all, opt, dedupers{linters: linters, humans: humans}, res)
 	if linters != nil && linters.loaded {
 		res.Linters = linters.trace
 	}
@@ -421,7 +425,7 @@ func (e *Engine) runCompiled(ctx context.Context, p *Prepared, s ScopedRule, m C
 
 // assemble dedupes, fingerprints, applies the comment budget and decides
 // which findings post. Only active rules post; shadow rules are stored.
-func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, posted map[string]bool, roundCapped bool, dd dedupers, res *Result) {
+func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, opt Options, dd dedupers, res *Result) {
 	status, fixPolicy := map[string]string{}, map[string]string{}
 	for _, r := range p.Effective.Rules {
 		status[r.ID] = r.Status
@@ -450,11 +454,10 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, post
 		)
 	})
 
+	// Dedupe and eligibility: what is left would post.
 	fp := newFingerprinter(p.Workspace)
 	exact := map[string]bool{}
-	perFile := map[string]int{}
-	perPR := 0
-	budget := p.Effective.Global.CommentBudget
+	var eligible []*Finding
 	for _, f := range all {
 		f.Fingerprint, f.AnchorCode, f.Ordinal = fp.identify(ctx, f.RuleID, f.Anchor)
 		if f.State != StateCandidate {
@@ -468,7 +471,7 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, post
 			continue
 		}
 		exact[key] = true
-		if posted[f.Fingerprint] {
+		if opt.PostedFingerprints[f.Fingerprint] {
 			f.State, f.Suppressed = StateDropped, SuppressAlreadyPosted
 			res.Findings = append(res.Findings, *f)
 			continue
@@ -492,12 +495,26 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, post
 			res.Findings = append(res.Findings, *f)
 			continue
 		}
+		eligible = append(eligible, f)
+	}
+
+	// Class-of-bug grouping (FR-C9), after dedupe and before the budget.
+	res.Grouped = groupByClass(eligible, p.Effective.Global.ClassThreshold(), opt.ReviewID)
+
+	// Budget and round cap over leaders and ungrouped findings; a group
+	// counts once.
+	perFile := map[string]int{}
+	perPR := 0
+	budget := p.Effective.Global.CommentBudget
+	for _, f := range eligible {
+		if f.groupLeader != nil {
+			continue
+		}
 		// Security and blocking findings are exempt from the budget.
 		exempt := f.Severity == schema.SeverityBlocking || isSecurity(f.Category)
 		if !exempt && (perPR >= budget.PerPR || perFile[f.Anchor.Path] >= budget.PerFile) {
 			f.State, f.Suppressed = StateDropped, SuppressBudget
 			res.HeldBack++
-			res.Findings = append(res.Findings, *f)
 			continue
 		}
 		if !exempt {
@@ -509,13 +526,69 @@ func (e *Engine) assemble(ctx context.Context, p *Prepared, all []*Finding, post
 		case p.Effective.RepoConfig.Shadow:
 			// It would have posted; the repo is in shadow.
 			f.State, f.Suppressed = StateShadow, SuppressRepoShadow
-		case roundCapped && !exempt:
+		case opt.RoundCapped && !exempt:
 			// Past the round cap, after the budget: to the summary comment.
 			f.State, f.Suppressed = StateSummarized, SuppressRoundCap
+		}
+	}
+	// A group's members share their leader's fate.
+	for _, f := range eligible {
+		if l := f.groupLeader; l != nil {
+			f.State, f.Suppressed = l.State, l.Suppressed
+			if l.State == StateDropped && l.Suppressed == SuppressBudget {
+				res.HeldBack++
+			}
+		}
+		if f.State == StateSummarized {
 			res.Summarized++
 		}
 		res.Findings = append(res.Findings, *f)
 	}
+}
+
+// groupByClass groups the would-post findings of any rule or bug class
+// with more than threshold of them (FR-C9): the first, in the stable
+// order, is the leader, and lists the others. It returns how many findings
+// were folded into a leader.
+func groupByClass(eligible []*Finding, threshold int, reviewID int64) int {
+	byRule := map[string][]*Finding{}
+	var order []string
+	for _, f := range eligible {
+		if _, ok := byRule[f.RuleID]; !ok {
+			order = append(order, f.RuleID)
+		}
+		byRule[f.RuleID] = append(byRule[f.RuleID], f)
+	}
+	folded := 0
+	for _, rule := range order {
+		fs := byRule[rule]
+		if len(fs) <= threshold {
+			continue
+		}
+		key := groupKey(rule, reviewID, fs)
+		leader := fs[0]
+		for _, f := range fs {
+			f.GroupKey = key
+			if f != leader {
+				f.groupLeader = leader
+				leader.Members = append(leader.Members, f.Anchor)
+				folded++
+			}
+		}
+	}
+	return folded
+}
+
+// groupKey is sha256(rule id | review id | sorted member fingerprints).
+func groupKey(rule string, reviewID int64, fs []*Finding) string {
+	prints := make([]string, 0, len(fs))
+	for _, f := range fs {
+		prints = append(prints, f.Fingerprint)
+	}
+	slices.Sort(prints)
+	h := sha256.New()
+	fmt.Fprintf(h, "%s|%d|%s", rule, reviewID, strings.Join(prints, ","))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func severityRank(s string) int {
