@@ -19,6 +19,7 @@ One audience per page. No references to the spec's section numbers, requirement 
 - A behaviour change usually touches one how-to and one reference page; a new feature also gets a concept paragraph.
 - Keep old paths working when you move a page: add a line to the `redirects` plugin's map in `mkdocs.yml`.
 - Update the pages, not the README, when behaviour changes.
+- Mermaid diagrams open full-size on click, with zoom. That is `docs/javascripts/mermaid-zoom.js` and `docs/stylesheets/mermaid-zoom.css`, listed under `extra_javascript` and `extra_css` in `mkdocs.yml`; a diagram needs nothing extra.
 
 With Claude Code, `/docs <behavior change or page>` applies these rules and runs the checks; `/docs-audit` reports quadrant mixing, coverage gaps and internal references without editing.
 
