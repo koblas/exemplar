@@ -18,6 +18,9 @@ docs_dir: docs
 site_dir: out/site
 extra_css:
   - stylesheets/landing.css # the landing page only (docs/index.md)
+  - stylesheets/mermaid-zoom.css # click a Mermaid diagram to enlarge it
+extra_javascript:
+  - javascripts/mermaid-zoom.js
 exclude_docs: |
   spec/
   plans/
