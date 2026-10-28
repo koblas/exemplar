@@ -1,81 +1,81 @@
 # Why Exemplar
 
-Exemplar exists for one reason: **to give your reviewers their time back without lowering the bar.** AI made code cheap to write and did nothing for the cost of reviewing it. Pull requests now arrive faster than the people who must read them, and the only ways a team has to cope are to review less carefully or to merge less often. Exemplar gives it a third option: hold the review standard, and put human attention only where a human is needed. This page is the case for the product; the [product requirements](https://github.com/koblas/exemplar/blob/main/docs/spec/prd.md) are the long form.
+Exemplar has one goal: **give code reviewers their time back without lowering the bar.** AI made code cheap to write. It did nothing to make code cheaper to review. Pull requests (PRs) now show up faster than the people who have to read them. A team has two bad ways to cope: review less carefully, or merge less often. Exemplar adds a third: keep the review standard where it is, and spend human attention only on the PRs that need a human. This page makes the case for the product. The [product requirements](https://github.com/koblas/exemplar/blob/main/docs/spec/prd.md) are the long version.
 
 ## The problem: review is the bottleneck now
 
-Code generation scales with tokens. Review scales with headcount. Since coding assistants and agents became routine, the gap between the two has been measured from several directions:
+Writing code with AI scales with how many tokens you can buy. Reviewing code scales with how many people you have. Since coding assistants and agents became normal, several groups have measured the gap between the two:
 
-- Teams with high AI adoption merge about twice as many pull requests, and spend about twice as long in review per PR. Faros AI's telemetry across more than 10,000 developers put the figures at 98% more PRs merged and 91% more review time, with PRs half again as large.[^faros]
-- Four in five developers say they spend more time in code review since their team adopted AI tools, and more than half name reviewing AI-generated code as the biggest source of friction in their work (Harness, 700 practitioners, 2026).[^harness]
-- DORA's 2025 research finds AI adoption now raises delivery throughput, and still raises instability: more change failures, more rework.[^dora]
-- Under that load, review itself degrades. A 2026 study of human review of agent-authored PRs found approvals rising while scrutiny fell: more time in the queue, less time inspecting.[^habituation] Telemetry shows a growing share of PRs merged with no review at all.[^faros]
-- Open source hit the wall first. In 2026 GitHub shipped controls that let maintainers close or cap incoming pull requests, because agent-generated submissions were consuming the review time projects had.[^github]
+- Teams that use AI heavily merge about twice as many PRs, and spend about twice as long reviewing each one. Faros AI measured more than 10,000 developers and found 98% more PRs merged, 91% more review time, and PRs about half again as large.[^faros]
+- Four in five developers say they spend more time in code review since their team adopted AI tools. More than half say reviewing AI-generated code is the biggest source of friction in their work (Harness, 700 practitioners, 2026).[^harness]
+- DORA's 2025 research finds that AI adoption now raises how much teams ship, but still raises instability too: more changes fail, more work gets redone.[^dora]
+- Under that load, review itself gets worse. A 2026 study of humans reviewing agent-written PRs found approvals going up while scrutiny went down: PRs waited longer in the queue and got less inspection.[^habituation] Telemetry shows a growing share of PRs merged with no review at all.[^faros]
+- Open source hit the wall first. In 2026 GitHub shipped controls that let maintainers close or cap incoming PRs, because agent-generated submissions were eating the review time projects had.[^github]
 
 !!! note "About these numbers"
-    Most come from vendors of engineering-metrics or review tooling, and from surveys. Treat the magnitudes as indicative. The direction is the same in every source, and it matches what Exemplar's own counter-metrics are built to watch.
+    Most come from vendors of engineering-metrics or review tooling, and from surveys. Treat the sizes as rough. The direction is the same in every source, and it matches what Exemplar's own counter-metrics watch for.
 
 The result is a review bottleneck with two faces:
 
-1. **Standards slip.** Reviewers who cannot read everything start approving on trust, and the judgment that made review valuable, years of comments about *this* codebase's conventions, security patterns, migration scars and incident lessons, stops being applied. Coding agents never had it, so the same violations are generated, reviewed and fixed over and over.
-2. **Capacity runs out.** Every coding tool is capped at the throughput of the humans supervising it. Senior engineers spend their days reading rather than designing, and the queue still grows.
+1. **Standards slip.** Reviewers who cannot read everything start approving on trust. The judgment that made review valuable stops being applied: years of comments about *this* codebase's conventions, security patterns, painful migrations and lessons from incidents. Coding agents never had that judgment in the first place, so the same mistakes get generated, reviewed and fixed over and over.
+2. **Capacity runs out.** Every coding tool is capped by how fast the humans supervising it can read. Senior engineers spend their days reading instead of designing, and the queue still grows.
 
-Generic AI reviewers do not fix either. They know the public internet, not your organization. They produce correct-but-irrelevant comments, engineers learn to ignore them within a week, and that trust is expensive to win back. The talk that motivated Exemplar measured a generic bot at roughly a fifth of its findings accepted, which is worse than no bot, because it trains people to skip the bot's comments.
+Generic AI reviewers do not fix either problem. They know the public internet, not your organization. They leave comments that are correct but irrelevant. Engineers learn to ignore them within a week, and that trust is expensive to win back. The talk that inspired Exemplar measured a generic bot at roughly one in five findings accepted. That is worse than no bot at all, because it trains people to skip the bot's comments.
 
 ## Two jobs: hold the standard, absorb the volume
 
-Exemplar is a self-correcting AI code reviewer that **encodes your organization's own review judgment**, enforces it on every pull request, and **decides which pull requests still need a human**.
+Exemplar is an AI code reviewer that **learns your organization's own review judgment**, applies it to every PR, and **decides which PRs still need a human**. It also corrects itself when people tell it a rule is wrong.
 
 **Hold the standard.**
 
-1. **It mines your review history.** The learning plane reads years of human review comments (and postmortems and reverts), extracts the ones that express a reusable constraint, clusters them, and proposes candidate rules with citations back to the comments they came from.
-2. **A human decides what becomes a rule.** Candidates arrive as pull requests to a config repository your teams own (`exemplar-config`). Rule owners edit, test and merge them, or kill them. Nothing enforces until a human merged it, and every rule ships with evaluation cases.
-3. **It enforces with one focused agent per rule.** Rules that can be expressed as patterns run deterministically. The rest each get a small agent with read-only tools and repository-wide context. A narrow bug lane looks for the logic errors no rule describes.
-4. **Nothing reaches a human unverified.** Every candidate finding goes to a second model, from a different family where possible, whose job is to disprove it and to judge whether it matters here. Code then checks the evidence, the anchors and the provenance. What survives is ranked, budgeted and posted, with a one-click fix where the change is local.
+1. **It mines your review history.** A set of background jobs (the *learning plane*) reads years of human review comments, plus postmortems and reverts. It pulls out the comments that express a reusable constraint, groups similar ones together, and proposes candidate rules. Each candidate cites the comments it came from.
+2. **A human decides what becomes a rule.** Candidates arrive as PRs to a config repository your teams own, called `exemplar-config`. Rule owners edit, test and merge them, or reject them. Nothing is enforced until a human has merged it, and every rule ships with test cases.
+3. **It enforces with one focused agent per rule.** Rules that can be written as a code pattern run as plain pattern matches, with no model involved. The rest each get a small AI agent with read-only tools and context from across the repository. A narrow "bug lane" looks for logic errors no rule describes.
+4. **Nothing reaches a human unverified.** Every candidate finding goes to a second model, from a different model family where possible. That model's job is to disprove the finding and judge whether it matters here. Code then checks the evidence, the line numbers and where the finding came from. What survives is ranked, trimmed to a budget and posted, with a one-click fix where the change is small and local.
 
 **Absorb the volume.**
 
-5. **Every PR gets a verdict: approved, or routed to humans with reasons.** A pull request that touched only allowed paths, came from an allowed author, was reviewed to full coverage with no blocking, important or Security finding, and passed a deterministic merge-safety score and a two-model risk categorisation is approved without a human. Everything else goes to human review, and the record says which gate it failed, so reviewers open the PR knowing why it needs them. The gates are deterministic, auditable, and off until you turn them on per repository.
-6. **It learns from what people say back.** Structured dismissals ("wrong", "not here", "already covered") feed per-rule precision. A rule people keep rejecting is demoted. A correction in a reply opens a rule-edit proposal for the owner, through the same gate.
-7. **The same rules reach the code before the PR.** Rules export to coding-agent instruction files and a local pre-PR check, so agents and IDEs conform before review, and the violations never arrive as review load at all.
+5. **Every PR gets a verdict: approved, or routed to humans with reasons.** A PR is approved with no human review when it touched only allowed paths, came from an allowed author, was reviewed completely with no blocking, important or Security finding, passed a merge-safety score computed by code, and was rated low-risk by two models. Everything else goes to human review, and the record says which gate it failed. Reviewers open the PR already knowing why it needs them. The gates are deterministic (the same input always gives the same answer), auditable, and off until you turn them on per repository.
+6. **It learns from what people say back.** Structured dismissals ("wrong", "not here", "already covered") feed each rule's precision score. A rule people keep rejecting is demoted. A correction in a reply opens a proposal to edit the rule, which the owner reviews through the same gate.
+7. **The same rules reach the code before the PR.** Rules are exported into the instruction files that coding agents read, and into a local check you can run before opening a PR. Agents and IDEs follow the rules before review, so those violations never show up as review load at all.
 
-The durable asset is the rule corpus: owned, versioned, cited and testable. The models that read it are swappable components behind a gateway.
+The lasting asset is the collection of rules: owned, versioned, cited and testable. The models that read it are swappable parts behind a gateway.
 
 ## How it differs
 
 | A generic AI reviewer | Exemplar |
 |---|---|
 | Knows the public internet | Knows what your reviewers have said, with citations |
-| One large prompt reviews everything | One agent per rule, deterministic where possible, plus a narrow bug lane |
+| One large prompt reviews everything | One agent per rule, plain pattern matching where possible, plus a narrow bug lane |
 | Posts what the model says | Posts only what a second model failed to refute and code could validate |
-| Adds comments to every PR; the human queue stays the same length | Approves low-risk PRs without a human behind deterministic gates, and tells reviewers why the rest need them |
-| Learns from thumbs up and down, directly into behavior | Learns through a config PR a human merges; it never changes its own enforcement |
-| Comments on everything it notices | Comment budget per PR and per file; nits belong to linters and are deduplicated |
+| Adds comments to every PR; the human queue stays the same length | Approves low-risk PRs without a human, behind deterministic gates, and tells reviewers why the rest need them |
+| Learns from thumbs up and down, directly into its behavior | Learns through a config PR that a human merges; it never changes its own enforcement |
+| Comments on everything it notices | Has a comment budget per PR and per file; small style nits belong to linters and are deduplicated |
 | Can block merges | Never requests changes. It approves, or it says nothing |
-| Review-time only | The same rules ship to coding agents, IDEs and a pre-PR CLI |
+| Works at review time only | The same rules ship to coding agents, IDEs and a pre-PR command-line tool |
 
-There is a tempting shortcut that Exemplar is built to replace. When a team is overwhelmed, engineers start reviewing PRs with their own coding harness: paste the diff in, post what comes back. It looks like help. In practice the harness leaves many comments, some valid and some not, nobody can tell which the human reviewer actually agrees with, authors spend their time disproving them, and soon authors use a harness to answer the harness. Review becomes a proxy exchange that spreads no knowledge and needs no teammate. The alternative is one centralized reviewer whose findings someone owns, whose precision is measured per rule, and whose approval is a plain, auditable decision. That is what owned rules, verification, structured feedback and deterministic gates are for.
+There is a tempting shortcut that Exemplar is built to replace. When a team is overwhelmed, engineers start reviewing PRs with their own coding assistant: paste the diff in, post what comes back. It looks like help. In practice the assistant leaves many comments, some valid and some not. Nobody can tell which ones the human reviewer actually agrees with. Authors spend their time disproving them, and soon authors use an assistant to answer the assistant. Review turns into an exchange between two tools that spreads no knowledge and needs no teammate. The alternative is one central reviewer whose findings someone owns, whose precision is measured per rule, and whose approval is a plain, auditable decision. That is what owned rules, verification, structured feedback and deterministic gates are for.
 
 ## Principles
 
-- **Precision is the product.** A noisy rule is worse than no rule. Every design choice traces to reducing one of two false positives: findings that are wrong, and findings that are right but don't matter here.
-- **Human attention is the scarce resource.** The point of approving a PR without a human is not speed; it is that the reviewer's hour goes to the PR that needs it.
-- **Learn offline, enforce online, one human gate between them.** Cheap vectors prefilter, a model decides, a human merges.
-- **Deterministic first, expensive only if it all passes.** A check that can be a pattern is a pattern. An approval is decided by gates code can audit, never by a model's say-so.
-- **The model never vouches for itself.** A different model tries to disprove each finding; code checks the evidence. Everything the model reads, including the diff and the PR description, is untrusted.
+- **Precision is the product.** A noisy rule is worse than no rule. Every design choice traces back to reducing one of two kinds of false positive: findings that are wrong, and findings that are right but don't matter here.
+- **Human attention is the scarce resource.** The point of approving a PR without a human is not speed. It is that the reviewer's hour goes to the PR that needs it.
+- **Learn offline, enforce online, one human gate between them.** Cheap vector math filters first, a model decides, a human merges.
+- **Deterministic first, expensive only if everything passes.** A check that can be a pattern is a pattern. An approval is decided by gates that code can audit, never by a model's word.
+- **The model never vouches for itself.** A different model tries to disprove each finding, and code checks the evidence. Everything the model reads, including the diff and the PR description, is treated as untrusted.
 - **A fix is worth more than a comment.**
-- **Best practices expire.** Rules carry a review-by date and drop back to shadow unless re-confirmed.
-- **Review is also knowledge transfer.** Counter-metrics watch for auto-approve eroding shared ownership.
-- **An auto-approved failure is a system failure.** When a PR Exemplar approved causes an incident or a revert, the question is which gate, rule or check should have refused it, never which author to blame. The fix lands in config, a rule, an eval case or the code.
-- **Cost and latency are visible, not optimized for.** Every review reports what it cost; precision and encoded judgment come first.
+- **Best practices expire.** Every rule carries a review-by date and drops back to shadow mode unless someone re-confirms it.
+- **Review is also knowledge transfer.** Counter-metrics watch for auto-approve eroding shared ownership of the code.
+- **An auto-approved failure is a system failure.** When a PR Exemplar approved causes an incident or a revert, the question is which gate, rule or check should have refused it, never which author to blame. The fix lands in config, a rule, a test case or the code.
+- **Cost and latency are visible, not optimized for.** Every review reports what it cost. Precision and encoded judgment come first.
 
 ## What it won't do
 
 - Replace human review of design, or block a PR. The bot never posts "request changes".
-- Approve anything a model alone judged safe. Approval requires every deterministic gate to pass first; the two-model categorisation can only say no.
-- Comment on naming, formatting or style trivia. Linters own those, and findings that duplicate them are dropped.
+- Approve anything a model alone judged safe. Approval requires every deterministic gate to pass first. The two-model risk check can only say no.
+- Comment on naming, formatting or style trivia. Linters own those, and findings that duplicate a linter are dropped.
 - Train or fine-tune a model, or depend on a third-party AI reviewer.
-- Change its own behavior without a merged, human-approved config change. Optimizing directly for what people react well to invites a bot that learns to say what people like to hear.
+- Change its own behavior without a merged, human-approved config change. A bot that optimizes directly for what people react well to learns to say what people like to hear.
 - Send code it has been told not to send. Repositories and paths can be excluded from ever reaching a model provider, and the gateway is the only process holding provider keys.
 
 ## Who it's for
@@ -91,7 +91,7 @@ There is a tempting shortcut that Exemplar is built to replace. When a team is o
 
 ## How it knows it's working
 
-The targets Exemplar is built against, from the product requirements:
+These are the targets Exemplar is built against, from the product requirements:
 
 | Metric | Target |
 |---|---|
@@ -102,7 +102,7 @@ The targets Exemplar is built against, from the product requirements:
 | Pull requests merged fully AI-reviewed, with no human review needed | 5% at launch, then growing |
 | Violations per PR for exported rules | falling quarter over quarter |
 
-Alongside them, counter-metrics watch for harm: the revert rate of auto-approved PRs against human-approved ones, incidents on PRs where the bot was silent, code-owner paths changed without that team seeing the PR, and human design comments falling while acceptance stays flat. Cost and latency are reported on every review but are not targets.
+Alongside them, counter-metrics watch for harm: the revert rate of auto-approved PRs compared with human-approved ones, incidents on PRs where the bot was silent, code-owner paths changed without that team seeing the PR, and human design comments falling while acceptance stays flat. Cost and latency are reported on every review but are not targets.
 
 ## Where to go next
 
