@@ -57,7 +57,7 @@ jobs:
           go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o dist/exemplar ./cmd/exemplar
           ./dist/exemplar --version
           tar -C dist -czf "exemplar_${VERSION}_${{ matrix.os }}_${{ matrix.arch }}.tar.gz" exemplar
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: exemplar-${{ matrix.os }}-${{ matrix.arch }}
           path: exemplar_*.tar.gz
@@ -71,7 +71,7 @@ jobs:
       # Only this workflow's archives: called from release-please.yml, the
       # run also holds images.yml's Docker build records, which do not
       # download as plain artifacts and would fail the job.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: exemplar-*
           merge-multiple: true
