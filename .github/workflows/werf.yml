@@ -1,0 +1,94 @@
+name: werf
+
+# Builds both deploy images with werf (werf.yaml) and pushes them to GHCR
+# (ghcr.io/koblas/exemplar) on every push to main, and by hand. It runs
+# alongside images.yml, which stays the release path: release-please.yml and
+# manifests.yml read the Docker Hub tags images.yml pushes, and nothing reads
+# these. A pull request that touches the werf config or the Dockerfiles
+# builds without pushing (local stage storage, no registry login).
+#
+# werf stores each image under a content-based tag and keeps its stages in
+# the same repository, so an unchanged image is not rebuilt. Each image also
+# gets two readable tags:
+#   <image>-sha-<short>   every push
+#   <image>-main          the tip of main
+# where <image> is exemplar or exemplar-learning. The step summary lists the
+# digest and the kustomize images entry that pins it.
+#
+# werf ci-env signs in to GHCR with GITHUB_TOKEN (packages: write); no other
+# secret is needed. werf needs the full history (fetch-depth: 0).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - werf.yaml
+      - werf-giterminism.yaml
+      - .github/workflows/werf.yml
+      - deploy/docker/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: werf-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The Dockerfiles use BuildKit syntax (RUN --mount=type=cache,
+  # ADD --checksum).
+  DOCKER_BUILDKIT: "1"
+  EXEMPLAR_VERSION: ${{ github.sha }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: werf/actions/install@v2
+        with:
+          version: v2.83.0
+      - name: Build without pushing
+        if: github.event_name == 'pull_request'
+        run: werf build
+      - name: Build and push
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHORT_SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          . "$(werf ci-env github --as-file)"
+          tags=(--add-custom-tag "%image%-sha-${SHORT_SHA::7}")
+          if [ "$REF_NAME" = main ]; then
+            tags+=(--add-custom-tag "%image%-main")
+          fi
+          werf build --repo "ghcr.io/${GITHUB_REPOSITORY}" "${tags[@]}" \
+            --save-build-report --build-report-path werf-build-report.json
+      - name: Summarize the pushed digests
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### werf build"
+            echo
+            jq -r '.Images | to_entries[] | "- `\(.key)`: `\(.value.DockerImageName)`, digest `\(.value.DockerImageDigest)`"' werf-build-report.json
+            echo
+            echo "Kustomize pin:"
+            echo '```yaml'
+            jq -r '.Images | to_entries[] | "  - name: \(.key)\n    newName: \(.value.DockerRepo)\n    digest: \(.value.DockerImageDigest)"' werf-build-report.json
+            echo '```'
+            echo
+            echo "<details><summary>Build report</summary>"
+            echo
+            echo '```json'
+            cat werf-build-report.json
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"

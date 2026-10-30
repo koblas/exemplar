@@ -9,6 +9,8 @@ Exemplar ships two images in `docker.io/koblas/exemplar`, both running as UID 65
 
 `.github/workflows/images.yml` pushes both on every push to `main` and each `v*` tag; its run summary prints each digest and the `images:` entry to paste. Both images share one repository and the base keeps the logical names `exemplar` and `exemplar-learning`: Kustomize matches images by name alone, so renaming them in the base would leave an overlay unable to pin them apart.
 
+`.github/workflows/werf.yml` also builds both images with [werf](https://werf.io) on every push to `main` and pushes them to `ghcr.io/koblas/exemplar` as `exemplar-main`, `exemplar-sha-<short>`, `exemplar-learning-main` and `exemplar-learning-sha-<short>`, next to werf's content-based tags. Releases are published only to Docker Hub. Its run summary prints each digest and the `images:` entry for GHCR.
+
 ## Release assets
 
 Each GitHub release (what changed is in [CHANGELOG.md](https://github.com/koblas/exemplar/blob/main/CHANGELOG.md); the process is in [CONTRIBUTING.md](https://github.com/koblas/exemplar/blob/main/CONTRIBUTING.md#releasing)) attaches:

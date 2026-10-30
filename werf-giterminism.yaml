@@ -1,0 +1,6 @@
+# Exceptions to werf's giterminism for werf.yaml: the version string the
+# services binaries report, set by .github/workflows/werf.yml.
+giterminismConfigVersion: 1
+config:
+  goTemplateRendering:
+    allowEnvVariables: [EXEMPLAR_VERSION]
