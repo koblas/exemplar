@@ -1,0 +1,22 @@
+# werf build configuration (.github/workflows/werf.yml): the same two images
+# images.yml builds, from the same Dockerfiles, pushed to GHCR
+# (ghcr.io/koblas/exemplar) under werf's content-based tags. images.yml stays
+# the release path to Docker Hub. Build locally from a clean commit:
+#
+#   werf build --repo ghcr.io/koblas/exemplar
+#
+# werf builds only committed files (giterminism). EXEMPLAR_VERSION, allowed
+# in werf-giterminism.yaml, sets the binaries' version (exemplar --version).
+project: exemplar
+configVersion: 1
+build:
+  # The services image is amd64 only (the ast-grep release binary).
+  platform: [linux/amd64]
+---
+image: exemplar
+dockerfile: deploy/docker/Dockerfile
+args:
+  VERSION: {{ env "EXEMPLAR_VERSION" | default "dev" | quote }}
+---
+image: exemplar-learning
+dockerfile: deploy/docker/learning.Dockerfile
