@@ -6,6 +6,17 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.7.0](https://github.com/koblas/exemplar/compare/v0.6.1...v0.7.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **images:** new releases publish the learning image only as koblas/exemplar-learning:<version>. The learning-<version> tags in koblas/exemplar from v0.6.0 and earlier stay; installations that pin digests keep working, but overlays should point exemplar-learning's newName at docker.io/koblas/exemplar-learning.
+
+### Features
+
+* **images:** publish the learning image to its own repository ([012b551](https://github.com/koblas/exemplar/commit/012b551f60773d6aec4f17ba558028349918e8a8))
+
 ## [0.6.1](https://github.com/koblas/exemplar/compare/v0.6.0...v0.6.1) (2026-10-31)
 
 
