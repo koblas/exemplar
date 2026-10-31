@@ -30,7 +30,8 @@ name: images
 # the full history (fetch-depth: 0).
 #
 # The binaries report the release tag (exemplar --version), or the commit
-# for other builds.
+# for other builds; both images carry it, and the commit built, as OCI
+# labels (org.opencontainers.image.version, .revision).
 
 on:
   push:
@@ -80,6 +81,9 @@ jobs:
         with:
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
           fetch-depth: 0
+      # The checked-out commit: a called run's github.sha is the caller's.
+      - name: Record the revision
+        run: echo "EXEMPLAR_REVISION=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: werf/actions/install@v2
         with:
           version: v2.83.0

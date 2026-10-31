@@ -16,3 +16,12 @@ RUN uv sync --frozen --no-dev
 ENV PATH=/opt/venv/bin:$PATH HOME=/tmp
 USER 65532:65532
 ENTRYPOINT ["exemplar-learning"]
+# OCI labels, last so a new commit rebuilds only this layer. VERSION and
+# REVISION come from werf.yaml (images.yml); a plain docker build gets "dev".
+ARG VERSION=dev REVISION=dev
+LABEL org.opencontainers.image.title="exemplar-learning" \
+      org.opencontainers.image.description="Exemplar learning-plane jobs (cluster, rank)" \
+      org.opencontainers.image.source="https://github.com/koblas/exemplar" \
+      org.opencontainers.image.url="https://github.com/koblas/exemplar" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"

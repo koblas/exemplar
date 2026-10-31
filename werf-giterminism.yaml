@@ -1,6 +1,6 @@
-# Exceptions to werf's giterminism for werf.yaml: the version string the
-# services binaries report, set by .github/workflows/images.yml.
+# Exceptions to werf's giterminism for werf.yaml: the release version and
+# commit, set by .github/workflows/images.yml (binaries' version, OCI labels).
 giterminismConfigVersion: 1
 config:
   goTemplateRendering:
-    allowEnvVariables: [EXEMPLAR_VERSION]
+    allowEnvVariables: [EXEMPLAR_VERSION, EXEMPLAR_REVISION]
