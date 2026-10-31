@@ -6,8 +6,10 @@
 #   werf build exemplar
 #   werf build exemplar-learning
 #
-# werf builds only committed files (giterminism). EXEMPLAR_VERSION, allowed
-# in werf-giterminism.yaml, sets the binaries' version (exemplar --version).
+# werf builds only committed files (giterminism). EXEMPLAR_VERSION and
+# EXEMPLAR_REVISION, allowed in werf-giterminism.yaml, set the binaries'
+# version (exemplar --version) and both images' OCI version and revision
+# labels.
 project: exemplar
 configVersion: 1
 build:
@@ -18,6 +20,10 @@ image: exemplar
 dockerfile: deploy/docker/Dockerfile
 args:
   VERSION: {{ env "EXEMPLAR_VERSION" | default "dev" | quote }}
+  REVISION: {{ env "EXEMPLAR_REVISION" | default "dev" | quote }}
 ---
 image: exemplar-learning
 dockerfile: deploy/docker/learning.Dockerfile
+args:
+  VERSION: {{ env "EXEMPLAR_VERSION" | default "dev" | quote }}
+  REVISION: {{ env "EXEMPLAR_REVISION" | default "dev" | quote }}

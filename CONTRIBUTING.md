@@ -80,8 +80,11 @@ tags; the first release is `v0.1.0`.
    x.y.z". It bumps `.release-please-manifest.json` and prepends the new
    CHANGELOG.md entry, built from the `feat`, `fix`, `perf`, `deps` and
    `revert` commits since the last release. With none, there is no release PR.
-2. Review the entry and merge the PR when you want to ship. You can edit the
-   PR's CHANGELOG.md before merging.
+2. Review the entry and merge the PR when you want to ship. Its description
+   lists the checks before merging and what the merge runs. You can edit the
+   PR's CHANGELOG.md before merging, as the last step: release-please
+   rewrites the PR on every push to `main`. The PR touches no code, so CI
+   runs only the `commits` check on it.
 3. The merge tags `vx.y.z` and creates its GitHub release, with the entry as
    its notes. The same workflow then:
    - builds the CLI on four platforms and attaches the archives and

@@ -15,9 +15,10 @@ concurrency:
 jobs:
   # What a pull request touches decides which jobs it needs. Only the beads
   # export, the Claude Code configuration (.claude/: skills, CLAUDE.md,
-  # settings), the user documentation (docs/ outside its Go tests, mkdocs.yml)
-  # and the top-level Markdown files are not code: a pull request touching
-  # nothing else runs commits, plus docs when the site changed. Anything
+  # settings), the user documentation (docs/ outside its Go tests, mkdocs.yml),
+  # the top-level Markdown files and .release-please-manifest.json are not
+  # code: a pull request touching nothing else, such as a release PR, runs
+  # commits, plus docs when the site changed. Anything
   # else, this file included, runs every job; so does every push to main.
   # Skipped jobs report as skipped, which GitHub counts as passing.
   changes:
@@ -49,7 +50,7 @@ jobs:
             case "$f" in
               docs/*.go) code=true ;;
               docs/* | mkdocs.yml) docs=true ;;
-              .beads/* | .claude/* | README.md | CHANGELOG.md | CONTRIBUTING.md | ARCHITECTURE.md) ;;
+              .beads/* | .claude/* | README.md | CHANGELOG.md | CONTRIBUTING.md | ARCHITECTURE.md | .release-please-manifest.json) ;;
               *) code=true ;;
             esac
             echo "$f"
