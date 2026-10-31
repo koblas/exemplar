@@ -31,7 +31,7 @@ type CreatedApp struct {
 // no authentication, and the code is good for an hour, once.
 func CompleteManifest(ctx context.Context, apiBase string, hc *http.Client, code string) (*CreatedApp, error) {
 	opts := []github.ClientOptionsFunc{github.WithTimeout(30 * time.Second)}
-	if hc != nil {
+	if hc != nil && hc.Transport != nil { // go-github rejects a nil transport
 		opts = append(opts, github.WithTransport(hc.Transport))
 	}
 	if apiBase != "" {

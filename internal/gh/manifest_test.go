@@ -33,6 +33,10 @@ func TestCompleteManifest(t *testing.T) {
 	if _, err := CompleteManifest(t.Context(), srv.URL, srv.Client(), "used"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown code = %v, want ErrNotFound", err)
 	}
+	// exemplar-api's setup mode passes a client with only a timeout.
+	if _, err := CompleteManifest(t.Context(), srv.URL, &http.Client{}, "c0de"); err != nil {
+		t.Fatalf("client without a transport: %v", err)
+	}
 }
 
 func TestOrgInstallation(t *testing.T) {
