@@ -91,7 +91,7 @@ tags; the first release is `v0.1.0`.
      (`images.yml`). Their run summary lists the digests to pin (docs,
      "Releases and images");
    - builds both with werf and pushes them to the GHCR repositories of the
-     same names as `latest` (`werf.yml`);
+     same names, with the same tags (`werf.yml`);
    - renders `install-tunnel.yaml` and `install-direct.yaml` with those
      digests and attaches them to the release (`manifests.yml`).
 

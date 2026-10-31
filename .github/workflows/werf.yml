@@ -18,6 +18,8 @@ name: werf
 # gets readable tags:
 #   sha-<short>   every push
 #   main          the tip of main
+#   <version>     each release, without the "v" (as images.yml)
+#   <x.y>         its minor line
 #   latest        the newest release
 # The step summary lists the digest and the kustomize images entry that
 # pins it.
@@ -91,7 +93,13 @@ jobs:
         run: |
           . "$(werf ci-env github --as-file)"
           if [ -n "$RELEASE" ]; then
-            tags=(--add-custom-tag latest)
+            version=${RELEASE#v}
+            tags=(--add-custom-tag "$version" --add-custom-tag latest)
+            # The minor line only for a plain release, as metadata-action's
+            # semver pattern skips it for pre-releases.
+            if [[ $version =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+              tags+=(--add-custom-tag "${BASH_REMATCH[1]}")
+            fi
           else
             tags=(--add-custom-tag "sha-${SHORT_SHA::7}")
             if [ "$REF_NAME" = main ]; then

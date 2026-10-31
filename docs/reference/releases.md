@@ -13,7 +13,7 @@ Both repositories take the same tags: `<version>` and `<major>.<minor>` for each
 
 `latest` follows the newest release, not `main`. For an installation, pin a digest instead of following either.
 
-`.github/workflows/werf.yml` also builds both images with [werf](https://werf.io) on every push to `main` and each release, and pushes them to `ghcr.io/koblas/exemplar` and `ghcr.io/koblas/exemplar-learning` next to werf's content-based tags: `main` and `sha-<short>` from `main`, and `latest` for the newest release. Version tags are published only to Docker Hub. Its run summary prints each digest and the `images:` entry for GHCR.
+`.github/workflows/werf.yml` also builds both images with [werf](https://werf.io) on every push to `main` and each release, and pushes them to `ghcr.io/koblas/exemplar` and `ghcr.io/koblas/exemplar-learning` next to werf's content-based tags: the same tags as Docker Hub: `<version>`, `<major>.<minor>` and `latest` for each release, `main` and `sha-<short>` from `main`. Its run summary prints each digest and the `images:` entry for GHCR.
 
 ## Release assets
 
