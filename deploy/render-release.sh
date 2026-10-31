@@ -33,7 +33,7 @@ kind: Kustomization
 resources: [../../$build]
 images:
   - {name: exemplar, newName: docker.io/koblas/exemplar, digest: $services}
-  - {name: exemplar-learning, newName: docker.io/koblas/exemplar, digest: $learning}
+  - {name: exemplar-learning, newName: docker.io/koblas/exemplar-learning, digest: $learning}
 YAML
   {
     echo "# Exemplar $tag, $name build (deploy/k8s/$build), images pinned by digest."

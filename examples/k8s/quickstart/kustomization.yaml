@@ -24,7 +24,7 @@ images:
     newName: docker.io/koblas/exemplar
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
   - name: exemplar-learning
-    newName: docker.io/koblas/exemplar
+    newName: docker.io/koblas/exemplar-learning
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 patches:

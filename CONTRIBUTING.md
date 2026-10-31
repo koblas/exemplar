@@ -86,9 +86,12 @@ tags; the first release is `v0.1.0`.
    its notes. The same workflow then:
    - builds the CLI on four platforms and attaches the archives and
      `SHA256SUMS` to the release (`release.yml`);
-   - pushes both images to Docker Hub as `<x.y.z>`, `<x.y>`,
-     `learning-<x.y.z>` and `learning-<x.y>` (`images.yml`). Their run
-     summary lists the digests to pin (docs, "Releases and images");
+   - pushes both images to Docker Hub, `koblas/exemplar` and
+     `koblas/exemplar-learning`, as `<x.y.z>`, `<x.y>` and `latest`
+     (`images.yml`). Their run summary lists the digests to pin (docs,
+     "Releases and images");
+   - builds both with werf and pushes them to the GHCR repositories of the
+     same names as `latest` (`werf.yml`);
    - renders `install-tunnel.yaml` and `install-direct.yaml` with those
      digests and attaches them to the release (`manifests.yml`).
 

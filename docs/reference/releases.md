@@ -1,15 +1,19 @@
 # Releases and images
 
-Exemplar ships two images in `docker.io/koblas/exemplar`, both running as UID 65532 with a read-only root filesystem, for `linux/amd64`:
+Exemplar ships two images on Docker Hub, each in its own repository, both running as UID 65532 with a read-only root filesystem, for `linux/amd64`:
 
-| Image | Tags | What |
+| Image | Repository | What |
 |---|---|---|
-| Services | `<version>`, `<major>.<minor>`, `main`, `sha-<short>` | Every Go service, plus git, ripgrep, universal-ctags, ast-grep, Semgrep and clang-format |
-| Learning | `learning-<version>`, `learning-<major>.<minor>`, `learning-main`, `learning-sha-<short>` | The Python learning jobs (`cluster`, `rank`) |
+| Services | `docker.io/koblas/exemplar` | Every Go service, plus git, ripgrep, universal-ctags, ast-grep, Semgrep and clang-format |
+| Learning | `docker.io/koblas/exemplar-learning` | The Python learning jobs (`cluster`, `rank`) |
 
-`.github/workflows/images.yml` pushes both on every push to `main` and each `v*` tag; its run summary prints each digest and the `images:` entry to paste. Both images share one repository and the base keeps the logical names `exemplar` and `exemplar-learning`: Kustomize matches images by name alone, so renaming them in the base would leave an overlay unable to pin them apart.
+Both repositories take the same tags: `<version>` and `<major>.<minor>` for each release, `latest` for the newest release, `main` for the tip of `main`, and `sha-<short>` for every push. Releases up to v0.6.0 published the learning image as `koblas/exemplar:learning-<version>`; those tags stay, but new releases push only to `koblas/exemplar-learning`.
 
-`.github/workflows/werf.yml` also builds both images with [werf](https://werf.io) on every push to `main` and pushes them to `ghcr.io/koblas/exemplar` as `exemplar-main`, `exemplar-sha-<short>`, `exemplar-learning-main` and `exemplar-learning-sha-<short>`, next to werf's content-based tags. Releases are published only to Docker Hub. Its run summary prints each digest and the `images:` entry for GHCR.
+`.github/workflows/images.yml` pushes both on every push to `main` and each `v*` tag; its run summary prints each digest and the `images:` entry to paste. The base names the images `exemplar` and `exemplar-learning`, and an overlay's `images:` entries map each name to its repository and digest.
+
+`latest` follows the newest release, not `main`. For an installation, pin a digest instead of following either.
+
+`.github/workflows/werf.yml` also builds both images with [werf](https://werf.io) on every push to `main` and each release, and pushes them to `ghcr.io/koblas/exemplar` and `ghcr.io/koblas/exemplar-learning` next to werf's content-based tags: `main` and `sha-<short>` from `main`, and `latest` for the newest release. Version tags are published only to Docker Hub. Its run summary prints each digest and the `images:` entry for GHCR.
 
 ## Release assets
 
@@ -34,6 +38,7 @@ Or build on `github.com/koblas/exemplar//deploy/k8s/base?ref=<version>` and pin 
 
 ```bash
 docker buildx imagetools inspect koblas/exemplar:<version> --format '{{json .Manifest.Digest}}'
+docker buildx imagetools inspect koblas/exemplar-learning:<version> --format '{{json .Manifest.Digest}}'
 ```
 
 ```yaml
@@ -42,7 +47,7 @@ images:
     newName: docker.io/koblas/exemplar
     digest: sha256:<services digest>
   - name: exemplar-learning
-    newName: docker.io/koblas/exemplar
+    newName: docker.io/koblas/exemplar-learning
     digest: sha256:<learning digest>
 ```
 
