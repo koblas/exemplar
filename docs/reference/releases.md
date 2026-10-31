@@ -9,11 +9,9 @@ Exemplar ships two images on Docker Hub, each in its own repository, both runnin
 
 Both repositories take the same tags: `<version>` and `<major>.<minor>` for each release, `latest` for the newest release, `main` for the tip of `main`, and `sha-<short>` for every push. Releases up to v0.6.0 published the learning image as `koblas/exemplar:learning-<version>`; those tags stay, but new releases push only to `koblas/exemplar-learning`.
 
-`.github/workflows/images.yml` pushes both on every push to `main` and each `v*` tag; its run summary prints each digest and the `images:` entry to paste. The base names the images `exemplar` and `exemplar-learning`, and an overlay's `images:` entries map each name to its repository and digest.
+`.github/workflows/images.yml` builds both with [werf](https://werf.io) and pushes them on every push to `main` and each `v*` tag; its run summary prints each digest and the `images:` entry to paste. werf keeps its build cache in private GHCR repositories (`ghcr.io/koblas/exemplar`, `ghcr.io/koblas/exemplar-learning`); pull the images from Docker Hub. The base names the images `exemplar` and `exemplar-learning`, and an overlay's `images:` entries map each name to its repository and digest.
 
 `latest` follows the newest release, not `main`. For an installation, pin a digest instead of following either.
-
-`.github/workflows/werf.yml` also builds both images with [werf](https://werf.io) on every push to `main` and each release, and pushes them to `ghcr.io/koblas/exemplar` and `ghcr.io/koblas/exemplar-learning` next to werf's content-based tags: `main` and `sha-<short>` from `main`, and `latest` for the newest release. Version tags are published only to Docker Hub. Its run summary prints each digest and the `images:` entry for GHCR.
 
 ## Release assets
 

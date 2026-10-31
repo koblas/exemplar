@@ -69,8 +69,8 @@ jobs:
       contents: write
     steps:
       # Only this workflow's archives: called from release-please.yml, the
-      # run also holds images.yml's Docker build records, which do not
-      # download as plain artifacts and would fail the job.
+      # run may also hold other workflows' artifacts, which this job does
+      # not want.
       - uses: actions/download-artifact@v8
         with:
           pattern: exemplar-*
