@@ -6,6 +6,13 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.8.0](https://github.com/koblas/exemplar/compare/v0.7.0...v0.8.0) (2026-10-31)
+
+
+### Features
+
+* **images:** tag GHCR releases with &lt;version&gt; and &lt;x.y&gt; ([faf2f8a](https://github.com/koblas/exemplar/commit/faf2f8a2472edb382b47e4bd807ccee217edcba5))
+
 ## [0.7.0](https://github.com/koblas/exemplar/compare/v0.6.1...v0.7.0) (2026-10-31)
 
 
