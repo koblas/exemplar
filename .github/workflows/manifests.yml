@@ -38,8 +38,8 @@ jobs:
       - name: Render with the release's digests
         run: |
           version=${TAG#v}
-          digest() { docker buildx imagetools inspect "koblas/exemplar:$1" --format '{{json .Manifest.Digest}}' | tr -d '"'; }
-          deploy/render-release.sh "$TAG" "$(digest "$version")" "$(digest "learning-$version")" dist
+          digest() { docker buildx imagetools inspect "$1:$version" --format '{{json .Manifest.Digest}}' | tr -d '"'; }
+          deploy/render-release.sh "$TAG" "$(digest koblas/exemplar)" "$(digest koblas/exemplar-learning)" dist
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}

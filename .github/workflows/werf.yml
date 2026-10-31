@@ -1,7 +1,8 @@
 name: werf
 
-# Builds both deploy images with werf (werf.yaml) and pushes them to GHCR
-# (ghcr.io/koblas/exemplar): on every push to main, for each release
+# Builds both deploy images with werf (werf.yaml) and pushes each to its own
+# GHCR repository (ghcr.io/koblas/exemplar, ghcr.io/koblas/exemplar-learning):
+# on every push to main, for each release
 # (release-please.yml calls this with the new tag; a v* tag pushed by hand
 # does the same), and by hand. It runs alongside images.yml, which stays the
 # release path: release-please.yml and manifests.yml read the Docker Hub tags
@@ -11,14 +12,15 @@ name: werf
 # out the tag input instead, and leaves the main and sha- tags to main's own
 # run.
 #
-# werf stores each image under a content-based tag and keeps its stages in
-# the same repository, so an unchanged image is not rebuilt. Each image also
+# One job per image, each building only its image into its repository.
+# werf stores the image under a content-based tag and keeps its stages in
+# that repository, so an unchanged image is not rebuilt. Each image also
 # gets readable tags:
-#   <image>-sha-<short>   every push
-#   <image>-main          the tip of main
-#   <image>-latest        the newest release
-# where <image> is exemplar or exemplar-learning. The step summary lists the
-# digest and the kustomize images entry that pins it.
+#   sha-<short>   every push
+#   main          the tip of main
+#   latest        the newest release
+# The step summary lists the digest and the kustomize images entry that
+# pins it.
 #
 # werf ci-env signs in to GHCR with GITHUB_TOKEN (packages: write); no other
 # secret is needed. werf needs the full history (fetch-depth: 0).
@@ -58,6 +60,10 @@ env:
 
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [exemplar, exemplar-learning]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -72,30 +78,35 @@ jobs:
           version: v2.83.0
       - name: Build without pushing
         if: github.event_name == 'pull_request'
-        run: werf build
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: werf build "$IMAGE"
       - name: Build and push
         if: github.event_name != 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SHORT_SHA: ${{ github.sha }}
           REF_NAME: ${{ github.ref_name }}
+          IMAGE: ${{ matrix.image }}
         run: |
           . "$(werf ci-env github --as-file)"
           if [ -n "$RELEASE" ]; then
-            tags=(--add-custom-tag "%image%-latest")
+            tags=(--add-custom-tag latest)
           else
-            tags=(--add-custom-tag "%image%-sha-${SHORT_SHA::7}")
+            tags=(--add-custom-tag "sha-${SHORT_SHA::7}")
             if [ "$REF_NAME" = main ]; then
-              tags+=(--add-custom-tag "%image%-main")
+              tags+=(--add-custom-tag main)
             fi
           fi
-          werf build --repo "ghcr.io/${GITHUB_REPOSITORY}" "${tags[@]}" \
+          werf build "$IMAGE" --repo "ghcr.io/${GITHUB_REPOSITORY_OWNER}/${IMAGE}" "${tags[@]}" \
             --save-build-report --build-report-path werf-build-report.json
-      - name: Summarize the pushed digests
+      - name: Summarize the pushed digest
         if: github.event_name != 'pull_request'
+        env:
+          IMAGE: ${{ matrix.image }}
         run: |
           {
-            echo "### werf build"
+            echo "### werf build: ${IMAGE}"
             echo
             jq -r '.Images | to_entries[] | "- `\(.key)`: `\(.value.DockerImageName)`, digest `\(.value.DockerImageDigest)`"' werf-build-report.json
             echo

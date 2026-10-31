@@ -22,7 +22,7 @@ Manifests are plain Kustomize: `deploy/k8s/core` (everything but inbound), inbou
 components in `deploy/k8s/components` (`cloudflare-tunnel`, `ingress`), the optional
 in-cluster Postgres component (`components/postgres`), and the builds
 `deploy/k8s/base` (default: core + tunnel) and `deploy/k8s/direct` (core + Ingress); images
-are in `deploy/docker`, published to Docker Hub `koblas/exemplar` by `images.yml`. `examples/k8s/acme`
+are in `deploy/docker`, published to Docker Hub `koblas/exemplar` and `koblas/exemplar-learning` by `images.yml`. `examples/k8s/acme`
 is the example installation overlay (CI renders it). `go test ./deploy` checks every build against the code (see
 `docs/reference/workloads.md`); keep components resource-only, since it reads them without kustomize. Grafana boards and alerts
 are in `dashboards/`; `go test ./dashboards` runs their SQL.
