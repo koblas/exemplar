@@ -5,9 +5,9 @@ name: release-please
 # .release-please-manifest.json and prepends the new CHANGELOG.md entry.
 # Merging that PR tags v<version> and creates its GitHub release, whose notes
 # are the changelog entry; this workflow then builds and attaches the CLI
-# archives (release.yml), pushes the version-tagged images (images.yml)
-# and their werf builds to GHCR (werf.yml), and attaches install manifests
-# pinned to the Docker Hub images' digests.
+# archives (release.yml), builds and pushes the version-tagged images with
+# werf (images.yml), and attaches install manifests pinned to those images'
+# digests.
 #
 # release-please signs in with GITHUB_TOKEN. Tags and PRs made with it start
 # no other workflow, so the builds are called here rather than from the tag
@@ -57,21 +57,11 @@ jobs:
     if: needs.release-please.outputs.release_created == 'true'
     permissions:
       contents: read
+      packages: write
     uses: ./.github/workflows/images.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
     secrets: inherit
-
-  # The same images built with werf, tagged <image>-latest in GHCR.
-  werf:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/werf.yml
-    with:
-      tag: ${{ needs.release-please.outputs.tag_name }}
 
   # The install manifests, pinned to the digests images.yml just pushed
   # (docs/reference/releases.md). After cli, which makes sure the release exists.

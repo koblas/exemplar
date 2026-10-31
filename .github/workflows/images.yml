@@ -1,37 +1,47 @@
 name: images
 
-# Builds both deploy images and pushes each to its own Docker Hub repository
-# (koblas/exemplar for the Go services, koblas/exemplar-learning for the
-# learning plane):
-# on every push to main, for each release (release-please.yml calls this
-# with the new tag; a v* tag pushed by hand does the same), and by hand. A
-# called run sees the caller's ref (main), so it checks out and tags from
-# the tag input instead, and leaves the main and sha- tags to main's own run. There is no paths
-# filter: GitHub applies one to tag pushes too, which would skip releases,
-# and the services image takes in nearly the whole tree anyway; the layer
-# cache makes an unchanged image cheap to rebuild.
+# Builds both deploy images with werf (werf.yaml) and pushes each to its own
+# Docker Hub repository (koblas/exemplar for the Go services,
+# koblas/exemplar-learning for the learning plane): on every push to main,
+# for each release (release-please.yml calls this with the new tag; a v* tag
+# pushed by hand does the same), and by hand. A called run sees the caller's
+# ref (main), so it checks out and tags from the tag input instead, and
+# leaves the main and sha- tags to main's own run. There is no paths filter
+# on push: GitHub applies one to tag pushes too, which would skip releases.
+# A pull request that touches the werf config or the Dockerfiles builds
+# without pushing (local stage storage, no registry login); ci.yml's images
+# job builds both with docker on every code change.
 #
-# Both repositories take the same tags. Each job writes the
-# pushed digest and the kustomize images entry that pins it to the step
-# summary (see docs/reference/workloads.md, "What an installation supplies").
-#
-# Signs in as the koblas Docker Hub user with the DOCKERHUB_PAT repository
-# secret (a personal access token with read/write on both repositories). Pull
-# requests never push; ci.yml's images job already checks that both build.
-#
-# Tags:
+# One job per image. werf keeps each image's build stages in a private GHCR
+# repository of the same name (ghcr.io/koblas/<image>, --repo), so an
+# unchanged image is not rebuilt, and pushes only the final image and its
+# tags to Docker Hub (--final-repo). Tags, the same in both repositories:
 #   sha-<short>          every push
 #   main                 the tip of main
-#   <version>, <x.y>     v* tags, without the "v"
+#   <version>, <x.y>     v* tags, without the "v" (pre-releases: <version>)
 #   latest               the newest release
+# Each job writes the pushed digest and the kustomize images entry that pins
+# it to the step summary (see docs/reference/workloads.md, "What an
+# installation supplies").
 #
-# The services binaries report the release tag (exemplar --version), or the
-# commit for other builds.
+# Docker Hub: signs in as the koblas user with the DOCKERHUB_PAT repository
+# secret (a personal access token with read/write on both repositories).
+# GHCR: werf ci-env signs in with GITHUB_TOKEN (packages: write). werf needs
+# the full history (fetch-depth: 0).
+#
+# The binaries report the release tag (exemplar --version), or the commit
+# for other builds.
 
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
+    paths:
+      - werf.yaml
+      - werf-giterminism.yaml
+      - .github/workflows/images.yml
+      - deploy/docker/**
   workflow_call:
     inputs:
       tag:
@@ -47,70 +57,90 @@ concurrency:
   group: images-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
+env:
+  # The Dockerfiles use BuildKit syntax (RUN --mount=type=cache,
+  # ADD --checksum).
+  DOCKER_BUILDKIT: "1"
+  # The release tag, empty for other builds.
+  RELEASE: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+  EXEMPLAR_VERSION: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || github.sha }}
+
 jobs:
   publish:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {name: exemplar, dockerfile: deploy/docker/Dockerfile, image: koblas/exemplar}
-          - {name: exemplar-learning, dockerfile: deploy/docker/learning.Dockerfile, image: koblas/exemplar-learning}
+        image: [exemplar, exemplar-learning]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
+          fetch-depth: 0
+      - uses: werf/actions/install@v2
         with:
-          username: koblas
-          password: ${{ secrets.DOCKERHUB_PAT }}
-      - id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ matrix.image }}
-          flavor: |
-            latest=false
-          tags: |
-            type=sha,enable=${{ !inputs.tag }}
-            type=ref,event=branch,enable=${{ !inputs.tag }}
-            type=semver,pattern={{version}},value=${{ inputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag }}
-            type=raw,value=latest,enable=${{ inputs.tag != '' || github.ref_type == 'tag' }}
-      - id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          # The services image is amd64 only (the ast-grep release binary).
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || github.sha }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-      - name: Summarize the pushed digest
+          version: v2.83.0
+      - name: Build without pushing
+        if: github.event_name == 'pull_request'
         env:
-          NAME: ${{ matrix.name }}
           IMAGE: ${{ matrix.image }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-          TAGS: ${{ steps.meta.outputs.tags }}
+        run: werf build "$IMAGE"
+      - name: Build and push
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DOCKERHUB_PAT: ${{ secrets.DOCKERHUB_PAT }}
+          SHORT_SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          IMAGE: ${{ matrix.image }}
         run: |
+          . "$(werf ci-env github --as-file)"
+          printf '%s' "$DOCKERHUB_PAT" | werf cr login docker.io -u koblas --password-stdin
+          if [ -n "$RELEASE" ]; then
+            version=${RELEASE#v}
+            tags=(--add-custom-tag "$version" --add-custom-tag latest)
+            # The minor line only for a plain release, not a pre-release.
+            if [[ $version =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+              tags+=(--add-custom-tag "${BASH_REMATCH[1]}")
+            fi
+            echo "TAG=$version" >> "$GITHUB_ENV"
+          else
+            tags=(--add-custom-tag "sha-${SHORT_SHA::7}")
+            if [ "$REF_NAME" = main ]; then
+              tags+=(--add-custom-tag main)
+            fi
+            echo "TAG=sha-${SHORT_SHA::7}" >> "$GITHUB_ENV"
+          fi
+          werf build "$IMAGE" \
+            --repo "ghcr.io/${GITHUB_REPOSITORY_OWNER}/${IMAGE}" \
+            --final-repo "docker.io/koblas/${IMAGE}" \
+            "${tags[@]}" \
+            --save-build-report --build-report-path werf-build-report.json
+      - name: Summarize the pushed digest
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          digest=$(docker buildx imagetools inspect "docker.io/koblas/${IMAGE}:${TAG}" --format '{{json .Manifest.Digest}}' | tr -d '"')
           {
-            echo "### ${NAME}"
+            echo "### ${IMAGE}"
             echo
-            echo "Digest: \`${DIGEST}\`"
+            echo "Digest: \`${digest}\` (tagged \`${TAG}\`)"
             echo
-            echo "Tags:"
-            echo '```'
-            echo "${TAGS}"
-            echo '```'
             echo "Kustomize pin:"
             echo '```yaml'
-            echo "  - name: ${NAME}"
-            echo "    newName: docker.io/${IMAGE}"
-            echo "    digest: ${DIGEST}"
+            echo "  - name: ${IMAGE}"
+            echo "    newName: docker.io/koblas/${IMAGE}"
+            echo "    digest: ${digest}"
             echo '```'
+            echo
+            echo "<details><summary>werf build report</summary>"
+            echo
+            echo '```json'
+            cat werf-build-report.json
+            echo '```'
+            echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
