@@ -6,6 +6,14 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.8.1](https://github.com/koblas/exemplar/compare/v0.8.0...v0.8.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **images:** Docker Hub login for werf; OCI labels; faster, clearer release PRs ([ad2ebf8](https://github.com/koblas/exemplar/commit/ad2ebf864eabd084ec937b9ac3f8ec5df0099b02))
+* **images:** sign in to Docker Hub where werf looks for the credentials ([badac23](https://github.com/koblas/exemplar/commit/badac230f28d80ca6c68008405946b27d97f7095))
+
 ## [0.8.0](https://github.com/koblas/exemplar/compare/v0.7.0...v0.8.0) (2026-10-31)
 
 
