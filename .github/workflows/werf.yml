@@ -1,17 +1,22 @@
 name: werf
 
 # Builds both deploy images with werf (werf.yaml) and pushes them to GHCR
-# (ghcr.io/koblas/exemplar) on every push to main, and by hand. It runs
-# alongside images.yml, which stays the release path: release-please.yml and
-# manifests.yml read the Docker Hub tags images.yml pushes, and nothing reads
-# these. A pull request that touches the werf config or the Dockerfiles
-# builds without pushing (local stage storage, no registry login).
+# (ghcr.io/koblas/exemplar): on every push to main, for each release
+# (release-please.yml calls this with the new tag; a v* tag pushed by hand
+# does the same), and by hand. It runs alongside images.yml, which stays the
+# release path: release-please.yml and manifests.yml read the Docker Hub tags
+# images.yml pushes, and nothing reads these. A pull request that touches the
+# werf config or the Dockerfiles builds without pushing (local stage storage,
+# no registry login). A called run sees the caller's ref (main), so it checks
+# out the tag input instead, and leaves the main and sha- tags to main's own
+# run.
 #
 # werf stores each image under a content-based tag and keeps its stages in
 # the same repository, so an unchanged image is not rebuilt. Each image also
-# gets two readable tags:
+# gets readable tags:
 #   <image>-sha-<short>   every push
 #   <image>-main          the tip of main
+#   <image>-latest        the newest release
 # where <image> is exemplar or exemplar-learning. The step summary lists the
 # digest and the kustomize images entry that pins it.
 #
@@ -21,26 +26,35 @@ name: werf
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     paths:
       - werf.yaml
       - werf-giterminism.yaml
       - .github/workflows/werf.yml
       - deploy/docker/**
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to build and push, such as v0.2.0
+        type: string
+        required: true
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: werf-${{ github.ref }}
+  group: werf-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
   # The Dockerfiles use BuildKit syntax (RUN --mount=type=cache,
   # ADD --checksum).
   DOCKER_BUILDKIT: "1"
-  EXEMPLAR_VERSION: ${{ github.sha }}
+  # The release tag, empty for other builds.
+  RELEASE: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+  EXEMPLAR_VERSION: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || github.sha }}
 
 jobs:
   build:
@@ -51,6 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
           fetch-depth: 0
       - uses: werf/actions/install@v2
         with:
@@ -66,9 +81,13 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           . "$(werf ci-env github --as-file)"
-          tags=(--add-custom-tag "%image%-sha-${SHORT_SHA::7}")
-          if [ "$REF_NAME" = main ]; then
-            tags+=(--add-custom-tag "%image%-main")
+          if [ -n "$RELEASE" ]; then
+            tags=(--add-custom-tag "%image%-latest")
+          else
+            tags=(--add-custom-tag "%image%-sha-${SHORT_SHA::7}")
+            if [ "$REF_NAME" = main ]; then
+              tags+=(--add-custom-tag "%image%-main")
+            fi
           fi
           werf build --repo "ghcr.io/${GITHUB_REPOSITORY}" "${tags[@]}" \
             --save-build-report --build-report-path werf-build-report.json

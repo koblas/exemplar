@@ -4,12 +4,14 @@ Exemplar ships two images in `docker.io/koblas/exemplar`, both running as UID 65
 
 | Image | Tags | What |
 |---|---|---|
-| Services | `<version>`, `<major>.<minor>`, `main`, `sha-<short>` | Every Go service, plus git, ripgrep, universal-ctags, ast-grep, Semgrep and clang-format |
-| Learning | `learning-<version>`, `learning-<major>.<minor>`, `learning-main`, `learning-sha-<short>` | The Python learning jobs (`cluster`, `rank`) |
+| Services | `<version>`, `<major>.<minor>`, `latest`, `main`, `sha-<short>` | Every Go service, plus git, ripgrep, universal-ctags, ast-grep, Semgrep and clang-format |
+| Learning | `learning-<version>`, `learning-<major>.<minor>`, `learning-latest`, `learning-main`, `learning-sha-<short>` | The Python learning jobs (`cluster`, `rank`) |
 
 `.github/workflows/images.yml` pushes both on every push to `main` and each `v*` tag; its run summary prints each digest and the `images:` entry to paste. Both images share one repository and the base keeps the logical names `exemplar` and `exemplar-learning`: Kustomize matches images by name alone, so renaming them in the base would leave an overlay unable to pin them apart.
 
-`.github/workflows/werf.yml` also builds both images with [werf](https://werf.io) on every push to `main` and pushes them to `ghcr.io/koblas/exemplar` as `exemplar-main`, `exemplar-sha-<short>`, `exemplar-learning-main` and `exemplar-learning-sha-<short>`, next to werf's content-based tags. Releases are published only to Docker Hub. Its run summary prints each digest and the `images:` entry for GHCR.
+`latest` and `learning-latest` follow the newest release, not `main`. For an installation, pin a digest instead of following either.
+
+`.github/workflows/werf.yml` also builds both images with [werf](https://werf.io) on every push to `main` and each release, and pushes them to `ghcr.io/koblas/exemplar` next to werf's content-based tags: `exemplar-main` and `exemplar-sha-<short>` from `main`, and `exemplar-latest` for the newest release (`exemplar-learning-…` for the learning image). Version tags are published only to Docker Hub. Its run summary prints each digest and the `images:` entry for GHCR.
 
 ## Release assets
 

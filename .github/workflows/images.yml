@@ -22,6 +22,7 @@ name: images
 #   sha-<short>          every push (learning-sha-<short> for learning)
 #   main                 the tip of main (learning-main)
 #   <version>, <x.y>     v* tags, without the "v" (learning-<version>, ...)
+#   latest               the newest release (learning-latest)
 #
 # The services binaries report the release tag (exemplar --version), or the
 # commit for other builds.
@@ -78,6 +79,7 @@ jobs:
             type=ref,event=branch,enable=${{ !inputs.tag }}
             type=semver,pattern={{version}},value=${{ inputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag }}
+            type=raw,value=latest,enable=${{ inputs.tag != '' || github.ref_type == 'tag' }}
       - id: build
         uses: docker/build-push-action@v7
         with:
