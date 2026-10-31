@@ -6,6 +6,14 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.6.1](https://github.com/koblas/exemplar/compare/v0.6.0...v0.6.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **gh:** accept a client without a transport when completing a manifest ([022a64d](https://github.com/koblas/exemplar/commit/022a64d10a07466557d511e40ce0bd1e5a54c174))
+* **gh:** accept a client without a transport when completing a manifest ([1324d41](https://github.com/koblas/exemplar/commit/1324d41e7c0f267a8bcc65f2d33a526d8973eb0c))
+
 ## [0.6.0](https://github.com/koblas/exemplar/compare/v0.5.0...v0.6.0) (2026-10-25)
 
 
