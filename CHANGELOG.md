@@ -6,6 +6,13 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.9.2](https://github.com/koblas/exemplar/compare/v0.9.1...v0.9.2) (2026-11-01)
+
+
+### Bug Fixes
+
+* **compiled:** offline Semgrep validation; faster make check ([b38f4bf](https://github.com/koblas/exemplar/commit/b38f4bf93fdd0b5b82bd25a02d053d71794214be))
+
 ## [0.9.1](https://github.com/koblas/exemplar/compare/v0.9.0...v0.9.1) (2026-11-01)
 
 
