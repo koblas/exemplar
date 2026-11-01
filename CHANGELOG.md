@@ -6,6 +6,16 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.9.0](https://github.com/koblas/exemplar/compare/v0.8.1...v0.9.0) (2026-11-01)
+
+
+### Features
+
+* **setup:** generate the quickstart's Secrets and reconcile state on every load ([d972345](https://github.com/koblas/exemplar/commit/d972345144e1dae040016dde0fb0f0bb539e5a45))
+* **setup:** generate the quickstart's Secrets and reconcile state on every load ([c407988](https://github.com/koblas/exemplar/commit/c407988f2b27a626a7d0c1c415015e4e18d8eed6))
+* **setup:** walk GitHub App registration as three steps with actionable errors ([8d23afe](https://github.com/koblas/exemplar/commit/8d23afed487cdbeaf9f8422f1cd157ef2f4d07da))
+* **setup:** walk GitHub App registration as three steps with actionable errors ([87cf0a2](https://github.com/koblas/exemplar/commit/87cf0a2cd13e847d30e09989486dc21fd0d0e7dc))
+
 ## [0.8.1](https://github.com/koblas/exemplar/compare/v0.8.0...v0.8.1) (2026-10-31)
 
 
