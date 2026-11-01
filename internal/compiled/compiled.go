@@ -124,7 +124,7 @@ func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []s
 			}, files...)
 		})
 		if err != nil {
-			return nil, err
+			return nil, semgrepError(out, err)
 		}
 		return ParseSemgrep(out, files)
 	}
@@ -152,13 +152,23 @@ func (r Runner) Validate(ctx context.Context, engine, ruleBody string) error {
 		out, err = r.runEngine(ctx, empty, r.semgrep(), ruleBody, func(rule string) []string {
 			return []string{"scan", "--config", rule, "--json", "--metrics=off", "--disable-version-check", "--quiet", "."}
 		})
-		// An invalid rule exits 7 (2 or 8 for some parse errors) and
-		// reports why only in the JSON on stdout.
-		if _, perr := ParseSemgrep(out, nil); perr != nil && (err == nil || errors.Is(perr, errSemgrep)) {
+		// An invalid rule exits 7 (2 or 8 for some parse errors).
+		if err != nil {
+			err = semgrepError(out, err)
+		} else if _, perr := ParseSemgrep(out, nil); perr != nil {
 			err = perr
 		}
 	default:
 		err = fmt.Errorf("%w %q", ErrUnknownEngine, engine)
+	}
+	return err
+}
+
+// semgrepError adds the reason Semgrep reported in its JSON output (with
+// --quiet its stderr is empty) to a failed run's error.
+func semgrepError(out []byte, err error) error {
+	if _, perr := ParseSemgrep(out, nil); errors.Is(perr, errSemgrep) {
+		return fmt.Errorf("%w (%w)", perr, err)
 	}
 	return err
 }
