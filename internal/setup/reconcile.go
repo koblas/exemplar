@@ -137,6 +137,19 @@ func (h *Handler) appSecretState(a *app) string {
 	}
 }
 
+// appliedAppID is the app-id exemplar-github-app mounts into this pod, or
+// "" when none is mounted.
+func (h *Handler) appliedAppID() string {
+	if h.cfg.AppSecretDir == "" || !mounted(filepath.Join(h.cfg.AppSecretDir, "private-key")) {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(h.cfg.AppSecretDir, "app-id"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
 // installationURL is where the owner changes the installation's
 // repositories.
 func (h *Handler) installationURL(ctx context.Context, id int64) string {

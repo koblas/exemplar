@@ -72,18 +72,28 @@ func (h *Handler) rootKeyMissing() bool {
 }
 
 func (h *Handler) plan(ctx context.Context) secretsPlan {
-	p := secretsPlan{Database: dbPresent, RootKey: h.rootKeyMissing()}
-	if h.rootKeyMissingAtStart && !p.RootKey {
-		p.Applied, p.Database = true, dbApplied
-		return p
-	}
-	if !h.cfg.HasDatabase {
+	p := secretsPlan{RootKey: h.rootKeyMissing()}
+	p.Applied = h.rootKeyMissingAtStart && !p.RootKey
+	switch {
+	case h.cfg.HasDatabase || mounted(h.cfg.DatabaseFile):
+		p.Database = dbPresent
+	case !h.cfg.InClusterPostgres(ctx):
 		p.Database = dbExternal
-		if h.cfg.InClusterPostgres(ctx) {
-			p.Database = dbGenerated
-		}
+	case p.Applied:
+		p.Database = dbApplied // the kubelet may not show exemplar-database yet
+	default:
+		p.Database = dbGenerated
 	}
 	return p
+}
+
+// mounted reports whether path, in an optional Secret volume, has content.
+func mounted(path string) bool {
+	if path == "" {
+		return false
+	}
+	b, err := os.ReadFile(path)
+	return err == nil && len(bytes.TrimSpace(b)) > 0
 }
 
 // download serves the Secrets file. The Anthropic key comes with the form

@@ -109,6 +109,9 @@ spec:
             - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
             - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
             - {name: oidc-secret, mountPath: /var/run/secrets/exemplar/oidc, readOnly: true}
+            # Setup mode only: whether exemplar-database exists yet, which
+            # EXEMPLAR_DATABASE_URL can't show once the pod has started.
+            - {name: database, mountPath: /var/run/secrets/exemplar/database, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
         - name: root-key
@@ -116,11 +119,19 @@ spec:
         - name: github-app
           secret:
             secretName: exemplar-github-app
-            items: [{key: client-secret, path: client-secret}, {key: private-key, path: private-key}]
+            # app-id: setup mode reads it to see an App Secret applied
+            # after the pod started (internal/setup).
+            items: [{key: app-id, path: app-id}, {key: client-secret, path: client-secret}, {key: private-key, path: private-key}]
             defaultMode: 0400
             optional: true
         - name: oidc-secret
           secret: {secretName: exemplar-oidc, defaultMode: 0400, optional: true}
+        - name: database
+          secret:
+            secretName: exemplar-database
+            items: [{key: url, path: url}]
+            defaultMode: 0400
+            optional: true
         - name: tmp
           emptyDir: {sizeLimit: 64Mi}
 ---

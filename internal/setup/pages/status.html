@@ -2,6 +2,7 @@
 open step is the first one that isn't done, whatever happened elsewhere. States:
 .InstallError: "not-installed" (after Check only), "list-failed", "config-missing";
 .ProviderError: "key-missing", "key-invalid" (not kept);
+.AppliedAppID: an App Secret mounted while this pod holds no App (offer the restart);
 .AppSecret: "not-applied", "applied", "other", "unknown"; .ReviewGone/.ExportsGone: an App GitHub no longer knows (setup only
 forgets it when asked); .StartedOver: right after Start over; .ExportsOnConfig: the exports app can reach exemplar-config;
 .File.Database: "generated", "present", "external", "applied" (secrets.go).
@@ -26,19 +27,21 @@ Keep this port-forward running until you've applied it.</p>{{end}}
 <p>If you deleted it, forget it here and create the App again. Otherwise reload once the cause is fixed.</p>
 <form method="post" action="/setup/start-over"><input type="hidden" name="form" value="{{.Form}}">
 <button type="submit">Forget {{.ReviewGone}} and start over</button></form></div>
+{{else if and (eq .Current 1) .AppliedAppID}}
+<p class="done">This cluster already has the Secret for App {{.AppliedAppID}}, applied from an earlier setup page
+(this pod started after it, or is another exemplar-api pod). Restarting exemplar-api finishes setup with it.</p>
+{{template "restart" .}}
+<details><summary>Create a different App instead</summary>{{template "create-app" .}}</details>
 {{else if eq .Current 1}}
-<p>GitHub opens with the App's permissions, events and URLs filled in; you can rename it there. Check these first:</p>
-<dl><dt>Webhooks go to</dt><dd><code>{{.URLs.Webhook}}</code></dd><dt>People sign in at</dt><dd><code>{{.URLs.API}}</code></dd></dl>
-<p class="muted">If either is wrong, set <code>EXEMPLAR_API_URL</code> (or <code>EXEMPLAR_WEBHOOK_URL</code>) in your overlay, apply it, and open setup again.</p>
-<form method="post" action="{{.Review.Action}}"><input type="hidden" name="manifest" value="{{.Review.Manifest}}">
-<button type="submit">Create the App on GitHub</button></form>
+{{template "create-app" .}}
 {{else}}<p>Created <a href="{{.Review.AppURL}}" target="_blank" rel="noopener">{{.Review.Name}}</a>.</p>{{end}}
 </li>
 
 <li class="{{.StepClass 2}}" {{if eq .Current 2}}aria-current="step"{{end}}><h2>Install it</h2>
 {{if eq .Current 2}}
 {{if eq .InstallError "not-installed"}}<p class="error" role="alert">GitHub lists no installation of {{.Review.Name}} on {{.Org}}.
-Install it on {{.Org}} (the account that owns exemplar-config), then check again.</p>
+Install it on {{.Org}} (the account that owns exemplar-config), then check again.{{if .OwnerIsOrg}} If you aren't an owner of {{.Org}},
+GitHub sent its owners a request to approve the installation instead: it shows here once one of them approves it.{{end}}</p>
 {{else if eq .InstallError "list-failed"}}<p class="error" role="alert">GitHub didn't answer when setup asked for the App's installations.
 Check again in a moment; if it keeps failing, the exemplar-api log has GitHub's answer.</p>
 {{else if eq .InstallError "config-missing"}}<p class="error" role="alert">{{.Review.Name}} is installed on {{.Org}}, but its repositories
@@ -56,10 +59,7 @@ Choose the repositories Exemplar reviews, and <code>exemplar-config</code>. Then
 <p>For <code>exemplar login</code> from a terminal, tick <b>Enable Device Flow</b> in the <a href="{{.Review.AppURL}}" target="_blank" rel="noopener">App's settings</a>.</p>
 {{if eq .AppSecret "applied"}}
 <p class="done">exemplar-secrets.yaml is applied: this pod sees the App's Secret.</p>
-<p>Now restart exemplar-api. It leaves setup mode, so this page goes away; the other workloads have been waiting for these Secrets
-and start on their own:</p>
-<pre>kubectl -n {{.Namespace}} rollout restart deployment/exemplar-api</pre>
-<p>Once the pods are ready, open <a href="{{.URLs.API}}/ui/setup" target="_blank" rel="noopener">{{.URLs.API}}/ui/setup</a> and sign in: it checks the installation and the webhook deliveries.</p>
+{{template "restart" .}}
 <details><summary>Download the file again (after adding rule exports, say)</summary>{{template "secrets-download" .}}</details>
 {{else}}
 {{if eq .AppSecret "other"}}<p class="error" role="alert">The <code>exemplar-github-app</code> Secret in the cluster belongs to another App,
@@ -72,7 +72,7 @@ from an earlier run of setup. Download this page's file and apply it: <code>kube
 <details><summary>Applied it, and this page still doesn't show it?</summary>
 <p>Check that the Secret is in the cluster:</p>
 <pre>kubectl -n {{.Namespace}} get secret exemplar-github-app</pre>
-<p>If it's there, restarting is safe:</p>
+<p>If it's there{{if eq .File.Database "external"}}, and so is <code>exemplar-database</code>{{end}}, restarting is safe:</p>
 <pre>kubectl -n {{.Namespace}} rollout restart deployment/exemplar-api</pre>
 </details>{{end}}
 {{end}}
@@ -138,4 +138,30 @@ can't include one. Create <code>exemplar-database</code> with your Postgres URL
 </form>
 <p>Apply it:</p>
 <pre>kubectl apply -f exemplar-secrets.yaml</pre>
+{{end}}
+
+{{/* Step 1's create form, with what to check first. */}}
+{{define "create-app"}}
+<p>GitHub opens with the App's permissions, events and URLs filled in; you can rename it there. Check these first:</p>
+<dl><dt>Webhooks go to</dt><dd><code>{{.URLs.Webhook}}</code></dd><dt>People sign in at</dt><dd><code>{{.URLs.API}}</code></dd></dl>
+<p class="muted">If either is wrong, set <code>EXEMPLAR_API_URL</code> (or <code>EXEMPLAR_WEBHOOK_URL</code>) in your overlay, apply it, and open setup again.</p>
+{{if .OwnerIsOrg}}<p class="muted">Creating an App for {{.Org}} needs its owner role, or its GitHub App manager role; without either,
+GitHub answers the button with a 404 page. An owner can make you an App manager in {{.Org}}'s settings, under GitHub Apps.</p>{{end}}
+<form method="post" action="{{.Review.Action}}"><input type="hidden" name="manifest" value="{{.Review.Manifest}}">
+<button type="submit">Create the App on GitHub</button></form>
+{{end}}
+
+{{/* The restart, once an App's Secret is applied; held back while exemplar-api has no database, since App mode won't start without one. */}}
+{{define "restart"}}
+{{if eq .File.Database "external"}}<p class="notice" role="status">Before the restart, create <code>exemplar-database</code> with your Postgres URL
+(<a href="https://koblas.github.io/exemplar/reference/secrets-and-configmaps/" target="_blank" rel="noopener">Secrets and ConfigMaps</a>): exemplar-api won't start without it,
+and this page would be gone. Setup shows the restart once it sees the Secret; Kubernetes can take a minute or two.</p>
+<form method="get" action="/setup"><button type="submit">Check again</button></form>
+{{else}}
+<p>Now restart exemplar-api. It leaves setup mode, so this page goes away; the other workloads have been waiting for these Secrets
+and start on their own:</p>
+<pre>kubectl -n {{.Namespace}} rollout restart deployment/exemplar-api</pre>
+<p>Once the pods are ready, open <a href="{{.URLs.API}}/ui/setup" target="_blank" rel="noopener">{{.URLs.API}}/ui/setup</a> and sign in: it checks the installation and the webhook deliveries.
+If exemplar-api doesn't come back, see <a href="https://koblas.github.io/exemplar/guides/operate/troubleshoot/#exemplar-api-crash-loops-after-setup" target="_blank" rel="noopener">Troubleshooting</a>.</p>
+{{end}}
 {{end}}

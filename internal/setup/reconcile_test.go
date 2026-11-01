@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -267,4 +268,88 @@ func TestExportsAppDeleted(t *testing.T) {
 		t.Errorf("after forgetting exports = %q", currentStep(t, p))
 	}
 	mustContain(t, p, labelCreateExport)
+}
+
+// A setup pod holding no App that sees an applied App Secret (it restarted
+// after the apply, or it's the other replica) offers the restart, not a
+// second App; with no database yet, it holds the restart back.
+func TestAppliedSecretOnNewPod(t *testing.T) {
+	appDir, dbDir := t.TempDir(), t.TempDir()
+	dbFile := filepath.Join(dbDir, "url")
+	srv, _ := newSetupWith(t, func(c *Config) {
+		c.AppSecretDir, c.DatabaseFile = appDir, dbFile
+		c.InClusterPostgres = func(context.Context) bool { return false }
+	})
+	c := browser(t)
+	for name, body := range map[string]string{"app-id": "4242\n", "private-key": newTestKey(t)} {
+		if err := os.WriteFile(filepath.Join(appDir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	p := get(t, c, srv.URL+"/setup")
+	if currentStep(t, p) != titleCreate {
+		t.Fatalf("step = %q", currentStep(t, p))
+	}
+	mustContain(t, p, "This cluster already has the Secret for App 4242", "Create a different App instead",
+		"Before the restart, create <code>exemplar-database</code>", "Check again")
+	mustNotContain(t, p, "rollout restart", "only in this exemplar-api pod's memory")
+	if mustState(t, p.body) == "" {
+		t.Error("no way to create a different App")
+	}
+
+	if err := os.WriteFile(dbFile, []byte("postgres://db.internal/exemplar"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p = get(t, c, srv.URL+"/setup")
+	mustContain(t, p, "This cluster already has the Secret for App 4242",
+		"kubectl -n exemplar rollout restart deployment/exemplar-api", "exemplar-api-crash-loops-after-setup")
+	mustNotContain(t, p, "Before the restart, create <code>exemplar-database</code>")
+}
+
+// After applying the file with an external Postgres and no exemplar-database,
+// step 3 doesn't offer the restart that would crash-loop exemplar-api.
+func TestRestartWaitsForDatabase(t *testing.T) {
+	appDir, dbFile := t.TempDir(), filepath.Join(t.TempDir(), "url")
+	srv, fake := newSetupWith(t, func(c *Config) {
+		c.AppSecretDir, c.DatabaseFile = appDir, dbFile
+		c.InClusterPostgres = func(context.Context) bool { return false }
+	})
+	c := installed(t, srv.URL, fake)
+	if err := os.WriteFile(filepath.Join(appDir, "private-key"), []byte(fake.pem), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := get(t, c, srv.URL+"/setup")
+	mustContain(t, p, "exemplar-secrets.yaml is applied", "Before the restart, create <code>exemplar-database</code>")
+	mustNotContain(t, p, "rollout restart")
+
+	if err := os.WriteFile(dbFile, []byte("postgres://db.internal/exemplar"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p = get(t, c, srv.URL+"/setup")
+	mustContain(t, p, "kubectl -n exemplar rollout restart deployment/exemplar-api")
+	mustNotContain(t, p, "Before the restart")
+	// The file leaves out a database Secret that now exists.
+	file := secretsIn(t, downloadSecrets(t, srv.URL, c, map[string][]string{"models": {modelsOwn}}).body)
+	if _, ok := file["exemplar-database"]; ok {
+		t.Error("the file replaces exemplar-database")
+	}
+}
+
+// GitHub fails silently for missing org roles; the page says which.
+func TestRoleHints(t *testing.T) {
+	srv, _ := newSetup(t)
+	c := browser(t)
+	mustContain(t, get(t, c, srv.URL+"/setup"), "GitHub App manager role", "answers the button with a 404 page")
+	createReview(t, srv.URL, c)
+	mustContain(t, checkInstall(t, srv.URL, c), "GitHub sent its owners a request to approve the installation")
+
+	user, ufake := newSetup(t)
+	ufake.mu.Lock()
+	ufake.userOwner = true
+	ufake.mu.Unlock()
+	uc := browser(t)
+	mustNotContain(t, get(t, uc, user.URL+"/setup"), "GitHub App manager role")
+	createReview(t, user.URL, uc)
+	mustNotContain(t, checkInstall(t, user.URL, uc), "request to approve")
 }
