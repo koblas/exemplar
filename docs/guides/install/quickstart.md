@@ -105,7 +105,7 @@ kubectl -n exemplar rollout restart deployment/exemplar-api
 The page lists what the file holds and leaves out whatever exemplar-api already has, so a Secret you created yourself is never replaced. Claude alone is enough to review in shadow and to post. An OpenAI key, for independent verification and auto-approve, and a Voyage AI key, for mining review history into rules, can be added at any time: [How to add model providers](model-providers.md).
 
 !!! warning "Keep the port-forward until the Secrets are applied"
-    The App's key lives only in that pod's memory, and the Postgres password is generated there too: apply the file you downloaded from this pod, once. If the pod restarts after GitHub created the App but before you applied the file, delete that App in your GitHub settings and start the step again. The setup page says the same, with the link, if it happens.
+    The App's key lives only in that pod's memory, and the Postgres password is generated there too: apply the file you downloaded from this pod, once. If the pod restarts after GitHub created the App but before you applied the file, delete that App in your GitHub settings and start the step again. The setup page says the same, with the link, if it happens. If you delete or rename the App on GitHub mid-way, the page notices on its next load: it follows a rename, and after a delete it goes back to step 1 and offers to forget the old App. **Start over**, at the bottom of the page, forgets the App at any point and goes back to step 1.
 
 ## 6. Check it
 

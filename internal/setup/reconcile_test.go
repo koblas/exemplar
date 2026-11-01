@@ -152,3 +152,119 @@ func TestExportsOnConfig(t *testing.T) {
 	p := get(t, c, srv.URL+"/setup")
 	mustNotContain(t, p, "where it could")
 }
+
+// An App deleted (or renamed) on GitHub after setup created it: the page
+// follows a rename, and for a deleted one goes back to step 1 offering to
+// forget it.
+func TestAppDeletedOrRenamed(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusUnauthorized} {
+		srv, fake := newSetup(t)
+		c := browser(t)
+		createReview(t, srv.URL, c)
+
+		fake.mu.Lock()
+		fake.slug = "exemplar-2-koblas"
+		fake.mu.Unlock()
+		p := get(t, c, srv.URL+"/setup")
+		mustContain(t, p, "Install exemplar-2-koblas on acme")
+		if !strings.Contains(p.body, `href="https://github.com/apps/exemplar-2-koblas/installations/new"`) {
+			t.Errorf("install link doesn't follow the rename:\n%s", p.body)
+		}
+
+		fake.mu.Lock()
+		fake.appGone = status
+		fake.mu.Unlock()
+		p = get(t, c, srv.URL+"/setup")
+		if currentStep(t, p) != titleCreate {
+			t.Fatalf("%d: after delete = %q", status, currentStep(t, p))
+		}
+		// Setup doesn't forget on its own (a 401 can be this pod's clock):
+		// it says what happened and offers to forget.
+		mustContain(t, p, "GitHub no longer knows exemplar-2-koblas", "Forget exemplar-2-koblas and start over")
+		mustNotContain(t, p, labelCreate+"</button>", "<summary>Start over</summary>", "only in this exemplar-api pod's memory")
+		form := formRe.FindStringSubmatch(p.body)
+		if r := do(t, c, http.MethodPost, srv.URL+"/setup/start-over", map[string][]string{"form": {form[1]}}); r.status != http.StatusSeeOther {
+			t.Fatalf("start over = %d", r.status)
+		}
+
+		// Created again: a fresh state, a working flow.
+		fake.mu.Lock()
+		fake.appGone, fake.slug = 0, ""
+		fake.mu.Unlock()
+		p = get(t, c, srv.URL+"/setup?started-over")
+		if currentStep(t, p) != titleCreate {
+			t.Fatalf("after start over = %q", currentStep(t, p))
+		}
+		mustNotContain(t, p, "GitHub no longer knows")
+		state := mustState(t, p.body)
+		if p := get(t, c, srv.URL+"/setup/created?code=again&state="+state); p.status != http.StatusSeeOther {
+			t.Fatalf("created again = %d", p.status)
+		}
+		p = get(t, c, srv.URL+"/setup")
+		if currentStep(t, p) != titleInstall {
+			t.Errorf("after creating again = %q", currentStep(t, p))
+		}
+		mustNotContain(t, p, "GitHub no longer knows")
+	}
+}
+
+// Start over forgets the Apps, from any step, and says where to delete
+// them on GitHub.
+func TestStartOver(t *testing.T) {
+	srv, fake := newSetup(t)
+	c := installed(t, srv.URL, fake)
+	p := get(t, c, srv.URL+"/setup")
+	mustContain(t, p, "Start over", "Forget this App and start over")
+	if !strings.Contains(p.body, `href="https://github.com/organizations/acme/settings/apps/exemplar-acme/advanced" target="_blank"`) {
+		t.Errorf("no link to delete the App:\n%s", p.body)
+	}
+	form := formRe.FindStringSubmatch(p.body)
+	if r := do(t, c, http.MethodPost, srv.URL+"/setup/start-over", map[string][]string{"form": {"forged"}}); r.status != http.StatusForbidden {
+		t.Errorf("forged start over = %d", r.status)
+	}
+	r := do(t, c, http.MethodPost, srv.URL+"/setup/start-over", map[string][]string{"form": {form[1]}})
+	if r.status != http.StatusSeeOther || r.header.Get("Location") != "/setup?started-over" {
+		t.Fatalf("start over = %d %v", r.status, r.header)
+	}
+	p = get(t, c, srv.URL+"/setup?started-over")
+	if currentStep(t, p) != titleCreate {
+		t.Fatalf("after start over = %q", currentStep(t, p))
+	}
+	mustContain(t, p, "Setup forgot the App it created", labelCreate)
+	if !strings.Contains(p.body, `href="https://github.com/organizations/acme/settings/apps/" target="_blank"`) {
+		t.Errorf("no App settings link:\n%s", p.body)
+	}
+	mustNotContain(t, get(t, c, srv.URL+"/setup"), "Setup forgot the App")
+}
+
+// A deleted exports app is called out inside rule exports, and forgetting
+// it leaves the review app alone.
+func TestExportsAppDeleted(t *testing.T) {
+	srv, fake := newSetup(t)
+	c := installed(t, srv.URL, fake)
+	state := mustState(t, get(t, c, srv.URL+"/setup").body)
+	if p := get(t, c, srv.URL+"/setup/created?code=exports&state="+state); p.status != http.StatusSeeOther {
+		t.Fatalf("exports created = %d", p.status)
+	}
+	fake.mu.Lock()
+	fake.appGone, fake.goneID = http.StatusNotFound, 4343
+	fake.mu.Unlock()
+	p := get(t, c, srv.URL+"/setup")
+	if currentStep(t, p) != titleFinish {
+		t.Fatalf("exports gone moved the page to %q", currentStep(t, p))
+	}
+	mustContain(t, p, "Forget exemplar-acme</button>")
+	form := formRe.FindStringSubmatch(p.body)
+	r := do(t, c, http.MethodPost, srv.URL+"/setup/start-over", map[string][]string{"form": {form[1]}, "kind": {KindExports}})
+	if r.status != http.StatusSeeOther || r.header.Get("Location") != "/setup" {
+		t.Fatalf("forget exports = %d %v", r.status, r.header)
+	}
+	fake.mu.Lock()
+	fake.appGone = 0
+	fake.mu.Unlock()
+	p = get(t, c, srv.URL+"/setup")
+	if currentStep(t, p) != titleFinish {
+		t.Errorf("after forgetting exports = %q", currentStep(t, p))
+	}
+	mustContain(t, p, labelCreateExport)
+}

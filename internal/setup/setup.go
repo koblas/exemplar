@@ -181,6 +181,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /setup/created", h.created)
 	mux.HandleFunc("POST /setup/installation", h.findInstallation)
 	mux.HandleFunc("POST "+downloadPath, h.download)
+	mux.HandleFunc("POST /setup/start-over", h.startOver)
 	mux.Handle("GET /", http.RedirectHandler("/setup", http.StatusFound))
 	return h.secure(h.local(mux))
 }
@@ -361,6 +362,12 @@ type statusView struct {
 	// ExportsOnConfig: the exports app is installed on exemplar-config,
 	// which it must never write.
 	ExportsOnConfig bool
+	// ReviewGone and ExportsGone name an App GitHub no longer knows; the
+	// page offers to forget it. StartedOver: Start over was just pressed.
+	ReviewGone, ExportsGone string
+	StartedOver             bool
+	// AppsURL is the owner's App settings, where an App is deleted.
+	AppsURL string
 	// Errors shown in place and not kept: InstallError on the install
 	// step (reconcile.go), ProviderError on the last
 	// (providerKeyMissing, providerKeyInvalid).
@@ -394,13 +401,17 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int,
 	v := statusView{
 		Org: h.org, Namespace: h.cfg.Namespace, Form: h.form, URLs: h.cfg.URLs,
 		OwnerUnknown: !known, InstallError: errs.install, ProviderError: errs.provider,
+		AppsURL: h.cfg.GitHubWeb + path, StartedOver: r.URL.Query().Has("started-over"),
 	}
+	gone, appsAnswered := h.reconcileApps(ctx)
+	v.ReviewGone, v.ExportsGone = gone[KindReview], gone[KindExports]
+	v.GitHubUnreachable = !appsAnswered
 	h.mu.Lock()
 	review := h.apps[KindReview]
 	h.mu.Unlock()
 	if review != nil {
 		id, state, answered := h.reconcileInstall(ctx, review)
-		v.GitHubUnreachable = !answered && errs.install == ""
+		v.GitHubUnreachable = v.GitHubUnreachable || !answered && errs.install == ""
 		if v.InstallError == "" {
 			v.InstallError = state
 		}
@@ -422,8 +433,9 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int,
 		v.Holding = v.Holding || av.Created
 	}
 	switch {
-	case !v.Review.Created:
+	case !v.Review.Created || v.ReviewGone != "":
 		v.Current = 1
+		v.Holding = false // a gone App's key is no use to keep
 	case v.Review.Installation == 0 || v.InstallError == installConfigMissing:
 		v.Current = 2
 	default:
@@ -539,6 +551,34 @@ func (h *Handler) findInstallation(w http.ResponseWriter, r *http.Request) {
 		h.cfg.Log.Info("setup: installation found", "installation_id", id)
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 	}
+}
+
+// startOver forgets the Apps this process created (only the exports app
+// with kind=exports), so setup offers to create them again. The Apps stay
+// on GitHub; the page links where to delete them.
+func (h *Handler) startOver(w http.ResponseWriter, r *http.Request) {
+	if subtle.ConstantTimeCompare([]byte(r.PostFormValue("form")), []byte(h.form)) != 1 {
+		h.failApp(r.Context(), w, http.StatusForbidden, failStaleForm)
+		return
+	}
+	only := r.PostFormValue("kind") == KindExports
+	h.mu.Lock()
+	forgot := make([]string, 0, len(h.apps))
+	for kind, a := range h.apps {
+		if only && kind != KindExports {
+			continue
+		}
+		forgot = append(forgot, a.created.Slug)
+		delete(h.apps, kind)
+	}
+	h.mu.Unlock()
+	if only {
+		h.cfg.Log.Info("setup: forgot the exports app", "forgot", forgot)
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	h.cfg.Log.Info("setup: started over", "forgot", forgot)
+	http.Redirect(w, r, "/setup?started-over", http.StatusSeeOther)
 }
 
 // failPage is what an error page shows besides its own text.

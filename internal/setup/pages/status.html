@@ -2,7 +2,8 @@
 open step is the first one that isn't done, whatever happened elsewhere. States:
 .InstallError: "not-installed" (after Check only), "list-failed", "config-missing";
 .ProviderError: "key-missing", "key-invalid" (not kept);
-.AppSecret: "not-applied", "applied", "other", "unknown"; .ExportsOnConfig: the exports app can reach exemplar-config;
+.AppSecret: "not-applied", "applied", "other", "unknown"; .ReviewGone/.ExportsGone: an App GitHub no longer knows (setup only
+forgets it when asked); .StartedOver: right after Start over; .ExportsOnConfig: the exports app can reach exemplar-config;
 .File.Database: "generated", "present", "external", "applied" (secrets.go).
 Links to GitHub and the docs open in a new tab, so this page and its state stay put; the create forms stay in this tab,
 since GitHub redirects back here. */}}
@@ -10,6 +11,8 @@ since GitHub redirects back here. */}}
 <h1 style="font-size:1.3rem">Register Exemplar's GitHub App on {{.Org}}</h1>
 {{if .OwnerUnknown}}<p class="notice" role="status">GitHub didn't say whether {{.Org}} is an organization or a personal account,
 so the GitHub links below assume an organization. If {{.Org}} is your own account, reload this page.</p>{{end}}
+{{if .StartedOver}}<p class="notice" role="status">Setup forgot the App it created. If it's still on GitHub, delete it in your
+<a href="{{.AppsURL}}" target="_blank" rel="noopener">App settings</a> so its name is free, then create it again below.</p>{{end}}
 {{if .GitHubUnreachable}}<p class="notice" role="status">GitHub didn't answer this page's checks, so it shows what setup last saw.
 Reload in a moment; if it keeps failing, the exemplar-api log has GitHub's answer.</p>{{end}}
 {{if .Holding}}<p class="notice" role="status">Until you apply the Secrets file, the App's key exists only in this exemplar-api pod's memory.
@@ -17,7 +20,13 @@ Keep this port-forward running until you've applied it.</p>{{end}}
 <ol class="steps">
 
 <li class="{{.StepClass 1}}" {{if eq .Current 1}}aria-current="step"{{end}}><h2>Create the App on GitHub</h2>
-{{if eq .Current 1}}
+{{if .ReviewGone}}
+<div class="error" role="alert"><p>GitHub no longer knows {{.ReviewGone}}: it was deleted or its key was revoked
+(or this pod's clock is far enough off that GitHub rejects its sign-in).</p>
+<p>If you deleted it, forget it here and create the App again. Otherwise reload once the cause is fixed.</p>
+<form method="post" action="/setup/start-over"><input type="hidden" name="form" value="{{.Form}}">
+<button type="submit">Forget {{.ReviewGone}} and start over</button></form></div>
+{{else if eq .Current 1}}
 <p>GitHub opens with the App's permissions, events and URLs filled in; you can rename it there. Check these first:</p>
 <dl><dt>Webhooks go to</dt><dd><code>{{.URLs.Webhook}}</code></dd><dt>People sign in at</dt><dd><code>{{.URLs.API}}</code></dd></dl>
 <p class="muted">If either is wrong, set <code>EXEMPLAR_API_URL</code> (or <code>EXEMPLAR_WEBHOOK_URL</code>) in your overlay, apply it, and open setup again.</p>
@@ -70,11 +79,24 @@ from an earlier run of setup. Download this page's file and apply it: <code>kube
 {{end}}
 </li>
 </ol>
+{{if and .Review.Created (not .ReviewGone)}}
+<details><summary>Start over</summary>
+<p>Setup forgets {{.Review.Name}}{{if .Exports.Created}} and {{.Exports.Name}}{{end}} and goes back to step 1, with a new App.
+The App stays on GitHub: delete it in its <a href="{{.Review.AppURL}}/advanced" target="_blank" rel="noopener">settings</a>
+(Advanced, Delete GitHub App) so its name is free. If you applied this page's Secrets file, the next one replaces it.</p>
+<form method="post" action="/setup/start-over"><input type="hidden" name="form" value="{{.Form}}">
+<button type="submit">Forget this App and start over</button></form>
+</details>
+{{end}}
 </body></html>{{end}}
 
 {{/* The exports app, what the Secrets file holds, and the download form, with the apply command. */}}
 {{define "secrets-download"}}
-<details {{if .Exports.Created}}open{{end}}><summary>Rule exports (optional)</summary>
+<details {{if or .Exports.Created .ExportsGone}}open{{end}}><summary>Rule exports (optional)</summary>
+{{if .ExportsGone}}<div class="error" role="alert"><p>GitHub no longer knows {{.ExportsGone}}: it was deleted or its key was revoked.</p>
+<form method="post" action="/setup/start-over"><input type="hidden" name="form" value="{{.Form}}"><input type="hidden" name="kind" value="exports">
+<button type="submit">Forget {{.ExportsGone}}</button></form></div>
+{{else}}
 <p>Exports write instruction files to the repositories that opt in, with a second App installed only on those repositories.
 Skip this unless you want them; <a href="https://koblas.github.io/exemplar/guides/operate/rule-exports/" target="_blank" rel="noopener">you can add it later</a>.</p>
 {{if not .Exports.Created}}
@@ -85,6 +107,7 @@ Skip this unless you want them; <a href="https://koblas.github.io/exemplar/guide
 rewrite the rules. <a href="{{.Exports.InstallationURL}}" target="_blank" rel="noopener">Remove exemplar-config from its repositories</a>, then reload.</p>{{end}}
 <p>Created <a href="{{.Exports.AppURL}}" target="_blank" rel="noopener">{{.Exports.Name}}</a>. <a href="{{.Exports.InstallURL}}" target="_blank" rel="noopener">Install it</a> only on the repositories
 that opt into exports, never on <code>exemplar-config</code>. Its Secret is in the file below.</p>
+{{end}}
 {{end}}
 </details>
 
