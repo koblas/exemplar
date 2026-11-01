@@ -25,9 +25,3 @@ const (
 	failManifest     failure = "fail-manifest"
 	failOtherHost    failure = "fail-other-host"
 )
-
-// Errors shown in place on the install step (pages/status.html).
-const (
-	installNotFound   = "not-installed"
-	installListFailed = "list-failed"
-)

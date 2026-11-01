@@ -22,6 +22,14 @@ button or step is a docs change too (`/docs`).
 - Use the design system's default components and styling over bespoke ones.
 - Decide at design time whether a view updates live when its data changes,
   and write the decision down next to the view.
+- A step that depends on state outside the page (GitHub, the cluster)
+  checks that state on every load and offers an explicit "Check again".
+  The current step is the first one whose state isn't right, so a skipped
+  or undone step shows up with its next action. When the outside system
+  doesn't answer, keep the last known state and say so.
+- Links that leave the flow (GitHub, the docs) open in a new tab
+  (`target="_blank" rel="noopener"`), so the page and its state stay put.
+  Forms whose target redirects back into the flow stay in the same tab.
 
 ## Every screen has all its states
 
