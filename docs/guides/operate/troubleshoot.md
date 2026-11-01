@@ -56,6 +56,26 @@ Slash commands and reactions keep working, so no feedback is lost beyond the lin
 - GitHub: the person is not a member of an allowed organisation (`EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS`, defaulting to the config repo's owner), or the App's callback URL doesn't match `EXEMPLAR_API_URL` plus `/oauth/callback`.
 - OIDC: the issuer must serve discovery at `EXEMPLAR_OIDC_ISSUER_URL`; the redirect URI must be `https://<api>/oidc/callback`; the email domain and allowed groups must match. An OIDC user who sees no repositories has no group in `EXEMPLAR_OIDC_GROUP_REPOS`.
 
+## exemplar-api crash-loops after setup
+
+Once `exemplar-github-app` exists, exemplar-api starts in App mode, and the setup page is gone. Its log names what's missing:
+
+- `EXEMPLAR_DATABASE_URL is required`: create `exemplar-database` with your Postgres URL ([Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md)). The pod starts on its own once the Secret exists.
+- `link key: … exemplar-root-key`: create `exemplar-root-key`, or apply the setup page's file again if you still have it.
+- GitHub refusing the App (in the log, or on `/ui/setup`): `exemplar-github-app` holds another App's key or a revoked one.
+
+To run setup again, delete the App's Secret and restart exemplar-api, which then serves the setup page:
+
+```bash
+kubectl -n exemplar delete secret exemplar-github-app
+```
+
+```bash
+kubectl -n exemplar rollout restart deployment/exemplar-api
+```
+
+Delete the old App in your GitHub settings, then follow [Quickstart, step 5](../install/quickstart.md#5-register-the-github-app). Secrets that already exist (root key, database) are left out of the new file.
+
 ## Setup page refuses with 403
 
 The setup listener answers only requests naming `localhost:8081` (or `127.0.0.1` on its port), against DNS rebinding. Open it through the port-forward exactly as the quickstart shows, and keep the same pod for the whole flow.

@@ -35,6 +35,48 @@ const (
 	secretUnknown    = "unknown"     // no mount to look at (AppSecretDir unset)
 )
 
+// reconcileApps asks GitHub about each App setup created: a renamed one
+// gets its new name and links; one GitHub no longer knows (deleted, its
+// key revoked, or this pod's clock too far off for its JWT) is marked
+// gone. Setup never forgets an App on its own, since its key exists only
+// here: the page offers Start over. It returns the gone Apps' names, by
+// kind, and whether GitHub answered every question.
+func (h *Handler) reconcileApps(ctx context.Context) (map[string]string, bool) {
+	gone, answered := map[string]string{}, true
+	for _, kind := range []string{KindReview, KindExports} {
+		h.mu.Lock()
+		a := h.apps[kind]
+		h.mu.Unlock()
+		if a == nil {
+			continue
+		}
+		slug, htmlURL, err := a.client.Describe(ctx)
+		h.mu.Lock()
+		switch {
+		case errors.Is(err, gh.ErrNotFound):
+			gone[kind] = a.created.Slug
+		case err != nil:
+			answered = false
+		case slug != "":
+			a.created.Slug, a.created.HTMLURL = slug, cmpOr(htmlURL, a.created.HTMLURL)
+		}
+		h.mu.Unlock()
+		if errors.Is(err, gh.ErrNotFound) {
+			h.cfg.Log.Warn("setup: GitHub no longer knows the App", "kind", kind, "slug", a.created.Slug)
+		} else if err != nil {
+			h.cfg.Log.Warn("setup: reading the App failed", "kind", kind, "err", err)
+		}
+	}
+	return gone, answered
+}
+
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
 // installState asks GitHub whether a's App is installed on the config
 // repo's owner, with the config repo among its repositories. It returns
 // the installation id with errConfigMissing when only the repo is missing.
@@ -93,6 +135,19 @@ func (h *Handler) appSecretState(a *app) string {
 	default:
 		return secretOther
 	}
+}
+
+// appliedAppID is the app-id exemplar-github-app mounts into this pod, or
+// "" when none is mounted.
+func (h *Handler) appliedAppID() string {
+	if h.cfg.AppSecretDir == "" || !mounted(filepath.Join(h.cfg.AppSecretDir, "private-key")) {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(h.cfg.AppSecretDir, "app-id"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }
 
 // installationURL is where the owner changes the installation's

@@ -124,6 +124,7 @@ func run(args []string) error {
 	tryRuns := fs.Int("playground-daily-runs", 20, "each viewer's daily web UI playground runs")
 	setupAddr := fs.String("setup-addr", "127.0.0.1:8081", "setup mode: the setup page's listen address (loopback: reached with kubectl port-forward)")
 	setupURL := fs.String("setup-url", "http://localhost:8081", "setup mode: where the operator's browser reaches the setup page")
+	setupDB := fs.String("setup-database-file", "/var/run/secrets/exemplar/database/url", "setup mode: where exemplar-database's url is mounted, to see it applied after the pod started")
 	namespace := fs.String("namespace", "exemplar", "setup mode: the namespace the setup page's Secrets go in")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
@@ -134,16 +135,19 @@ func run(args []string) error {
 	}
 	// Until setup has produced exemplar-github-app, serve only setup.
 	if os.Getenv("EXEMPLAR_GH_APP_ID") == "" {
-		return runSetup(setupFlags{addr: *addr, setupAddr: *setupAddr, setupURL: *setupURL, namespace: *namespace, drain: *drain})
+		return runSetup(setupFlags{addr: *addr, setupAddr: *setupAddr, setupURL: *setupURL, namespace: *namespace, databaseFile: *setupDB, drain: *drain})
 	}
 	dbURL, public := os.Getenv("EXEMPLAR_DATABASE_URL"), os.Getenv("EXEMPLAR_API_URL")
-	if dbURL == "" || public == "" {
-		return fmt.Errorf("EXEMPLAR_DATABASE_URL and EXEMPLAR_API_URL are %w", errRequired)
+	if dbURL == "" {
+		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w: create the exemplar-database Secret (key url), then restart exemplar-api", errRequired)
+	}
+	if public == "" {
+		return fmt.Errorf("EXEMPLAR_API_URL is %w", errRequired)
 	}
 	keys := envcfg.NewKeys(os.Getenv, os.ReadFile)
 	linkKey, err := keys.File("EXEMPLAR_LINK_KEY_FILE", envcfg.LabelLink)
 	if err != nil {
-		return fmt.Errorf("link key: %w", err)
+		return fmt.Errorf("link key: %w (is the exemplar-root-key Secret there? Create it, then restart exemplar-api)", err)
 	}
 	sessionKey, err := keys.File("EXEMPLAR_SESSION_KEY_FILE", envcfg.LabelSession)
 	if err != nil {

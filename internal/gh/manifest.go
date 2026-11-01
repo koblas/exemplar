@@ -53,6 +53,21 @@ func CompleteManifest(ctx context.Context, apiBase string, hc *http.Client, code
 	}, nil
 }
 
+// Describe returns the App's current slug and html_url, as GitHub has them
+// now (it may have been renamed), or ErrNotFound when GitHub no longer
+// knows the App: deleted, or its key revoked. GitHub answers a JWT for
+// either with 401 or 404.
+func (a *App) Describe(ctx context.Context) (string, string, error) {
+	app, resp, err := a.apps.Apps.Get(ctx, "")
+	if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound) {
+		return "", "", fmt.Errorf("%w: the app", ErrNotFound)
+	}
+	if err != nil {
+		return "", "", restErr(err, "read the app")
+	}
+	return app.GetSlug(), app.GetHTMLURL(), nil
+}
+
 // OrgInstallation returns the App's installation on the org (or user)
 // account, or ErrNotFound when the App isn't installed there yet.
 func (a *App) OrgInstallation(ctx context.Context, account string) (int64, error) {
