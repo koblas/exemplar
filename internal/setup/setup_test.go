@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -12,12 +13,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/goccy/go-yaml"
 
 	"github.com/koblas/exemplar/internal/envcfg"
 )
@@ -33,6 +33,7 @@ type fakeGitHub struct {
 	userOwner bool // acme is a user account, not an organization
 	ownerDown bool // GET /users/acme fails
 	listDown  bool // GET /app/installations fails
+	noConfig  bool // installed without acme/exemplar-config
 }
 
 func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +68,13 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = w.Write([]byte(`[{"id": 77, "account": {"login": "acme"}}]`))
+	case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/exemplar-config/installation":
+		if !f.installed || f.noConfig {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message": "Not Found"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id": 77, "account": {"login": "acme"}}`))
 	case r.Method == http.MethodGet && r.URL.Path == "/users/acme":
 		if f.ownerDown {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -93,6 +101,14 @@ func newTestKey(t *testing.T) string {
 
 func newSetup(t *testing.T) (*httptest.Server, *fakeGitHub) {
 	t.Helper()
+	return newSetupWith(t, nil)
+}
+
+// newSetupWith is newSetup with the pod's view of the cluster changed by
+// edit: by default a fresh install with the in-cluster Postgres, no
+// database URL and no root key mounted.
+func newSetupWith(t *testing.T, edit func(*Config)) (*httptest.Server, *fakeGitHub) {
+	t.Helper()
 	fake := &fakeGitHub{t: t, pem: newTestKey(t), used: map[string]bool{}}
 	gh := httptest.NewServer(fake)
 	t.Cleanup(gh.Close)
@@ -102,10 +118,17 @@ func newSetup(t *testing.T) (*httptest.Server, *fakeGitHub) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := New(Config{
+	cfg := Config{
 		URLs: urls, ConfigRepo: "acme/exemplar-config", GitHubWeb: "https://github.com/", GitHubAPI: gh.URL + "/",
 		Base: "http://localhost:8081", Namespace: "exemplar", HTTP: gh.Client(),
-	})
+		RootKeyFile:       filepath.Join(t.TempDir(), "key"), // optional volume, Secret not there yet
+		AppSecretDir:      t.TempDir(),                       // likewise exemplar-github-app
+		InClusterPostgres: func(context.Context) bool { return true },
+	}
+	if edit != nil {
+		edit(&cfg)
+	}
+	h, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,10 +271,6 @@ func TestManifestFlow(t *testing.T) {
 		t.Fatalf("replayed redirect = %d", p.status)
 	}
 
-	// No Secret until the App is installed.
-	if p := get(t, c, srv.URL+"/setup/exemplar-github-app.yaml"); p.status != http.StatusNotFound {
-		t.Fatalf("secret before install = %d", p.status)
-	}
 	p = get(t, c, srv.URL+"/setup")
 	form := formRe.FindStringSubmatch(p.body)
 	if form == nil || !strings.Contains(p.body, "installations/new") {
@@ -266,6 +285,10 @@ func TestManifestFlow(t *testing.T) {
 	if code := post(form[1]); code != http.StatusConflict {
 		t.Fatalf("before install = %d", code)
 	}
+	// No Secrets file until the App is installed.
+	if p := downloadSecrets(t, srv.URL, c, url.Values{"anthropic-key": {"sk-ant-test"}}); p.status != http.StatusConflict {
+		t.Fatalf("secrets before install = %d", p.status)
+	}
 	fake.mu.Lock()
 	fake.installed = true
 	fake.mu.Unlock()
@@ -273,19 +296,11 @@ func TestManifestFlow(t *testing.T) {
 		t.Fatalf("after install = %d", code)
 	}
 
-	p = get(t, c, srv.URL+"/setup/exemplar-github-app.yaml")
+	p = downloadSecrets(t, srv.URL, c, url.Values{"anthropic-key": {"sk-ant-test"}})
 	if p.status != http.StatusOK {
-		t.Fatalf("secret = %d", p.status)
+		t.Fatalf("secrets = %d", p.status)
 	}
-	body := p.body
-	var secret struct {
-		Kind     string            `yaml:"kind"`
-		Metadata map[string]any    `yaml:"metadata"`
-		Data     map[string]string `yaml:"stringData"`
-	}
-	if err := yaml.Unmarshal([]byte(body), &secret); err != nil {
-		t.Fatalf("secret YAML: %v\n%s", err, body)
-	}
+	secret := secretsIn(t, p.body)["exemplar-github-app"]
 	want := map[string]string{
 		"app-id": "4242", "installation-id": "77", "client-id": "Iv23liAcme",
 		"client-secret": "client-secret-value", "webhook-secret": "webhook-secret-value",
@@ -340,7 +355,7 @@ func TestUserOwnedConfigRepo(t *testing.T) {
 
 func TestRefusesOtherHosts(t *testing.T) {
 	srv, _ := newSetup(t)
-	for _, path := range []string{"/setup", "/setup/exemplar-github-app.yaml"} {
+	for _, path := range []string{"/setup", "/setup/created"} {
 		for host, want := range map[string]int{"evil.example": http.StatusForbidden, "127.0.0.1:8081": http.StatusOK, "localhost:8081": http.StatusOK} {
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+path, nil)
 			if err != nil {
@@ -357,7 +372,7 @@ func TestRefusesOtherHosts(t *testing.T) {
 				t.Errorf("GET %s as %s says %q", path, host, body)
 			}
 			if path != "/setup" && want == http.StatusOK {
-				want = http.StatusNotFound // no App yet, but the host passed
+				want = http.StatusBadRequest // no state, but the host passed
 			}
 			if resp.StatusCode != want {
 				t.Errorf("GET %s as %s = %d, want %d", path, host, resp.StatusCode, want)

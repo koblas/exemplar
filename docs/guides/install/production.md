@@ -32,7 +32,7 @@ Put its URL in `exemplar-database` (`url`), for example `postgres://exemplar:<pa
 
 ## 3. Create the Secrets
 
-Create them from your secret manager; none are in this repository or the rendered manifests. Before applying: `exemplar-database`, `exemplar-root-key`, `exemplar-providers` (unless Bedrock only) and, with the tunnel, `exemplar-cloudflared`. The setup page produces `exemplar-github-app` (and `exemplar-exports-app`). `exemplar-oidc` is only for OIDC sign-in. Every key is listed in [Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md).
+Create them from your secret manager; none are in this repository or the rendered manifests. Before applying: `exemplar-database`, `exemplar-root-key`, `exemplar-providers` (unless Bedrock only) and, with the tunnel, `exemplar-cloudflared`. The setup page's `exemplar-secrets.yaml` holds `exemplar-github-app` (and `exemplar-exports-app`), and leaves out every Secret exemplar-api already sees; choose **I've created exemplar-providers myself** under **Models**. `exemplar-oidc` is only for OIDC sign-in. Every key is listed in [Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md).
 
 For Bedrock, annotate the `exemplar-gateway` service account for the cloud's identity federation. Don't add AWS keys to a Secret.
 
@@ -80,7 +80,7 @@ kubectl apply -f rendered.yaml
 
 ## 6. Register the App and check
 
-Register the App from the setup page ([Quickstart](quickstart.md#6-register-the-github-app)) and work through `/ui/setup` (step 7 there). Then set up [sign-in](sign-in.md) for your organisation, and go through [Your first review](../../tutorials/first-review.md) on a shadow repository before posting anywhere.
+Register the App from the setup page ([Quickstart](quickstart.md#5-register-the-github-app)) and work through `/ui/setup` (step 6 there). Then set up [sign-in](sign-in.md) for your organisation, and go through [Your first review](../../tutorials/first-review.md) on a shadow repository before posting anywhere.
 
 From a clone of this repository, `go test ./deploy` also checks every build against the code: ports, probes, shutdown deadlines, every environment variable, security contexts and network paths ([How to check manifests locally](../develop/check-manifests.md)).
 

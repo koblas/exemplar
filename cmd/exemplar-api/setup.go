@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"syscall"
@@ -27,14 +28,15 @@ type setupFlags struct {
 // setupPending is what the public listener says in setup mode.
 const setupPending = `Exemplar is waiting for setup. From a machine with access to the cluster:
 
-  kubectl -n %[1]s port-forward "$(kubectl -n %[1]s get pod -l app.kubernetes.io/name=exemplar-api -o name | head -1)" 8081
+  kubectl -n %[1]s port-forward deploy/exemplar-api 8081
 
 then open http://localhost:8081/setup
 `
 
 // runSetup serves setup mode until SIGTERM: probes and a pointer on the
 // public listener, and the setup page on the loopback one. It needs no
-// database or keys, so a first install can start here.
+// database or keys, so a first install can start here; the setup page
+// offers the ones that are missing.
 func runSetup(f setupFlags) error {
 	urls, err := envcfg.PublicURLs(os.Getenv)
 	if err != nil {
@@ -51,7 +53,9 @@ func runSetup(f setupFlags) error {
 		URLs: urls, ConfigRepo: os.Getenv("EXEMPLAR_CONFIG_REPO"),
 		GitHubWeb: os.Getenv("EXEMPLAR_GH_WEB_URL"), GitHubAPI: os.Getenv("EXEMPLAR_GH_API_URL"),
 		Base: f.setupURL, Namespace: f.namespace, Log: log,
-		HTTP: &http.Client{Timeout: 30 * time.Second},
+		HasDatabase: os.Getenv("EXEMPLAR_DATABASE_URL") != "", RootKeyFile: os.Getenv(envcfg.RootKeyFile),
+		AppSecretDir: appSecretDir(os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE")),
+		HTTP:         &http.Client{Timeout: 30 * time.Second},
 	})
 	if err != nil {
 		return fmt.Errorf("setup: %w", err)
@@ -83,7 +87,7 @@ func runSetup(f setupFlags) error {
 	}
 	log.Info("exemplar-api is in setup mode: no EXEMPLAR_GH_APP_ID",
 		"addr", f.addr, "setup_addr", f.setupAddr,
-		"next", fmt.Sprintf("kubectl -n %s port-forward pod/<an exemplar-api pod> 8081, then open %s/setup", f.namespace, f.setupURL))
+		"next", fmt.Sprintf("kubectl -n %s port-forward deploy/exemplar-api 8081, then open %s/setup", f.namespace, f.setupURL))
 	select {
 	case err := <-errc:
 		return err
@@ -100,6 +104,15 @@ func runSetup(f setupFlags) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// appSecretDir is where exemplar-github-app is mounted, from the private
+// key's path (deploy/k8s/core/api.yaml); empty when that isn't set.
+func appSecretDir(keyFile string) string {
+	if keyFile == "" {
+		return ""
+	}
+	return filepath.Dir(keyFile)
 }
 
 func newServer(addr string, h http.Handler) *http.Server {
