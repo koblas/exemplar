@@ -6,6 +6,16 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.9.1](https://github.com/koblas/exemplar/compare/v0.9.0...v0.9.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **setup:** close the remaining setup dead ends ([acfc716](https://github.com/koblas/exemplar/commit/acfc716b41b938850907815e1e5913fd42af731c))
+* **setup:** close the remaining setup dead ends ([d41c91a](https://github.com/koblas/exemplar/commit/d41c91a55d27a7d6f6dc6f082d785a4a89ec86db))
+* **setup:** recover when the App is renamed or deleted on GitHub ([9d11697](https://github.com/koblas/exemplar/commit/9d116970275f695d1934a905a0f9dc69fb012b15))
+* **setup:** recover when the App is renamed or deleted on GitHub ([1b6e46e](https://github.com/koblas/exemplar/commit/1b6e46e0bc09015793b913f6d08a1808a5395429))
+
 ## [0.9.0](https://github.com/koblas/exemplar/compare/v0.8.1...v0.9.0) (2026-11-01)
 
 
