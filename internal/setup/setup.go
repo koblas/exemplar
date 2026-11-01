@@ -99,6 +99,10 @@ type Config struct {
 	// InClusterPostgres reports whether the installation runs the
 	// components/postgres database (default: its Service name resolves).
 	InClusterPostgres func(context.Context) bool
+	// DatabaseFile is where exemplar-database's url is mounted (optional):
+	// it shows the Secret exists once applied, which HasDatabase, read at
+	// start, can't.
+	DatabaseFile string
 	// AppSecretDir is where exemplar-github-app is mounted (optional, so
 	// empty until applied): its private-key shows whether the Secrets file
 	// was applied, and from which App.
@@ -181,6 +185,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /setup/created", h.created)
 	mux.HandleFunc("POST /setup/installation", h.findInstallation)
 	mux.HandleFunc("POST "+downloadPath, h.download)
+	mux.HandleFunc("POST /setup/start-over", h.startOver)
 	mux.Handle("GET /", http.RedirectHandler("/setup", http.StatusFound))
 	return h.secure(h.local(mux))
 }
@@ -361,6 +366,19 @@ type statusView struct {
 	// ExportsOnConfig: the exports app is installed on exemplar-config,
 	// which it must never write.
 	ExportsOnConfig bool
+	// ReviewGone and ExportsGone name an App GitHub no longer knows; the
+	// page offers to forget it. StartedOver: Start over was just pressed.
+	ReviewGone, ExportsGone string
+	StartedOver             bool
+	// AppsURL is the owner's App settings, where an App is deleted.
+	AppsURL string
+	// OwnerIsOrg: the config repo's owner is an organization (as far as
+	// GitHub said), whose roles the hints on steps 1 and 2 name.
+	OwnerIsOrg bool
+	// AppliedAppID is the App whose Secret this pod sees mounted while it
+	// holds no App of its own: applied from another pod, or before this one
+	// restarted. Restarting exemplar-api finishes setup.
+	AppliedAppID string
 	// Errors shown in place and not kept: InstallError on the install
 	// step (reconcile.go), ProviderError on the last
 	// (providerKeyMissing, providerKeyInvalid).
@@ -394,13 +412,18 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int,
 	v := statusView{
 		Org: h.org, Namespace: h.cfg.Namespace, Form: h.form, URLs: h.cfg.URLs,
 		OwnerUnknown: !known, InstallError: errs.install, ProviderError: errs.provider,
+		AppsURL: h.cfg.GitHubWeb + path, StartedOver: r.URL.Query().Has("started-over"),
+		OwnerIsOrg: strings.HasPrefix(path, "organizations/"),
 	}
+	gone, appsAnswered := h.reconcileApps(ctx)
+	v.ReviewGone, v.ExportsGone = gone[KindReview], gone[KindExports]
+	v.GitHubUnreachable = !appsAnswered
 	h.mu.Lock()
 	review := h.apps[KindReview]
 	h.mu.Unlock()
 	if review != nil {
 		id, state, answered := h.reconcileInstall(ctx, review)
-		v.GitHubUnreachable = !answered && errs.install == ""
+		v.GitHubUnreachable = v.GitHubUnreachable || !answered && errs.install == ""
 		if v.InstallError == "" {
 			v.InstallError = state
 		}
@@ -422,8 +445,14 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int,
 		v.Holding = v.Holding || av.Created
 	}
 	switch {
-	case !v.Review.Created:
+	case !v.Review.Created || v.ReviewGone != "":
 		v.Current = 1
+		v.Holding = false // a gone App's key is no use to keep
+		if !v.Review.Created {
+			if v.AppliedAppID = h.appliedAppID(); v.AppliedAppID != "" {
+				v.File = h.plan(ctx)
+			}
+		}
 	case v.Review.Installation == 0 || v.InstallError == installConfigMissing:
 		v.Current = 2
 	default:
@@ -539,6 +568,34 @@ func (h *Handler) findInstallation(w http.ResponseWriter, r *http.Request) {
 		h.cfg.Log.Info("setup: installation found", "installation_id", id)
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 	}
+}
+
+// startOver forgets the Apps this process created (only the exports app
+// with kind=exports), so setup offers to create them again. The Apps stay
+// on GitHub; the page links where to delete them.
+func (h *Handler) startOver(w http.ResponseWriter, r *http.Request) {
+	if subtle.ConstantTimeCompare([]byte(r.PostFormValue("form")), []byte(h.form)) != 1 {
+		h.failApp(r.Context(), w, http.StatusForbidden, failStaleForm)
+		return
+	}
+	only := r.PostFormValue("kind") == KindExports
+	h.mu.Lock()
+	forgot := make([]string, 0, len(h.apps))
+	for kind, a := range h.apps {
+		if only && kind != KindExports {
+			continue
+		}
+		forgot = append(forgot, a.created.Slug)
+		delete(h.apps, kind)
+	}
+	h.mu.Unlock()
+	if only {
+		h.cfg.Log.Info("setup: forgot the exports app", "forgot", forgot)
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	h.cfg.Log.Info("setup: started over", "forgot", forgot)
+	http.Redirect(w, r, "/setup?started-over", http.StatusSeeOther)
 }
 
 // failPage is what an error page shows besides its own text.

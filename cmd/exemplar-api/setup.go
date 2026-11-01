@@ -21,8 +21,8 @@ import (
 )
 
 type setupFlags struct {
-	addr, setupAddr, setupURL, namespace string
-	drain                                time.Duration
+	addr, setupAddr, setupURL, namespace, databaseFile string
+	drain                                              time.Duration
 }
 
 // setupPending is what the public listener says in setup mode.
@@ -54,8 +54,8 @@ func runSetup(f setupFlags) error {
 		GitHubWeb: os.Getenv("EXEMPLAR_GH_WEB_URL"), GitHubAPI: os.Getenv("EXEMPLAR_GH_API_URL"),
 		Base: f.setupURL, Namespace: f.namespace, Log: log,
 		HasDatabase: os.Getenv("EXEMPLAR_DATABASE_URL") != "", RootKeyFile: os.Getenv(envcfg.RootKeyFile),
-		AppSecretDir: appSecretDir(os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE")),
-		HTTP:         &http.Client{Timeout: 30 * time.Second},
+		AppSecretDir: appSecretDir(os.Getenv("EXEMPLAR_GH_PRIVATE_KEY_FILE")), DatabaseFile: f.databaseFile,
+		HTTP: &http.Client{Timeout: 30 * time.Second},
 	})
 	if err != nil {
 		return fmt.Errorf("setup: %w", err)

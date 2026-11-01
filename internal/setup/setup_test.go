@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +36,9 @@ type fakeGitHub struct {
 	ownerDown bool // GET /users/acme fails
 	listDown  bool // GET /app/installations fails
 	noConfig  bool // installed without acme/exemplar-config
+	appGone   int  // GET /app answers this status: the App was deleted (0: it exists)
+	goneID    int  // only this App (by id) is gone; 0: any App
+	slug      string
 }
 
 func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -53,8 +58,12 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			f.t.Error(err)
 		}
-		fmt.Fprintf(w, `{"id": 4242, "slug": "exemplar-acme", "html_url": "https://github.com/apps/exemplar-acme",
-			"client_id": "Iv23liAcme", "client_secret": "client-secret-value", "webhook_secret": "webhook-secret-value", "pem": %s}`, pemJSON)
+		id := 4242
+		if code == "exports" {
+			id = 4343 // the exports app, in tests that make one with this code
+		}
+		fmt.Fprintf(w, `{"id": %d, "slug": "exemplar-acme", "html_url": "https://github.com/apps/exemplar-acme",
+			"client_id": "Iv23liAcme", "client_secret": "client-secret-value", "webhook_secret": "webhook-secret-value", "pem": %s}`, id, pemJSON)
 	case r.Method == http.MethodGet && r.URL.Path == "/app/installations":
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ey") {
 			f.t.Error("installations listed without the new App's JWT")
@@ -68,6 +77,14 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = w.Write([]byte(`[{"id": 77, "account": {"login": "acme"}}]`))
+	case r.Method == http.MethodGet && r.URL.Path == "/app":
+		if f.appGone != 0 && (f.goneID == 0 || jwtIssuer(r) == f.goneID) {
+			w.WriteHeader(f.appGone)
+			_, _ = w.Write([]byte(`{"message": "Integration not found"}`))
+			return
+		}
+		slug := cmpOr(f.slug, "exemplar-acme")
+		fmt.Fprintf(w, `{"id": 4242, "slug": %q, "html_url": "https://github.com/apps/%s"}`, slug, slug)
 	case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/exemplar-config/installation":
 		if !f.installed || f.noConfig {
 			w.WriteHeader(http.StatusNotFound)
@@ -405,4 +422,24 @@ func TestNewRequiresConfig(t *testing.T) {
 	if _, err := New(Config{}); err == nil {
 		t.Fatal("New with no config")
 	}
+}
+
+// jwtIssuer is the App id in a request's JWT, unverified.
+func jwtIssuer(r *http.Request) int {
+	parts := strings.Split(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), ".")
+	if len(parts) != 3 {
+		return 0
+	}
+	b, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return 0
+	}
+	var claims struct {
+		Iss json.RawMessage `json:"iss"`
+	}
+	if json.Unmarshal(b, &claims) != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.Trim(string(claims.Iss), `"`))
+	return n
 }
