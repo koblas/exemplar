@@ -45,7 +45,7 @@ func mustNotContain(t *testing.T, p page, unwanted ...string) {
 const (
 	titleCreate       = "Create the App on GitHub"
 	titleInstall      = "Install it"
-	titleFinish       = "Save the Secret and restart exemplar-api"
+	titleFinish       = "Save the Secrets and restart exemplar-api"
 	labelCreate       = "Create the App on GitHub"
 	labelCheckInstall = "Check the installation"
 	labelCreateExport = "Create the exports app on GitHub"
@@ -59,7 +59,7 @@ var failTitles = map[failure]string{
 	failConversion:   "GitHub created the App but didn't hand over its key",
 	failKey:          "The new App's private key didn't load",
 	failStaleForm:    "This page is from before exemplar-api restarted",
-	failNotReady:     "There's no Secret yet",
+	failNotReady:     "There's no Secrets file yet",
 	failManifest:     "Setup couldn't build the App manifest",
 	failOtherHost:    "Setup doesn't answer on this address",
 }
@@ -145,10 +145,13 @@ func TestPageSteps(t *testing.T) {
 	if got := currentStep(t, p); got != titleFinish {
 		t.Errorf("after install = %q", got)
 	}
-	mustContain(t, p, "Installed on acme (installation 77)", "kubectl apply -f exemplar-github-app.yaml",
-		"kubectl -n exemplar rollout restart deployment/exemplar-api", "Enable Device Flow", labelCreateExport,
-		"https://exemplar.acme.com/ui/setup")
-	mustNotContain(t, p, labelCheckInstall)
+	mustContain(t, p, "(installation 77)", "kubectl apply -f exemplar-secrets.yaml", "Download exemplar-secrets.yaml",
+		"Enable Device Flow", labelCreateExport, "Check again")
+	// Restarting before the Secrets are applied would lose the App's key.
+	mustNotContain(t, p, labelCheckInstall, "is applied")
+	if strings.Count(p.body, "rollout restart") != 1 { // only in the by-hand check
+		t.Error("restart offered before the Secrets are applied")
+	}
 	if strings.Contains(p.body, "<details open>") {
 		t.Error("rule exports open before anyone asked for them")
 	}
@@ -162,9 +165,9 @@ func TestPageSteps(t *testing.T) {
 	if got := currentStep(t, p); got != titleFinish {
 		t.Errorf("after exports = %q", got)
 	}
-	mustContain(t, p, "kubectl apply -f exemplar-exports-app.yaml")
+	mustContain(t, p, "exemplar-exports-app</code>: the exports app's id and key.")
 	mustNotContain(t, p, labelCreateExport)
-	if p := get(t, c, srv.URL+"/setup/exemplar-exports-app.yaml"); p.status != http.StatusOK || !strings.Contains(p.body, "name: exemplar-exports-app") {
+	if p := downloadSecrets(t, srv.URL, c, url.Values{"models": {modelsOwn}}); p.status != http.StatusOK || !strings.Contains(p.body, "name: exemplar-exports-app") {
 		t.Errorf("exports secret = %d\n%s", p.status, p.body)
 	}
 }
@@ -216,10 +219,8 @@ func TestErrorPages(t *testing.T) {
 
 	failurePage(t, do(t, c, http.MethodPost, srv.URL+"/setup/installation", url.Values{"form": {"earlier"}}),
 		http.StatusForbidden, failStaleForm)
-	failurePage(t, get(t, c, srv.URL+"/setup/exemplar-github-app.yaml"), http.StatusNotFound, failNotReady)
-	if p := get(t, c, srv.URL+"/setup/nothing.yaml"); p.status != http.StatusNotFound || strings.Contains(p.text(), failTitles[failNotReady]) {
-		t.Errorf("unknown file = %d:\n%s", p.status, p.body)
-	}
+	// The App exists (the other browser), but isn't installed yet.
+	failurePage(t, downloadSecrets(t, srv.URL, c, url.Values{"models": {modelsOwn}}), http.StatusConflict, failNotReady)
 }
 
 func TestNoInstallFormBeforeApp(t *testing.T) {
@@ -255,10 +256,11 @@ func TestOwnerUnknown(t *testing.T) {
 	}
 }
 
-// After exemplar-api restarts mid-flow, an old page's Secret link says the
-// App's key is gone and where to delete the App.
+// After exemplar-api restarts mid-flow, an old page's download form says
+// the App's key is gone and where to delete the App.
 func TestSecretAfterRestart(t *testing.T) {
 	srv, _ := newSetup(t) // a fresh process: nothing created
-	failurePage(t, get(t, browser(t), srv.URL+"/setup/exemplar-github-app.yaml"), http.StatusNotFound, failNotReady)
-	mustContain(t, get(t, browser(t), srv.URL+"/setup/exemplar-github-app.yaml"), "restarted since")
+	p := do(t, browser(t), http.MethodPost, srv.URL+"/setup/exemplar-secrets.yaml", url.Values{"form": {"from-the-old-pod"}})
+	failurePage(t, p, http.StatusForbidden, failStaleForm)
+	mustContain(t, p, "the new App's key went with it")
 }

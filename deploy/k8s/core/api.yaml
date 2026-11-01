@@ -58,8 +58,11 @@ spec:
             - configMapRef: {name: exemplar-auth, optional: true}
             - secretRef: {name: exemplar-otel, optional: true}
           env:
+            # Optional so setup mode starts on a fresh install: the setup page
+            # offers exemplar-database and exemplar-root-key. In App mode
+            # exemplar-api refuses to start without them.
             - name: EXEMPLAR_DATABASE_URL
-              valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+              valueFrom: {secretKeyRef: {name: exemplar-database, key: url, optional: true}}
             - name: EXEMPLAR_API_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_API_URL}}
             - name: EXEMPLAR_CONFIG_REPO
@@ -109,7 +112,7 @@ spec:
             - {name: tmp, mountPath: /tmp}
       volumes:
         - name: root-key
-          secret: {secretName: exemplar-root-key, defaultMode: 0400}
+          secret: {secretName: exemplar-root-key, defaultMode: 0400, optional: true}
         - name: github-app
           secret:
             secretName: exemplar-github-app

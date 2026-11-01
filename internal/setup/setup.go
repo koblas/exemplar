@@ -1,6 +1,6 @@
 // Package setup is exemplar-api's first-run setup: it registers the GitHub
-// App from a manifest and hands the operator the exemplar-github-app Secret
-// that every other workload waits for.
+// App from a manifest and hands the operator the Secrets (exemplar-github-app
+// and whichever others are missing) that every other workload waits for.
 //
 // It runs only while exemplar-api has no App (EXEMPLAR_GH_APP_ID unset), on
 // a listener bound to the pod's loopback that no Service, tunnel or Ingress
@@ -19,11 +19,14 @@
 //  3. The operator installs the App on the config repo's owner (an
 //     organization or a user account; the manifest form posts to whichever
 //     one's App settings); POST /setup/installation finds the installation.
-//  4. The page offers the Secret as YAML. The operator applies it and
-//     restarts exemplar-api, which then leaves setup mode.
+//  4. The page offers one file of Secrets (secrets.go): the App's, and
+//     whichever of the root key, the in-cluster Postgres password and
+//     database URL, and the Anthropic key the pod can see are missing.
+//     The operator applies it and restarts exemplar-api, which then leaves
+//     setup mode.
 //
-// The page shows those as three numbered steps (create, install, save and
-// restart), the first unfinished one open. It doesn't update live: the CSP
+// The page shows those as three numbered steps (create, install, save the
+// Secrets and restart), the first unfinished one open. It doesn't update live: the CSP
 // allows no script, every action posts or redirects back to GET /setup, and
 // a reload shows the current state. Errors that leave the flow in place
 // (the App not installed yet) show inline on their step and are not kept,
@@ -47,7 +50,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -85,17 +87,34 @@ type Config struct {
 	// Base is where the operator's browser reaches this handler: GitHub
 	// redirects there after creating the App.
 	Base string
-	// Namespace is the installation's namespace, for the Secret.
+	// Namespace is the installation's namespace, for the Secrets.
 	Namespace string
+	// HasDatabase is whether exemplar-api already has EXEMPLAR_DATABASE_URL:
+	// the Secrets file then leaves the database Secrets out.
+	HasDatabase bool
+	// RootKeyFile is where exemplar-root-key is mounted (optional, so the
+	// file is missing until it exists). Read on each request: a Secret
+	// volume fills in while the pod runs.
+	RootKeyFile string
+	// InClusterPostgres reports whether the installation runs the
+	// components/postgres database (default: its Service name resolves).
+	InClusterPostgres func(context.Context) bool
+	// AppSecretDir is where exemplar-github-app is mounted (optional, so
+	// empty until applied): its private-key shows whether the Secrets file
+	// was applied, and from which App.
+	AppSecretDir string
 	// HTTP calls GitHub (default http.DefaultClient).
 	HTTP *http.Client
 	Log  *slog.Logger
 }
 
-// app is one App's progress through the flow.
+// app is one App's progress through the flow: what GitHub created, a
+// client signed with its key, and its installation as last checked.
 type app struct {
-	created      *gh.CreatedApp
-	installation int64
+	created       *gh.CreatedApp
+	client        *gh.App
+	installation  int64
+	configMissing bool // installed, but without the config repo
 }
 
 // Handler serves the setup pages.
@@ -103,6 +122,15 @@ type Handler struct {
 	cfg  Config
 	org  string
 	form string // token for this process's forms
+
+	// Generated once per process, so every download of the Secrets file
+	// carries the same values: Postgres reads its password only when it
+	// first initializes its volume.
+	rootKey, pgPassword string
+	// rootKeyMissingAtStart: a root key mounted later means a Secrets
+	// file was applied (secretsPlan.Applied). Optional Secret volumes fill
+	// in while the pod runs.
+	rootKeyMissingAtStart bool
 
 	mu       sync.Mutex
 	states   map[string]pendingState
@@ -135,10 +163,15 @@ func New(cfg Config) (*Handler, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	return &Handler{
-		cfg: cfg, org: org, form: random(),
+	if cfg.InClusterPostgres == nil {
+		cfg.InClusterPostgres = postgresResolves(cfg.Namespace)
+	}
+	h := &Handler{
+		cfg: cfg, org: org, form: random(), rootKey: randomHex(envcfg.MinRootKeyBytes), pgPassword: random(),
 		states: map[string]pendingState{}, apps: map[string]*app{},
-	}, nil
+	}
+	h.rootKeyMissingAtStart = h.rootKeyMissing()
+	return h, nil
 }
 
 // Routes serves /setup and its steps.
@@ -147,7 +180,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /setup", h.status)
 	mux.HandleFunc("GET /setup/created", h.created)
 	mux.HandleFunc("POST /setup/installation", h.findInstallation)
-	mux.HandleFunc("GET /setup/{file}", h.secret)
+	mux.HandleFunc("POST "+downloadPath, h.download)
 	mux.Handle("GET /", http.RedirectHandler("/setup", http.StatusFound))
 	return h.secure(h.local(mux))
 }
@@ -297,14 +330,14 @@ func (h *Handler) spendState(state string) (string, error) {
 }
 
 // appView is one App on the page: the manifest form until GitHub created
-// it, then its links and, once ready, its Secret.
+// it, then its links.
 type appView struct {
 	Action, Manifest string
 	Created          bool
 	Name, AppURL     string
 	InstallURL       string
 	Installation     int64
-	Secret           string
+	InstallationURL  string // set for the exports app when ExportsOnConfig
 }
 
 // statusView is the setup page. Current is the open step: 1 create, 2
@@ -316,8 +349,26 @@ type statusView struct {
 	Holding              bool // an App's key is only in this pod
 	Current              int
 	Review, Exports      appView
-	InstallError         string
+	// File is what the Secrets file holds, on the last step; AppSecret is
+	// whether it was applied (secretNotApplied, secretApplied, secretOther).
+	File      secretsPlan
+	AppSecret string
+	// InstallationURL is where the installation's repositories change.
+	InstallationURL string
+	// GitHubUnreachable: GitHub didn't answer this load's checks, so the
+	// page shows the last known state.
+	GitHubUnreachable bool
+	// ExportsOnConfig: the exports app is installed on exemplar-config,
+	// which it must never write.
+	ExportsOnConfig bool
+	// Errors shown in place and not kept: InstallError on the install
+	// step (reconcile.go), ProviderError on the last
+	// (providerKeyMissing, providerKeyInvalid).
+	InstallError, ProviderError string
 }
+
+// pageErrors are the in-place errors a render shows.
+type pageErrors struct{ install, provider string }
 
 // StepClass is step n's state for the template: done, current or todo.
 func (v statusView) StepClass(n int) string {
@@ -332,18 +383,30 @@ func (v statusView) StepClass(n int) string {
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
-	h.renderStatus(w, r, http.StatusOK, "")
+	h.renderStatus(w, r, http.StatusOK, pageErrors{})
 }
 
-// renderStatus renders the setup page, with installError (installNotFound
-// or installListFailed) on the install step when set.
-func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int, installError string) {
+// renderStatus renders the setup page, with errs in place on their steps.
+func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int, errs pageErrors) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	path, known := h.settingsPath(ctx)
 	v := statusView{
 		Org: h.org, Namespace: h.cfg.Namespace, Form: h.form, URLs: h.cfg.URLs,
-		OwnerUnknown: !known, InstallError: installError,
+		OwnerUnknown: !known, InstallError: errs.install, ProviderError: errs.provider,
+	}
+	h.mu.Lock()
+	review := h.apps[KindReview]
+	h.mu.Unlock()
+	if review != nil {
+		id, state, answered := h.reconcileInstall(ctx, review)
+		v.GitHubUnreachable = !answered && errs.install == ""
+		if v.InstallError == "" {
+			v.InstallError = state
+		}
+		if id != 0 {
+			v.InstallationURL = h.installationURL(ctx, id)
+		}
 	}
 	for _, kind := range []string{KindReview, KindExports} {
 		av, ok := h.appView(w, kind, h.cfg.GitHubWeb+path)
@@ -361,10 +424,21 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int,
 	switch {
 	case !v.Review.Created:
 		v.Current = 1
-	case v.Review.Installation == 0:
+	case v.Review.Installation == 0 || v.InstallError == installConfigMissing:
 		v.Current = 2
 	default:
 		v.Current = 3
+		v.File = h.plan(ctx)
+		v.AppSecret = h.appSecretState(review)
+		v.Holding = v.Holding && v.AppSecret != secretApplied
+		h.mu.Lock()
+		exports := h.apps[KindExports]
+		h.mu.Unlock()
+		if exports != nil {
+			if id, err := exports.client.ConfigInstallation(ctx); err == nil {
+				v.ExportsOnConfig, v.Exports.InstallationURL = true, h.installationURL(ctx, id)
+			}
+		}
 	}
 	h.render(w, code, "status", v)
 }
@@ -394,15 +468,11 @@ func (h *Handler) appView(w http.ResponseWriter, kind, apps string) (appView, bo
 		})
 		return appView{Action: apps + "new?state=" + state, Manifest: string(manifest)}, true
 	}
-	v := appView{
+	return appView{
 		Created: true, Name: a.created.Slug, AppURL: apps + a.created.Slug,
 		InstallURL:   strings.TrimSuffix(a.created.HTMLURL, "/") + "/installations/new",
 		Installation: installation,
-	}
-	if installation != 0 || kind == KindExports {
-		v.Secret = h.secretYAML(kind, a, installation)
-	}
-	return v, true
+	}, true
 }
 
 func (h *Handler) created(w http.ResponseWriter, r *http.Request) {
@@ -425,8 +495,16 @@ func (h *Handler) created(w http.ResponseWriter, r *http.Request) {
 		h.failApp(ctx, w, http.StatusBadGateway, failConversion)
 		return
 	}
+	client, err := gh.NewApp(gh.AppConfig{
+		AppID: created.ID, PrivateKey: []byte(created.PEM), ConfigRepo: h.cfg.ConfigRepo, BaseURL: h.cfg.GitHubAPI,
+	}, h.cfg.HTTP.Transport)
+	if err != nil {
+		h.cfg.Log.Warn("setup: loading the new App's key failed", "kind", kind, "err", err)
+		h.failApp(ctx, w, http.StatusBadGateway, failKey)
+		return
+	}
 	h.mu.Lock()
-	h.apps[kind] = &app{created: created}
+	h.apps[kind] = &app{created: created, client: client}
 	h.mu.Unlock()
 	h.cfg.Log.Info("setup: GitHub App created", "kind", kind, "app_id", created.ID, "slug", created.Slug)
 	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: deletes the cookie set in appView
@@ -449,77 +527,18 @@ func (h *Handler) findInstallation(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusConflict, failNotReady)
 		return
 	}
-	client, err := gh.NewApp(gh.AppConfig{
-		AppID: a.created.ID, PrivateKey: []byte(a.created.PEM), ConfigRepo: h.cfg.ConfigRepo, BaseURL: h.cfg.GitHubAPI,
-	}, h.cfg.HTTP.Transport)
-	if err != nil {
-		h.cfg.Log.Warn("setup: loading the new App's key failed", "err", err)
-		h.failApp(ctx, w, http.StatusInternalServerError, failKey)
-		return
+	id, state, answered := h.reconcileInstall(ctx, a)
+	switch {
+	case !answered:
+		h.renderStatus(w, r, http.StatusBadGateway, pageErrors{install: installListFailed})
+	case state != "":
+		h.renderStatus(w, r, http.StatusConflict, pageErrors{install: state})
+	case id == 0:
+		h.renderStatus(w, r, http.StatusConflict, pageErrors{install: installNotFound})
+	default:
+		h.cfg.Log.Info("setup: installation found", "installation_id", id)
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 	}
-	id, err := client.OrgInstallation(ctx, h.org)
-	if errors.Is(err, gh.ErrNotFound) {
-		h.renderStatus(w, r, http.StatusConflict, installNotFound)
-		return
-	}
-	if err != nil {
-		h.cfg.Log.Warn("setup: listing installations failed", "err", err)
-		h.renderStatus(w, r, http.StatusBadGateway, installListFailed)
-		return
-	}
-	h.mu.Lock()
-	a.installation = id
-	h.mu.Unlock()
-	h.cfg.Log.Info("setup: installation found", "installation_id", id)
-	http.Redirect(w, r, "/setup", http.StatusSeeOther)
-}
-
-// secret serves exemplar-github-app.yaml or exemplar-exports-app.yaml.
-func (h *Handler) secret(w http.ResponseWriter, r *http.Request) {
-	kind := map[string]string{"exemplar-github-app.yaml": KindReview, "exemplar-exports-app.yaml": KindExports}[r.PathValue("file")]
-	h.mu.Lock()
-	a := h.apps[kind]
-	var installation int64
-	if a != nil {
-		installation = a.installation
-	}
-	h.mu.Unlock()
-	if kind == "" {
-		http.NotFound(w, r)
-		return
-	}
-	if a == nil || kind == KindReview && installation == 0 {
-		h.failApp(r.Context(), w, http.StatusNotFound, failNotReady)
-		return
-	}
-	w.Header().Set("Content-Type", "application/yaml")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+r.PathValue("file")+`"`)
-	_, _ = w.Write([]byte(h.secretYAML(kind, a, installation)))
-}
-
-// secretYAML is the Secret kind's workloads read (deploy/k8s/core/settings.yaml).
-func (h *Handler) secretYAML(kind string, a *app, installation int64) string {
-	name := "exemplar-github-app"
-	data := [][2]string{{"app-id", strconv.FormatInt(a.created.ID, 10)}}
-	if kind == KindExports {
-		name = "exemplar-exports-app"
-	} else {
-		data = append(data,
-			[2]string{"installation-id", strconv.FormatInt(installation, 10)},
-			[2]string{"client-id", a.created.ClientID},
-			[2]string{"client-secret", a.created.ClientSecret},
-			[2]string{"webhook-secret", a.created.WebhookSecret})
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "apiVersion: v1\nkind: Secret\nmetadata:\n  name: %s\n  namespace: %s\n  labels: {app.kubernetes.io/part-of: exemplar}\ntype: Opaque\nstringData:\n", name, h.cfg.Namespace)
-	for _, kv := range data {
-		fmt.Fprintf(&b, "  %s: %s\n", kv[0], strconv.Quote(kv[1])) // ids and hex: plain ASCII
-	}
-	b.WriteString("  private-key: |\n")
-	for line := range strings.SplitSeq(strings.TrimRight(a.created.PEM, "\n"), "\n") {
-		fmt.Fprintf(&b, "    %s\n", line)
-	}
-	return b.String()
 }
 
 // failPage is what an error page shows besides its own text.
@@ -546,8 +565,11 @@ func (h *Handler) render(w http.ResponseWriter, status int, name string, data an
 	}
 }
 
-func random() string {
-	b := make([]byte, 24)
+func random() string { return randomHex(24) }
+
+// randomHex is n random bytes, hex-encoded.
+func randomHex(n int) string {
+	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
