@@ -1,0 +1,58 @@
+{{/* The setup page: three steps, .Current open. Errors that leave the flow in place show on the install step
+(.InstallError: "not-installed" or "list-failed") and are not kept. */}}
+{{define "status"}}{{template "head"}}
+<h1 style="font-size:1.3rem">Register Exemplar's GitHub App on {{.Org}}</h1>
+{{if .OwnerUnknown}}<p class="notice" role="status">GitHub didn't say whether {{.Org}} is an organization or a personal account,
+so the GitHub links below assume an organization. If {{.Org}} is your own account, reload this page.</p>{{end}}
+{{if .Holding}}<p class="notice" role="status">Until you apply the Secret, the App's key exists only in this exemplar-api pod's memory.
+Keep this port-forward running until you've applied the Secret.</p>{{end}}
+<ol class="steps">
+
+<li class="{{.StepClass 1}}" {{if eq .Current 1}}aria-current="step"{{end}}><h2>Create the App on GitHub</h2>
+{{if eq .Current 1}}
+<p>GitHub opens with the App's permissions, events and URLs filled in; you can rename it there. Check these first:</p>
+<dl><dt>Webhooks go to</dt><dd><code>{{.URLs.Webhook}}</code></dd><dt>People sign in at</dt><dd><code>{{.URLs.API}}</code></dd></dl>
+<p class="muted">If either is wrong, set <code>EXEMPLAR_API_URL</code> (or <code>EXEMPLAR_WEBHOOK_URL</code>) in your overlay, apply it, and open setup again.</p>
+<form method="post" action="{{.Review.Action}}"><input type="hidden" name="manifest" value="{{.Review.Manifest}}">
+<button type="submit">Create the App on GitHub</button></form>
+{{else}}<p>Created <a href="{{.Review.AppURL}}">{{.Review.Name}}</a>.</p>{{end}}
+</li>
+
+<li class="{{.StepClass 2}}" {{if eq .Current 2}}aria-current="step"{{end}}><h2>Install it</h2>
+{{if eq .Current 2}}
+{{if eq .InstallError "not-installed"}}<p class="error" role="alert">GitHub lists no installation of {{.Review.Name}} on {{.Org}}.
+Install it on {{.Org}} (the account that owns exemplar-config), then check again.</p>
+{{else if eq .InstallError "list-failed"}}<p class="error" role="alert">GitHub didn't answer when setup asked for the App's installations.
+Check again in a moment; if it keeps failing, the exemplar-api log has GitHub's answer.</p>{{end}}
+<p><a href="{{.Review.InstallURL}}">Install {{.Review.Name}} on {{.Org}}</a> on GitHub. Choose the repositories Exemplar reviews,
+and <code>exemplar-config</code>. Then come back here:</p>
+<form method="post" action="/setup/installation"><input type="hidden" name="form" value="{{.Form}}">
+<button type="submit">Check the installation</button></form>
+{{else if gt .Current 2}}<p>Installed on {{.Org}} (installation {{.Review.Installation}}).</p>{{end}}
+</li>
+
+<li class="{{.StepClass 3}}" {{if eq .Current 3}}aria-current="step"{{end}}><h2>Save the Secret and restart exemplar-api</h2>
+{{if eq .Current 3}}
+<p>Save <a href="/setup/exemplar-github-app.yaml">exemplar-github-app.yaml</a> and apply it:</p>
+<pre>kubectl apply -f exemplar-github-app.yaml</pre>
+<details><summary>Show the Secret</summary><pre>{{.Review.Secret}}</pre></details>
+<p>For <code>exemplar login</code> from a terminal, tick <b>Enable Device Flow</b> in the <a href="{{.Review.AppURL}}">App's settings</a>.</p>
+<details {{if .Exports.Created}}open{{end}}><summary>Rule exports (optional)</summary>
+<p>Exports write instruction files to the repositories that opt in, with a second App installed only on those repositories.
+Skip this unless you want them; <a href="https://koblas.github.io/exemplar/guides/operate/rule-exports/">you can add it later</a>.</p>
+{{if not .Exports.Created}}
+<form method="post" action="{{.Exports.Action}}"><input type="hidden" name="manifest" value="{{.Exports.Manifest}}">
+<button type="submit">Create the exports app on GitHub</button></form>
+{{else}}
+<p>Created <a href="{{.Exports.AppURL}}">{{.Exports.Name}}</a>. <a href="{{.Exports.InstallURL}}">Install it</a> only on the repositories
+that opt into exports, never on <code>exemplar-config</code>. Save <a href="/setup/exemplar-exports-app.yaml">exemplar-exports-app.yaml</a> and apply it:</p>
+<pre>kubectl apply -f exemplar-exports-app.yaml</pre>
+{{end}}
+</details>
+<p>Then restart exemplar-api. It leaves setup mode, so this page goes away; the other workloads have been waiting for the Secret and start on their own:</p>
+<pre>kubectl -n {{.Namespace}} rollout restart deployment/exemplar-api</pre>
+<p>Once the pods are ready, open <a href="{{.URLs.API}}/ui/setup">{{.URLs.API}}/ui/setup</a> and sign in: it checks the installation and the webhook deliveries.</p>
+{{end}}
+</li>
+</ol>
+</body></html>{{end}}

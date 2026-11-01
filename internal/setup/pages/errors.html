@@ -1,0 +1,51 @@
+{{/* Errors on their own page: the request can't continue the flow in place. Each names what failed, why, and what to do;
+.AppsURL, when set, is the owner's App settings, where an App GitHub already created is deleted. */}}
+
+{{define "fail-spent-state"}}{{template "error-top" .}}
+<h1>This link from GitHub was already used or has expired</h1>
+<p>GitHub's link back to setup works once and lasts an hour.</p>
+<p>If setup shows the App as created, carry on there. Otherwise delete the App GitHub created in your App settings, then create it again from setup.</p>
+{{template "error-bottom" .}}{{end}}
+
+{{define "fail-other-browser"}}{{template "error-top" .}}
+<h1>This browser didn't start that registration</h1>
+<p>Setup only accepts an App's key in the browser that sent it to GitHub, so it ignored this one.</p>
+<p>Delete the App GitHub just created in your App settings, then create it again from setup in this browser.</p>
+{{template "error-bottom" .}}{{end}}
+
+{{define "fail-conversion"}}{{template "error-top" .}}
+<h1>GitHub created the App but didn't hand over its key</h1>
+<p>Exchanging GitHub's one-time code for the App's id and private key failed. The exemplar-api log has GitHub's answer.</p>
+<p>Delete the App in your App settings, then create it again from setup.</p>
+{{template "error-bottom" .}}{{end}}
+
+{{define "fail-key"}}{{template "error-top" .}}
+<h1>The new App's private key didn't load</h1>
+<p>GitHub returned a key setup can't parse, so it can't look for the App's installation.</p>
+<p>Delete the App in your App settings, then create it again from setup.</p>
+{{template "error-bottom" .}}{{end}}
+
+{{define "fail-stale-form"}}{{template "error-top" .}}
+<h1>This page is from before exemplar-api restarted</h1>
+<p>The pod that showed this page is gone, and the new App's key went with it.</p>
+<p>Open setup again. If it asks you to create the App, first delete the one GitHub already has in your App settings.</p>
+{{template "error-bottom" .}}{{end}}
+
+{{define "fail-not-ready"}}{{template "error-top" .}}
+<h1>There's no Secret yet</h1>
+<p>The Secret holds the App's key and its installation, so it exists once both steps are done.</p>
+<p>Create the App and install it from setup first. If you already had, exemplar-api restarted since and lost the App's key: delete that App in your App settings, then start again from setup.</p>
+{{template "error-bottom" .}}{{end}}
+
+{{define "fail-manifest"}}{{template "error-top" .}}
+<h1>Setup couldn't build the App manifest</h1>
+<p>This is a bug in Exemplar; the exemplar-api log has the details.</p>
+<p>Report it, with the log, at https://github.com/koblas/exemplar/issues.</p>
+{{template "error-bottom" .}}{{end}}
+
+{{/* .Base is where setup answers; the request named another host, maybe from another site's page (DNS rebinding). */}}
+{{define "fail-other-host"}}{{template "error-top" .}}
+<h1>Setup doesn't answer on this address</h1>
+<p>It answers only on the address kubectl port-forward gives it, so a page on another site can't reach the App's key.</p>
+<p>Open {{.Base}}/setup through kubectl port-forward instead.</p>
+{{template "error-bottom" .}}{{end}}

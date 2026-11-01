@@ -75,7 +75,7 @@ go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kub
 ```
 
 ```bash
-kubectl --context <your-cluster> apply -f rendered.yaml
+kubectl apply -f rendered.yaml
 ```
 
 ## 6. Register the App and check

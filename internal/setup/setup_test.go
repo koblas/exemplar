@@ -31,6 +31,8 @@ type fakeGitHub struct {
 	used      map[string]bool
 	installed bool
 	userOwner bool // acme is a user account, not an organization
+	ownerDown bool // GET /users/acme fails
+	listDown  bool // GET /app/installations fails
 }
 
 func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -56,12 +58,20 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ey") {
 			f.t.Error("installations listed without the new App's JWT")
 		}
+		if f.listDown {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		if !f.installed {
 			_, _ = w.Write([]byte(`[]`))
 			return
 		}
 		_, _ = w.Write([]byte(`[{"id": 77, "account": {"login": "acme"}}]`))
 	case r.Method == http.MethodGet && r.URL.Path == "/users/acme":
+		if f.ownerDown {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		if f.userOwner {
 			_, _ = w.Write([]byte(`{"login": "acme", "type": "User"}`))
 			return
@@ -341,7 +351,11 @@ func TestRefusesOtherHosts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			body, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
+			if want == http.StatusForbidden && !strings.Contains(string(body), "Open http://localhost:8081/setup through kubectl port-forward instead.") {
+				t.Errorf("GET %s as %s says %q", path, host, body)
+			}
 			if path != "/setup" && want == http.StatusOK {
 				want = http.StatusNotFound // no App yet, but the host passed
 			}

@@ -53,7 +53,7 @@ Open a pull request: the review runs and its findings appear in the web UI (and 
 Nothing else changes when search is added. Remove the three patches, give the StatefulSet a storage class and size ([How to install for production](production.md#4-write-the-overlay); the quickstart overlay's one replica on 20Gi is enough for a few repositories), apply, and restart the worker once the search pods are ready:
 
 ```bash
-kubectl --context <your-cluster> -n exemplar rollout restart deploy/exemplar-worker
+kubectl -n exemplar rollout restart deploy/exemplar-worker
 ```
 
 The first index of each opted-in repository takes from seconds to, for a monorepo, an hour; until it finishes, `find_references` answers in degraded mode and says so to the agent.

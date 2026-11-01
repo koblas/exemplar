@@ -22,6 +22,14 @@
 //  4. The page offers the Secret as YAML. The operator applies it and
 //     restarts exemplar-api, which then leaves setup mode.
 //
+// The page shows those as three numbered steps (create, install, save and
+// restart), the first unfinished one open. It doesn't update live: the CSP
+// allows no script, every action posts or redirects back to GET /setup, and
+// a reload shows the current state. Errors that leave the flow in place
+// (the App not installed yet) show inline on their step and are not kept,
+// so a reload clears them; the rest get a page naming the next action.
+// The pages and every string they show are in pages/.
+//
 // Credentials stay in this process's memory only, and never reach a log.
 // Requests must name the setup URL's host (or 127.0.0.1 on its port): a
 // page on another site can't use DNS rebinding to reach the port-forward
@@ -36,7 +44,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -62,9 +69,8 @@ const (
 )
 
 var (
-	errConfig   = errors.New("setup: config")
-	errState    = errors.New("setup: unknown or spent state")
-	errNotReady = errors.New("setup: create and install the App first")
+	errConfig = errors.New("setup: config")
+	errState  = errors.New("setup: unknown or spent state")
 )
 
 // Config is what setup needs to describe the App.
@@ -143,7 +149,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /setup/installation", h.findInstallation)
 	mux.HandleFunc("GET /setup/{file}", h.secret)
 	mux.Handle("GET /", http.RedirectHandler("/setup", http.StatusFound))
-	return h.local(h.secure(mux))
+	return h.secure(h.local(mux))
 }
 
 // local refuses requests for any host but the one the operator's browser
@@ -159,7 +165,7 @@ func (h *Handler) local(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !allowed[strings.ToLower(r.Host)] {
-			http.Error(w, "setup answers only on "+h.cfg.Base, http.StatusForbidden)
+			h.fail(w, http.StatusForbidden, failOtherHost)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -181,25 +187,25 @@ func (h *Handler) secure(next http.Handler) http.Handler {
 
 // settingsPath is where the config repo's owner registers GitHub Apps: an
 // organization's settings, or a user's own. GitHub tells which the owner
-// is; while it can't, the page assumes an organization and asks again on
-// the next load.
-func (h *Handler) settingsPath(ctx context.Context) string {
+// is; while it can't, the page assumes an organization, says so (the bool is
+// false), and asks again on the next load.
+func (h *Handler) settingsPath(ctx context.Context) (string, bool) {
 	h.mu.Lock()
 	p := h.appsPath
 	h.mu.Unlock()
 	if p != "" {
-		return p
+		return p, true
 	}
 	p = "organizations/" + h.org + "/settings/apps/"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.cfg.GitHubAPI+"users/"+url.PathEscape(h.org), nil)
 	if err != nil {
-		return p
+		return p, false
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := h.cfg.HTTP.Do(req)
 	if err != nil {
 		h.cfg.Log.Warn("setup: looking up the config repo's owner failed; assuming an organization", "owner", h.org, "err", err)
-		return p
+		return p, false
 	}
 	defer resp.Body.Close()
 	var owner struct {
@@ -207,7 +213,7 @@ func (h *Handler) settingsPath(ctx context.Context) string {
 	}
 	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&owner) != nil {
 		h.cfg.Log.Warn("setup: looking up the config repo's owner failed; assuming an organization", "owner", h.org, "status", resp.StatusCode)
-		return p
+		return p, false
 	}
 	if strings.EqualFold(owner.Type, "User") {
 		p = "settings/apps/"
@@ -215,7 +221,14 @@ func (h *Handler) settingsPath(ctx context.Context) string {
 	h.mu.Lock()
 	h.appsPath = p
 	h.mu.Unlock()
-	return p
+	return p, true
+}
+
+// appsURL is the owner's App settings page, where a half-registered App is
+// deleted.
+func (h *Handler) appsURL(ctx context.Context) string {
+	p, _ := h.settingsPath(ctx)
+	return h.cfg.GitHubWeb + p
 }
 
 // Manifest is the App manifest GitHub registers for kind.
@@ -283,119 +296,175 @@ func (h *Handler) spendState(state string) (string, error) {
 	return p.kind, nil
 }
 
-type step struct {
-	Kind, Title, Resource       string
-	Action, Manifest, State     string
-	Created                     bool
-	AppURL, InstallURL, Name    string
-	Installation                int64
-	SecretYAML                  string
-	Optional, ShowDeviceFlowTip bool
+// appView is one App on the page: the manifest form until GitHub created
+// it, then its links and, once ready, its Secret.
+type appView struct {
+	Action, Manifest string
+	Created          bool
+	Name, AppURL     string
+	InstallURL       string
+	Installation     int64
+	Secret           string
+}
+
+// statusView is the setup page. Current is the open step: 1 create, 2
+// install, 3 save and restart.
+type statusView struct {
+	Org, Namespace, Form string
+	URLs                 envcfg.URLs
+	OwnerUnknown         bool
+	Holding              bool // an App's key is only in this pod
+	Current              int
+	Review, Exports      appView
+	InstallError         string
+}
+
+// StepClass is step n's state for the template: done, current or todo.
+func (v statusView) StepClass(n int) string {
+	switch {
+	case n < v.Current:
+		return "done"
+	case n == v.Current:
+		return "current"
+	default:
+		return "todo"
+	}
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
+	h.renderStatus(w, r, http.StatusOK, "")
+}
+
+// renderStatus renders the setup page, with installError (installNotFound
+// or installListFailed) on the install step when set.
+func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int, installError string) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	apps := h.cfg.GitHubWeb + h.settingsPath(ctx)
-	steps := make([]step, 0, 2)
-	for _, kind := range []string{KindReview, KindExports} {
-		s := step{Kind: kind, Title: "The review app", Resource: "exemplar-github-app", ShowDeviceFlowTip: true}
-		if kind == KindExports {
-			s = step{Kind: kind, Title: "The exports app", Resource: "exemplar-exports-app", Optional: true}
-		}
-		h.mu.Lock()
-		a := h.apps[kind]
-		h.mu.Unlock()
-		if a == nil {
-			state := h.newState(kind)
-			manifest, err := json.Marshal(h.Manifest(kind))
-			if err != nil {
-				http.Error(w, "manifest", http.StatusInternalServerError)
-				return
-			}
-			s.Action = apps + "new?state=" + state
-			s.Manifest, s.State = string(manifest), state
-			// Lax: GitHub's redirect back is a top-level GET, which carries it.
-			// Not Secure: the page is plain HTTP on localhost, over port-forward.
-			http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: see above
-				Name: stateCookie + "_" + kind, Value: state, Path: "/setup",
-				HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(stateTTL.Seconds()),
-			})
-		} else {
-			s.Created, s.Name = true, a.created.Slug
-			s.AppURL = apps + a.created.Slug
-			s.InstallURL = strings.TrimSuffix(a.created.HTMLURL, "/") + "/installations/new"
-			s.Installation = a.installation
-			if a.installation != 0 || kind == KindExports {
-				s.SecretYAML = h.secretYAML(kind, a)
-			}
-		}
-		steps = append(steps, s)
+	path, known := h.settingsPath(ctx)
+	v := statusView{
+		Org: h.org, Namespace: h.cfg.Namespace, Form: h.form, URLs: h.cfg.URLs,
+		OwnerUnknown: !known, InstallError: installError,
 	}
-	h.render(w, "status", map[string]any{
-		"Steps": steps, "Form": h.form, "Org": h.org, "Namespace": h.cfg.Namespace, "URLs": h.cfg.URLs,
-	})
+	for _, kind := range []string{KindReview, KindExports} {
+		av, ok := h.appView(w, kind, h.cfg.GitHubWeb+path)
+		if !ok {
+			h.fail(w, http.StatusInternalServerError, failManifest)
+			return
+		}
+		if kind == KindReview {
+			v.Review = av
+		} else {
+			v.Exports = av
+		}
+		v.Holding = v.Holding || av.Created
+	}
+	switch {
+	case !v.Review.Created:
+		v.Current = 1
+	case v.Review.Installation == 0:
+		v.Current = 2
+	default:
+		v.Current = 3
+	}
+	h.render(w, code, "status", v)
+}
+
+// appView describes kind's App. Before GitHub created it, that's a fresh
+// one-time state for the manifest form, also set as a cookie.
+func (h *Handler) appView(w http.ResponseWriter, kind, apps string) (appView, bool) {
+	h.mu.Lock()
+	a := h.apps[kind]
+	var installation int64
+	if a != nil {
+		installation = a.installation
+	}
+	h.mu.Unlock()
+	if a == nil {
+		manifest, err := json.Marshal(h.Manifest(kind))
+		if err != nil {
+			h.cfg.Log.Error("setup: marshalling the App manifest", "kind", kind, "err", err)
+			return appView{}, false
+		}
+		state := h.newState(kind)
+		// Lax: GitHub's redirect back is a top-level GET, which carries it.
+		// Not Secure: the page is plain HTTP on localhost, over port-forward.
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: see above
+			Name: stateCookie + "_" + kind, Value: state, Path: "/setup",
+			HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(stateTTL.Seconds()),
+		})
+		return appView{Action: apps + "new?state=" + state, Manifest: string(manifest)}, true
+	}
+	v := appView{
+		Created: true, Name: a.created.Slug, AppURL: apps + a.created.Slug,
+		InstallURL:   strings.TrimSuffix(a.created.HTMLURL, "/") + "/installations/new",
+		Installation: installation,
+	}
+	if installation != 0 || kind == KindExports {
+		v.Secret = h.secretYAML(kind, a, installation)
+	}
+	return v, true
 }
 
 func (h *Handler) created(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
 	state, code := r.URL.Query().Get("state"), r.URL.Query().Get("code")
 	kind, err := h.spendState(state)
 	if err != nil || code == "" {
-		h.fail(w, http.StatusBadRequest, "This setup link was already used or has expired. Start again from /setup.")
+		h.failApp(ctx, w, http.StatusBadRequest, failSpentState)
 		return
 	}
 	c, err := r.Cookie(stateCookie + "_" + kind)
 	if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(state)) != 1 {
-		h.fail(w, http.StatusBadRequest, "This browser didn't start that setup. Start again from /setup.")
+		h.failApp(ctx, w, http.StatusBadRequest, failOtherBrowser)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
 	created, err := gh.CompleteManifest(ctx, h.cfg.GitHubAPI, h.cfg.HTTP, code)
 	if err != nil {
 		h.cfg.Log.Warn("setup: completing the App manifest failed", "kind", kind, "err", err)
-		h.fail(w, http.StatusBadGateway, "GitHub didn't return the new App. Its code lasts an hour and works once; start again from /setup.")
+		h.failApp(ctx, w, http.StatusBadGateway, failConversion)
 		return
 	}
 	h.mu.Lock()
 	h.apps[kind] = &app{created: created}
 	h.mu.Unlock()
 	h.cfg.Log.Info("setup: GitHub App created", "kind", kind, "app_id", created.ID, "slug", created.Slug)
-	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: deletes the cookie set in status
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: deletes the cookie set in appView
 		Name: stateCookie + "_" + kind, Path: "/setup", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/setup", http.StatusSeeOther)
 }
 
 func (h *Handler) findInstallation(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
 	if subtle.ConstantTimeCompare([]byte(r.PostFormValue("form")), []byte(h.form)) != 1 {
-		h.fail(w, http.StatusForbidden, "That form is from an earlier run of setup. Reload /setup.")
+		h.failApp(ctx, w, http.StatusForbidden, failStaleForm)
 		return
 	}
 	h.mu.Lock()
 	a := h.apps[KindReview]
 	h.mu.Unlock()
 	if a == nil {
-		h.fail(w, http.StatusConflict, errNotReady.Error())
+		h.fail(w, http.StatusConflict, failNotReady)
 		return
 	}
 	client, err := gh.NewApp(gh.AppConfig{
 		AppID: a.created.ID, PrivateKey: []byte(a.created.PEM), ConfigRepo: h.cfg.ConfigRepo, BaseURL: h.cfg.GitHubAPI,
 	}, h.cfg.HTTP.Transport)
 	if err != nil {
-		h.fail(w, http.StatusInternalServerError, "The new App's key didn't load.")
+		h.cfg.Log.Warn("setup: loading the new App's key failed", "err", err)
+		h.failApp(ctx, w, http.StatusInternalServerError, failKey)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
 	id, err := client.OrgInstallation(ctx, h.org)
 	if errors.Is(err, gh.ErrNotFound) {
-		h.fail(w, http.StatusConflict, "The App isn't installed on "+h.org+" yet. Install it, then check again.")
+		h.renderStatus(w, r, http.StatusConflict, installNotFound)
 		return
 	}
 	if err != nil {
 		h.cfg.Log.Warn("setup: listing installations failed", "err", err)
-		h.fail(w, http.StatusBadGateway, "GitHub didn't list the App's installations. Try again.")
+		h.renderStatus(w, r, http.StatusBadGateway, installListFailed)
 		return
 	}
 	h.mu.Lock()
@@ -410,25 +479,33 @@ func (h *Handler) secret(w http.ResponseWriter, r *http.Request) {
 	kind := map[string]string{"exemplar-github-app.yaml": KindReview, "exemplar-exports-app.yaml": KindExports}[r.PathValue("file")]
 	h.mu.Lock()
 	a := h.apps[kind]
+	var installation int64
+	if a != nil {
+		installation = a.installation
+	}
 	h.mu.Unlock()
-	if kind == "" || a == nil || kind == KindReview && a.installation == 0 {
-		h.fail(w, http.StatusNotFound, errNotReady.Error())
+	if kind == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if a == nil || kind == KindReview && installation == 0 {
+		h.failApp(r.Context(), w, http.StatusNotFound, failNotReady)
 		return
 	}
 	w.Header().Set("Content-Type", "application/yaml")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+r.PathValue("file")+`"`)
-	_, _ = w.Write([]byte(h.secretYAML(kind, a)))
+	_, _ = w.Write([]byte(h.secretYAML(kind, a, installation)))
 }
 
 // secretYAML is the Secret kind's workloads read (deploy/k8s/core/settings.yaml).
-func (h *Handler) secretYAML(kind string, a *app) string {
+func (h *Handler) secretYAML(kind string, a *app, installation int64) string {
 	name := "exemplar-github-app"
 	data := [][2]string{{"app-id", strconv.FormatInt(a.created.ID, 10)}}
 	if kind == KindExports {
 		name = "exemplar-exports-app"
 	} else {
 		data = append(data,
-			[2]string{"installation-id", strconv.FormatInt(a.installation, 10)},
+			[2]string{"installation-id", strconv.FormatInt(installation, 10)},
 			[2]string{"client-id", a.created.ClientID},
 			[2]string{"client-secret", a.created.ClientSecret},
 			[2]string{"webhook-secret", a.created.WebhookSecret})
@@ -445,13 +522,25 @@ func (h *Handler) secretYAML(kind string, a *app) string {
 	return b.String()
 }
 
-func (h *Handler) fail(w http.ResponseWriter, status int, msg string) {
-	w.WriteHeader(status)
-	h.render(w, "error", map[string]any{"Message": msg})
+// failPage is what an error page shows besides its own text.
+type failPage struct {
+	AppsURL string // the owner's App settings, when GitHub may hold an App
+	Base    string // where setup answers
 }
 
-func (h *Handler) render(w http.ResponseWriter, name string, data any) {
+func (h *Handler) fail(w http.ResponseWriter, status int, f failure) {
+	h.render(w, status, string(f), failPage{Base: h.cfg.Base})
+}
+
+// failApp is fail for errors after GitHub may have created an App: the page
+// links the owner's App settings, where it's deleted.
+func (h *Handler) failApp(ctx context.Context, w http.ResponseWriter, status int, f failure) {
+	h.render(w, status, string(f), failPage{AppsURL: h.appsURL(ctx), Base: h.cfg.Base})
+}
+
+func (h *Handler) render(w http.ResponseWriter, status int, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	if err := pages.ExecuteTemplate(w, name, data); err != nil {
 		h.cfg.Log.Warn("setup: render", "page", name, "err", err)
 	}
@@ -462,47 +551,3 @@ func random() string {
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
-
-var pages = template.Must(template.New("").Parse(`
-{{define "head"}}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Exemplar setup</title><style>
-body{font:15px/1.5 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem;color:#1f2328;background:#fff}
-h1{font-size:1.4rem}h2{font-size:1.1rem;margin-top:2rem}code,pre{font:13px ui-monospace,monospace;background:#f6f8fa}
-pre{padding:.75rem;overflow-x:auto}button{font:inherit;padding:.4rem .9rem;cursor:pointer}.done{color:#1a7f37}.muted{color:#59636e}
-@media (prefers-color-scheme:dark){body{color:#e6edf3;background:#0d1117}code,pre{background:#161b22}.muted{color:#9198a1}}
-</style></head><body><h1>Exemplar setup</h1>{{end}}
-{{define "error"}}{{template "head"}}<p>{{.Message}}</p><p><a href="/setup">Back to setup</a></p></body></html>{{end}}
-{{define "status"}}{{template "head"}}
-<p>Exemplar registers its GitHub Apps on <b>{{.Org}}</b>. GitHub posts webhooks to <code>{{.URLs.Webhook}}</code>,
-and people sign in at <code>{{.URLs.API}}</code>. If either is wrong, fix <code>EXEMPLAR_API_URL</code> (or
-<code>EXEMPLAR_WEBHOOK_URL</code>) in the overlay first.</p>
-<p class="muted">Keep this page open until you have applied each Secret: what it shows lives only in this pod's memory.</p>
-{{range .Steps}}
-<h2>{{.Title}}{{if .Optional}} <span class="muted">(optional: only for rule exports)</span>{{end}}</h2>
-{{if not .Created}}
-<form method="post" action="{{.Action}}">
-<input type="hidden" name="manifest" value="{{.Manifest}}">
-<p>GitHub shows the App with its permissions filled in. You can change its name there.</p>
-<button type="submit">Create it on GitHub</button>
-</form>
-{{else}}
-<p class="done">Created <a href="{{.AppURL}}">{{.Name}}</a>.</p>
-{{if .ShowDeviceFlowTip}}<p>For <code>exemplar login</code>, open the <a href="{{.AppURL}}">App's settings</a> and tick <b>Enable Device Flow</b>.</p>{{end}}
-{{if eq .Kind "review"}}{{if not .Installation}}
-<p>Now <a href="{{.InstallURL}}">install it on {{$.Org}}</a>: choose the repos Exemplar reviews, and exemplar-config.</p>
-<form method="post" action="/setup/installation"><input type="hidden" name="form" value="{{$.Form}}">
-<button type="submit">I've installed it</button></form>
-{{else}}<p class="done">Installed (installation {{.Installation}}).</p>{{end}}
-{{else}}<p>Install it <a href="{{.InstallURL}}">only on the repos that opt into exports</a>, never on exemplar-config.</p>{{end}}
-{{if .SecretYAML}}
-<p>Save <a href="/setup/{{.Resource}}.yaml">{{.Resource}}.yaml</a> and apply it:</p>
-<pre>kubectl apply -f {{.Resource}}.yaml</pre>
-{{if eq .Kind "review"}}<p>Then restart exemplar-api, which leaves setup mode. The other workloads have been waiting for this Secret
-and start on their own:</p>
-<pre>kubectl -n {{$.Namespace}} rollout restart deployment/exemplar-api</pre>{{end}}
-<details><summary>Show the Secret</summary><pre>{{.SecretYAML}}</pre></details>
-{{end}}
-{{end}}
-{{end}}
-</body></html>{{end}}
-`))
