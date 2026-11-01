@@ -79,8 +79,10 @@ button or step is a docs change too (`/docs`).
 
 - Write all user-facing strings for a flow up front (labels, empty,
   loading, error and success text, confirmations) and keep them in one
-  module per flow (`internal/setup/copy.go` for `/setup`). A sentence used
-  twice is one constant.
+  place per flow: embedded HTML template files (`//go:embed`), such as
+  `internal/setup/pages/` for `/setup`. Go code picks a template or a named
+  state, never builds a user-facing sentence. A sentence used twice is one
+  template.
 - Also define interaction details up front: where focus goes after a
   destructive action, how modals dismiss, accessible names for inline edit
   fields.

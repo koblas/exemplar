@@ -1,7 +1,6 @@
 package setup
 
 import (
-	"fmt"
 	"html"
 	"net/http"
 	"net/url"
@@ -42,14 +41,52 @@ func mustNotContain(t *testing.T, p page, unwanted ...string) {
 	}
 }
 
-// failurePage checks an error page: its status, its what-and-next text,
-// a way back, and the App settings link: GitHub may hold an App by then.
+// The pages' words, as the user reads them (pages/*.html).
+const (
+	titleCreate       = "Create the App on GitHub"
+	titleInstall      = "Install it"
+	titleFinish       = "Save the Secret and restart exemplar-api"
+	labelCreate       = "Create the App on GitHub"
+	labelCheckInstall = "Check the installation"
+	labelCreateExport = "Create the exports app on GitHub"
+	labelBack         = "Back to setup"
+)
+
+// failTitles is each error page's heading.
+var failTitles = map[failure]string{
+	failSpentState:   "This link from GitHub was already used or has expired",
+	failOtherBrowser: "This browser didn't start that registration",
+	failConversion:   "GitHub created the App but didn't hand over its key",
+	failKey:          "The new App's private key didn't load",
+	failStaleForm:    "This page is from before exemplar-api restarted",
+	failNotReady:     "There's no Secret yet",
+	failManifest:     "Setup couldn't build the App manifest",
+	failOtherHost:    "Setup doesn't answer on this address",
+}
+
+// Every error page renders, with its heading, a next action and a way back.
+func TestFailurePagesRender(t *testing.T) {
+	for f, title := range failTitles {
+		var b strings.Builder
+		if err := pages.ExecuteTemplate(&b, string(f), failPage{Base: "http://localhost:8081"}); err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		p := page{body: b.String()}
+		mustContain(t, p, "<h1>"+title+"</h1>", labelBack)
+		if strings.Count(p.body, "<p>") < 3 {
+			t.Errorf("%s doesn't say why and what next:\n%s", f, p.body)
+		}
+	}
+}
+
+// failurePage checks an error page: its status, its heading, a way back,
+// and the App settings link: GitHub may hold an App by then.
 func failurePage(t *testing.T, p page, status int, f failure) {
 	t.Helper()
 	if p.status != status {
 		t.Errorf("status = %d, want %d", p.status, status)
 	}
-	mustContain(t, p, f.Title, f.What, f.Next, labelBack)
+	mustContain(t, p, failTitles[f], labelBack)
 	if !strings.Contains(p.body, `href="https://github.com/organizations/acme/settings/apps/"`) {
 		t.Errorf("no App settings link:\n%s", p.body)
 	}
@@ -142,7 +179,7 @@ func TestInstallErrorsInline(t *testing.T) {
 	if p.status != http.StatusConflict || currentStep(t, p) != titleInstall {
 		t.Fatalf("not installed = %d", p.status)
 	}
-	mustContain(t, p, fmt.Sprintf(errNotInstalled, "exemplar-acme", "acme", "acme"), labelCheckInstall)
+	mustContain(t, p, "GitHub lists no installation of exemplar-acme on acme.", "Install it on acme (the account that owns exemplar-config)", labelCheckInstall)
 	if !strings.Contains(p.body, `href="https://github.com/apps/exemplar-acme/installations/new"`) {
 		t.Errorf("not-installed error without the install link:\n%s", p.body)
 	}
@@ -155,7 +192,7 @@ func TestInstallErrorsInline(t *testing.T) {
 	if p.status != http.StatusBadGateway || currentStep(t, p) != titleInstall {
 		t.Fatalf("GitHub down = %d", p.status)
 	}
-	mustContain(t, p, errListFailed, labelCheckInstall)
+	mustContain(t, p, "GitHub didn't answer when setup asked for the App's installations.", labelCheckInstall)
 }
 
 func TestErrorPages(t *testing.T) {
@@ -180,7 +217,7 @@ func TestErrorPages(t *testing.T) {
 	failurePage(t, do(t, c, http.MethodPost, srv.URL+"/setup/installation", url.Values{"form": {"earlier"}}),
 		http.StatusForbidden, failStaleForm)
 	failurePage(t, get(t, c, srv.URL+"/setup/exemplar-github-app.yaml"), http.StatusNotFound, failNotReady)
-	if p := get(t, c, srv.URL+"/setup/nothing.yaml"); p.status != http.StatusNotFound || strings.Contains(p.body, failNotReady.Title) {
+	if p := get(t, c, srv.URL+"/setup/nothing.yaml"); p.status != http.StatusNotFound || strings.Contains(p.text(), failTitles[failNotReady]) {
 		t.Errorf("unknown file = %d:\n%s", p.status, p.body)
 	}
 }

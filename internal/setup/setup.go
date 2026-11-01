@@ -28,7 +28,7 @@
 // a reload shows the current state. Errors that leave the flow in place
 // (the App not installed yet) show inline on their step and are not kept,
 // so a reload clears them; the rest get a page naming the next action.
-// Every string the pages show is in copy.go.
+// The pages and every string they show are in pages/.
 //
 // Credentials stay in this process's memory only, and never reach a log.
 // Requests must name the setup URL's host (or 127.0.0.1 on its port): a
@@ -149,7 +149,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /setup/installation", h.findInstallation)
 	mux.HandleFunc("GET /setup/{file}", h.secret)
 	mux.Handle("GET /", http.RedirectHandler("/setup", http.StatusFound))
-	return h.local(h.secure(mux))
+	return h.secure(h.local(mux))
 }
 
 // local refuses requests for any host but the one the operator's browser
@@ -165,7 +165,7 @@ func (h *Handler) local(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !allowed[strings.ToLower(r.Host)] {
-			http.Error(w, fmt.Sprintf(errOtherHost, r.Host, h.cfg.Base), http.StatusForbidden)
+			h.fail(w, http.StatusForbidden, failOtherHost)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -335,8 +335,8 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 	h.renderStatus(w, r, http.StatusOK, "")
 }
 
-// renderStatus renders the setup page, with installError on the install
-// step when set.
+// renderStatus renders the setup page, with installError (installNotFound
+// or installListFailed) on the install step when set.
 func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int, installError string) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -459,12 +459,12 @@ func (h *Handler) findInstallation(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := client.OrgInstallation(ctx, h.org)
 	if errors.Is(err, gh.ErrNotFound) {
-		h.renderStatus(w, r, http.StatusConflict, fmt.Sprintf(errNotInstalled, a.created.Slug, h.org, h.org))
+		h.renderStatus(w, r, http.StatusConflict, installNotFound)
 		return
 	}
 	if err != nil {
 		h.cfg.Log.Warn("setup: listing installations failed", "err", err)
-		h.renderStatus(w, r, http.StatusBadGateway, errListFailed)
+		h.renderStatus(w, r, http.StatusBadGateway, installListFailed)
 		return
 	}
 	h.mu.Lock()
@@ -522,15 +522,20 @@ func (h *Handler) secretYAML(kind string, a *app, installation int64) string {
 	return b.String()
 }
 
+// failPage is what an error page shows besides its own text.
+type failPage struct {
+	AppsURL string // the owner's App settings, when GitHub may hold an App
+	Base    string // where setup answers
+}
+
 func (h *Handler) fail(w http.ResponseWriter, status int, f failure) {
-	h.render(w, status, "error", f)
+	h.render(w, status, string(f), failPage{Base: h.cfg.Base})
 }
 
 // failApp is fail for errors after GitHub may have created an App: the page
 // links the owner's App settings, where it's deleted.
 func (h *Handler) failApp(ctx context.Context, w http.ResponseWriter, status int, f failure) {
-	f.AppsURL = h.appsURL(ctx)
-	h.fail(w, status, f)
+	h.render(w, status, string(f), failPage{AppsURL: h.appsURL(ctx), Base: h.cfg.Base})
 }
 
 func (h *Handler) render(w http.ResponseWriter, status int, name string, data any) {

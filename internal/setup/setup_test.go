@@ -353,7 +353,7 @@ func TestRefusesOtherHosts(t *testing.T) {
 			}
 			body, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
-			if want == http.StatusForbidden && !strings.Contains(string(body), "Open http://localhost:8081/setup through kubectl port-forward") {
+			if want == http.StatusForbidden && !strings.Contains(string(body), "Open http://localhost:8081/setup through kubectl port-forward instead.") {
 				t.Errorf("GET %s as %s says %q", path, host, body)
 			}
 			if path != "/setup" && want == http.StatusOK {
