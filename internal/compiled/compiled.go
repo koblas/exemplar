@@ -131,8 +131,11 @@ func (r Runner) Run(ctx context.Context, dir, engine, ruleBody string, files []s
 	return nil, fmt.Errorf("%w %q", ErrUnknownEngine, engine)
 }
 
-// Validate checks a rule body with the engine itself
-// (ast-grep scan over no files, semgrep --validate).
+// Validate checks a rule body with the engine itself: a scan of an
+// empty directory, which parses the rule and, for Semgrep, checks it
+// against the rule schema. Semgrep's --validate is not used: it fetches
+// the p/semgrep-rule-lints ruleset from semgrep.dev, so it fails without
+// network.
 func (r Runner) Validate(ctx context.Context, engine, ruleBody string) error {
 	empty, err := os.MkdirTemp("", "exemplar-validate-*")
 	if err != nil {
@@ -145,9 +148,15 @@ func (r Runner) Validate(ctx context.Context, engine, ruleBody string) error {
 			return []string{"scan", "--config", trustedConfig(rule), "--rule", rule, "--json=stream", "."}
 		})
 	case "semgrep":
-		_, err = r.runEngine(ctx, empty, r.semgrep(), ruleBody, func(rule string) []string {
-			return []string{"scan", "--validate", "--config", rule, "--metrics=off", "--disable-version-check", "--quiet"}
+		var out []byte
+		out, err = r.runEngine(ctx, empty, r.semgrep(), ruleBody, func(rule string) []string {
+			return []string{"scan", "--config", rule, "--json", "--metrics=off", "--disable-version-check", "--quiet", "."}
 		})
+		// An invalid rule exits 7 (2 or 8 for some parse errors) and
+		// reports why only in the JSON on stdout.
+		if _, perr := ParseSemgrep(out, nil); perr != nil && (err == nil || errors.Is(perr, errSemgrep)) {
+			err = perr
+		}
 	default:
 		err = fmt.Errorf("%w %q", ErrUnknownEngine, engine)
 	}
@@ -171,7 +180,8 @@ func cmpOr(a, b string) string {
 func trustedConfig(rule string) string { return filepath.Join(filepath.Dir(rule), "sgconfig.yml") }
 
 // runEngine writes the rule to a temp file and runs bin with args(rule)
-// in dir. Exit status 1 means "findings reported" for both engines.
+// in dir. Exit status 1 means "findings reported" for both engines. On
+// any other failure it returns the engine's stdout with the error.
 func (r Runner) runEngine(ctx context.Context, dir, bin, ruleBody string, args func(rule string) []string) ([]byte, error) {
 	if _, err := exec.LookPath(bin); err != nil {
 		return nil, ErrEngineUnavailable
@@ -204,6 +214,11 @@ func (r Runner) runEngine(ctx context.Context, dir, bin, ruleBody string, args f
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir(),
 		"SEMGREP_SEND_METRICS=off", "SEMGREP_ENABLE_VERSION_CHECK=0",
+		// Semgrep writes these under ~/.semgrep and crashes (exit 1, read
+		// as findings) when it cannot: keep them in the private rule dir.
+		"SEMGREP_LOG_FILE=" + filepath.Join(ruleDir, "semgrep.log"),
+		"SEMGREP_SETTINGS_FILE=" + filepath.Join(ruleDir, "settings.yml"),
+		"SEMGREP_VERSION_CACHE_PATH=" + filepath.Join(ruleDir, "version"),
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -214,7 +229,7 @@ func (r Runner) runEngine(ctx context.Context, dir, bin, ruleBody string, args f
 			if ctx.Err() != nil {
 				return nil, fmt.Errorf("compiled: %s %w after %s", filepath.Base(bin), errTimedOut, timeout)
 			}
-			return nil, fmt.Errorf("compiled: %s: %w: %s", filepath.Base(bin), err, strings.TrimSpace(stderr.String()))
+			return out, fmt.Errorf("compiled: %s: %w: %s", filepath.Base(bin), err, strings.TrimSpace(stderr.String()))
 		}
 	}
 	return out, nil
@@ -241,8 +256,10 @@ func ParseSemgrep(out []byte, scoped []string) ([]Match, error) {
 			} `json:"extra"`
 		} `json:"results"`
 		Errors []struct {
-			Level   string `json:"level"`
-			Message string `json:"message"`
+			Level    string `json:"level"`
+			Message  string `json:"message"`
+			ShortMsg string `json:"short_msg"`
+			LongMsg  string `json:"long_msg"`
 		} `json:"errors"`
 	}
 	if err := json.Unmarshal(out, &res); err != nil {
@@ -250,7 +267,11 @@ func ParseSemgrep(out []byte, scoped []string) ([]Match, error) {
 	}
 	for _, e := range res.Errors {
 		if e.Level == "error" {
-			return nil, fmt.Errorf("%w: %s", errSemgrep, e.Message)
+			msg := e.Message
+			if msg == "" {
+				msg = strings.TrimSuffix(e.ShortMsg+": "+e.LongMsg, ": ")
+			}
+			return nil, fmt.Errorf("%w: %s", errSemgrep, msg)
 		}
 	}
 	var matches []Match

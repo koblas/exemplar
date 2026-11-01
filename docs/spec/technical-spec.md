@@ -1408,7 +1408,7 @@ Two thresholds apply: **0.65** groups near-duplicate extractions into clusters; 
 
 For every candidate (and quarterly for every active exemplar):
 
-1. Ask the high-tier model to write an **ast-grep** rule (YAML) — or a Semgrep rule when the pattern needs taint or metavariable comparison — from the candidate's description and 3–5 positive examples with their hunks. Output is the rule file only, validated against the engine's schema with `ast-grep test` / `semgrep --validate`.
+1. Ask the high-tier model to write an **ast-grep** rule (YAML) — or a Semgrep rule when the pattern needs taint or metavariable comparison — from the candidate's description and 3–5 positive examples with their hunks. Output is the rule file only, validated against the engine's schema with `ast-grep test` / a Semgrep scan of an empty directory (offline; `semgrep --validate` would also fetch rule lints from semgrep.dev).
 2. Run it in a sandbox (no network, CPU/memory limits) over the candidate's eval cases.
 3. Accept as `kind: compiled` if precision ≥ the exemplar's precision and recall ≥ 90% of the exemplar's recall. Store every attempt in `compile_attempts` with metrics, whether or not it is accepted.
 4. Accepted compiles are proposed in the same config PR as the candidate (or as a "convert to compiled" PR for an active exemplar), showing both scores side by side (PRD §17.5).
