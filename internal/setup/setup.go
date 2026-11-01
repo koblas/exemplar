@@ -99,6 +99,10 @@ type Config struct {
 	// InClusterPostgres reports whether the installation runs the
 	// components/postgres database (default: its Service name resolves).
 	InClusterPostgres func(context.Context) bool
+	// DatabaseFile is where exemplar-database's url is mounted (optional):
+	// it shows the Secret exists once applied, which HasDatabase, read at
+	// start, can't.
+	DatabaseFile string
 	// AppSecretDir is where exemplar-github-app is mounted (optional, so
 	// empty until applied): its private-key shows whether the Secrets file
 	// was applied, and from which App.
@@ -368,6 +372,13 @@ type statusView struct {
 	StartedOver             bool
 	// AppsURL is the owner's App settings, where an App is deleted.
 	AppsURL string
+	// OwnerIsOrg: the config repo's owner is an organization (as far as
+	// GitHub said), whose roles the hints on steps 1 and 2 name.
+	OwnerIsOrg bool
+	// AppliedAppID is the App whose Secret this pod sees mounted while it
+	// holds no App of its own: applied from another pod, or before this one
+	// restarted. Restarting exemplar-api finishes setup.
+	AppliedAppID string
 	// Errors shown in place and not kept: InstallError on the install
 	// step (reconcile.go), ProviderError on the last
 	// (providerKeyMissing, providerKeyInvalid).
@@ -402,6 +413,7 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int,
 		Org: h.org, Namespace: h.cfg.Namespace, Form: h.form, URLs: h.cfg.URLs,
 		OwnerUnknown: !known, InstallError: errs.install, ProviderError: errs.provider,
 		AppsURL: h.cfg.GitHubWeb + path, StartedOver: r.URL.Query().Has("started-over"),
+		OwnerIsOrg: strings.HasPrefix(path, "organizations/"),
 	}
 	gone, appsAnswered := h.reconcileApps(ctx)
 	v.ReviewGone, v.ExportsGone = gone[KindReview], gone[KindExports]
@@ -436,6 +448,11 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int,
 	case !v.Review.Created || v.ReviewGone != "":
 		v.Current = 1
 		v.Holding = false // a gone App's key is no use to keep
+		if !v.Review.Created {
+			if v.AppliedAppID = h.appliedAppID(); v.AppliedAppID != "" {
+				v.File = h.plan(ctx)
+			}
+		}
 	case v.Review.Installation == 0 || v.InstallError == installConfigMissing:
 		v.Current = 2
 	default:
