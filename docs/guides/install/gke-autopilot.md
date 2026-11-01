@@ -19,7 +19,7 @@ GKE Autopilot runs the production manifests with three platform features on top:
 3. Render and apply:
 
     ```bash
-    kubectl kustomize <your-overlay> | kubectl --context <your-cluster> apply -f -
+    kubectl kustomize <your-overlay> | kubectl apply -f -
     ```
 
 4. Continue with [How to install for production](production.md) from the App setup step.

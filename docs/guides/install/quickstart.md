@@ -95,36 +95,35 @@ Copy your way in's overlay directory. In `settings.yaml` set your config repo an
 ## 5. Apply it
 
 ```bash
-kubectl --context <your-cluster> apply -k quickstart/
+kubectl apply -k quickstart/
 ```
 
 exemplar-api and Postgres start. The other pods wait with `secret "exemplar-github-app" not found` until the next step.
 
 ## 6. Register the GitHub App
 
-Port-forward one exemplar-api pod, and keep that same pod for the whole step (the setup state lives in its memory):
+Port-forward exemplar-api. The setup state lives in the pod's memory, so keep this one port-forward running for the whole step:
 
 ```bash
-kubectl --context <your-cluster> -n exemplar port-forward "$(kubectl --context <your-cluster> -n exemplar get pod -l app.kubernetes.io/name=exemplar-api -o name | head -1)" 8081
+kubectl -n exemplar port-forward deploy/exemplar-api 8081
 ```
 
-Open <http://localhost:8081/setup>, then:
+Open <http://localhost:8081/setup>. It walks through three steps, one at a time:
 
-- **Create it on GitHub.** GitHub shows the App with its permissions, events, webhook and callback filled in, in your organization's (or account's) App settings; rename it if you like, and confirm.
-- **Install it** on your org or account, choosing the repos Exemplar reviews and `exemplar-config`, then **I've installed it**.
-- For `exemplar login`, tick **Enable Device Flow** in the App's settings (the page links there).
-- Save `exemplar-github-app.yaml`, apply it, and restart exemplar-api:
+1. **Create the App on GitHub.** Check the webhook and sign-in addresses it shows, then press **Create the App on GitHub**. GitHub opens with the App's permissions, events and URLs filled in, in your organization's (or account's) App settings; rename it if you like, and confirm.
+2. **Install it.** Follow the install link, choose the repos Exemplar reviews and `exemplar-config`, then come back and press **Check the installation**.
+3. **Save the Secret and restart exemplar-api.** Save `exemplar-github-app.yaml` and apply it. For `exemplar login`, tick **Enable Device Flow** in the App's settings (the page links there). If you want [rule exports](../operate/rule-exports.md), set them up under **Rule exports (optional)** now, before the restart. Then restart:
 
 ```bash
-kubectl --context <your-cluster> apply -f exemplar-github-app.yaml
+kubectl apply -f exemplar-github-app.yaml
 ```
 
 ```bash
-kubectl --context <your-cluster> -n exemplar rollout restart deployment/exemplar-api
+kubectl -n exemplar rollout restart deployment/exemplar-api
 ```
 
-!!! warning "Keep the page open until the Secret is applied"
-    The App's key lives only in that pod's memory. If the pod restarts after GitHub created the App but before you saved the Secret, delete that App in your GitHub settings and start the step again.
+!!! warning "Keep the port-forward until the Secret is applied"
+    The App's key lives only in that pod's memory. If the pod restarts after GitHub created the App but before you saved the Secret, delete that App in your GitHub settings and start the step again. The setup page says the same, with the link, if it happens.
 
 ## 7. Check it
 

@@ -3,7 +3,7 @@
 Start with `/ui/setup`, then the logs. Every service logs JSON to stdout, and never logs credentials or code:
 
 ```bash
-kubectl --context <your-cluster> -n exemplar logs deploy/exemplar-worker
+kubectl -n exemplar logs deploy/exemplar-worker
 ```
 
 Set `EXEMPLAR_LOG_LEVEL=debug` on a workload for more.
