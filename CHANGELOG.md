@@ -6,6 +6,14 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.9.0](https://github.com/koblas/exemplar/compare/v0.8.1...v0.9.0) (2026-11-01)
+
+
+### Features
+
+* **setup:** walk GitHub App registration as three steps with actionable errors ([8d23afe](https://github.com/koblas/exemplar/commit/8d23afed487cdbeaf9f8422f1cd157ef2f4d07da))
+* **setup:** walk GitHub App registration as three steps with actionable errors ([87cf0a2](https://github.com/koblas/exemplar/commit/87cf0a2cd13e847d30e09989486dc21fd0d0e7dc))
+
 ## [0.8.1](https://github.com/koblas/exemplar/compare/v0.8.0...v0.8.1) (2026-10-31)
 
 
