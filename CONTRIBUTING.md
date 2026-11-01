@@ -1,7 +1,8 @@
 # Contributing
 
 Build, test and lint commands are in the [Makefile](Makefile) (`make help`);
-`make check` is the quick local gate and CI (`.github/workflows/ci.yml`) runs
+`make check` is the quick local gate (`make test-changed` tests only the
+packages your branch touches and their importers) and CI (`.github/workflows/ci.yml`) runs
 the rest. A pull request that only touches the beads export (`.beads/`), the
 Claude Code configuration (`.claude/`: skills, `CLAUDE.md`, settings), the
 user documentation (`docs/` outside its Go tests, `mkdocs.yml`) or the

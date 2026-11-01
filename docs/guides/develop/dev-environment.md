@@ -12,8 +12,16 @@ It does not provide Postgres, Docker, kubectl, Helm or Kustomize; Postgres tests
 The `Makefile` wraps the usual commands; `make help` lists every target. Each mirrors a step in `.github/workflows/ci.yml`.
 
 ```bash
-make check       # build, vet, lint, format check, tests
+make check       # lint (with vet), format check, tests
 ```
+
+`make check` does not run `go build ./...`: lint type-checks every package and the tests compile them, while linking the `cmd/` binaries takes most of a warm run. `make ci` and CI still build.
+
+```bash
+make test-changed   # only packages changed against origin/main, and their importers
+```
+
+`make test-changed` takes committed, staged, unstaged and untracked changes since the merge base with `origin/main` (`BASE=` picks another), maps each file to the Go package in its directory or the nearest one above it, and tests those packages plus every package whose tests import them. A change to `go.mod` or `go.sum` tests everything.
 
 ```bash
 make test-race

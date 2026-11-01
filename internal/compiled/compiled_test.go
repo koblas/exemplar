@@ -178,8 +178,18 @@ func TestRealSemgrep(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0].StartLine != 6 || got[0].Path != "svc/a.go" {
 		t.Fatalf("Run = %+v, %v", got, err)
 	}
-	if err := r.Validate(t.Context(), "semgrep", "rules:\n  - id: x\n    languages: [go]\n    message: m\n    severity: WARNING\n"); err == nil {
-		t.Error("semgrep accepted a rule with no pattern")
+	// Validate runs offline (no p/semgrep-rule-lints download), and an
+	// invalid rule's error carries Semgrep's reason from its JSON output.
+	for name, tc := range map[string]struct{ rule, want string }{
+		"no pattern":   {"rules:\n  - id: x\n    languages: [go]\n    message: m\n    severity: WARNING\n", "Invalid rule schema"},
+		"bad pattern":  {"rules:\n  - id: x\n    languages: [go]\n    message: m\n    severity: WARNING\n    pattern: \"http.Get((\"\n", "Invalid pattern for Go"},
+		"bad language": {"rules:\n  - id: x\n    languages: [nosuchlang]\n    message: m\n    severity: WARNING\n    pattern: foo\n", "nosuchlang"},
+		"invalid YAML": {"rules: [\n", "Invalid YAML"},
+	} {
+		err := r.Validate(t.Context(), "semgrep", tc.rule)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: Validate = %v, want an error containing %q", name, err, tc.want)
+		}
 	}
 }
 
