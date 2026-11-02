@@ -16,7 +16,7 @@ docs/spec/technical-spec.md.
 
 # PRD: Exemplar — Self-Correcting AI Code Review
 
-**Status:** Draft v0.10 · October 2026 · **Build-only** (no third-party AI reviewer will be purchased) **Source:** Redpoint Alchemy talk "AI broke code review" (Andrew Swerdlow, Roblox, Sep 10 2026) and session notes, extended with patterns borrowed from mature industry systems (Appendix B) **Working name:** Exemplar (placeholder) **Companion:** Implementation Plan & Architecture (Go services, Postgres, GitHub App)
+**Status:** Draft v0.11 · November 2026 · **Build-only** (no third-party AI reviewer will be purchased) **Source:** Redpoint Alchemy talk "AI broke code review" (Andrew Swerdlow, Roblox, Sep 10 2026) and session notes, extended with patterns borrowed from mature industry systems (Appendix B) **Working name:** Exemplar (placeholder) **Companion:** Implementation Plan & Architecture (Go services, Postgres, GitHub App)
 
 Contents
 
@@ -25,6 +25,7 @@ Contents
   - [2. Problem Statement](#2-problem-statement)
   - [3. Goals and Non-Goals](#3-goals-and-non-goals)
   - [4. Users and Personas](#4-users-and-personas)
+    - [4.1 From install to day-to-day: the adoption journey](#41-from-install-to-day-to-day-the-adoption-journey)
   - [5. System Overview](#5-system-overview)
   - [6. Functional Requirements — Learning Plane (offline)](#6-functional-requirements-learning-plane-offline)
   - [7. Data Model — Rules](#7-data-model-rules)
@@ -44,8 +45,9 @@ Contents
 
 <a id="what-changed-in-v02v04"></a>
 
-### What changed in v0.2–v0.10
+### What changed in v0.2–v0.11
 
+- **v0.11 (the adoption journey):** §4.1 describes how an installation grows from a trial on one repository to many teams sharing one install, and what each stage needs. It surfaces two gaps the stages expose: a rule has no way to apply to a set of repositories short of all of them (FR-E17), and nothing lists what runs on one repository and why (FR-E18). Both are proposed, pending the design decision in §16 question 18; open question 3 (rule ownership) is answered by the model there. No existing requirement changed.
 - **v0.10 (search is optional):** the search container is an optional part of an installation, not a prerequisite (constraint 6, FR-E12). Without it, references and history come from the review's own checkout, the check run says that other repositories were not searched, and a review of a repository with no `context.extra_repos` is complete, not degraded, so it may auto-approve. The install ladder is shadow without search, posting with search, then auto-approve. Search remains how a monorepo or a multi-repository org gets cross-repository context.
 - **2026-10-25 (§14.1):** the rollout plan is cut into phased deliverables, D0.1 … D6.5, each with a done-when and the requirements it satisfies; issues in beads carry matching `phase:N` labels. No requirement changed.
 - **v0.9 (assumptions review):** eight assumptions re-examined against what the review space has learned. Auto-approve no longer requires zero findings of any severity: a clean run is no `blocking`, `important` or Security finding (FR-A13, §12). The goal metric is severity-weighted acceptance plus incident-set recall; raw acceptance is informational (G1, §13, §14). Verifier independence is quorum and context, with a second model family a preference, and `same_family` stops gating approval once the quorum is calibrated (FR-E10). Approval is bound to the base SHA as well as the head (FR-A9). Rules per agent is a configuration evaluated on the golden set, and overflow is ranked by expected value, not precision alone (FR-E3, FR-E16). Incidents, reverts, merged-change clusters and owner-written seeds are co-equal sources with review comments (constraint 1, FR-L1.7 to FR-L1.9; the backlog's cluster-review item is adopted). The shadow exit is an adjudicated sample plus injected recall, not precision against human comments (§14). Path-level importance priors learn from *Not important here* dismissals (FR-B9). `review_by` defaults per category (§7).
@@ -151,6 +153,26 @@ Every design choice below should be traceable to reducing one of these two class
 | **Security / compliance** | Enforce approval policies, audit provenance, confirm the bot cannot be prompt-injected into approving; know exactly which data leaves the org to which model provider, and exclude repos and paths that must never be sent (§8.11) |
 | **Coding agents (Claude Code, Copilot, Cursor, internal agents)** | Machine-readable, path-scoped rules and a pre-PR check they can call |
 | **Agent developers** | Call the alignment engine to judge output from other agents |
+
+<a id="41-from-install-to-day-to-day-the-adoption-journey"></a>
+
+### 4.1 From install to day-to-day: the adoption journey — *v0.11*
+
+The personas above meet Exemplar in a fixed order: a platform engineer installs it on one repository, a first team lives with its findings, a second team joins and wants rules of its own, and only then do mined candidates, the inventory and auto-approve matter. Each stage adds one component and one promise, and each has a thing that must be true for the next to start. This is the journey a trial follows, so the product must be good at every stage, not only the last one.
+
+| Stage | Who | What they do | What they see | What must be true | Requirements |
+|---|---|---|---|---|---|
+| **Day 0 — install and trial** | Platform engineer | Install from the starter config (about twenty minutes), enrol one repository in shadow, keep the starter rules as they are. Search and a managed database are optional. | Reviews in the web UI; nothing on the PR. | The starter config enrols nothing by itself and names its example clearly; the starter rules say that they run on every repository you enrol; a trial needs no infrastructure beyond a cluster, a database and a model key. | FR-E12 (search optional), §8.11 eligibility |
+| **Week 1 — posting on** | The first team's reviewers and rule owner | `shadow: false` on the repository; switch off the one or two starter rules that are wrong for this codebase; give the first structured feedback. | Findings on PRs with citations and fixes; the check-run verdict; a per-rule page with acceptance. | Per-repository opt-out of a global rule (`disabled_global_rules`); feedback routed to the rule owner; nothing blocks a merge. | FR-P, FR-B, FR-C |
+| **Month 1 — a second team** | Platform engineer, two rule owners | Enrol the second team's repositories (often several); the team writes three rules that apply to their services and nowhere else, and finds one starter rule wrong for all of them. | Two teams' rules in one config repository, owned by CODEOWNERS. | **A rule can apply to a set of repositories** (by name pattern or by a tag the platform team puts on the repository), not only to all of them or to one; the opt-out list does not grow with repositories × rules. **Someone can answer "what runs on this repository, and why".** | **FR-E17, FR-E18** (proposed) |
+| **Quarter 1 — mining and ownership** | Rule owners, platform team | Turn the learning plane on; review mined candidates; promote the good ones; expire the stale ones. | Candidates with their source repositories and citations; the weekly digest. | A promoted candidate runs where its evidence came from, and the owner widens it on purpose; the per-repository inventory shows the blast radius of a rule change before it merges. | FR-L6, FR-E17, FR-E18 |
+| **Steady state — approval** | Security, platform team | Turn on auto-approve for low-risk paths on opted-in repositories. | Approvals with their gate trace; counter-metrics. | Search is running (the bug lane's contract check needs it); the boards and alerts exist; a shadow period showed no approvals from degraded runs. | FR-A, §13.1 |
+
+Three consequences for the requirements:
+
+- **Scope is a first-class property of a rule.** Today the rule model has two tiers: a global rule in the config repository, and a repository-local rule in the target repository's `.exemplar/rules`. The month-1 stage needs a middle tier, specified in §7 as `applies_to` (FR-E17). Without it the second team either makes its rules global and asks twelve other repositories to opt out, or duplicates files into each of its repositories.
+- **Tags are declared, not detected.** Language is already a per-file matter (`file_patterns`), so a repository never has to say it is "a Go repository". The tags that select rules are organizational — a team, a data classification, a tier — and the platform team declares them in the repository's config file when it enrols it. GitHub topics can be mirrored later as a second source; detection from the code is an idea, not a requirement (§16 question 18).
+- **The inventory is per repository.** The web UI lists rules; the stages above ask the question the other way round. A page per repository and a CLI command over the same effective-config computation, with the reason each rule applies (global, selected, repository-local) and the ones disabled there, is FR-E18.
 
 <a id="5-system-overview"></a>
 
@@ -285,6 +307,7 @@ Rules are stored **as code in git**, one versioned file per rule, and materializ
 | `description` | markdown | Exemplars: the detection prompt. Compiled rules: human explanation shown in the comment. |
 | `matcher` | object | Compiled rules only: `{engine: semgrep\\|ast-grep\\|codeql, rule: ...}` — *new* |
 | `file_patterns` | glob[] | Include and negated globs; deterministic scope before any model call. |
+| `applies_to` | object | *v0.11, proposed (FR-E17):* which repositories the rule runs on: `repos` (owner/name patterns) and `tags` (declared on the repository's config file); either matching selects it; absent means every enrolled repository. A repository's `disabled_global_rules` still removes it. Language is not a tag: it stays in `file_patterns`. |
 | `citation` | object | Config-as-code source, source comments, and doc URL if any. |
 | `posting_mode` | enum | `per_occurrence` or `grouped` . |
 | `fix_policy` | enum | `none` , `suggest` (emit suggestion block when local), `describe` — *new* |
@@ -320,7 +343,12 @@ export:
 eval_cases: evals/blocking-fetch-in-loop/
 ```
 
-**Config layering:** effective config = global rules + repository rules (read from the base branch only). Cached with a 15-minute TTL and invalidated on config pushes.
+**Config layering:** effective config = global rules whose `applies_to` matches the repository (all of them, when absent) − the repository's `disabled_global_rules` + repository rules (read from the base branch only). Cached with a 15-minute TTL and invalidated on config pushes.
+
+**Scope and inventory requirements** — *v0.11, proposed; see §4.1 and §16 question 18*:
+
+- **FR-E17 Rule selection.** A rule in the config repository may declare `applies_to` with repository name patterns and tags; the repository config file may declare `tags`. A rule applies to a repository when `applies_to` is absent or either list matches, and the repository has not disabled it. Validation rejects a tag no enrolled repository carries and a pattern that matches none. A mined candidate's PR carries `applies_to.repos` set to the repositories its evidence came from; the owner widens it on merge. Selected rules live only in the config repository, never in a target repository's `.exemplar/rules`.
+- **FR-E18 Per-repository inventory.** For any enrolled repository, the web UI and the CLI list the rules that run on it with the reason (global, selected by `repos` or `tags`, repository-local) and the global rules disabled there, computed from the same effective config the review uses. Config CI reports, on a rules PR, how many repositories a changed rule starts or stops running on.
 
 <a id="8-functional-requirements-enforcement-plane-online"></a>
 
@@ -783,7 +811,7 @@ Status does not live here. `docs/plans/README.md` says what is built; the issues
 
 1. Human acceptance baseline: the slide shows ~55%, session notes say ~40%. Adopt the §9 definitions and re-measure.
 2. Clustering thresholds 0.65 vs 0.35 — validate empirically.
-3. Rule ownership: platform-owned global rules plus team-owned repo rules (recommended), or one central corpus?
+3. Rule ownership: platform-owned global rules plus team-owned repo rules (recommended), or one central corpus? *(v0.11: answered in §4.1 and FR-E17: one config repository with three scopes — global, selected by `applies_to`, and repository-local in the target repository — each owned through CODEOWNERS.)*
 4. What must be true to merge without a human reviewer, and is security the gate on agent autonomy?
 5. Definition of `merge_safety_score` (now a deterministic Stage 2 input, §12): which history signals, what weights, and who owns the threshold. `review_confidence` is the two-model agreement score from Stage 2 and needs a calibration set like FR-X9.
 6. Which second model provider is approved for the verifier (§8.2)?
@@ -798,6 +826,8 @@ Status does not live here. `docs/plans/README.md` says what is built; the issues
 15. Whether GitHub Enterprise Server is in scope alongside GitHub.com; several features (SARIF, rulesets, suggestion blocks) differ by version.
 16. *(v0.7)* Should every finding have to be answered? Anthropic requires each finding to be fixed or resolved with a reason, and blocks the merge until then; that is what makes their noise measurement trustworthy. Exemplar never blocks (§3.2) and counts an untouched finding as *ignored* (§13). The middle ground is to make "unanswered at merge" a first-class feedback state surfaced in the owner digest and the check-run summary, without gating. Decide whether that is enough signal, or whether a repo may opt into requiring an answer.
 17. *(v0.7)* An automatic circuit breaker for auto-approve: when a §13.1 counter-metric alarms (revert rate of auto-approved PRs, incidents on PRs the bot was silent on), should auto-approve suspend itself for that repo until an owner re-enables it, rather than waiting for the YAML kill switch (FR-A3)? Anthropic lists this as wanted but not built. The alarms exist; the question is whether the system may act on them alone.
+
+18. *(v0.11)* Rule selection (FR-E17): is `applies_to` with declared tags the right shape, and in what order do tag sources arrive — declared in the repository file first, GitHub topics mirrored as `topic:*` next, detection from the code (`lang:*`, `has:*`) only if a fleet needs it? The platform owner decides; the data model's rule scope gains a third value.
 
 <a id="17-sample-interactions"></a>
 

@@ -7,7 +7,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 | Document | What it is |
 |---|---|
 | [`docs/spec/technical-spec.md`](../spec/technical-spec.md) | **The technical specification** (Draft 1.4), and the **canonical copy**: change the spec here. It covers architecture, pipeline, data model, security and the delivery plan, and is the source for every `§` reference. |
-| [`docs/spec/prd.md`](../spec/prd.md) | **The PRD** (v0.10), and the **canonical copy**: change the PRD here. It covers the problem, goals, personas, and the functional requirements (`FR-…`) the spec implements, with sample interactions (§17). |
+| [`docs/spec/prd.md`](../spec/prd.md) | **The PRD** (v0.11), and the **canonical copy**: change the PRD here. It covers the problem, goals, personas, and the functional requirements (`FR-…`) the spec implements, with sample interactions (§17). |
 | [`docs/plans/phase-0.md`](phase-0.md) | The Phase 0 implementation plan (§1–§8), its status (§9), and a dated log of the head starts up to 2026-10-17. Each "head start" section records what was built, the decisions taken, how it is tested, and what is still missing. No new sections go here. |
 | [`docs/plans/ready-to-install.md`](ready-to-install.md) | **The current plan**: making a first installation short and checkable (setup in the cluster, the GitHub App manifest flow, one root key, a setup page, release manifests). Its §7 logs work up to 2026-10-24; since then work is tracked in beads (`bd`), with history in close reasons and PR descriptions. |
 | [`docs/plans/demo.md`](demo.md) | The design for the **end-to-end demo** on a sandbox org: the four beats the audience sees, what produces each, the prerequisites from outside the repository, the demo kit, and the code the demo still needs. Status is in beads (epic exemplar-gf3). |
@@ -25,7 +25,7 @@ The map of Exemplar's plans: which document says what, how to read the reference
 
 | Family | PRD area | PRD | Spec | Status |
 |---|---|---|---|---|
-| FR-E | Engine: review every PR with org rules, one agent per rule, never block, repo context (E12–E14) | §8.1–8.3 | §5, §6.4–6.7, §6.12 | Built: three lanes, agent harness, exemplar-search tools, linter dedupe (E7) and human-comment dedupe (E15). Lane 1 needs ast-grep/Semgrep installed. |
+| FR-E | Engine: review every PR with org rules, one agent per rule, never block, repo context (E12–E14); rule selection and the per-repo inventory (E17–E18, proposed in v0.11) | §4.1, §7, §8.1–8.3 | §5, §6.4–6.7, §6.12 | Built: three lanes, agent harness, exemplar-search tools, linter dedupe (E7) and human-comment dedupe (E15). Lane 1 needs ast-grep/Semgrep installed. |
 | FR-V | Verification with model diversity | §8.4 | §6.8 | Built, plus calibration. The gateway has a second model family, `openai` (beads exemplar-o2r.9), usable as verifier provider B and as the categorizer's second side; the example config still routes the verifier to Claude only, so there every finding is flagged same-family (plan §9, decision 7) until an installation adds it. |
 | FR-T | Model output is untrusted and checked by code | §8.5 | §6.9, §13 | Built. |
 | FR-P | Comment budget, labels, SARIF, dedupe | §8.6 | §6.10, §6.12 | Budget, ranking, Conventional Comments labels, exact dedupe, linter dedupe (before posting and late CI) human-comment dedupe (FR-E15), and SARIF for Security findings with dismissals as feedback are built, as are code-scanning alerts as a linter-dedupe source. |
