@@ -32,7 +32,7 @@ Either way, the candidate shows up on the web UI's candidates page with its cita
 
 ## The human gate
 
-A rule PR merges only when two things are true. Its owner approves (through CODEOWNERS in `exemplar-config`), and config CI passes. Config CI runs schema validation, the adversarial set (prompt-injection tests), the eval job with precision and recall above `eval_thresholds`, and, where turned on, a volume estimate and a check for overlap with existing linters. A change to a rule's `export:` block also needs a platform approval, because that block reaches every coding agent in the organisation.
+A rule PR merges only when two things are true. Its owner approves (through CODEOWNERS in `exemplar-config`), and config CI passes. Config CI runs schema validation, the adversarial set (prompt-injection tests), the eval job with precision and recall above `eval_thresholds`, and, where turned on, a volume estimate and a check for overlap with existing linters. A change to a rule's `export:` block also needs a platform approval, because that block reaches every coding agent in the organization.
 
 Nothing is enforced until that merge. The learning plane never edits a rule in place.
 

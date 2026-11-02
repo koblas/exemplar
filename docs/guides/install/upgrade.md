@@ -1,6 +1,6 @@
 # How to upgrade
 
-1. Read the release notes ([CHANGELOG.md](https://github.com/koblas/exemplar/blob/main/CHANGELOG.md)). They list behaviour changes that need action; the ones so far are below.
+1. Read the release notes ([CHANGELOG.md](https://github.com/koblas/exemplar/blob/main/CHANGELOG.md)). They list behavior changes that need action; the ones so far are below.
 2. Point the overlay at the new release's install file, or move `ref=` and both digests to it ([Releases and images](../../reference/releases.md)).
 3. Render, check and apply as in [How to install for production](production.md#5-render-check-and-apply).
 

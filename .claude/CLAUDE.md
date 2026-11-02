@@ -38,8 +38,9 @@ Python (embed, cluster, rank) lives in `learning/`, a uv project on Python 3.13:
 in `contracts/` are generated from `schema/` by `learning/scripts/gen-contracts.sh`.
 Path-scoped rules load with the files they cover: `.claude/rules/go-code.md` (Go
 conventions, checks, test techniques, time in tests), `.claude/rules/k8s.md`
-(manifests and images) and `.claude/rules/ux-flows.md` (the `/setup` pages and
-the `/ui/` web UI: steps, states, errors, copy).
+(manifests and images), `.claude/rules/ux-flows.md` (the `/setup` pages and
+the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md`
+(public docs pages: register per quadrant, sentences, words, UI labels, admonitions).
 
 ## Work Tracking
 

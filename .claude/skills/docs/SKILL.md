@@ -11,7 +11,9 @@ Document this: $ARGUMENTS
 The site is `mkdocs.yml` plus `docs/` (not `docs/spec`, `docs/plans`,
 `docs/security`: design documents the site excludes). It follows the Divio
 documentation system. Read `docs/guides/develop/docs.md` for the reader-facing
-version of these rules, and `.claude/CLAUDE.md` for the repository map.
+version of these rules, `.claude/rules/docs-voice.md` for how a page reads
+(register, words, UI labels, admonitions), and `.claude/CLAUDE.md` for the
+repository map.
 
 ## 1. Find what changed
 
@@ -35,7 +37,7 @@ manifests, schemas or the example config.
 Rules that hold on every page:
 
 - **How-to never explains; reference never instructs; concepts never list fields.** A sentence in the wrong quadrant moves to the right page and leaves a link.
-- **Positioning flows through.** The site's lead is the review bottleneck: AI-assisted coding multiplied PR volume, review did not scale, standards slip under the load. Exemplar's two jobs are to hold the review standard (owned rules, verified findings) and to absorb the volume (a verdict on every PR: approved with no human needed, or routed to humans with reasons; rules shipped to agents before the PR). A landing, concept or tutorial page that introduces a feature says which job it serves. Say "approved with no human review needed" and "routed to humans" for the outcomes; "auto-approve" is the mechanism's name in config, guides and reference. Facts about the industry go on Why Exemplar with a footnote to the source; other pages link there rather than repeating numbers.
+- **Positioning flows through.** The site's lead is the review bottleneck: AI-assisted coding multiplied PR volume, review did not scale, standards slip under the load. Exemplar's two jobs are to hold the review standard (owned rules, verified findings) and to absorb the volume (a verdict on every PR: approved with no human needed, or routed to humans with reasons; rules shipped to agents before the PR). A landing, concept or tutorial page that introduces a feature says which job it serves. The wording for the outcomes is in `.claude/rules/docs-voice.md` (Words). Facts about the industry go on Why Exemplar with a footnote to the source; other pages link there rather than repeating numbers.
 - **One audience per page.** Personas: PR authors, human reviewers, rule owners, platform teams (install, operate), security and compliance, coding agents, contributors (develop). A page for installers doesn't address rule owners.
 - **No internal references.** Never `spec §x`, `FR-xx`, `PRD`, `T-0.x`, `Phase N` (a test fails). Say what the code does; link `docs/spec/technical-spec.md` on GitHub only where the reader needs the design rationale.
 - **Keep every fact.** When splitting or moving text, nothing is dropped; when a fact is stale, fix it against the code.
