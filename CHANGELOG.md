@@ -6,6 +6,14 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.10.0](https://github.com/koblas/exemplar/compare/v0.9.2...v0.10.0) (2026-11-02)
+
+
+### Features
+
+* **release:** publish each release's Kustomize tree as a Flux OCI artifact ([16a1bff](https://github.com/koblas/exemplar/commit/16a1bfff9ab30db8bcb254c0a7d25f3ccad102c1))
+* **release:** publish each release's Kustomize tree as a Flux OCI artifact ([e038000](https://github.com/koblas/exemplar/commit/e038000d7712cce75201e7b2557bdd3e58f9702b))
+
 ## [0.9.2](https://github.com/koblas/exemplar/compare/v0.9.1...v0.9.2) (2026-11-01)
 
 
