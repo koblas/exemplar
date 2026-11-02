@@ -17,6 +17,7 @@ The Kubernetes manifests in [`deploy/`](https://github.com/koblas/exemplar/tree/
 | `k8s/direct/` | Core plus the Ingresses, no tunnel. `kubectl kustomize deploy/k8s/direct`. |
 | `manifests_test.go` | The checks. |
 | `render-release.sh` | Renders a release's `install-tunnel.yaml` and `install-direct.yaml` with both digests pinned. |
+| `stage-manifests.sh` | Copies `k8s/` with both digests pinned in `core/` for the release's Flux OCI artifact, and checks it renders the same as the install files. |
 | `../examples/k8s/acme/` | An example installation overlay: the default build, Docker Hub images, settings, sign-in, tunnel routes and search storage; the Ingress and Postgres pieces commented out. CI renders it. |
 | `../examples/k8s/quickstart/`, `quickstart-direct/` | The trial overlays (one replica, in-cluster Postgres, small requests) through the tunnel and through an Ingress. CI renders both. |
 
