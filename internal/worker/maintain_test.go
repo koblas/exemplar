@@ -79,6 +79,10 @@ func exampleSnapshot(t *testing.T) *config.Snapshot {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Synthetic heads differ per run, so the example's 10% baseline draw
+	// would make tests that count model calls or reviews flaky; a test of
+	// the baseline sets its own rate.
+	snap.Global.Baseline.SampleRate = 0
 	return snap
 }
 

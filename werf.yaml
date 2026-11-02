@@ -1,0 +1,29 @@
+# werf build configuration for the two deploy images (.github/workflows/images.yml):
+# the Go services and the learning plane, from deploy/docker. CI keeps build
+# stages in GHCR and pushes the final images to Docker Hub. Build one image
+# locally from a clean commit (local stage storage, nothing pushed):
+#
+#   werf build exemplar
+#   werf build exemplar-learning
+#
+# werf builds only committed files (giterminism). EXEMPLAR_VERSION and
+# EXEMPLAR_REVISION, allowed in werf-giterminism.yaml, set the binaries'
+# version (exemplar --version) and both images' OCI version and revision
+# labels.
+project: exemplar
+configVersion: 1
+build:
+  # The services image is amd64 only (the ast-grep release binary).
+  platform: [linux/amd64]
+---
+image: exemplar
+dockerfile: deploy/docker/Dockerfile
+args:
+  VERSION: {{ env "EXEMPLAR_VERSION" | default "dev" | quote }}
+  REVISION: {{ env "EXEMPLAR_REVISION" | default "dev" | quote }}
+---
+image: exemplar-learning
+dockerfile: deploy/docker/learning.Dockerfile
+args:
+  VERSION: {{ env "EXEMPLAR_VERSION" | default "dev" | quote }}
+  REVISION: {{ env "EXEMPLAR_REVISION" | default "dev" | quote }}

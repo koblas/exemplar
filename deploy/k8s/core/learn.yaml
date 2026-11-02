@@ -353,6 +353,70 @@ spec:
             - name: sync-tmp
               emptyDir: {sizeLimit: 64Mi}
 ---
+# Embed extractions that have none, through the gateway (Voyage), nightly
+# before cluster. Each batch commits, so a run cut short by the deadline
+# leaves the rest for the next night.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: exemplar-learn-embed
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-learn, app.kubernetes.io/component: embed, app.kubernetes.io/part-of: exemplar}
+spec:
+  schedule: "0 3 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1500
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: {app.kubernetes.io/name: exemplar-learn, app.kubernetes.io/component: embed, app.kubernetes.io/part-of: exemplar}
+        spec:
+          serviceAccountName: exemplar-learn
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: embed
+              image: exemplar-learning
+              args:
+                - embed
+              envFrom:
+                - configMapRef: {name: exemplar-otel, optional: true}
+                - secretRef: {name: exemplar-otel, optional: true}
+              env:
+                - name: EXEMPLAR_DATABASE_URL
+                  valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
+                - name: EXEMPLAR_GATEWAY_URL
+                  valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_GATEWAY_URL}}
+                - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {cpu: "1", memory: 1Gi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: root-key
+              secret: {secretName: exemplar-root-key, defaultMode: 0400}
+            - name: tmp
+              emptyDir: {sizeLimit: 2Gi}
+---
 # Cluster embedded extractions, nightly.
 apiVersion: batch/v1
 kind: CronJob

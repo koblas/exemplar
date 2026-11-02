@@ -3,20 +3,20 @@
 Start with `/ui/setup`, then the logs. Every service logs JSON to stdout, and never logs credentials or code:
 
 ```bash
-kubectl --context <your-cluster> -n exemplar logs deploy/exemplar-worker
+kubectl -n exemplar logs deploy/exemplar-worker
 ```
 
 Set `EXEMPLAR_LOG_LEVEL=debug` on a workload for more.
 
 ## Pods wait on a missing Secret
 
-`secret "exemplar-github-app" not found` on the worker, search, learn and git-sync containers is expected until the setup page produced the Secret ([Quickstart, step 6](../install/quickstart.md#6-register-the-github-app)). exemplar-api needs a restart once the Secret exists.
+`secret "exemplar-github-app" not found` on the worker, search, learn and git-sync containers is expected until you apply the Secrets file the setup page produces ([Quickstart, step 5](../install/quickstart.md#5-register-the-github-app)); so are `exemplar-database` and `exemplar-postgres` on a fresh install. exemplar-api needs a restart once the Secrets exist.
 
 A pod that refuses to start naming a value such as `example-org` or `exemplar.example.invalid` still has a placeholder from the example overlay in `exemplar-settings`.
 
 ## The gateway isn't ready
 
-A provider in `global.yaml` has no credentials: the gateway's log names the variable (`anthropic-api-key` in `exemplar-providers` for `claude`; workload identity for `bedrock`). The gateway skips a provider whose credentials are missing with a warning, and fails only when a stage is left with none.
+A provider in `global.yaml` has no credentials: the gateway's log names the variable (`anthropic-api-key` in `exemplar-providers` for `claude`, `openai-api-key` for `openai`; workload identity for `bedrock`). The gateway skips a provider whose credentials are missing with a warning, and fails only when a stage is left with none. The embedding provider is the exception: without `voyage-api-key` the gateway starts anyway, logs `embedding provider skipped`, and `POST /v1/embeddings` answers 503, so the `exemplar-learn-embed` CronJob fails and nothing reaches clustering until the key is set.
 
 ## No review arrives
 
@@ -53,8 +53,28 @@ Slash commands and reactions keep working, so no feedback is lost beyond the lin
 
 ## Sign-in fails
 
-- GitHub: the person is not a member of an allowed organisation (`EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS`, defaulting to the config repo's owner), or the App's callback URL doesn't match `EXEMPLAR_API_URL` plus `/oauth/callback`.
+- GitHub: the person is not a member of an allowed organization (`EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS`, defaulting to the config repo's owner), or the App's callback URL doesn't match `EXEMPLAR_API_URL` plus `/oauth/callback`.
 - OIDC: the issuer must serve discovery at `EXEMPLAR_OIDC_ISSUER_URL`; the redirect URI must be `https://<api>/oidc/callback`; the email domain and allowed groups must match. An OIDC user who sees no repositories has no group in `EXEMPLAR_OIDC_GROUP_REPOS`.
+
+## exemplar-api crash-loops after setup
+
+Once `exemplar-github-app` exists, exemplar-api starts in App mode, and the setup page is gone. Its log names what's missing:
+
+- `EXEMPLAR_DATABASE_URL is required`: create `exemplar-database` with your Postgres URL ([Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md)). The pod starts on its own once the Secret exists.
+- `link key: … exemplar-root-key`: create `exemplar-root-key`, or apply the setup page's file again if you still have it.
+- GitHub refusing the App (in the log, or on `/ui/setup`): `exemplar-github-app` holds another App's key or a revoked one.
+
+To run setup again, delete the App's Secret and restart exemplar-api, which then serves the setup page:
+
+```bash
+kubectl -n exemplar delete secret exemplar-github-app
+```
+
+```bash
+kubectl -n exemplar rollout restart deployment/exemplar-api
+```
+
+Delete the old App in your GitHub settings, then follow [Quickstart, step 5](../install/quickstart.md#5-register-the-github-app). Secrets that already exist (root key, database) are left out of the new file.
 
 ## Setup page refuses with 403
 

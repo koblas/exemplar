@@ -69,6 +69,13 @@ SELECT EXISTS (
   SELECT 1 FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3 AND caller = 'production'
 ) AS reviewed;
 
+-- name: BaselineReviewed :one
+-- Whether a head already has a baseline review (spec §6.3 item 10), so a
+-- retried production job does not run the baseline again.
+SELECT EXISTS (
+  SELECT 1 FROM reviews WHERE repo = $1 AND pr_number = $2 AND head_sha = $3 AND caller = 'baseline'
+) AS reviewed;
+
 -- name: AbandonReview :one
 -- A head's review whose job failed its last attempt: recorded incomplete,
 -- so Re-run re-runs it. A superseded review stays superseded (no row).

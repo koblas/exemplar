@@ -1,0 +1,105 @@
+/* Click-to-enlarge for Mermaid diagrams (docs/javascripts/mermaid-zoom.js).
+   Colors come from the theme's variables, so light and dark both work. */
+
+.md-typeset .mermaid {
+  cursor: zoom-in;
+}
+
+body.mermaid-zoom-open {
+  overflow: hidden;
+}
+
+.mermaid-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.78);
+}
+
+/* The scrollable area: fills the window below the toolbar and above the hint. */
+.mermaid-zoom__panel {
+  position: absolute;
+  inset: 3.2rem 1rem 2.2rem;
+  overflow: auto;
+  display: flex;
+  cursor: zoom-out;
+}
+
+/* Centred while it fits; scrolls from the top-left once zoomed past the window. */
+.mermaid-zoom__inner {
+  margin: auto;
+  padding: 1rem;
+  border-radius: 0.3rem;
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.4);
+  cursor: default;
+}
+
+.mermaid-zoom__inner--scroll {
+  margin: 0;
+}
+
+.mermaid-zoom__inner svg {
+  display: block;
+  height: auto;
+  max-width: none;
+}
+
+.mermaid-zoom__bar {
+  position: absolute;
+  top: 0.6rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  border-radius: 1.5rem;
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.3);
+}
+
+.mermaid-zoom__btn {
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 1rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mermaid-zoom__btn:hover {
+  background: var(--md-default-fg-color--lightest);
+}
+
+.mermaid-zoom__btn:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+}
+
+.mermaid-zoom__close {
+  font-size: 1.4rem;
+}
+
+.mermaid-zoom__level {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mermaid-zoom__hint {
+  position: absolute;
+  bottom: 0.6rem;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.75);
+  pointer-events: none;
+}

@@ -81,7 +81,7 @@ If a linter already reports the problem, map it: `linter_map` names the linter's
 
 ## 9. Decide whether one verifier is enough
 
-Every finding is checked by a verifier before it posts. A rule whose findings are often plausible but wrong (behaviour that depends on runtime state, say) can ask for a quorum instead:
+Every finding is checked by a verifier before it posts. A rule whose findings are often plausible but wrong (behavior that depends on runtime state, say) can ask for a quorum instead:
 
 ```yaml
 verify: quorum

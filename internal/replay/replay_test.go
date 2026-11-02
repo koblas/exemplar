@@ -158,6 +158,8 @@ func (f *fakeGH) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(body); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/check-runs"):
+		fmt.Fprint(w, `{"check_runs": []}`) // none in progress to take over
 	case strings.Contains(r.URL.Path, "/check-runs"):
 		f.checks++
 		fmt.Fprint(w, `{"id": 9}`)

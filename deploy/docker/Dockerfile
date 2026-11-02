@@ -39,3 +39,12 @@ COPY --from=build /out/ /usr/local/bin/
 # The read-only root filesystem leaves HOME and TMPDIR to mounted volumes.
 ENV HOME=/tmp TMPDIR=/tmp SEMGREP_SEND_METRICS=off SEMGREP_ENABLE_VERSION_CHECK=0
 USER 65532:65532
+# OCI labels, last so a new commit rebuilds only this layer. VERSION and
+# REVISION come from werf.yaml (images.yml); a plain docker build gets "dev".
+ARG VERSION=dev REVISION=dev
+LABEL org.opencontainers.image.title="exemplar" \
+      org.opencontainers.image.description="Exemplar Go services and the engines they run" \
+      org.opencontainers.image.source="https://github.com/koblas/exemplar" \
+      org.opencontainers.image.url="https://github.com/koblas/exemplar" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"

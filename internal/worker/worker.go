@@ -419,6 +419,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 	}
 	if shadow {
 		out.Status = StatusReviewed
+		w.baseline(ctx, p, a)
 		return out, nil
 	}
 	// A push during the review makes its comments stale: post nothing.
@@ -463,6 +464,7 @@ func (w *Worker) Review(ctx context.Context, a store.PRReviewArgs) (Outcome, err
 			return out, err
 		}
 	}
+	w.baseline(ctx, p, a)
 	return out, nil
 }
 

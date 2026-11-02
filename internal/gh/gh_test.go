@@ -27,6 +27,8 @@ type fakeGitHub struct {
 	reviews  []*github.PullRequestReview
 	decision string // reviewDecision returned by GraphQL
 	approved bool   // flips decision to APPROVED after an APPROVE review
+	// checkRuns is the JSON array a head's check-run listing returns.
+	checkRuns string
 }
 
 type recorded struct {
@@ -86,6 +88,12 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.writeJSON(w, map[string]any{"data": map[string]any{"repository": map[string]any{
 			"pullRequest": map[string]any{"reviewDecision": d, "mergeStateStatus": "BLOCKED"},
 		}}})
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/check-runs"):
+		runs := f.checkRuns
+		if runs == "" {
+			runs = "[]"
+		}
+		fmt.Fprintf(w, `{"check_runs": %s}`, runs)
 	case strings.Contains(r.URL.Path, "/check-runs"):
 		f.writeJSON(w, map[string]any{"id": 55})
 	default:
@@ -313,6 +321,41 @@ func TestCheckRunIncompleteHasRerun(t *testing.T) {
 	}
 	if first["identifier"] != RerunAction {
 		t.Fatalf("actions = %v, want the Re-run action", actions)
+	}
+}
+
+func TestStartCheckTakesOverOpenRun(t *testing.T) {
+	for _, tc := range []struct {
+		name, runs string
+		takeover   string // the check run taken over; "" creates one
+	}{
+		{"none open", `[]`, ""},
+		{"completed only", `[{"id": 3, "external_id": "review-1", "status": "completed"}]`, ""},
+		{"not-reviewed open", `[{"id": 3, "external_id": "not-reviewed-h", "status": "in_progress"}]`, ""},
+		{"newest review run open", `[{"id": 3, "external_id": "review-1", "status": "in_progress"},
+			{"id": 9, "external_id": "review-2", "status": "queued"}]`, "/check-runs/9"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, srv := newFake(t)
+			f.checkRuns = tc.runs
+			id, err := posterFor(t, srv).StartCheck(t.Context(), PR{Owner: "acme", Repo: "app", Number: 7, HeadSHA: "h"}, "review-3")
+			if err != nil {
+				t.Fatal(err)
+			}
+			created, patched := f.find("POST", "/check-runs"), f.find("PATCH", "/check-runs/9")
+			if tc.takeover == "" {
+				if len(created) != 1 || id != 55 || len(f.find("PATCH", "")) != 0 {
+					t.Fatalf("created %d, id %d; want one new check run", len(created), id)
+				}
+				return
+			}
+			if len(created) != 0 || len(patched) != 1 || id != 9 {
+				t.Fatalf("created %d, patched %d, id %d; want check run 9 taken over", len(created), len(patched), id)
+			}
+			if b := patched[0].Body; b["external_id"] != "review-3" || b["status"] != "in_progress" || b["name"] != CheckName {
+				t.Errorf("take-over update = %v", b)
+			}
+		})
 	}
 }
 

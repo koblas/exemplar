@@ -1,6 +1,6 @@
 # How to turn on auto-approve
 
-Auto-approve lets Exemplar submit a native `APPROVE` on a narrow class of low-risk pull requests once every deterministic gate and a two-model categorisation pass ([How a review works](../../concepts/how-a-review-works.md#auto-approve)). It stays off until you turn it on in `global.yaml` **and** in each repository.
+Auto-approve lets Exemplar submit a native `APPROVE` on a narrow class of low-risk pull requests once every deterministic gate and a two-model categorization pass ([How a review works](../../concepts/how-a-review-works.md#auto-approve)). It stays off until you turn it on in `global.yaml` **and** in each repository.
 
 !!! note "Not before the counter-metrics are in place"
     Turn it on only once `exemplar-search` is running if the repository sets `context.extra_repos` (without search their callers go unchecked, the bug lane's contract class is skipped, and the PR is never approved; [How to run without exemplar-search](../install/without-search.md)), the Grafana auto-approve and counter-metrics boards and their alerts are provisioned ([How to set up Grafana](grafana.md)), and after a shadow period with zero approvals from degraded runs. The design's exit criteria for enabling it are in the [technical specification](https://github.com/koblas/exemplar/blob/main/docs/spec/technical-spec.md).
@@ -51,10 +51,10 @@ A PR that changes a file Exemplar excludes from review (binary, over 1 MB, delet
 
 ## 3. Turn it on globally
 
-In `global.yaml`, set `auto_approve: true` and, for Stage 2, `providers.categorizer` with two models from different families. Without a categorizer the two-model check cannot run and nothing is approved. With both the generator and the verifier on one family, every finding is flagged `same_family`, which blocks approval until the verifier calibration has passed for your providers. The `exemplar-learn-calibrate` CronJob runs it nightly; to run it now, after a change to `providers.verifier`, `verifier`, `eval_thresholds.verifier` or `evals/_verifier`:
+In `global.yaml`, set `auto_approve: true` and, for Stage 2, `providers.categorizer` with two models from different families ([How to add model providers](../install/model-providers.md) adds the second family and its key). Without a categorizer the two-model check cannot run and nothing is approved. With both the generator and the verifier on one family, every finding is flagged `same_family`, which blocks approval until the verifier calibration has passed for your providers. The `exemplar-learn-calibrate` CronJob runs it nightly; to run it now, after a change to `providers.verifier`, `verifier`, `eval_thresholds.verifier` or `evals/_verifier`:
 
 ```bash
-kubectl --context <your-cluster> -n exemplar create job --from=cronjob/exemplar-learn-calibrate calibrate-now
+kubectl -n exemplar create job --from=cronjob/exemplar-learn-calibrate calibrate-now
 ```
 
 If the scheduled run is still going, this one logs that another run holds the job lock and exits without calibrating; wait for it. Its log ends with one JSON result per stage: `"passed": true` for the verifier lifts the same-family block. A failing result is recorded too and keeps the block; the run itself succeeds.

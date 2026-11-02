@@ -6,6 +6,18 @@ name: manifests
 # release-please.yml calls this after images.yml has pushed the release's
 # images and release.yml has made sure the GitHub release exists. Run it by
 # hand with a tag to (re)attach the manifests to an existing release.
+#
+# It also publishes the same tree as a Flux OCI artifact,
+# oci://ghcr.io/koblas/exemplar-manifests, so a GitOps cluster can follow
+# releases with an OCIRepository instead of pinning versions by hand:
+# deploy/k8s (base, direct, core, components) with both digests pinned in
+# core/kustomization.yaml (deploy/stage-manifests.sh). The staged tree must
+# render exactly as install-tunnel.yaml and install-direct.yaml, or nothing
+# is pushed. Tags: <version>; <x.y> for a plain release (not a pre-release);
+# latest only when this is the newest non-prerelease release, so re-running
+# an older tag by hand never moves latest backwards. The package is apart
+# from werf's private stage caches (ghcr.io/koblas/exemplar,
+# exemplar-learning) and must be public for anonymous pulls.
 
 on:
   workflow_call:
@@ -29,18 +41,62 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     env:
       TAG: ${{ inputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
           ref: refs/tags/${{ env.TAG }}
-      - name: Render with the release's digests
+      # Looked up once; the install files and the OCI artifact use the same.
+      - name: Look up the release's digests
         run: |
           version=${TAG#v}
-          digest() { docker buildx imagetools inspect "koblas/exemplar:$1" --format '{{json .Manifest.Digest}}' | tr -d '"'; }
-          deploy/render-release.sh "$TAG" "$(digest "$version")" "$(digest "learning-$version")" dist
+          digest() { docker buildx imagetools inspect "$1:$version" --format '{{json .Manifest.Digest}}' | tr -d '"'; }
+          {
+            echo "SERVICES_DIGEST=$(digest koblas/exemplar)"
+            echo "LEARNING_DIGEST=$(digest koblas/exemplar-learning)"
+          } >> "$GITHUB_ENV"
+      - name: Render with the release's digests
+        run: deploy/render-release.sh "$TAG" "$SERVICES_DIGEST" "$LEARNING_DIGEST" dist
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/install-tunnel.yaml dist/install-direct.yaml
+      # The staging script from this workflow's commit: a release cut before
+      # it (a backfill by hand) has none in its tag. It stages the tag's tree.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: .manifests-tools
+          sparse-checkout: deploy/stage-manifests.sh
+          sparse-checkout-cone-mode: false
+      - name: Stage and verify the Kustomize tree
+        run: .manifests-tools/deploy/stage-manifests.sh "$SERVICES_DIGEST" "$LEARNING_DIGEST" dist "$RUNNER_TEMP/exemplar-manifests"
+      - uses: fluxcd/flux2/action@v2.10.0
+        with:
+          version: 2.10.0
+      - name: Push the Flux OCI artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          version=${TAG#v}
+          artifact=oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/exemplar-manifests
+          flux push artifact "$artifact:$version" \
+            --path "$RUNNER_TEMP/exemplar-manifests" \
+            --source "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --revision "$TAG@sha1:$(git rev-parse HEAD)"
+          # A pre-release gets only its own version.
+          [[ $version =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]] || exit 0
+          tags=(--tag "${BASH_REMATCH[1]}")
+          newest=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          if [ "$newest" = "$TAG" ]; then
+            tags+=(--tag latest)
+          else
+            echo "$TAG is not the newest release ($newest); latest stays"
+          fi
+          flux tag artifact "$artifact:$version" "${tags[@]}"
+          echo "Pushed \`$artifact:$version\` (also ${tags[*]//--tag /})" >> "$GITHUB_STEP_SUMMARY"

@@ -16,13 +16,25 @@ One audience per page. No references to the spec's section numbers, requirement 
 ## 2. Write it
 
 - Add the page to `nav:` in `mkdocs.yml` (a test fails otherwise). Use Material content tabs for the tunnel-vs-Ingress variants, admonitions for warnings.
-- A behaviour change usually touches one how-to and one reference page; a new feature also gets a concept paragraph.
+- A behavior change usually touches one how-to and one reference page; a new feature also gets a concept paragraph.
 - Keep old paths working when you move a page: add a line to the `redirects` plugin's map in `mkdocs.yml`.
-- Update the pages, not the README, when behaviour changes.
+- Update the pages, not the README, when behavior changes.
+- Mermaid diagrams open full-size on click, with zoom. That is `docs/javascripts/mermaid-zoom.js` and `docs/stylesheets/mermaid-zoom.css`, listed under `extra_javascript` and `extra_css` in `mkdocs.yml`; a diagram needs nothing extra.
+
+## 3. Write it in the site's voice
+
+- Match the quadrant: tutorials say "you" in the present tense, how-tos are imperative, concepts describe the system in the third person, reference says "X does Y".
+- Short declaratives, present tense, exact numbers. No "simply", "just", "please", "we", or marketing adjectives.
+- Use the [glossary](../../concepts/glossary.md)'s terms as spelled there; a new term gets an entry. US spelling. "PR" and "repo" in running text.
+- Quote UI labels exactly, in bold (**Check again**), so a renamed label can be found.
+- Every admonition has a title: `note` for a precondition, `warning` when a mistake breaks something, `danger` when it weakens a security boundary.
+- Link text names the target ("[How to set up Grafana](../operate/grafana.md)"), never "here".
+
+The full rules, which Claude Code loads when it edits a page, are in [`.claude/rules/docs-voice.md`](https://github.com/koblas/exemplar/blob/main/.claude/rules/docs-voice.md).
 
 With Claude Code, `/docs <behavior change or page>` applies these rules and runs the checks; `/docs-audit` reports quadrant mixing, coverage gaps and internal references without editing.
 
-## 3. Check it
+## 4. Check it
 
 ```bash
 make docs

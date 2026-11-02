@@ -31,7 +31,7 @@ type CreatedApp struct {
 // no authentication, and the code is good for an hour, once.
 func CompleteManifest(ctx context.Context, apiBase string, hc *http.Client, code string) (*CreatedApp, error) {
 	opts := []github.ClientOptionsFunc{github.WithTimeout(30 * time.Second)}
-	if hc != nil {
+	if hc != nil && hc.Transport != nil { // go-github rejects a nil transport
 		opts = append(opts, github.WithTransport(hc.Transport))
 	}
 	if apiBase != "" {
@@ -51,6 +51,21 @@ func CompleteManifest(ctx context.Context, apiBase string, hc *http.Client, code
 		ClientID: cfg.GetClientID(), ClientSecret: cfg.GetClientSecret(),
 		WebhookSecret: cfg.GetWebhookSecret(), PEM: cfg.GetPEM(),
 	}, nil
+}
+
+// Describe returns the App's current slug and html_url, as GitHub has them
+// now (it may have been renamed), or ErrNotFound when GitHub no longer
+// knows the App: deleted, or its key revoked. GitHub answers a JWT for
+// either with 401 or 404.
+func (a *App) Describe(ctx context.Context) (string, string, error) {
+	app, resp, err := a.apps.Apps.Get(ctx, "")
+	if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound) {
+		return "", "", fmt.Errorf("%w: the app", ErrNotFound)
+	}
+	if err != nil {
+		return "", "", restErr(err, "read the app")
+	}
+	return app.GetSlug(), app.GetHTMLURL(), nil
 }
 
 // OrgInstallation returns the App's installation on the org (or user)

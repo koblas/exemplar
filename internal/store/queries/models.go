@@ -229,6 +229,7 @@ type Extraction struct {
 	ExtractorModel    string
 	ExtractorVersion  string
 	Embedding         interface{}
+	EmbeddingModel    *string
 }
 
 type ExtractionBatch struct {

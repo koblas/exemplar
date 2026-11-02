@@ -1,19 +1,20 @@
 # Secrets and ConfigMaps
 
-What an installation supplies in the `exemplar` namespace. Secrets are created outside this repository from your secret manager and referenced by name only; none are in the manifests or the rendered output. Which variable each key feeds is on [Environment variables](environment-variables.md).
+What an installation supplies in the `exemplar` namespace. Secrets are created outside this repository, from your secret manager or from the setup page's `exemplar-secrets.yaml`, and referenced by name only; none are in the manifests or the rendered output. The setup page's file holds only the Secrets exemplar-api doesn't see yet, so it never replaces one you made. Which variable each key feeds is on [Environment variables](environment-variables.md).
 
 ## Secrets
 
 | Secret | Keys | Used by | Notes |
 |---|---|---|---|
-| `exemplar-database` | `url`, `runner-url` | every binary but search; `runner-url` the runner template only | `url` is the direct Postgres URL, for example `postgres://exemplar:<password>@db.internal:5432/exemplar?sslmode=require`. `runner-url` is optional: review runners' URL through a pooler in transaction mode ([How to pool runner connections](../guides/install/pool-runner-connections.md)); without it runners use `url`. |
-| `exemplar-root-key` | `key` | api, worker, gateway, search, learn, the learning jobs | At least 32 bytes (`openssl rand -hex 32`). See [below](#exemplar-root-key). |
-| `exemplar-providers` | `anthropic-api-key` | gateway | The Claude API key. Not needed when `global.yaml` routes to Bedrock only; Bedrock uses workload identity on the gateway's service account instead of keys. |
-| `exemplar-github-app` | `app-id`, `installation-id`, `client-id`, `client-secret`, `private-key`, `webhook-secret` | worker, search, learn, every git-sync; api (`app-id`, `client-id`, `client-secret`, `private-key`); webhook (`webhook-secret`) | Written by the setup page. The other workloads reference it without `optional`, so they wait for it. |
+| `exemplar-database` | `url`, `runner-url` | every binary but search; `runner-url` the runner template only | `url` is the direct Postgres URL, for example `postgres://exemplar:<password>@db.internal:5432/exemplar?sslmode=require`. `runner-url` is optional: review runners' URL through a pooler in transaction mode ([How to pool runner connections](../guides/install/pool-runner-connections.md)); without it runners use `url`. The setup page generates `url` for `components/postgres`. exemplar-api starts without it in setup mode. |
+| `exemplar-root-key` | `key` | api, worker, gateway, search, learn, the learning jobs | At least 32 bytes (`openssl rand -hex 32`); the setup page generates one when exemplar-api has none. See [below](#exemplar-root-key). |
+| `exemplar-providers` | `anthropic-api-key`, `openai-api-key` | gateway | The Claude and OpenAI API keys. Each is needed only when `global.yaml` routes to that provider (`claude`, `openai`); Bedrock uses workload identity on the gateway's service account instead of keys. The setup page writes `anthropic-api-key` when you paste it. |
+| `exemplar-providers` | `voyage-api-key` (optional) | gateway | The Voyage AI key for `providers.embed`, which embeds extractions for the learning plane. Without it reviews run as usual and the `embed` job fails. |
+| `exemplar-github-app` | `app-id`, `installation-id`, `client-id`, `client-secret`, `private-key`, `webhook-secret` | worker, search, learn, every git-sync; api (`app-id`, `client-id`, `client-secret`, `private-key`); webhook (`webhook-secret`) | Written by the setup page, in `exemplar-secrets.yaml`. The other workloads reference it without `optional`, so they wait for it. |
 | `exemplar-exports-app` | `app-id`, `private-key` | learn `export` | Optional: the separate exports app with Contents and Pull requests write on opted-in repos only, never installed on exemplar-config. The export run skips without it. |
 | `exemplar-oidc` | `client-secret` | api | Only for OIDC sign-in. |
 | `exemplar-cloudflared` | `credentials.json`, `tunnel-id` | cloudflared | Tunnel builds only. Both from `cloudflared tunnel create`; the id is `cloudflared tunnel run`'s argument. |
-| `exemplar-postgres` | `password` | exemplar-postgres | `components/postgres` only: the in-cluster superuser's password. |
+| `exemplar-postgres` | `password` | exemplar-postgres | `components/postgres` only: the in-cluster superuser's password. The setup page generates it with `exemplar-database`. |
 | `exemplar-pgbouncer` | `databases.ini`, `userlist.txt` | exemplar-pgbouncer | `components/pgbouncer` only: the `[databases]` section naming the upstream Postgres, and the runners' role with its password (plain text or SCRAM secret), which PgBouncer also logs in to Postgres with. |
 | `exemplar-otel` | `OTEL_EXPORTER_OTLP_HEADERS` and any other OTel variable | every container, optional | Credentials for the telemetry endpoint, through `envFrom`. |
 

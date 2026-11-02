@@ -56,7 +56,7 @@ Unknown fields are rejected.
 
 ### `providers`
 
-Each list is tried in order: when a provider times out, errors or is rate limited, the call moves to the next one. Providers must be registered in `internal/llm` (`claude`, `bedrock`). The gateway builds every provider listed and skips one whose credentials are missing, as long as each stage keeps a provider that works.
+Each list is tried in order: when a provider times out, errors or is rate limited, the call moves to the next one. Providers must be registered in `internal/llm` (`claude`, `bedrock`, `openai`). `claude` and `bedrock` serve Claude (the `anthropic` family); `openai` is a second family, so a verifier or categorizer side on it is independent of a Claude generator. The gateway builds every provider listed and skips one whose credentials are missing, as long as each stage keeps a provider that works.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -64,12 +64,13 @@ Each list is tried in order: when a provider times out, errors or is rate limite
 | `verifier` | array of provider entry, at least 1 | yes | Independently checks each finding before it is posted. Meant to be a different model family from the generator; when both are the same family every finding is flagged `same_family`, which blocks auto-approve. |
 | `light` | array of provider entry, at least 1 | yes | Cheap, quick calls such as scoring how much a finding matters. |
 | `categorizer` | object | no | The auto-approve risk categorizer's pair of independent providers. See [`providers.categorizer`](#providerscategorizer). |
+| `embed` | object | no | The embedding model for extractions, served on the gateway's `POST /v1/embeddings`. See [`providers.embed`](#providersembed). |
 
 #### Provider entry
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `provider` | string, non-empty | yes | A registered provider name (`claude`, `bedrock`). |
+| `provider` | string, non-empty | yes | A registered provider name (`claude`, `bedrock`, `openai`). |
 | `model` | string, non-empty | see constraints | A single model id. |
 | `standard` | string, non-empty | see constraints | The standard-tier model id. |
 | `high` | string, non-empty | see constraints | The high-tier model id. |
@@ -78,13 +79,23 @@ Constraints:
 
 - An entry names either `model`, or both `standard` and `high`. Generator entries name a model per tier; other stages name one model.
 - Bedrock model ids take the `anthropic.` prefix; some regions need a cross-region inference profile id.
+- OpenAI model ids are `gpt-*` or the o-series (`o3`, `o4-mini`, ...).
 
 #### `providers.categorizer`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `a` | provider entry | yes | The first of the two independent providers. |
-| `b` | provider entry | yes | The second of the two independent providers. |
+| `b` | provider entry | yes | The second of the two independent providers. It must be a different model family from `a` (for example `openai` beside `claude`): with both on one family the review confidence is always 0, so nothing is auto-approved. |
+
+#### `providers.embed`
+
+One entry, with no failover: vectors from two models cannot be compared, so clusters would mix them. Unset, the gateway's `POST /v1/embeddings` answers 503 and the learning plane stops after `extract`. The gateway asks for 1024-dimension document vectors and refuses a response of any other size. Changing the model is safe: each extraction records the model of its embedding, the `embed` job embeds again every row from another model (a backlog may take several nightly runs), and until it is done `cluster` skips its run (exit 0, `skipped` in its report) rather than mix two models' vectors or cluster a subset. Calls are costed at Voyage's list price (`voyage-code-3` $0.18, `voyage-code-4` $0.12 per million tokens), without free-token allowances.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `provider` | string, non-empty | yes | A registered embedding provider (`voyage`, which needs `VOYAGE_API_KEY`). |
+| `model` | string, non-empty | yes | The model id, such as `voyage-code-3` or `voyage-code-4`. Must give 1024-dimension vectors. |
 
 ### `merge_safety`
 
@@ -167,12 +178,12 @@ Keys match `^bug\.[a-z0-9-]+$` and must name an allowlisted bug class (the examp
 
 ### `baseline`
 
-Share of PRs that also get a generic, rule-free review for comparison. Its findings are stored, never posted.
+Share of reviewed PR heads that also get a generic, rule-free review for comparison. It runs after the head's production review, is stored with `caller=baseline`, and is never posted: no comment, check run or approval, and it counts in no feedback figure. A head that already has a baseline review is not run again.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `sample_rate` | number, 0 to 1 | yes | Share of PRs sampled. |
-| `strata` | array of `repo`, `size_bucket` | no | Sampling strata. Size buckets are up to 50, up to 300, and over 300 changed lines. |
+| `sample_rate` | number, 0 to 1 | yes | Share of reviewed heads sampled. The draw is fixed per head (repository, PR and commit), so a retried review decides the same way. |
+| `strata` | array of `repo`, `size_bucket` | no | Sampling strata. Every head is drawn at `sample_rate`, so each stratum is sampled at that rate in expectation. Size buckets are up to 50, up to 300, and over 300 changed lines. |
 
 ### `eval_thresholds`
 
@@ -243,10 +254,15 @@ providers:
     # - { provider: bedrock, standard: anthropic.claude-sonnet-5-5, high: anthropic.claude-opus-5-5 }
   verifier:
     - { provider: claude,  model: claude-opus-5-5 }
+    # - { provider: openai,  model: gpt-5.5 }
     # - { provider: bedrock, model: anthropic.claude-opus-5-5 }
   light:
     - { provider: claude,  model: claude-haiku-5-5 }
     # - { provider: bedrock, model: anthropic.claude-haiku-5-5 }
+  # categorizer:
+  #   a: { provider: claude, model: claude-sonnet-5-5 }
+  #   b: { provider: openai, model: gpt-5.5 }
+  embed: { provider: voyage, model: voyage-code-3 }
 verifier:
   importance_min: 0.5
   max_candidates_per_call: 8

@@ -90,7 +90,9 @@ type Config struct {
 	// Clients are the constructed providers, keyed by provider name. Only
 	// approved providers may appear.
 	Clients map[string]Provider
-	Scanner *redact.Scanner
+	// Embedder serves POST /v1/embeddings for providers.embed; nil answers 503.
+	Embedder Embedder
+	Scanner  *redact.Scanner
 	// Token is the shared secret callers send as x-api-key. Required.
 	Token          string
 	SoftCeilingUSD float64

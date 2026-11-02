@@ -1,0 +1,20 @@
+# The demo's deliberately noisy rule: it flags every TODO, which reviewers
+# reject until demotion moves it to shadow (beat D). Its owner is the demo's
+# rule owner, so one "not important here" from them proposes a narrower
+# file_patterns (teach-the-bot).
+id: demo-todo-comments
+kind: exemplar
+category: Maintainability
+severity: suggestion
+owner: "@{{.Owner}}"
+status: active
+review_by: 2027-10-01
+file_patterns: ["**/*.go"]
+description: |
+  TODO and FIXME comments should not be merged; open an issue instead and
+  link it, so the work is tracked.
+preferred_approach: |
+  Replace the comment with a link to a tracking issue, or do the work.
+what_to_flag: |
+  - Any comment containing TODO or FIXME in an added line.
+fix_policy: none

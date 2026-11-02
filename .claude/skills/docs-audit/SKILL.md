@@ -61,7 +61,24 @@ now", "TODO" and dated notes ("as of", "2026-") on public pages, and check
 each against the code: is the thing now built, the CronJob still suspended,
 the date still the latest? Report what is stale with the evidence.
 
-## 5. Navigation and links
+## 5. Voice
+
+Read `.claude/rules/docs-voice.md`, then check each page against it:
+
+- Register that doesn't match the quadrant (an imperative on a concept page,
+  "you should" on a reference page, "you will" anywhere).
+- Filler, "we"/"our", marketing adjectives, vague quantities where the code
+  has a number.
+- A term that differs from `docs/concepts/glossary.md`, or a term used on a
+  page that the glossary lacks; UK spellings.
+- A UI label not quoted exactly in bold, or one that no longer matches the
+  template in `internal/setup/pages` or `internal/web`.
+- An admonition without a title, of a kind the rule doesn't list, or more
+  than one at a page's top; link text "here" or "this page".
+
+Report each as `path:line: <what>; <rewrite>`.
+
+## 6. Navigation and links
 
 Every page in `docs/` (outside the excluded directories) is in `mkdocs.yml`
 `nav`; every entry in the `redirects` map points at an existing page; the
@@ -72,5 +89,5 @@ landing page's capability map and the `guides/index.md` and
 
 Group findings by section above, most important first within each: coverage
 gaps and stale facts, then quadrant mixing, then internal references, then
-navigation. Give `path:line` for each, and what to do. End with a short count
+voice, then navigation. Give `path:line` for each, and what to do. End with a short count
 per section and the commands to re-check (`go test ./docs`, `make docs`).

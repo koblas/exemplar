@@ -15,9 +15,10 @@ concurrency:
 jobs:
   # What a pull request touches decides which jobs it needs. Only the beads
   # export, the Claude Code configuration (.claude/: skills, CLAUDE.md,
-  # settings), the user documentation (docs/ outside its Go tests, mkdocs.yml)
-  # and the top-level Markdown files are not code: a pull request touching
-  # nothing else runs commits, plus docs when the site changed. Anything
+  # settings), the user documentation (docs/ outside its Go tests, mkdocs.yml),
+  # the top-level Markdown files and .release-please-manifest.json are not
+  # code: a pull request touching nothing else, such as a release PR, runs
+  # commits, plus docs when the site changed. Anything
   # else, this file included, runs every job; so does every push to main.
   # Skipped jobs report as skipped, which GitHub counts as passing.
   changes:
@@ -49,7 +50,7 @@ jobs:
             case "$f" in
               docs/*.go) code=true ;;
               docs/* | mkdocs.yml) docs=true ;;
-              .beads/* | .claude/* | README.md | CHANGELOG.md | CONTRIBUTING.md | ARCHITECTURE.md) ;;
+              .beads/* | .claude/* | README.md | CHANGELOG.md | CONTRIBUTING.md | ARCHITECTURE.md | .release-please-manifest.json) ;;
               *) code=true ;;
             esac
             echo "$f"
@@ -88,7 +89,7 @@ jobs:
           # its own cache instead, saved from main after the tests.
           cache: false
       - name: Restore Go cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -114,7 +115,7 @@ jobs:
       # per pull request run would push it out of the repository's quota.
       - name: Save Go cache
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/.cache/go-build
@@ -156,7 +157,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.3.2
       - run: make docs
 
   lint:
@@ -168,7 +169,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.15.0
 
@@ -225,7 +226,7 @@ jobs:
       EXEMPLAR_REQUIRE_DB: "1"  # the cluster job test needs Docker; fail rather than skip
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: "0.13.0"
       - run: uv sync --locked
@@ -270,4 +271,6 @@ jobs:
           go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 -skip FQDNNetworkPolicy rendered-example-gke-autopilot.yaml
           # The release's install manifests, with placeholder digests.
           deploy/render-release.sh v0.0.0 "sha256:$(printf '1%.0s' $(seq 64))" "sha256:$(printf '2%.0s' $(seq 64))" rendered-release
+          # The Flux OCI artifact's tree must render the same.
+          deploy/stage-manifests.sh "sha256:$(printf '1%.0s' $(seq 64))" "sha256:$(printf '2%.0s' $(seq 64))" rendered-release staged-release
           go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-release/install-*.yaml

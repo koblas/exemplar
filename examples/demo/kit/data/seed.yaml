@@ -1,0 +1,124 @@
+# Seed history for the mining beat (docs/plans/demo.md, beat C). Each PR is
+# opened by the author, reviewed by the reviewers with inline comments, and
+# merged before ingest first runs: ingest reads merged PRs and the first
+# comment of each review thread. Two conventions recur, each stated by both
+# reviewers on three PRs and on .go files, so they cluster into candidates:
+# log through the request logger (logctx.From), and keep money in int64
+# cents. Neither is one of the example rules.
+#
+# reviewer is 0 or 1 (the reviewers, in order); match is a substring of
+# exactly one line of the file, the line the comment anchors to.
+- branch: seed/invoice-create
+  title: Create invoices from the API
+  body: Adds the invoice creation path used by the new billing page.
+  files:
+    internal/invoices/create.go: |
+      // Package invoices creates and lists invoices.
+      package invoices
+
+      import (
+      	"context"
+      	"log/slog"
+      )
+
+      // Invoice is a bill sent to a customer.
+      type Invoice struct {
+      	ID       string
+      	Customer string
+      	Amount   float64
+      }
+
+      // Create stores a new invoice.
+      func Create(ctx context.Context, customer string, amount float64) (Invoice, error) {
+      	inv := Invoice{ID: newID(), Customer: customer, Amount: amount}
+      	slog.Info("invoice created", "id", inv.ID, "customer", customer)
+      	return inv, nil
+      }
+
+      func newID() string { return "inv_1" }
+  comments:
+    - reviewer: 0
+      path: internal/invoices/create.go
+      match: slog.Info("invoice created"
+      body: >-
+        Please log through logctx.From(ctx) here instead of the global slog.
+        The global logger drops the request id, so this line can't be tied
+        back to the request that created the invoice.
+    - reviewer: 1
+      path: internal/invoices/create.go
+      match: "Amount   float64"
+      body: >-
+        Money is int64 cents everywhere in ledger, never float64. Float
+        rounding has broken reconciliation before; please store the amount as
+        cents.
+
+- branch: seed/refunds
+  title: Record refunds against payments
+  body: Refunds are stored as their own rows so partial refunds work.
+  files:
+    internal/refunds/refund.go: |
+      // Package refunds records refunds against payments.
+      package refunds
+
+      import (
+      	"context"
+      	"log/slog"
+      )
+
+      // Refund returns part or all of a payment.
+      type Refund struct {
+      	PaymentID string
+      	Value     float64
+      }
+
+      // Record stores a refund.
+      func Record(ctx context.Context, paymentID string, value float64) (Refund, error) {
+      	slog.Warn("refund recorded", "payment", paymentID, "value", value)
+      	return Refund{PaymentID: paymentID, Value: value}, nil
+      }
+  comments:
+    - reviewer: 1
+      path: internal/refunds/refund.go
+      match: slog.Warn("refund recorded"
+      body: >-
+        Use the request logger from logctx.From(ctx) rather than slog
+        directly; global slog calls lose the request id we need when tracing
+        a refund.
+    - reviewer: 0
+      path: internal/refunds/refund.go
+      match: "Value     float64"
+      body: >-
+        Amounts are integer cents in this service. Please make this an int64
+        number of cents instead of a float64, so refunds add up exactly.
+
+- branch: seed/payouts
+  title: Pay out balances to merchants
+  body: Nightly payouts of each merchant's balance.
+  files:
+    internal/payouts/payout.go: |
+      // Package payouts pays merchant balances out nightly.
+      package payouts
+
+      import (
+      	"context"
+      	"log/slog"
+      )
+
+      // Payout sends a merchant's balance to their bank.
+      func Payout(ctx context.Context, merchant string, balance float64) error {
+      	slog.Info("payout sent", "merchant", merchant, "balance", balance)
+      	return nil
+      }
+  comments:
+    - reviewer: 0
+      path: internal/payouts/payout.go
+      match: slog.Info("payout sent"
+      body: >-
+        This should log via logctx.From(ctx) so the payout run's request id
+        and job id are attached; the global slog logger has neither.
+    - reviewer: 1
+      path: internal/payouts/payout.go
+      match: "balance float64"
+      body: >-
+        Balances are money, so int64 cents, not float64. We agreed on cents
+        everywhere after the rounding incident last quarter.

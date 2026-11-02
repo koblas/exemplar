@@ -22,7 +22,7 @@ Manifests are plain Kustomize: `deploy/k8s/core` (everything but inbound), inbou
 components in `deploy/k8s/components` (`cloudflare-tunnel`, `ingress`), the optional
 in-cluster Postgres component (`components/postgres`), and the builds
 `deploy/k8s/base` (default: core + tunnel) and `deploy/k8s/direct` (core + Ingress); images
-are in `deploy/docker`, published to Docker Hub `koblas/exemplar` by `images.yml`. `examples/k8s/acme`
+are in `deploy/docker`, built with werf (`werf.yaml`) and published to Docker Hub `koblas/exemplar` and `koblas/exemplar-learning` by `images.yml`. `examples/k8s/acme`
 is the example installation overlay (CI renders it). `go test ./deploy` checks every build against the code (see
 `docs/reference/workloads.md`); keep components resource-only, since it reads them without kustomize. Grafana boards and alerts
 are in `dashboards/`; `go test ./dashboards` runs their SQL.
@@ -37,8 +37,10 @@ Python (embed, cluster, rank) lives in `learning/`, a uv project on Python 3.13:
 `cd learning && uv sync`, then `uv run pytest` and `uv run ruff check .`. Its models
 in `contracts/` are generated from `schema/` by `learning/scripts/gen-contracts.sh`.
 Path-scoped rules load with the files they cover: `.claude/rules/go-code.md` (Go
-conventions, checks, test techniques, time in tests) and `.claude/rules/k8s.md`
-(manifests and images).
+conventions, checks, test techniques, time in tests), `.claude/rules/k8s.md`
+(manifests and images), `.claude/rules/ux-flows.md` (the `/setup` pages and
+the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md`
+(public docs pages: register per quadrant, sentences, words, UI labels, admonitions).
 
 ## Work Tracking
 
@@ -74,9 +76,9 @@ conventions, checks, test techniques, time in tests) and `.claude/rules/k8s.md`
 
 - Use the repository's devenv environment (`devenv shell` or its direnv setup).
 - Check tool availability first. Devenv provides Git, Go 1.27.3, golangci-lint v2.15,
-  ripgrep, ast-grep, Semgrep, universal-ctags, Postgres 16 with pgvector, Python 3.13
-  and uv, but not kubectl, Helm, or container tooling (`gh` and `bd` come from the
-  host). Do not silently install tools or change devenv.
+  ripgrep, ast-grep, Semgrep, universal-ctags, Python 3.13 and uv, but not
+  Postgres (tests run it with testcontainers), kubectl, Helm, or container tooling
+  (`gh` and `bd` come from the host). Do not silently install tools or change devenv.
 - The root `Makefile` (and `learning/Makefile`) wraps the CI commands; `make help`
   lists targets. `make check` is the quick gate, `make ci` mirrors ci.yml. Keep the
   Makefiles and `.github/workflows/ci.yml` in step when either changes.

@@ -30,6 +30,17 @@ class Extraction:
     vector: np.ndarray = field(repr=False)
 
 
+def embedding_models(conn: psycopg.Connection) -> list[str | None]:
+    """The models stored embeddings come from. Vectors from two models are
+    not comparable, and clustering one model's subset would retire every
+    candidate whose rows are not in it, so a run needs exactly one."""
+    rows = conn.execute(
+        """SELECT DISTINCT embedding_model FROM extractions WHERE embedding IS NOT NULL
+           ORDER BY embedding_model NULLS FIRST"""
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
 def load(conn: psycopg.Connection) -> list[Extraction]:
     """Every extraction with an embedding. Language-agnostic ones go only to
     the cross-extension partition, so an org-wide rule is not split per
@@ -98,6 +109,7 @@ class Report:
     cached_decisions: int = 0
     undecided: int = 0
     pairs_over_cap: int = 0
+    skipped: str = ""  # why no run was written
 
 
 @dataclass(frozen=True)
@@ -174,6 +186,12 @@ def run(
     """Cluster everything and write a run snapshot in one transaction on
     conn. Merge decisions go through cache_conn (autocommit)."""
     rep = Report()
+    if len(models := embedding_models(conn)) > 1:
+        # The embed job is moving rows to a new model; cluster when it is done.
+        rep.skipped = f"embeddings from {len(models)} models: {models}; waiting for embed"
+        log.info("cluster skipped: %s", rep.skipped)
+        conn.commit()
+        return rep
     extractions = load(conn)
     rep.extractions = len(extractions)
     run_id = conn.execute(

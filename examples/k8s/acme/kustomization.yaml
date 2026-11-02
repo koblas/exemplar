@@ -21,19 +21,19 @@ resources:
   # In-cluster Postgres, for evaluation; see docs/reference/workloads.md.
   # - ../../../deploy/k8s/components/postgres
 
-# Both images are published to docker.io/koblas/exemplar by
-# .github/workflows/images.yml: the services image as <version>, the
-# learning image as learning-<version>. Pin each by the digest from that
-# run's summary, or from:
+# Both images are published to Docker Hub by
+# .github/workflows/images.yml, each as <version>: the services image to
+# koblas/exemplar, the learning image to koblas/exemplar-learning. Pin each
+# by the digest from that run's summary, or from:
 #   docker buildx imagetools inspect koblas/exemplar:<version> --format '{{json .Manifest.Digest}}'
-#   docker buildx imagetools inspect koblas/exemplar:learning-<version> --format '{{json .Manifest.Digest}}'
+#   docker buildx imagetools inspect koblas/exemplar-learning:<version> --format '{{json .Manifest.Digest}}'
 # Left at all zeros, the deploy fails to pull.
 images:
   - name: exemplar
     newName: docker.io/koblas/exemplar
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
   - name: exemplar-learning
-    newName: docker.io/koblas/exemplar
+    newName: docker.io/koblas/exemplar-learning
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 patches:

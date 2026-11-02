@@ -41,6 +41,18 @@ class Concurrency(BaseModel):
     agents_per_review: int = Field(..., ge=1, le=3)
 
 
+class Embed(BaseModel):
+    """
+    The embedding model for extractions. One entry, no failover: vectors from different models are not comparable.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    provider: str = Field(..., min_length=1)
+    model: str = Field(..., min_length=1)
+
+
 class Quorum(BaseModel):
     """
     Verifiers asked (n) and confirmations needed (k) for bug-lane findings and rules with verify: quorum.
@@ -113,7 +125,11 @@ class ProviderModel1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    provider: str = Field(..., min_length=1)
+    provider: str = Field(
+        ...,
+        description="A provider registered in internal/llm: claude or bedrock (the anthropic family), or openai (a second family, for an independent verifier or categorizer side).",
+        min_length=1,
+    )
     model: str = Field(..., min_length=1)
     standard: str | None = Field(None, min_length=1)
     high: str | None = Field(None, min_length=1)
@@ -123,7 +139,11 @@ class ProviderModel2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    provider: str = Field(..., min_length=1)
+    provider: str = Field(
+        ...,
+        description="A provider registered in internal/llm: claude or bedrock (the anthropic family), or openai (a second family, for an independent verifier or categorizer side).",
+        min_length=1,
+    )
     model: str | None = Field(None, min_length=1)
     standard: str = Field(..., min_length=1)
     high: str = Field(..., min_length=1)
@@ -157,6 +177,10 @@ class Providers(BaseModel):
     verifier: ProviderList
     light: ProviderList
     categorizer: Categorizer | None = None
+    embed: Embed | None = Field(
+        None,
+        description="The embedding model for extractions. One entry, no failover: vectors from different models are not comparable.",
+    )
 
 
 class Weights(BaseModel):

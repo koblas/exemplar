@@ -20,6 +20,8 @@ It adds `exemplar-postgres`: a one-replica StatefulSet of `pgvector/pgvector:0.8
 
 ## 2. Create the Secrets
 
+On a first install the setup page generates both, in the `exemplar-secrets.yaml` it offers ([Quickstart, step 5](quickstart.md#5-register-the-github-app)): it sees the component's Service and no database URL yet. To create them yourself:
+
 - `exemplar-postgres` with `password`, the superuser's password;
 - `exemplar-database` with `url` set to `postgres://exemplar:<password>@exemplar-postgres.exemplar.svc:5432/exemplar` (URL-encode the password).
 

@@ -52,6 +52,7 @@ func (s Settings) env(k string) string {
 var registry = map[string]Spec{
 	ProviderClaude:  claudeSpec,
 	ProviderBedrock: bedrockSpec,
+	ProviderOpenAI:  openAISpec,
 }
 
 // Registered returns the approved provider names.

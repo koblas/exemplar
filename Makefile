@@ -48,6 +48,14 @@ bins: ## Build every cmd/ binary into out/bin
 test: ## Run tests (Postgres and engine tests skip without Docker/engines)
 	go test ./...
 
+# Base for test-changed: changes since the merge base with it, committed or
+# not, select the packages.
+BASE ?= origin/main
+
+.PHONY: test-changed
+test-changed: ## Test only packages changed against BASE (origin/main) and their importers
+	.github/scripts/test-changed.sh $(BASE)
+
 .PHONY: test-race
 test-race: ## Run tests with the race detector
 	go test -race ./...
@@ -144,6 +152,8 @@ manifests: ## Render each Kustomize build and the example overlay to out/ and sc
 	kubectl kustomize examples/k8s/gke-autopilot > $(OUT)/rendered-example-gke-autopilot.yaml; \
 	go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) -skip FQDNNetworkPolicy $(OUT)/rendered-example-gke-autopilot.yaml; \
 	deploy/render-release.sh v0.0.0 "sha256:$$(printf '1%.0s' $$(seq 64))" "sha256:$$(printf '2%.0s' $$(seq 64))" $(OUT)/release; \
+	rm -rf $(OUT)/staged-release; \
+	deploy/stage-manifests.sh "sha256:$$(printf '1%.0s' $$(seq 64))" "sha256:$$(printf '2%.0s' $$(seq 64))" $(OUT)/release $(OUT)/staged-release; \
 	go run github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION) -strict -summary -kubernetes-version $(KUBERNETES_VERSION) $(OUT)/release/install-*.yaml
 
 .PHONY: deploy-test
@@ -166,7 +176,7 @@ hooks: ## Use .githooks (commit-msg lint) in this clone
 ##@ Aggregates
 
 .PHONY: check
-check: build lint fmt-check test ## Quick local gate: build, lint (includes govet), format, tests
+check: lint fmt-check test ## Quick local gate: lint (type-checks, govet), format, tests; links no binaries (ci does)
 
 .PHONY: docs
 docs: docs-test ## Build the documentation site to out/site (mkdocs.yml site_dir), failing on broken links (as ci.yml's docs job)

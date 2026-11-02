@@ -1,7 +1,8 @@
 # Contributing
 
 Build, test and lint commands are in the [Makefile](Makefile) (`make help`);
-`make check` is the quick local gate and CI (`.github/workflows/ci.yml`) runs
+`make check` is the quick local gate (`make test-changed` tests only the
+packages your branch touches and their importers) and CI (`.github/workflows/ci.yml`) runs
 the rest. A pull request that only touches the beads export (`.beads/`), the
 Claude Code configuration (`.claude/`: skills, `CLAUDE.md`, settings), the
 user documentation (`docs/` outside its Go tests, `mkdocs.yml`) or the
@@ -80,17 +81,24 @@ tags; the first release is `v0.1.0`.
    x.y.z". It bumps `.release-please-manifest.json` and prepends the new
    CHANGELOG.md entry, built from the `feat`, `fix`, `perf`, `deps` and
    `revert` commits since the last release. With none, there is no release PR.
-2. Review the entry and merge the PR when you want to ship. You can edit the
-   PR's CHANGELOG.md before merging.
+2. Review the entry and merge the PR when you want to ship. Its description
+   lists the checks before merging and what the merge runs. You can edit the
+   PR's CHANGELOG.md before merging, as the last step: release-please
+   rewrites the PR on every push to `main`. The PR touches no code, so CI
+   runs only the `commits` check on it.
 3. The merge tags `vx.y.z` and creates its GitHub release, with the entry as
    its notes. The same workflow then:
    - builds the CLI on four platforms and attaches the archives and
      `SHA256SUMS` to the release (`release.yml`);
-   - pushes both images to Docker Hub as `<x.y.z>`, `<x.y>`,
-     `learning-<x.y.z>` and `learning-<x.y>` (`images.yml`). Their run
-     summary lists the digests to pin (docs, "Releases and images");
+   - builds both images with werf and pushes them to Docker Hub,
+     `koblas/exemplar` and `koblas/exemplar-learning`, as `<x.y.z>`, `<x.y>`
+     and `latest` (`images.yml`). Their run summary lists the digests to pin
+     (docs, "Releases and images");
    - renders `install-tunnel.yaml` and `install-direct.yaml` with those
-     digests and attaches them to the release (`manifests.yml`).
+     digests and attaches them to the release, and pushes the same
+     Kustomize tree as the Flux OCI artifact
+     `ghcr.io/koblas/exemplar-manifests` (`<x.y.z>`, `<x.y>`, and `latest`
+     for the newest release) (`manifests.yml`).
 
 To force a version, put a `Release-As: 0.3.0` footer in a commit on `main`.
 

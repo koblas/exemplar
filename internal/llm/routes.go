@@ -111,5 +111,5 @@ func ValidateProviders(p schema.Providers) error {
 			}
 		}
 	}
-	return nil
+	return ValidateEmbed(p.Embed)
 }

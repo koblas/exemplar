@@ -14,8 +14,9 @@ from contextlib import contextmanager
 import psycopg
 
 # Lowest goose migration the Python jobs depend on: 00003 adds
-# mined_comments and extractions; 00004 the clustering tables; 00005 candidates.
-REQUIRED_MIGRATION = 5
+# mined_comments and extractions; 00004 the clustering tables; 00005
+# candidates; 00039 extractions.embedding_model.
+REQUIRED_MIGRATION = 39
 
 # Tables the jobs read or write.
 REQUIRED_TABLES = (
