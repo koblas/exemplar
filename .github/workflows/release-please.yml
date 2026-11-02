@@ -63,13 +63,15 @@ jobs:
       tag: ${{ needs.release-please.outputs.tag_name }}
     secrets: inherit
 
-  # The install manifests, pinned to the digests images.yml just pushed
-  # (docs/reference/releases.md). After cli, which makes sure the release exists.
+  # The install manifests, pinned to the digests images.yml just pushed, and
+  # the Flux OCI artifact of the same tree (ghcr.io/koblas/exemplar-manifests,
+  # docs/reference/releases.md). After cli, which makes sure the release exists.
   manifests:
     needs: [release-please, images, cli]
     if: needs.release-please.outputs.release_created == 'true'
     permissions:
       contents: write
+      packages: write
     uses: ./.github/workflows/manifests.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}

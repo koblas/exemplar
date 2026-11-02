@@ -23,6 +23,8 @@ Each GitHub release (what changed is in [CHANGELOG.md](https://github.com/koblas
 | `install-direct.yaml` | The Ingress build, likewise. |
 | `exemplar_<version>_<os>_<arch>.tar.gz`, `SHA256SUMS` | The CLI for linux (amd64, arm64) and darwin (arm64, amd64). |
 
+Each release also publishes `oci://ghcr.io/koblas/exemplar-manifests`, a [Flux](https://fluxcd.io) OCI artifact of the Kustomize tree (`base/`, `direct/`, `core/`, `components/`) with both images pinned by digest in `core/`. It is tagged `<version>` and `<major>.<minor>` (a pre-release gets only `<version>`), and `latest` when it is the newest release; re-publishing an older release never moves `latest`. The release workflow checks that its `base` and `direct` render exactly as `install-tunnel.yaml` and `install-direct.yaml` before pushing it.
+
 ## Pinning
 
 Use an install file as the overlay's resource:
@@ -48,5 +50,38 @@ images:
     newName: docker.io/koblas/exemplar-learning
     digest: sha256:<learning digest>
 ```
+
+### Following releases with Flux
+
+A cluster running Flux can follow releases from the OCI artifact instead of pinning versions by hand:
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: exemplar
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: oci://ghcr.io/koblas/exemplar-manifests
+  ref:
+    tag: latest # or semver: "0.9.x"
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: exemplar
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: OCIRepository
+    name: exemplar
+  path: ./base # or ./direct
+  # components: [../components/postgres]
+  prune: true
+```
+
+Manifests and images always match: drop your own `images:` entries for `exemplar` and `exemplar-learning`, since the artifact already pins them. Keep your patches (`spec.patches`) and components, including the settings `EXEMPLAR_CONFIG_REPO` and `EXEMPLAR_API_URL`. The package is public, so the `OCIRepository` needs no credentials; for a private copy, create a pull secret with `flux create secret oci` and name it in `spec.secretRef`.
 
 Versions are `v<major>.<minor>.<patch>` tags cut by release-please from Conventional Commits; breaking changes bump the minor version until 1.0.0. Unpublished changes: [How to build your own images](../guides/install/build-images.md).

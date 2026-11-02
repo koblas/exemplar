@@ -95,7 +95,10 @@ tags; the first release is `v0.1.0`.
      and `latest` (`images.yml`). Their run summary lists the digests to pin
      (docs, "Releases and images");
    - renders `install-tunnel.yaml` and `install-direct.yaml` with those
-     digests and attaches them to the release (`manifests.yml`).
+     digests and attaches them to the release, and pushes the same
+     Kustomize tree as the Flux OCI artifact
+     `ghcr.io/koblas/exemplar-manifests` (`<x.y.z>`, `<x.y>`, and `latest`
+     for the newest release) (`manifests.yml`).
 
 To force a version, put a `Release-As: 0.3.0` footer in a commit on `main`.
 
