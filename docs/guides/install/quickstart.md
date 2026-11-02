@@ -4,6 +4,8 @@ In about 20 minutes you will have Exemplar running on one Kubernetes node with a
 
 You need Kubernetes 1.29+, a GitHub organization you own (or a personal account), an Anthropic API key, and one public host name that GitHub can reach, for example `exemplar.acme.com`. On the desktop you need only `kubectl` (and `cloudflared` if you choose the tunnel). There is no install CLI: the first time exemplar-api starts, it serves a setup page that registers the GitHub App and writes the Secrets for you.
 
+If a coding agent is doing the install for you, point it at [How to run the quickstart from a coding agent](quickstart-for-agents.md): the same steps as a checklist, with what to expect from each command and where it must hand back to you.
+
 Pick how GitHub reaches the cluster. Both are first-class, and the steps differ only inside the tabs.
 
 === "Cloudflare Tunnel"

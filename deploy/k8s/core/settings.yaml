@@ -3,7 +3,7 @@
 #   exemplar-database        url, runner-url (optional: review runners' URL through a pooler in
 #                            transaction mode, components/pgbouncer; never control's)
 #   exemplar-github-app      app-id, client-id, client-secret, private-key, webhook-secret,
-#                            installation-id: from exemplar-api's setup page (docs/tutorials/quickstart.md)
+#                            installation-id: from exemplar-api's setup page (docs/guides/install/quickstart.md)
 #   exemplar-exports-app     app-id, private-key (optional: the separate exports app)
 #   exemplar-root-key        key (at least 32 bytes: openssl rand -hex 32); the link, session,
 #                            gateway, search and pseudonym keys derive from it (internal/envcfg)

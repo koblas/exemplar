@@ -115,6 +115,7 @@ nav:
       - guides/index.md
       - Install:
           - Quickstart (a trial install): guides/install/quickstart.md
+          - How to run the quickstart from a coding agent: guides/install/quickstart-for-agents.md
           - How to install for production: guides/install/production.md
           - How to set up sign-in: guides/install/sign-in.md
           - How to run Postgres in the cluster: guides/install/in-cluster-postgres.md

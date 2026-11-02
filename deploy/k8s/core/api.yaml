@@ -70,7 +70,7 @@ spec:
             - name: EXEMPLAR_WEBHOOK_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_WEBHOOK_URL, optional: true}}
             # The review app, once setup has produced exemplar-github-app.
-            # Without it exemplar-api serves only the setup page (docs/tutorials/quickstart.md).
+            # Without it exemplar-api serves only the setup page (docs/guides/install/quickstart.md).
             - name: EXEMPLAR_GH_APP_ID
               valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id, optional: true}}
             - name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID
