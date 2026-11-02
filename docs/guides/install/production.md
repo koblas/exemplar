@@ -80,7 +80,7 @@ kubectl apply -f rendered.yaml
 
 ## 6. Register the App and check
 
-Register the App from the setup page ([Quickstart](quickstart.md#5-register-the-github-app)) and work through `/ui/setup` (step 6 there). Then set up [sign-in](sign-in.md) for your organisation, and go through [Your first review](../../tutorials/first-review.md) on a shadow repository before posting anywhere.
+Register the App from the setup page ([Quickstart](quickstart.md#5-register-the-github-app)) and work through `/ui/setup` (step 6 there). Then set up [sign-in](sign-in.md) for your organization, and go through [Your first review](../../tutorials/first-review.md) on a shadow repository before posting anywhere.
 
 From a clone of this repository, `go test ./deploy` also checks every build against the code: ports, probes, shutdown deadlines, every environment variable, security contexts and network paths ([How to check manifests locally](../develop/check-manifests.md)).
 
