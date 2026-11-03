@@ -10,5 +10,6 @@ If you are new, read them in this order. [Why Exemplar](why.md) explains the pro
 | [How a review works](how-a-review-works.md) | What happens between a GitHub webhook and a posted comment: the three lanes, the verifier, validation, budgets, and how the verdict (no human needed, or routed to humans) is reached. |
 | [Architecture](architecture.md) | The processes, how they talk to each other, and the paths work takes through them, as built. |
 | [Rule lifecycle](rule-lifecycle.md) | How a rule is mined, proposed, shadowed, activated, demoted, extended and killed, and why a human sits at every gate. |
+| [Rule layering](rule-layering.md) | Where the rules a review runs come from: shipped and organization presets, the config repository's own rules, and the per-repo narrowing on top. |
 | [Trust and data handling](trust-and-data.md) | Where the trust boundaries are, what the model is allowed to say, and what leaves the cluster. |
 | [Glossary](glossary.md) | The words the rest of the site uses. |

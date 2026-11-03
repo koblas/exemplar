@@ -28,6 +28,9 @@ Unknown fields are rejected.
 | `eval_thresholds` | object | yes | Bars a rule or prompt change must clear in eval CI before it merges. See [`eval_thresholds`](#eval_thresholds). |
 | `feedback` | object | no | Feedback weighting and demotion. See [`feedback`](#feedback). |
 | `expiry` | object | no | Rule `review_by` handling. See [`expiry`](#expiry). |
+| `extends` | array of string, unique, pattern `^(exemplar\|org):[a-z0-9][a-z0-9-]{0,62}$` | no | Presets whose rules join the rules in `rules/`. `exemplar:<name>` is shipped with the binary (`exemplar:recommended`); `org:<name>` is the rule files under `presets/<name>/` in exemplar-config. A preset that is not named here loads and validates but runs nowhere. An unknown preset is rejected. See [Rule layering](../../concepts/rule-layering.md). |
+| `disabled_rules` | array of rule id, unique | no | Rules, from an extended preset or `rules/`, that run on no repo. An id that no extended preset or `rules/` defines is rejected. Eval cases and labels that name a disabled rule still validate. |
+| `rule_settings` | object of rule id to setting | no | Per-rule settings that narrow a rule without editing its file. An id that no extended preset or `rules/` defines is rejected. See [`rule_settings`](#rule_settings). |
 
 ### `budgets`
 
@@ -229,6 +232,16 @@ The categorizer's calibration against the [categorizer labels](categorizer-label
 |---|---|---|---|
 | `default_months` | integer, minimum 1 | yes | The `review_by` horizon for a rule without one, in months from its activation. |
 | `auto_demote_after_days` | integer, minimum 1 | yes | How long an expiry job's shadow PR waits for a person before it merges on its own. |
+
+### `rule_settings`
+
+Each key is a rule id; each value is an object with at least one field.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `status` | `shadow` | no | Runs an `active` rule in shadow whatever its file says. A `shadow`, `candidate` or `killed` rule keeps its status: a setting never raises one. |
+| `exclude_paths` | array of glob, at least 1 | no | Globs appended to the rule's `file_patterns` as exclusions (`!<glob>`). A glob that starts with `!` or does not parse is rejected. |
+| `required` | boolean | no | Whether a target repo may disable or narrow the rule. Default `true` for a preset rule in the `Security` category or with `blocking` severity, `false` otherwise. |
 
 ## Example
 

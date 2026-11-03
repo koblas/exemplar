@@ -8,7 +8,7 @@ Unknown fields are rejected. Each finding records the git blob id of the rule fi
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `id` | string, pattern `^[a-z0-9][a-z0-9.-]{1,79}$` | yes | The rule id; must match the file name (`<id>.yaml`) and be unique across the config. |
+| `id` | string, pattern `^[a-z0-9][a-z0-9.-]{1,79}$` | yes | The rule id; must match the file name (`<id>.yaml`) and be unique across the config and the presets it extends. The `exemplar.` prefix is reserved for rules shipped in `exemplar:*` presets; a rule in `rules/`, `presets/` or `.exemplar/rules/` that uses it is rejected. |
 | `kind` | `exemplar`, `compiled`, `bug_class` | yes | The rule kind. |
 | `category` | string, 1 to 40 characters | yes | The category; its lower-cased form is the rule's directory under `rules/`. |
 | `severity` | `blocking`, `important`, `suggestion` | yes | The severity. Blocking and security rules start on the `high` generator tier. |

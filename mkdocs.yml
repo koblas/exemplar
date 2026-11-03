@@ -109,6 +109,7 @@ nav:
       - Architecture: concepts/architecture.md
       - How a review works: concepts/how-a-review-works.md
       - Rule lifecycle: concepts/rule-lifecycle.md
+      - Rule layering: concepts/rule-layering.md
       - Trust and data handling: concepts/trust-and-data.md
       - Glossary: concepts/glossary.md
   - Guides:

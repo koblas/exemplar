@@ -110,6 +110,21 @@ type GlobalConfig struct {
 	EvalThresholds EvalThresholds  `json:"eval_thresholds"`
 	Feedback       *FeedbackConfig `json:"feedback,omitempty"`
 	Expiry         *Expiry         `json:"expiry,omitempty"`
+	// Extends names the presets whose rules join rules/ (exemplar:<name>,
+	// org:<name>).
+	Extends       []string               `json:"extends,omitempty"`
+	DisabledRules []string               `json:"disabled_rules,omitempty"`
+	RuleSettings  map[string]RuleSetting `json:"rule_settings,omitempty"`
+}
+
+// RuleSetting narrows one rule without editing its file.
+type RuleSetting struct {
+	// Status is "shadow" or empty: a setting can only lower a rule's status.
+	Status       string   `json:"status,omitempty"`
+	ExcludePaths []string `json:"exclude_paths,omitempty"`
+	// Required, when set, overrides the default: preset rules in the
+	// Security category or with blocking severity are required.
+	Required *bool `json:"required,omitempty"`
 }
 
 // DefaultLinterWait is linter_wait_seconds when unset.
