@@ -369,17 +369,68 @@ exemplar/                          # one Go module: github.com/koblas/exemplar
   docs/          # spec, PRD, plans, security notes, and the user documentation site
 
 exemplar-config/                   # the human gate (separate repo, CODEOWNERS-protected)
-  global.yaml                      # global defaults, model tiers, budgets
+  global.yaml                      # global defaults, model tiers, budgets; extends, disabled_rules, rule_settings (§3.1)
   repos/<org>/<repo>.yaml          # opt-in, auto-approve settings, KILL SWITCH
-  rules/<category>/<rule-id>.yaml  # global exemplars
+  rules/<category>/<rule-id>.yaml  # the organization's rules (optional: a config may only extend presets)
+  presets/<name>/<rule-id>.yaml    # org:<name> presets: rules that run only where a layer extends them (§3.1)
   evals/<rule-id>/cases.yaml       # eval cases referencing real PRs by sha
+  evals/_adversarial/ ...          # the organization's own defence cases, run with the shipped ones (§8.8)
   .github/workflows/eval.yml       # Actions CI: schema check + evals on every PR
   CODEOWNERS
 ```
 
-**Repo-specific rules** live in the *target* repo at `.exemplar/rules/*.yaml`, owned by that repo's CODEOWNERS.
+**Repo-specific rules** live in the *target* repo at `.exemplar/rules/*.yaml`, and the project's rule choices in `.exemplar/config.yaml` (§3.1), owned by that repo's CODEOWNERS.
 
 > **Critical security rule:** repo-level config and rules are **always read from the PR's base branch (default branch), never from the PR head.** Otherwise any author can disable rules or inject a rule description by editing `.exemplar/` in their own PR. Changes to `.exemplar/` in a PR take effect only after merge, exactly like the PRD's "human gate." The kill switch and opt-in live **only** in `exemplar-config`, never in target repos.
+
+### 3.1 Rule layering and presets
+
+PRD §7, FR-E19 and FR-E20. Four layers feed one effective config, computed in `internal/config`:
+
+| Layer | Where | Owner | May |
+|---|---|---|---|
+| Presets | embedded in the binary (`exemplar:<name>`), rule ids prefixed `exemplar.` | Exemplar releases | define rules and their eval cases |
+| Organization | `exemplar-config/global.yaml`, `rules/`, `presets/` | platform team, rule owners (CODEOWNERS) | `extends`, `presets_accepted`, `preset_owner`, define rules, `disabled_rules`, `rule_settings` (`status: shadow`, `exclude_paths`, `required`, `owner`, `history_from`) |
+| Repository file | `exemplar-config/repos/<owner>/<repo>.yaml` | platform team | enrolment, kill switch, shadow, auto-approve and every other safety setting; `disabled_global_rules` |
+| Project | target repo `.exemplar/config.yaml` and `.exemplar/rules/`, base branch only | the repo's CODEOWNERS | `extends` (`exemplar:*`, `org:*`), `disabled_rules` and `rule_settings` (`status: shadow`, `exclude_paths`) on rules not `required`; define repo rules |
+
+```yaml
+# exemplar-config/global.yaml (excerpt)
+extends: [exemplar:recommended]
+presets_accepted: "0.12"          # preset rules added after this release run as shadow
+preset_owner: "@acme/platform"    # receives feedback for preset rules without an owner setting
+disabled_rules: [exemplar.pin-container-images]
+rule_settings:
+  exemplar.external-call-timeouts: { status: shadow }
+  exemplar.wrap-errors-with-cause: { required: true }
+  exemplar.no-secrets-in-logs:     { owner: "@acme/security" }   # Security: required by default
+  exemplar.propagate-context:      { exclude_paths: ["tools/**"], history_from: propagate-context }
+```
+
+```yaml
+# <target repo>/.exemplar/config.yaml
+extends: [org:payments]
+disabled_rules: [exemplar.tests-for-behavior-change]
+rule_settings:
+  exemplar.propagate-context: { exclude_paths: ["cmd/migrate/**"] }
+```
+
+**Resolution.** Rules = the rules of every preset named by the organization's or the project's `extends`, plus `rules/` filtered by `applies_to` (FR-E17), plus the project's `.exemplar/rules/`. Removed: the organization's `disabled_rules`, the repository file's `disabled_global_rules`, then the project's `disabled_rules` except `required` rules. Settings: the organization's `rule_settings`, then the project's; `status: shadow` only lowers a rule's status, `exclude_paths` appends negated globs to `file_patterns`. A preset rule in the Security category or with `blocking` severity is `required` unless the organization sets `required: false`. Errors (validate and load): a rule id defined twice; a non-preset rule id starting `exemplar.`; a project setting or disable on a `required` rule; an unknown preset; an id in `disabled_rules` or `rule_settings` that no extended preset or loaded rule defines (a warning for the project layer, since the organization may stop extending a preset later).
+
+**Preset references.**
+- `exemplar:<name>`: embedded with the binary, versioned with it.
+- `org:<name>`: the rule files in `presets/<name>/` of the config repository; they load and validate with the config but run only where a layer extends them.
+- `github:<owner>/<repo>//<name>@<sha>`: `global.yaml` only. The rule files in `<name>/` of that repository at a full 40-character commit SHA; a branch, tag or short SHA is refused. Fetched with the config repository's installation token, so the repository must be installed for it; the fetched files may not themselves declare `extends`. Cached by SHA, since the content cannot change. A fetch failure at load keeps the last good snapshot, as a broken config repository does today, and never loads a partial rule set.
+
+**Versions.** The snapshot's `ConfigVersion` combines the config repository's SHA, the preset version (the binary's release) and every pinned SHA, so a stored review names the exact rule text it ran. A preset rule added after the organization's `presets_accepted` release runs as `shadow` whatever its file says, until a config PR raises `presets_accepted`; that is the human gate (PRD FR-L6) for preset rules, and config CI on that PR shows `--preset-diff` from the accepted version. Rule text changes to existing preset rules take effect with the binary; a preset rule a release removes stays in the preset as `killed` for one release, so the organization's and projects' references to it still resolve, and `--preset-diff` lists them. `exemplar validate --preset-diff <version>` lists the preset rules added, changed or removed. exemplar-api reports its preset version (a new `GET /v1/version`); config CI validates against that version as well as its own binary's, so a config that passes CI loads in the cluster, and during a rolling deploy every binary resolves rules from the snapshot's recorded preset version, not its own.
+
+**Readers of the effective config.** The review, the inventory (FR-E18) and the rule exports (§10.2, `internal/exports`, today `Effective(repo, nil)`) read the project's `.exemplar/config.yaml` and rules at the repository's base branch, so all three agree on what runs. Config CI's count of repositories a rule starts or stops running on reads only the config repository and says so.
+
+**Learning plane on preset rules.** A preset rule has no file in the config repository, so demotion (`internal/learn/demote`) and expiry (`internal/learn/expiry`) write `rule_settings.<id>.status: shadow` in `global.yaml` instead of editing a rule file. Feedback, the digest and adjudication route to the rule's `owner` setting, else `preset_owner`. `history_from` maps an old organization rule id to the preset rule for every statistic keyed by rule id (acceptance, Wilson bounds, demotion state), so adopting the preset keeps the copied rule's history.
+
+**Change gating.** `.exemplar/**` is already on the auto-approve path denylist (`internal/gates/denylist.go`) and read from the base tree (`internal/engine/prepare.go`); `.exemplar/config.yaml` joins the files `Prepare` reads there.
+
+**Migration.** A config without `extends` loads as before. Once a config extends a preset, `validate` warns on an organization rule whose content matches a preset rule (a copy of the old starter; delete it), and the 9 starter rules keep their unprefixed ids wherever an installation copied them, so nothing collides; deleting the copy and setting `history_from` on the preset rule carries its history over. `disabled_global_rules` stays accepted; the project's `disabled_rules` is the owned alternative.
 
 ---
 
@@ -1452,12 +1503,21 @@ For every candidate (and quarterly for every active exemplar):
   - **Evaluation:** bug classes are evaluated like rules. Only that class runs, on every file.
 - **Verifier labels** (PRD FR-X9): every finding where an author gave an explicit Wrong or Fixed signal is copied into `verifier_labels` as ground truth; a monthly sample of 100 is human-labeled for "unimportant".
 - **Incident-derived rules** (PRD FR-X11): for rules seeded from reverts or incidents, the reverted or incident-linked diff is the positive case, supplemented by injected-violation cases; the rule file and candidate PR carry `eval: synthetic` until a real PR provides a positive.
-- **Adversarial set** (PRD FR-X10): `exemplar-config/evals/_adversarial/` holds PRs with prompt injection in diffs, comments, PR descriptions, file names and linked tickets, each with the attacker's goal (false approval, suppressed finding, fabricated citation). Maintained from Phase 0; the Phase 5 red team adds to it.
+- **Adversarial set** (PRD FR-X10): the shipped set, embedded in the binary with the verifier and categorizer labels, runs against the shipped preset rules; `exemplar-config/evals/_adversarial/` adds the organization's cases, which run alongside, and a local case with a shipped case's id is a validate warning. Each case holds PRs with prompt injection in diffs, comments, PR descriptions, file names and linked tickets, each with the attacker's goal (false approval, suppressed finding, fabricated citation). Maintained from Phase 0; the Phase 5 red team adds to it.
 - **Clean-PR set** (PRD FR-X12): `exemplar-config/evals/_clean/cases.yaml` lists PRs known to be clean: merged, never reverted, no incident within 90 days, and confirmed by a named engineer who knows the code (`clean_prs`). `exemplar-learn evals --clean`, weekly and on every change to prompts, tools, models or providers, reviews them with the current config through the replay harness (`caller=eval`); **every finding is a false alarm**, and a false alarm that carries a validated suggested fix is a *harmful* one, counted separately, because applying it would change behavior. Rates are stored per rule and class in `clean_pr_runs` and shown on the lanes board next to the incident-set recall. A new clean PR enters the set by a config PR with the confirming engineer as reviewer; a PR later reverted or incident-linked leaves it automatically.
 - **The change gate:** the incident set (FR-X11, replayed as the recall side) and the clean-PR set (the false-alarm side) are run together on every prompt, tool, model or provider change; the change is kept only if incident-set recall does not fall and neither the clean false-alarm rate nor the harmful rate rises, each judged against the previous run with the thresholds in `eval_thresholds.change_gate`. §8.9 step 6 runs it in CI.
 - **Baseline comparison** (PRD FR-X8): the baseline reviewer's shadow findings (stratified 10% sample, §6.3) are matched to human comments and to Exemplar's findings on the same PRs; §12 shows precision and accepted-equivalent findings per PR side by side.
 
 Cases reference code by `repo@sha:path#Lstart-Lend` (plus `patch` for synthetic cases); no code is copied into `exemplar-config`.
+
+**Eval profile** (PRD FR-X13). A synthetic case with no `repo` is built locally (`synth.Build`) and reviewed under a built-in profile instead of an enrolled repository's config:
+- the organization's global settings, with `auto_approve: true`;
+- a repository config with `shadow: false` and `auto_approve.enabled: true`, overridable per case with an inline `repo_config` when a case needs one;
+- the policy inputs a synthetic workspace cannot supply set so they pass unless the case sets them: `auto_approve.paths: ["**"]`, `unowned_paths: allow`, an author who meets the author policy, size limits above the case, verifier calibration on, branch rules present, merge-safety history passing;
+- everything a review computes from the diff runs for real: coverage, unreviewed files, the bug lane, findings and the model-derived Stage 2 categorization and review confidence, since those are what an injection attacks;
+- no eligibility check: `engine.Prepare` accepts the profile only for a workspace `synth.Build` made, never for a clone URL.
+
+Positive controls in the shipped set are harmless cases that must reach approval under the profile, run with scripted model outputs (`replay --scripted`) so they are deterministic and make no model calls; a profile change that stops them approving fails the build, so the false-approval cases can fail. A recorded case keeps `repo@sha` and the eligibility check: `exemplar eval` reports an ineligible repository as a failed case, and `validate` errors on a recorded case whose repository is not enrolled and, for one release, warns on `repo` in a synthetic case (an error after).
 
 ### 8.9 Eval CI (GitHub Actions)
 
@@ -1467,7 +1527,7 @@ Cases reference code by `repo@sha:path#Lstart-Lend` (plus `patch` for synthetic 
 2. For changed rules, call `exemplar-api /v1/evaluate` with `mode: eval` (authenticated with an OIDC-issued token, so no long-lived secret in the repo). Compiled rules are evaluated by running the engine; exemplars by the full lane + verifier path.
 3. Post precision / recall / F1 (historical and synthetic reported separately) as a check; block merge below thresholds in `global.yaml`.
 4. Post the volume estimate and linter-overlap results as separate checks.
-5. Run the **adversarial set** on every config, prompt or model change (config PRs here; prompt and model changes in the `exemplar` repo's CI). Any attacker success fails the build.
+5. Run the **adversarial set**, shipped and local cases, under the eval profile (§8.8) on every config, prompt or model change (config PRs here; prompt and model changes in the `exemplar` repo's CI). Any attacker success fails the build.
 6. Run verifier and Stage 2 categorizer calibration on every change to their prompts, models or providers; fail below the FR-X9 thresholds (§6.8). Run the **change gate** (incident set and clean-PR set, §8.8) on the same triggers and on any tool change; fail if recall falls or either false-alarm rate rises.
 7. Config PRs that change a rule's `export:` block (summary or `agents` flag) require an approval from `@platform/devex` in addition to the rule owner, enforced by a CODEOWNERS-style check on the YAML path (§10.2). A PR that raises `concurrency.rules_per_agent` must attach the golden-set run that justifies it (§6.3 step 7).
 8. Nightly: full golden set, verifier calibration, Stage 2 categorizer calibration, baseline comparison. Weekly: the clean-PR set and incident-set recall, reported on the lanes board.
@@ -2300,6 +2360,7 @@ These inputs configure the system and are needed before the end of Phase 0.
 # exemplar-config/global.yaml
 enabled: true
 auto_approve: true
+extends: [exemplar:recommended]   # presets and rule_settings: §3.1
 cache_ttl_seconds: 900
 budgets:
   soft_ceiling_usd: 10          # per run; triggers shedding (§6.15), not a goal
