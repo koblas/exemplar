@@ -49,6 +49,8 @@ type Rule struct {
 	// Scope is "global" for exemplar-config rules or "<org>/<repo>" for
 	// rules from a target repo's .exemplar/rules.
 	Scope string
+	// Required rules cannot be disabled or narrowed by a project.
+	Required bool
 	// VersionSHA is the git blob id of the rule file, so a finding records
 	// exactly which rule text produced it.
 	VersionSHA string
@@ -58,10 +60,15 @@ type Rule struct {
 // Snapshot is one commit of exemplar-config, fully validated.
 type Snapshot struct {
 	// Version is the exemplar-config commit (reviews.config_version).
-	Version     string
-	Global      schema.GlobalConfig
-	Repos       map[string]schema.RepoConfig
-	Rules       []Rule
+	Version string
+	Global  schema.GlobalConfig
+	Repos   map[string]schema.RepoConfig
+	// Rules is the organization layer resolved: extended presets plus
+	// rules/, minus disabled_rules, with rule_settings applied.
+	Rules []Rule
+	// Presets is every preset a layer may extend, by reference
+	// (exemplar:<name>, org:<name>), before any setting.
+	Presets     map[string][]Rule
 	Evals       map[string]schema.EvalCases
 	Eligibility schema.Eligibility
 	Retention   schema.Retention
@@ -159,8 +166,9 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 		s.Repos[rel] = rc
 	})
 
+	var orgRules []Rule
 	walkYAML(fsys, "rules", &probs, func(p string, data []byte) {
-		r, err := parseRule(p, data, "global")
+		r, err := parseRule(p, data, GlobalScope)
 		if err != nil {
 			probs.add(p, err)
 			return
@@ -168,8 +176,12 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 		if want := path.Join("rules", strings.ToLower(r.Category), r.ID+".yaml"); p != want {
 			probs.add(p, fmt.Errorf("%w: rule %s with category %s must be at %s", ErrMisplacedFile, r.ID, r.Category, want))
 		}
-		s.Rules = append(s.Rules, r)
+		if err := checkReserved(r); err != nil {
+			probs.add(p, err)
+		}
+		orgRules = append(orgRules, r)
 	})
+	s.Presets = loadPresets(fsys, &probs)
 
 	walkYAML(fsys, "evals", &probs, func(p string, data []byte) {
 		if strings.HasPrefix(p, AdversarialDir+"/") {
@@ -213,7 +225,7 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 		s.Evals[ec.Rule] = ec
 	})
 
-	s.crossCheck(&probs)
+	s.crossCheck(s.resolve(orgRules, &probs), &probs)
 	if len(probs) > 0 {
 		return nil, probs
 	}
@@ -221,7 +233,15 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 	return s, nil
 }
 
-func (s *Snapshot) crossCheck(probs *Problems) {
+// crossCheck validates references between files. defined is every rule id
+// the organization defines, disabled or not; eval cases and labels must
+// name a rule that runs, so a disabled rule's cases fail here rather than
+// pass with no rule.
+func (s *Snapshot) crossCheck(defined map[string]string, probs *Problems) {
+	ids := map[string]string{}
+	for _, r := range s.Rules {
+		ids[r.ID] = r.Path
+	}
 	if bl := s.Global.BugLane; bl != nil {
 		for id := range bl.Classes {
 			if _, ok := buglane.ByID(id); !ok {
@@ -296,13 +316,6 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 			}
 		}
 	}
-	ids := map[string]string{}
-	for _, r := range s.Rules {
-		if prev, dup := ids[r.ID]; dup {
-			probs.add(r.Path, fmt.Errorf("%w: rule id %s already defined in %s", ErrDuplicateID, r.ID, prev))
-		}
-		ids[r.ID] = r.Path
-	}
 	for rule := range s.Evals {
 		// Bug classes are built-in rules with eval sets of their own
 		// (mutation evals).
@@ -325,7 +338,7 @@ func (s *Snapshot) crossCheck(probs *Problems) {
 	}
 	for repo, rc := range s.Repos {
 		for _, id := range rc.DisabledGlobalRules {
-			if _, ok := ids[id]; !ok {
+			if _, ok := defined[id]; !ok {
 				probs.add("repos/"+repo+".yaml", fmt.Errorf("%w: disabled_global_rules names unknown rule %s", ErrUnknownRule, id))
 			}
 		}

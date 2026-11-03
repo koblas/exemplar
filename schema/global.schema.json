@@ -6,6 +6,15 @@
   "additionalProperties": false,
   "required": ["enabled", "auto_approve", "budgets", "degrade", "max_exemplar_rules", "queues", "concurrency", "providers", "verifier", "comment_budget", "baseline", "eval_thresholds"],
   "$defs": {
+    "ruleID": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{1,79}$" },
+    "ruleSetting": {
+      "type": "object", "additionalProperties": false, "minProperties": 1,
+      "properties": {
+        "status": { "enum": ["shadow"], "description": "Runs the rule in shadow whatever its file says." },
+        "exclude_paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Globs appended to file_patterns as exclusions." },
+        "required": { "type": "boolean", "description": "Whether a project may disable or narrow the rule." }
+      }
+    },
     "providerModel": {
       "type": "object",
       "additionalProperties": false,
@@ -172,6 +181,22 @@
         "default_months": { "type": "integer", "minimum": 1 },
         "auto_demote_after_days": { "type": "integer", "minimum": 1 }
       }
+    },
+    "extends": {
+      "type": "array", "uniqueItems": true,
+      "description": "Presets whose rules join the organization's: exemplar:<name> ships with the binary, org:<name> is presets/<name>/ in this repo.",
+      "items": { "type": "string", "pattern": "^(exemplar|org):[a-z0-9][a-z0-9-]{0,62}$" }
+    },
+    "disabled_rules": {
+      "type": "array", "uniqueItems": true,
+      "description": "Rule ids, from an extended preset or rules/, that run nowhere.",
+      "items": { "$ref": "#/$defs/ruleID" }
+    },
+    "rule_settings": {
+      "type": "object",
+      "description": "Per-rule settings that narrow a rule without editing its file, keyed by rule id.",
+      "propertyNames": { "$ref": "#/$defs/ruleID" },
+      "additionalProperties": { "$ref": "#/$defs/ruleSetting" }
     }
   }
 }

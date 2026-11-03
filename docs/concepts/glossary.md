@@ -110,8 +110,14 @@ The words the rest of this site uses. Terms are in alphabetical order.
 **Playground**
 : The web UI page where a draft rule runs alone on a PR the viewer can read. It runs in the worker and posts nothing.
 
+**Preset**
+: A named set of rules a config takes in with `extends` instead of copying the files. `exemplar:recommended` ships with Exemplar; `org:<name>` presets live in exemplar-config's `presets/`. See [Rule layering](rule-layering.md).
+
 **Pseudonym**
 : The keyed hash that replaces an author's identity in mined review comments.
+
+**Required rule**
+: A rule a target repo may not disable or narrow. Preset rules in the `Security` category or with `blocking` severity are required unless `global.yaml` says otherwise. See [Rule layering](rule-layering.md).
 
 **Review-by**
 : A rule's expiry date. Once it passes, the expiry job either extends the rule or moves it to shadow.

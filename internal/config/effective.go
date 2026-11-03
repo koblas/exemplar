@@ -133,6 +133,9 @@ func LoadRepoRules(base fs.FS, repo string) ([]Rule, error) {
 			continue
 		}
 		r, err := parseRule(p, data, repo)
+		if err == nil {
+			err = checkReserved(r)
+		}
 		if err != nil {
 			probs.add(p, err)
 			continue

@@ -121,6 +121,41 @@ class Expiry(BaseModel):
     auto_demote_after_days: int = Field(..., ge=1)
 
 
+class Extend(RootModel[str]):
+    root: str = Field(..., pattern="^(exemplar|org):[a-z0-9][a-z0-9-]{0,62}$")
+
+
+class RuleID(RootModel[str]):
+    root: str = Field(..., pattern="^[a-z0-9][a-z0-9.-]{1,79}$")
+
+
+class Status(Enum):
+    """
+    Runs the rule in shadow whatever its file says.
+    """
+
+    shadow = "shadow"
+
+
+class ExcludePath(RootModel[str]):
+    root: str = Field(..., min_length=1)
+
+
+class RuleSetting(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    status: Status | None = Field(
+        None, description="Runs the rule in shadow whatever its file says."
+    )
+    exclude_paths: list[ExcludePath] | None = Field(
+        None, description="Globs appended to file_patterns as exclusions.", min_length=1
+    )
+    required: bool | None = Field(
+        None, description="Whether a project may disable or narrow the rule."
+    )
+
+
 class ProviderModel1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -313,3 +348,15 @@ class GlobalConfig(BaseModel):
     eval_thresholds: EvalThresholds
     feedback: Feedback | None = None
     expiry: Expiry | None = None
+    extends: list[Extend] | None = Field(
+        None,
+        description="Presets whose rules join the organization's: exemplar:<name> ships with the binary, org:<name> is presets/<name>/ in this repo.",
+    )
+    disabled_rules: list[RuleID] | None = Field(
+        None,
+        description="Rule ids, from an extended preset or rules/, that run nowhere.",
+    )
+    rule_settings: dict[RuleID, RuleSetting] | None = Field(
+        None,
+        description="Per-rule settings that narrow a rule without editing its file, keyed by rule id.",
+    )

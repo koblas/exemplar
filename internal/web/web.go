@@ -301,10 +301,11 @@ func toRuleRow(r queries.UIRulesRow, efpBar float64) ruleRow {
 	return row
 }
 
-// visibleRule reports whether the viewer may see a rule: global rules
-// always, a repo's own rules only with read access to it.
+// visibleRule reports whether the viewer may see a rule: the
+// organization's rules (rules/ and presets) always, a repo's own rules only
+// with read access to it.
 func visibleRule(v *viewer, scope string) bool {
-	return scope == "global" || v.can(scope)
+	return config.IsOrgScope(scope) || v.can(scope)
 }
 
 type rulesBody struct {
