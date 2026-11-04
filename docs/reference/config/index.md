@@ -1,13 +1,13 @@
 # exemplar-config
 
-`exemplar-config` is the git repository that holds everything Exemplar enforces. The GitHub App is registered on its owner; the worker, gateway, search and learn pods clone it with git-sync and refresh on every push; `exemplar validate` checks a checkout against the schemas in [`schema/`](https://github.com/koblas/exemplar/tree/main/schema) and the cross-file references. [`examples/exemplar-config`](https://github.com/koblas/exemplar/tree/main/examples/exemplar-config) is the starting copy.
+`exemplar-config` is the git repository that holds everything Exemplar enforces. The GitHub App is registered on its owner; the worker, gateway, search and learn pods clone it with git-sync and refresh on every push; `exemplar validate` checks a checkout against the schemas in [`schema/`](https://github.com/koblas/exemplar/tree/main/schema) and the cross-file references. [`examples/exemplar-config`](https://github.com/koblas/exemplar/tree/main/examples/exemplar-config) is the starting copy: a `global.yaml` that extends `exemplar:recommended`, `platform/`, `CODEOWNERS`, the config CI workflows and a repo file template. It has no `rules/` or `evals/` and enrolls no repo.
 
 ## Layout
 
 | Path | Schema | Owner in the example `CODEOWNERS` | What |
 |---|---|---|---|
 | `global.yaml` | [global.yaml](global.md) | `@platform/exemplar` | Organization-wide defaults and kill switches: providers, budgets, lanes, thresholds, feedback and expiry. |
-| `repos/<owner>/<repo>.yaml` | [repos/\<owner\>/\<repo\>.yaml](repo.md) | `@platform/exemplar` | One file per reviewed repository; the path names the repo. Enabled, shadow, drafts, forks, sensitive paths, linters, exports, context, auto-approve. |
+| `repos/<owner>/<repo>.yaml` | [repos/\<owner\>/\<repo\>.yaml](repo.md) | `@platform/exemplar` | One file per reviewed repository; the path names the repo. Enabled, shadow, drafts, forks, sensitive paths, linters, exports, context, auto-approve. Only files ending in `.yaml` load, so the starter's `repos/example-org/example-service.yaml.example` enrolls nothing. |
 | `rules/<category>/<id>.yaml` | [rules/**/*.yaml](rule.md) | `@platform/exemplar`; `rules/security/` `@security/appsec` | One rule per file. |
 | `evals/<rule>/cases.yaml` | [evals/\<rule\>/cases.yaml](eval-cases.md) | as the rule | The rule's labelled cases. |
 | `evals/_adversarial/*.yaml` | [evals/_adversarial](adversarial-case.md) | `@security/appsec @platform/exemplar` | Prompt-injection cases, run on every config change. |

@@ -59,6 +59,9 @@ func TestRenderConfigLoads(t *testing.T) {
 	if rule.Owner != "@"+testVars.Owner || rule.Status != "active" || len(rule.FilePatterns) != 1 {
 		t.Errorf("demo rule owner %s, status %s, file_patterns %v", rule.Owner, rule.Status, rule.FilePatterns)
 	}
+	if r := ruleByID(snap.Rules, "exemplar.propagate-context"); r == nil || r.Owner != "@"+testVars.Owner {
+		t.Errorf("shipped rule exemplar.propagate-context = %+v, want owner @%s", r, testVars.Owner)
+	}
 	cases, ok := snap.Evals[DemoRule]
 	if !ok {
 		t.Fatalf("no %s", path.Join("evals", DemoRule, "cases.yaml"))
@@ -102,4 +105,13 @@ func TestRenderConfigLoads(t *testing.T) {
 	if !slices.ContainsFunc(eff.Rules, func(r config.Rule) bool { return r.ID == DemoRule }) {
 		t.Errorf("%s does not apply to %s", DemoRule, repo)
 	}
+}
+
+func ruleByID(rules []config.Rule, id string) *config.Rule {
+	for i := range rules {
+		if rules[i].ID == id {
+			return &rules[i]
+		}
+	}
+	return nil
 }

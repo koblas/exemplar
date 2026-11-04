@@ -19,8 +19,6 @@ on:
       - internal/presets/evals/verifier/**
       - internal/presets/evals/categorizer/**
       - internal/presets/recommended/**
-      - examples/exemplar-config/evals/_verifier/**
-      - examples/exemplar-config/evals/_categorizer/**
 
 permissions:
   contents: read

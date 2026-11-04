@@ -156,7 +156,7 @@ func TestTeach(t *testing.T) {
 
 	// A shipped preset rule narrows through rule_settings in global.yaml,
 	// its glob written without the negation file_patterns uses.
-	global, err := os.ReadFile("../../../examples/exemplar-config/global.yaml")
+	global, err := os.ReadFile("../../../testdata/exemplar-config/global.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

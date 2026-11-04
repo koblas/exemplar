@@ -70,8 +70,8 @@ Expect: a version string.
 
 Once the repository exists, make these edits in a clone of it, commit and push to its default branch:
 
-1. In every file under `rules/` and in `CODEOWNERS`, replace the example owner teams `@platform/exemplar` and `@security/appsec` with teams of `<org>` that the person names.
-2. Rename `repos/exemplar-sandbox/playground.yaml` to `repos/<first-repo>.yaml` (so `repos/acme/billing.yaml`) and set `shadow: true` in it.
+1. In `global.yaml`, set `preset_owner` to the team of `<org>` that the person names as owner of the shipped rules. In `CODEOWNERS`, replace the example owner teams `@platform/exemplar` and `@security/appsec` with teams of `<org>` that the person names.
+2. Copy `repos/example-org/example-service.yaml.example` to `repos/<first-repo>.yaml` (so `repos/acme/billing.yaml`) and set `shadow: true` in it. Leave the template in place: it is not loaded.
 3. Leave `global.yaml` routing to Claude. Do not uncomment Bedrock.
 
 Expect: the repository's `validate` workflow run is green on the push. The other config CI jobs stay skipped until [How to set up config CI](../rules/config-ci.md); that is fine for the trial.

@@ -2,7 +2,7 @@
 # the author. files replace or add whole files on a branch off main.
 #
 # beat A: findings. refund_http.go breaks two of the org's rules at once
-#   (propagate-context: http.Get with no ctx in a handler; no-raw-sql-concat:
+#   (exemplar.propagate-context: http.Get with no ctx in a handler; exemplar.no-raw-sql-concat:
 #   SQL built from input). notify.go is the refutation bait: it looks like a
 #   context violation, but ctx is passed through, so a finding there should
 #   be refuted by the verifier and show as held back in the check run.

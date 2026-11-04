@@ -166,7 +166,7 @@ func TestRun(t *testing.T) {
 
 	// A shipped preset rule has no file: shadowing it writes rule_settings
 	// in global.yaml, and killing it is disabled_rules' job.
-	global, err := os.ReadFile("../../examples/exemplar-config/global.yaml")
+	global, err := os.ReadFile("../../testdata/exemplar-config/global.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

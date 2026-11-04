@@ -1,5 +1,12 @@
 # Organization-wide defaults. Each repo's file under repos/ can narrow these.
 
+# The rules Exemplar ships with. Add your own under rules/; switch a shipped
+# rule off with disabled_rules or narrow it with rule_settings.
+extends: [exemplar:recommended]
+# The team that owns the shipped rules: it receives their feedback, digest,
+# adjudication queue and demotion PRs. Set it to one of your teams.
+preset_owner: "@platform/exemplar"
+
 # Master switch. false stops Exemplar from reviewing any repo.
 enabled: true
 # Lets Exemplar approve low-risk PRs on its own. Repos must also opt in;
