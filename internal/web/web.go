@@ -358,6 +358,10 @@ type ruleBody struct {
 	Findings               []findingRow
 	Hidden                 int
 	ShadowToken, KillToken string
+	// Actions offers the owner actions: an organization rule, global or
+	// from a preset. Shipped is a rule from a shipped preset, which has no
+	// file to kill; disabled_rules turns it off.
+	Actions, Shipped bool
 }
 
 func (h *Handler) rule(_ http.ResponseWriter, r *http.Request, v *viewer) (string, string, any, error) {
@@ -370,7 +374,11 @@ func (h *Handler) rule(_ http.ResponseWriter, r *http.Request, v *viewer) (strin
 	if i < 0 || !visibleRule(v, rows[i].Scope) {
 		return "", "", nil, errNotFound
 	}
-	b := ruleBody{Rule: toRuleRow(rows[i], h.efpBar(r.Context())), ShadowToken: h.token(v.Login, "shadow_rule", id), KillToken: h.token(v.Login, "kill_rule", id)}
+	scope := rows[i].Scope
+	b := ruleBody{
+		Rule: toRuleRow(rows[i], h.efpBar(r.Context())), ShadowToken: h.token(v.Login, "shadow_rule", id), KillToken: h.token(v.Login, "kill_rule", id),
+		Actions: config.IsOrgScope(scope), Shipped: config.Rule{Scope: scope}.Shipped(),
+	}
 	if b.Weeks, err = h.cfg.Store.UIRuleWeeks(r.Context(), id); err != nil {
 		return "", "", nil, fmt.Errorf("list rule weeks: %w", err)
 	}

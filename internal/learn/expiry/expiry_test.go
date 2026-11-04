@@ -86,10 +86,13 @@ func testExpiry(t *testing.T) {
 			Path: "rules/" + id + ".yaml", Scope: "global", VersionSHA: "0123456789abcdef",
 		}
 	}
+	// A shipped preset rule's review date is Exemplar's to move.
+	shipped := rule("exemplar.old", "2026-01-01", schema.StatusActive)
+	shipped.Scope = "exemplar:recommended"
 	snap := &config.Snapshot{Rules: []config.Rule{
 		rule("healthy", "2026-10-01", schema.StatusActive), rule("noisy", "2026-10-01", schema.StatusActive),
 		rule("quiet", "2026-10-01", schema.StatusActive), rule("current", "2027-10-01", schema.StatusActive),
-		rule("asleep", "2026-01-01", schema.StatusShadow),
+		rule("asleep", "2026-01-01", schema.StatusShadow), shipped,
 	}}
 	file := func(id string) string {
 		return "id: " + id + "\nstatus: active  # promoted\nreview_by: \"2026-10-01\"\n"
@@ -115,7 +118,7 @@ func testExpiry(t *testing.T) {
 		return m
 	}
 	outs := run()
-	if len(outs) != 3 || outs["current"].RuleID != "" || outs["asleep"].RuleID != "" {
+	if len(outs) != 3 || outs["current"].RuleID != "" || outs["asleep"].RuleID != "" || outs["exemplar.old"].RuleID != "" {
 		t.Fatalf("outs = %+v", outs)
 	}
 	if o := outs["healthy"]; !o.Extend || o.Action != "proposed" ||

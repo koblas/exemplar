@@ -112,7 +112,10 @@ type GlobalConfig struct {
 	Expiry         *Expiry         `json:"expiry,omitempty"`
 	// Extends names the presets whose rules join rules/ (exemplar:<name>,
 	// org:<name>).
-	Extends       []string               `json:"extends,omitempty"`
+	Extends []string `json:"extends,omitempty"`
+	// PresetOwner owns the shipped exemplar:* rules that have no
+	// rule_settings owner.
+	PresetOwner   string                 `json:"preset_owner,omitempty"`
 	DisabledRules []string               `json:"disabled_rules,omitempty"`
 	RuleSettings  map[string]RuleSetting `json:"rule_settings,omitempty"`
 }
@@ -125,6 +128,8 @@ type RuleSetting struct {
 	// Required, when set, overrides the default: preset rules in the
 	// Security category or with blocking severity are required.
 	Required *bool `json:"required,omitempty"`
+	// Owner replaces the rule file's owner.
+	Owner string `json:"owner,omitempty"`
 }
 
 // DefaultLinterWait is linter_wait_seconds when unset.

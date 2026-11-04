@@ -29,6 +29,7 @@ Unknown fields are rejected.
 | `feedback` | object | no | Feedback weighting and demotion. See [`feedback`](#feedback). |
 | `expiry` | object | no | Rule `review_by` handling. See [`expiry`](#expiry). |
 | `extends` | array of string, unique, pattern `^(exemplar\|org):[a-z0-9][a-z0-9-]{0,62}$` | no | Presets whose rules join the rules in `rules/`. `exemplar:<name>` is shipped with the binary (`exemplar:recommended`); `org:<name>` is the rule files under `presets/<name>/` in exemplar-config. A preset that is not named here loads and validates but runs nowhere. An unknown preset is rejected. See [Rule layering](../../concepts/rule-layering.md). |
+| `preset_owner` | string, pattern `^@[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$` | no | The team that owns every rule from a shipped `exemplar:*` preset without a `rule_settings` `owner`. It receives the rule's feedback, digest, adjudication queue and demotion notices. Unset, those go to the placeholder team in the shipped file. Rules from `org:*` presets keep the owners their files name. |
 | `disabled_rules` | array of rule id, unique | no | Rules, from an extended preset or `rules/`, that run on no repo. An id that no extended preset or `rules/` defines is rejected. Eval cases and labels that name a disabled rule still validate. |
 | `rule_settings` | object of rule id to setting | no | Per-rule settings that narrow a rule without editing its file. An id that no extended preset or `rules/` defines is rejected. See [`rule_settings`](#rule_settings). |
 
@@ -242,6 +243,9 @@ Each key is a rule id; each value is an object with at least one field.
 | `status` | `shadow` | no | Runs an `active` rule in shadow whatever its file says. A `shadow`, `candidate` or `killed` rule keeps its status: a setting never raises one. |
 | `exclude_paths` | array of glob, at least 1 | no | Globs appended to the rule's `file_patterns` as exclusions (`!<glob>`). A glob that starts with `!` or does not parse is rejected. |
 | `required` | boolean | no | Whether a target repo may disable or narrow the rule. Default `true` for a preset rule in the `Security` category or with `blocking` severity, `false` otherwise. |
+| `owner` | string, pattern `^@[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$` | no | The team that owns the rule, in place of its file's `owner` and of `preset_owner`. |
+
+The learning plane changes a shipped preset rule here, since the rule has no file in exemplar-config: demotion and a rule owner's **Shadow** action add `status: shadow`, and a teach-the-bot scope proposal adds the glob to `exclude_paths`. Each edit is one flow-style line under `rule_settings`; the rest of `global.yaml` is left byte for byte. Expiry does not act on shipped preset rules: their `review_by` moves with Exemplar releases.
 
 ## Example
 

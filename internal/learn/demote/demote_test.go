@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"os"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -235,6 +236,38 @@ func testRunner(t *testing.T) {
 	if _, outs, err := (Runner{Stats: fakeStats{bad("noisy")}, Repo: repo}).Run(t.Context(), snap); err == nil || outs[0].Action != "skipped" || len(repo.bodies) != 0 {
 		t.Errorf("stale = %+v, %v", outs, err)
 	}
+}
+
+// TestRunnerPresetRule: a shipped preset rule has no file in the config
+// repo, so demotion writes rule_settings in global.yaml and leaves the rest
+// of the file as it was.
+func TestRunnerPresetRule(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Until(time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC)))
+		global, err := os.ReadFile("../../../examples/exemplar-config/global.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := "exemplar.propagate-context"
+		snap := &config.Snapshot{Rules: []config.Rule{{
+			ID: id, Status: schema.StatusActive, Owner: "@acme/platform", Scope: "exemplar:recommended",
+			Path: "exemplar:recommended/" + id + ".yaml", VersionSHA: "0123456789abcdef",
+		}}}
+		repo := &fakeRepo{files: map[string]string{config.GlobalPath: string(global)}, prs: map[string]string{}, written: map[string]string{}}
+		stats := fakeStats{{RuleID: id, Judged: 30, Negatives: 6, NegW: 12, PosW: 24, NonAuthorActors: 2}}
+		_, outs, err := Runner{Stats: stats, Repo: repo}.Run(t.Context(), snap)
+		if err != nil || len(outs) != 1 || outs[0].Action != "demoted" {
+			t.Fatalf("Run = %+v, %v", outs, err)
+		}
+		got := repo.written["exemplar/demote/"+id+"/0123456789ab:"+config.GlobalPath]
+		want := string(global) + "rule_settings:\n  " + id + ": { status: shadow }\n"
+		if got != want {
+			t.Errorf("global.yaml:\n%s", got)
+		}
+		if len(repo.bodies) != 1 || !strings.HasPrefix(repo.bodies[0], "@acme/platform:") {
+			t.Errorf("body = %q", repo.bodies)
+		}
+	})
 }
 
 func TestDemotionStatsQuery(t *testing.T) {

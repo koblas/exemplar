@@ -3,6 +3,7 @@ package teach
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -33,6 +34,7 @@ func TestExcluded(t *testing.T) {
 }
 
 type fakeRepo struct {
+	global  string // global.yaml, when set
 	written map[string]string
 	drafts  []string
 	issues  []string
@@ -41,6 +43,9 @@ type fakeRepo struct {
 func (f *fakeRepo) DefaultBranch(context.Context) (string, string, error) { return "main", "abc", nil }
 func (f *fakeRepo) EnsureBranch(context.Context, string, string) error    { return nil }
 func (f *fakeRepo) GetFile(_ context.Context, _, path string) ([]byte, error) {
+	if path == "global.yaml" && f.global != "" {
+		return []byte(f.global), nil
+	}
 	if path != "rules/noisy.yaml" {
 		return nil, errors.New("not found")
 	}
@@ -147,5 +152,22 @@ func TestTeach(t *testing.T) {
 	// Proposed once per rule version and class.
 	if ps, err := (Runner{Store: st, Repo: repo}).Run(ctx, snap); err != nil || len(ps) != 0 {
 		t.Errorf("again = %+v, %v", ps, err)
+	}
+
+	// A shipped preset rule narrows through rule_settings in global.yaml,
+	// its glob written without the negation file_patterns uses.
+	global, err := os.ReadFile("../../../examples/exemplar-config/global.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo = &fakeRepo{global: string(global), written: map[string]string{}}
+	preset := rule("noisy")
+	preset.Scope, preset.VersionSHA = "exemplar:recommended", "fedcba9876543210"
+	if _, err := (Runner{Store: st, Repo: repo}).Run(ctx, &config.Snapshot{Rules: []config.Rule{preset}}); err != nil {
+		t.Fatal(err)
+	}
+	want := string(global) + "rule_settings:\n  noisy: { exclude_paths: [\"tools/gen/**\"] }\n"
+	if got := repo.written["exemplar/teach/noisy/scope/fedcba987654:global.yaml"]; got != want {
+		t.Errorf("preset rule: written = %v", repo.written)
 	}
 }

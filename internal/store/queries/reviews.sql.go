@@ -523,7 +523,7 @@ func (q *Queries) UpsertApprovalDecision(ctx context.Context, arg UpsertApproval
 const upsertRule = `-- name: UpsertRule :exec
 INSERT INTO rules (rule_id, version_sha, scope, kind, category, severity, status, owner, fix_policy, review_by, exported, model_tier, spec)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-ON CONFLICT (rule_id, version_sha) DO NOTHING
+ON CONFLICT (rule_id, version_sha) DO UPDATE SET owner = EXCLUDED.owner
 `
 
 type UpsertRuleParams struct {
@@ -542,6 +542,8 @@ type UpsertRuleParams struct {
 	Spec       []byte
 }
 
+// A version's owner can change without its file (rule_settings owner,
+// preset_owner); its other columns, spec included, are the file's.
 func (q *Queries) UpsertRule(ctx context.Context, arg UpsertRuleParams) error {
 	_, err := q.db.Exec(ctx, upsertRule,
 		arg.RuleID,

@@ -129,6 +129,10 @@ class RuleID(RootModel[str]):
     root: str = Field(..., pattern="^[a-z0-9][a-z0-9.-]{1,79}$")
 
 
+class Team(RootModel[str]):
+    root: str = Field(..., pattern="^@[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$")
+
+
 class Status(Enum):
     """
     Runs the rule in shadow whatever its file says.
@@ -153,6 +157,10 @@ class RuleSetting(BaseModel):
     )
     required: bool | None = Field(
         None, description="Whether a project may disable or narrow the rule."
+    )
+    owner: Team | None = Field(
+        None,
+        description="The team that owns the rule here: it receives the rule's feedback, digest and demotion notices, in place of the rule file's owner.",
     )
 
 
@@ -351,6 +359,10 @@ class GlobalConfig(BaseModel):
     extends: list[Extend] | None = Field(
         None,
         description="Presets whose rules join the organization's: exemplar:<name> ships with the binary, org:<name> is presets/<name>/ in this repo.",
+    )
+    preset_owner: Team | None = Field(
+        None,
+        description="The team that owns rules from the shipped exemplar:* presets that have no rule_settings owner, in place of the placeholder team in the shipped files.",
     )
     disabled_rules: list[RuleID] | None = Field(
         None,

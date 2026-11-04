@@ -97,7 +97,9 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Outcome, erro
 	var outs []Outcome
 	var errs []error
 	for _, rule := range snap.Rules {
-		if rule.Scope != "global" || rule.Status != schema.StatusActive || rule.ReviewBy == "" {
+		// A shipped preset rule's review date is Exemplar's: a release
+		// moves it, and its text changes only with the binary.
+		if !config.IsOrgScope(rule.Scope) || rule.Shipped() || rule.Status != schema.StatusActive || rule.ReviewBy == "" {
 			continue
 		}
 		due, err := time.Parse(time.DateOnly, rule.ReviewBy)

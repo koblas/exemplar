@@ -81,14 +81,15 @@ code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-w
 <p>{{.Rule.Status}} · {{.Rule.Severity}} · {{.Rule.Category}} · {{.Rule.Kind}} · owner {{.Rule.Owner}}{{if .Rule.Exported}} · exported to coding agents{{end}}</p>
 <p>Last 28 days: {{.Rule.Posted}} posted, acceptance {{.Rule.Acceptance}}, effective FP {{.Rule.EFP}}.</p>
 {{if eq .Rule.Scope "global"}}<p><a href="/ui/playground?rule={{.Rule.RuleID}}">Try a change to this rule in the playground</a></p>{{end}}
-{{if and (eq .Rule.Scope "global") (ne .Rule.Status "killed")}}<details><summary>Owner actions</summary>
+{{if and .Actions (ne .Rule.Status "killed")}}<details><summary>Owner actions</summary>
 <p class="muted">Each opens an exemplar-config PR in your name and merges it where branch protection allows. Only the rule's owners and the platform team can.</p>
 {{if eq .Rule.Status "active"}}<form method="post" action="/ui/actions"><input type="hidden" name="action" value="shadow_rule">` +
 	`<input type="hidden" name="target" value="{{.Rule.RuleID}}"><input type="hidden" name="t" value="{{.ShadowToken}}">
 <label>Why (optional) <input name="reason" maxlength="1000"></label> <button type="submit">Move to shadow</button></form>{{end}}
-<form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_rule"><input type="hidden" name="target" value="{{.Rule.RuleID}}">` +
+{{if .Shipped}}<p class="muted">This rule ships with Exemplar. To turn it off, add it to <code>disabled_rules</code> in <code>global.yaml</code>.</p>{{else}}` +
+	`<form method="post" action="/ui/actions"><input type="hidden" name="action" value="kill_rule"><input type="hidden" name="target" value="{{.Rule.RuleID}}">` +
 	`<input type="hidden" name="t" value="{{.KillToken}}">
-<label>Why <input name="reason" maxlength="1000" required></label> <button type="submit">Kill</button></form>
+<label>Why <input name="reason" maxlength="1000" required></label> <button type="submit">Kill</button></form>{{end}}
 </details>{{end}}
 <h2>By week</h2>
 <table><thead><tr><th>Week</th><th>Posted</th><th>Accepted</th><th>Rejected</th><th>Ignored</th><th>Acceptance</th></tr></thead><tbody>
