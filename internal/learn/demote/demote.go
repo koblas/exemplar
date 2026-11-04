@@ -165,7 +165,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Decision, []O
 	}
 	rules := map[string]config.Rule{}
 	for _, rule := range snap.Rules {
-		if rule.Scope == "global" {
+		if config.IsOrgScope(rule.Scope) {
 			rules[rule.ID] = rule
 		}
 	}
@@ -235,19 +235,23 @@ func (r Runner) demote(ctx context.Context, rule config.Rule, d Decision) (Outco
 	if err != nil {
 		return Outcome{}, fmt.Errorf("get default branch: %w", err)
 	}
-	content, err := r.Repo.GetFile(ctx, base, rule.Path)
+	file := rule.ConfigFile()
+	content, err := r.Repo.GetFile(ctx, base, file)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("get file: %w", err)
 	}
 	next, err := shadowed(content)
+	if rule.Shipped() {
+		next, err = config.EditRuleSetting(content, rule.ID, func(s *schema.RuleSetting) { s.Status = schema.StatusShadow })
+	}
 	if err != nil {
-		return Outcome{}, fmt.Errorf("%s: %w", rule.Path, err)
+		return Outcome{}, fmt.Errorf("%s: %w", file, err)
 	}
 	if err := r.Repo.EnsureBranch(ctx, branch, sha); err != nil {
 		return Outcome{}, fmt.Errorf("ensure branch: %w", err)
 	}
 	msg := fmt.Sprintf("Demote %s to shadow (spec §9.4)", rule.ID)
-	if err := r.Repo.PutFile(ctx, branch, rule.Path, next, msg); err != nil {
+	if err := r.Repo.PutFile(ctx, branch, file, next, msg); err != nil {
 		return Outcome{}, fmt.Errorf("put file: %w", err)
 	}
 	url, number, err := r.Repo.OpenPR(ctx, branch, base, msg, prBody(rule, d, time.Now()))

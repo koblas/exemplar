@@ -93,7 +93,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Proposal, err
 	}
 	rules := map[string]config.Rule{}
 	for _, rule := range snap.Rules {
-		if rule.Scope == "global" && rule.Status != schema.StatusKilled {
+		if config.IsOrgScope(rule.Scope) && rule.Status != schema.StatusKilled {
 			rules[rule.ID] = rule
 		}
 	}
@@ -252,20 +252,32 @@ func (r Runner) scopePR(ctx context.Context, rule config.Rule, p Proposal) (stri
 	if err != nil {
 		return "", fmt.Errorf("get default branch: %w", err)
 	}
-	content, err := r.Repo.GetFile(ctx, base, rule.Path)
+	file := rule.ConfigFile()
+	content, err := r.Repo.GetFile(ctx, base, file)
 	if err != nil {
 		return "", fmt.Errorf("get file: %w", err)
 	}
-	next, err := excluded(content, p.Exclude)
+	var next []byte
+	if rule.Shipped() {
+		// exclude_paths takes the glob without the negation.
+		glob := strings.TrimPrefix(p.Exclude, "!")
+		next, err = config.EditRuleSetting(content, rule.ID, func(s *schema.RuleSetting) {
+			if !slices.Contains(s.ExcludePaths, glob) {
+				s.ExcludePaths = append(s.ExcludePaths, glob)
+			}
+		})
+	} else {
+		next, err = excluded(content, p.Exclude)
+	}
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", rule.Path, err)
+		return "", fmt.Errorf("%s: %w", file, err)
 	}
 	branch := fmt.Sprintf("exemplar/teach/%s/scope/%s", rule.ID, rule.VersionSHA[:min(12, len(rule.VersionSHA))])
 	if err := r.Repo.EnsureBranch(ctx, branch, sha); err != nil {
 		return "", fmt.Errorf("ensure branch: %w", err)
 	}
 	title := fmt.Sprintf("Narrow %s: exclude %s (teach-the-bot)", rule.ID, strings.TrimPrefix(p.Exclude, "!"))
-	if err := r.Repo.PutFile(ctx, branch, rule.Path, next, title); err != nil {
+	if err := r.Repo.PutFile(ctx, branch, file, next, title); err != nil {
 		return "", fmt.Errorf("put file: %w", err)
 	}
 	url, err := r.Repo.OpenDraftPR(ctx, branch, base, title, r.prBody(rule, p))

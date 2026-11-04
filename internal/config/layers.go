@@ -39,6 +39,20 @@ func IsOrgScope(s string) bool {
 
 const orgRefPrefix = "org:"
 
+// Shipped reports whether r comes from a preset embedded in the binary.
+// It has no file in the config repo: the learning plane changes it
+// through global.yaml's rule_settings.
+func (r Rule) Shipped() bool { return strings.HasPrefix(r.Scope, presets.RefPrefix) }
+
+// ConfigFile is the config repo file a change to r goes in: its own file,
+// or global.yaml (rule_settings) for a shipped preset rule.
+func (r Rule) ConfigFile() string {
+	if r.Shipped() {
+		return GlobalPath
+	}
+	return r.Path
+}
+
 // loadPresets reads every preset a config may extend: the shipped ones and
 // presets/<name>/ in fsys. Each rule's scope is its preset reference.
 func loadPresets(fsys fs.FS, probs *Problems) map[string][]Rule {
@@ -124,6 +138,11 @@ func (s *Snapshot) resolve(orgRules []Rule, probs *Problems) map[string]string {
 		}
 		for _, r := range rules {
 			r.Required = r.Category == "Security" || r.Severity == "blocking"
+			// The shipped files name placeholder teams; an org preset's
+			// owners are the org's own.
+			if g.PresetOwner != "" && r.Shipped() {
+				r.Owner = g.PresetOwner
+			}
 			add(r)
 		}
 	}
@@ -157,8 +176,12 @@ func (s *Snapshot) resolve(orgRules []Rule, probs *Problems) map[string]string {
 }
 
 // applySetting narrows r: a shadow status lowers an active rule, and
-// exclude_paths become negated file_patterns.
+// exclude_paths become negated file_patterns. An owner replaces the
+// rule's.
 func applySetting(r Rule, set schema.RuleSetting) (Rule, error) {
+	if set.Owner != "" {
+		r.Owner = set.Owner
+	}
 	if set.Status == schema.StatusShadow && r.Status == schema.StatusActive {
 		r.Status = schema.StatusShadow
 	}

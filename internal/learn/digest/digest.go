@@ -94,7 +94,7 @@ func (r Runner) Run(ctx context.Context, snap *config.Snapshot) ([]Digest, error
 	}
 	owners := map[string][]config.Rule{}
 	for _, rule := range snap.Rules {
-		if rule.Scope == "global" && (rule.Status == schema.StatusActive || rule.Status == schema.StatusShadow) {
+		if config.IsOrgScope(rule.Scope) && (rule.Status == schema.StatusActive || rule.Status == schema.StatusShadow) {
 			owners[rule.Owner] = append(owners[rule.Owner], rule)
 		}
 	}
@@ -244,7 +244,7 @@ func (r Runner) body(owner string, rules []config.Rule, in inputs, approved []qu
 		d := in.decisions[rule.ID]
 		var health string
 		switch {
-		case rule.ReviewBy != "" && rule.ReviewBy < today:
+		case rule.ReviewBy != "" && rule.ReviewBy < today && !rule.Shipped():
 			health = "Review date passed (" + rule.ReviewBy + "). Confirm or retire."
 		case d.Demote:
 			health = "Over the bar: Exemplar is moving it to shadow (a config PR names you)."

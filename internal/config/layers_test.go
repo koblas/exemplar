@@ -234,3 +234,29 @@ func TestRepoRuleReservedID(t *testing.T) {
 		t.Fatalf("LoadRepoRules = %v, want ErrReservedID", err)
 	}
 }
+
+func TestRuleOwners(t *testing.T) {
+	fsys := presetOnlyTree(t, `preset_owner: "@acme/platform"
+rule_settings:
+  exemplar.no-secrets-in-logs: { owner: "@acme/security" }
+`)
+	rule := strings.Replace(string(baseTree(t)["rules/reliability/propagate-context.yaml"].Data), "id: propagate-context", "id: payments-context", 1)
+	fsys["presets/payments/payments-context.yaml"] = &fstest.MapFile{Data: []byte(rule)}
+	fsys[GlobalPath] = &fstest.MapFile{Data: []byte(strings.Replace(string(fsys[GlobalPath].Data), "extends: ["+recommended+"]", "extends: ["+recommended+", org:payments]", 1))}
+	s, err := LoadSnapshot(fsys, "v")
+	if err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	for id, want := range map[string]string{
+		"exemplar.no-secrets-in-logs": "@acme/security",                                              // rule_settings owner
+		"exemplar.propagate-context":  "@acme/platform",                                              // preset_owner
+		"payments-context":            ruleByID(s.Presets["org:payments"], "payments-context").Owner, // an org preset keeps its own
+	} {
+		if got := ruleByID(s.Rules, id).Owner; got != want {
+			t.Errorf("%s: owner %s, want %s", id, got, want)
+		}
+	}
+	if got := ruleByID(s.Presets[recommended], "exemplar.propagate-context").Owner; got == "@acme/platform" {
+		t.Error("preset_owner leaked into the unresolved preset")
+	}
+}

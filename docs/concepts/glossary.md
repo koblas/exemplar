@@ -108,7 +108,7 @@ The words the rest of this site uses. Terms are in alphabetical order.
 : A group of models from one maker, such as all Claude models. Exemplar prefers the verifier to come from a different family than the generator, so one model's blind spots don't carry over.
 
 **Owner**
-: The team (`@org/team`) named in a rule's `owner`. Its members adjudicate feedback, move the rule between statuses, and receive its digest.
+: The team (`@org/team`) named in a rule's `owner`, or set for it in `global.yaml` (`rule_settings` `owner`, or `preset_owner` for shipped preset rules). Its members adjudicate feedback, move the rule between statuses, and receive its digest.
 
 **Playground**
 : The web UI page where a draft rule runs alone on a PR the viewer can read. It runs in the worker and posts nothing.

@@ -86,9 +86,14 @@ func testDigest(t *testing.T) {
 	rule := func(id, owner, reviewBy string) config.Rule {
 		return config.Rule{ID: id, Status: schema.StatusActive, Owner: owner, ReviewBy: reviewBy, Scope: "global", VersionSHA: "v"}
 	}
+	// A shipped preset rule, its owner resolved from preset_owner, is in
+	// that owner's digest like any other, but its review date is
+	// Exemplar's, so a passed one asks nothing of the owner.
+	preset := rule("exemplar.legacy", "@platform/backend", "2026-09-01")
+	preset.Scope = "exemplar:recommended"
 	snap := &config.Snapshot{Rules: []config.Rule{
 		rule("fetch-in-loop", "@platform/backend", "2027-01-01"), rule("prefer-arena", "@platform/backend", "2026-09-01"),
-		rule("legacy", "@platform/backend", ""), rule("docs-style", "@docs/team", ""),
+		rule("legacy", "@platform/backend", ""), rule("docs-style", "@docs/team", ""), preset,
 	}}
 	repo := &fakeRepo{}
 	ds, err := Runner{Store: st, Repo: repo}.Run(ctx, snap)
@@ -103,6 +108,7 @@ func testDigest(t *testing.T) {
 		"| `fetch-in-loop` | active | 4 | 75% | 25% | Over the bar (not enough judged findings to demote yet) |",
 		"| `prefer-arena` | active | 1 | 0% | 100% | Review date passed (2026-09-01). Confirm or retire. |",
 		"| `legacy` | active | 0 | — | — | No feedback yet |",
+		"| `exemplar.legacy` | active | 0 | — | — | No feedback yet |",
 		"`fetch-in-loop`: *Not important here* (1), mostly under `tools/gen/**`",
 		"Waiting for your adjudication** (1)",
 		"[acme/app#4](https://github.com/acme/app/pull/4#discussion_r9005): the author says *Wrong*",

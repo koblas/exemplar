@@ -29,6 +29,6 @@ Only members of the rule's owning team, other than the PR's author, can uphold o
 - **Overturned repeatedly on the same paths:** the `teach` job opens a draft config PR excluding those paths once "not important" dismissals cluster there (three in 30 days, or once from you). Merge it, or write a better exclusion.
 - **Overturned because the rule is wrong:** edit `what_to_flag`, add the case as a negative, and open a PR. The owner review issue `teach` opens for `rule_wrong` and `disagree` classes is the place to record it.
 - **Upheld but ignored:** the rule may be right and unloved. Consider `severity`, or a fix policy that makes it cheap to accept.
-- **Noisy beyond repair:** **Shadow** or **Kill** on the rule's page opens and merges a config PR in your name; the audit of what you did is at `/ui/actions`.
+- **Noisy beyond repair:** **Move to shadow** or **Kill** on the rule's page opens and merges a config PR in your name; the audit of what you did is at `/ui/actions`.
 
 A rule whose eFP stays over `feedback.efp_bar` with a precision lower bound under `feedback.demotion_wilson_floor`, and whose negatives include your adjudication or two non-author people, is moved to shadow by the nightly `demote` job, naming you in the PR.

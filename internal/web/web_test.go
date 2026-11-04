@@ -59,7 +59,7 @@ func TestUI(t *testing.T) {
 		}
 		return n
 	}
-	for _, r := range []struct{ id, scope string }{{"no-raw-sql", "global"}, {"app-only", "acme/app"}, {"secret-only", "acme/secret"}} {
+	for _, r := range []struct{ id, scope string }{{"no-raw-sql", "global"}, {"app-only", "acme/app"}, {"secret-only", "acme/secret"}, {"exemplar.pinned", "exemplar:recommended"}} {
 		exec(`INSERT INTO rules (rule_id, version_sha, scope, kind, category, severity, status, owner, spec) VALUES ($1, 'v', $2, 'exemplar', 'Security', 'blocking', 'active', `+
 			`'@acme/sec', json_build_object('id', $1::text, 'status', 'active'))`, r.id, r.scope)
 	}
@@ -174,6 +174,14 @@ func TestUI(t *testing.T) {
 		if code, _, _ := get("/ui/rules/nope"); code != 404 {
 			t.Errorf("missing rule = %d", code)
 		}
+		has(t, body, []string{"Move to shadow", `value="kill_rule"`}, nil)
+		// A shipped preset rule can be shadowed here; it is turned off in
+		// global.yaml, so there is no Kill.
+		code, body, _ = get("/ui/rules/exemplar.pinned")
+		if code != 200 {
+			t.Fatal(code)
+		}
+		has(t, body, []string{"Move to shadow", "ships with Exemplar", "disabled_rules"}, []string{`value="kill_rule"`})
 	})
 	t.Run("finding", func(t *testing.T) {
 		code, body, _ := get("/ui/findings/" + itoa(appF))

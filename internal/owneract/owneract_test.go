@@ -164,6 +164,28 @@ func TestRun(t *testing.T) {
 	check("repo rule", act(KillRule, "local", "pat", ""), StatusRefused, "repo's own rules")
 	check("unknown rule", act(KillRule, "nope", "pat", ""), StatusRefused, "no global rule")
 
+	// A shipped preset rule has no file: shadowing it writes rule_settings
+	// in global.yaml, and killing it is disabled_rules' job.
+	global, err := os.ReadFile("../../examples/exemplar-config/global.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.files["global.yaml"] = string(global)
+	snap.Rules = append(snap.Rules, config.Rule{
+		ID: "exemplar.pinned", Status: schema.StatusActive, Owner: "@acme/sec", Scope: "exemplar:recommended", Path: "exemplar:recommended/exemplar.pinned.yaml",
+	})
+	check("preset rule shadowed", act(ShadowRule, "exemplar.pinned", "dana", "noisy here"), StatusDone, "merged")
+	got = ""
+	for _, files := range repo.branches {
+		if g, ok := files["global.yaml"]; ok {
+			got = g
+		}
+	}
+	if got != string(global)+"rule_settings:\n  exemplar.pinned: { status: shadow }\n" {
+		t.Errorf("edited global.yaml = %q", got)
+	}
+	check("preset rule kill", act(KillRule, "exemplar.pinned", "pat", ""), StatusRefused, "disabled_rules")
+
 	check("candidate without reason", act(KillCandidate, itoa(cand), "dana", " "), StatusRefused, "needs a reason")
 	check("candidate by a stranger", act(KillCandidate, itoa(cand), "erin", "dup"), StatusRefused, "only @acme/sec")
 	check("candidate killed", act(KillCandidate, itoa(cand), "dana", "duplicate of no-raw-sql"), StatusDone, "killed")

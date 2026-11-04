@@ -7,12 +7,14 @@
   "required": ["enabled", "auto_approve", "budgets", "degrade", "max_exemplar_rules", "queues", "concurrency", "providers", "verifier", "comment_budget", "baseline", "eval_thresholds"],
   "$defs": {
     "ruleID": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{1,79}$" },
+    "team": { "type": "string", "pattern": "^@[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$" },
     "ruleSetting": {
       "type": "object", "additionalProperties": false, "minProperties": 1,
       "properties": {
         "status": { "enum": ["shadow"], "description": "Runs the rule in shadow whatever its file says." },
         "exclude_paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Globs appended to file_patterns as exclusions." },
-        "required": { "type": "boolean", "description": "Whether a project may disable or narrow the rule." }
+        "required": { "type": "boolean", "description": "Whether a project may disable or narrow the rule." },
+        "owner": { "$ref": "#/$defs/team", "description": "The team that owns the rule here: it receives the rule's feedback, digest and demotion notices, in place of the rule file's owner." }
       }
     },
     "providerModel": {
@@ -186,6 +188,10 @@
       "type": "array", "uniqueItems": true,
       "description": "Presets whose rules join the organization's: exemplar:<name> ships with the binary, org:<name> is presets/<name>/ in this repo.",
       "items": { "type": "string", "pattern": "^(exemplar|org):[a-z0-9][a-z0-9-]{0,62}$" }
+    },
+    "preset_owner": {
+      "$ref": "#/$defs/team",
+      "description": "The team that owns rules from the shipped exemplar:* presets that have no rule_settings owner, in place of the placeholder team in the shipped files."
     },
     "disabled_rules": {
       "type": "array", "uniqueItems": true,

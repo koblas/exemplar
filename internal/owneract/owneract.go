@@ -202,7 +202,7 @@ func (r Runner) rule(ctx context.Context, snap *config.Snapshot, a queries.Owner
 			rule = &snap.Rules[i]
 		}
 	}
-	if rule == nil || rule.Scope != "global" {
+	if rule == nil || !config.IsOrgScope(rule.Scope) {
 		return Outcome{}, refused{"no global rule " + a.Target + " in exemplar-config (a repo's own rules change in that repo)"}
 	}
 	if ok, err := r.allowed(ctx, a.Actor, rule.Owner); err != nil {
@@ -226,8 +226,23 @@ func (r Runner) rule(ctx context.Context, snap *config.Snapshot, a queries.Owner
 		}
 		return next, nil
 	}
+	if rule.Shipped() {
+		if a.Action == KillRule {
+			return Outcome{}, refused{rule.ID + " ships with Exemplar; turn it off with disabled_rules in global.yaml"}
+		}
+		edit = func(content []byte) ([]byte, error) {
+			if rule.Status != schema.StatusActive {
+				return nil, refused{fmt.Sprintf("%s is %s, not active", rule.ID, rule.Status)}
+			}
+			out, err := config.EditRuleSetting(content, rule.ID, func(s *schema.RuleSetting) { s.Status = schema.StatusShadow })
+			if err != nil {
+				return nil, fmt.Errorf("rule_settings: %w", err)
+			}
+			return out, nil
+		}
+	}
 	title := fmt.Sprintf("%s %s (requested by @%s)", verb, rule.ID, a.Actor)
-	return r.change(ctx, a, rule.Path, edit, title)
+	return r.change(ctx, a, rule.ConfigFile(), edit, title)
 }
 
 func (r Runner) candidate(ctx context.Context, a queries.OwnerAction) (Outcome, error) {
@@ -390,7 +405,10 @@ func (r Runner) propose(ctx context.Context, snap *config.Snapshot, a queries.Ow
 	path := fmt.Sprintf("rules/%s/%s.yaml", strings.ToLower(rule.Category), rule.ID)
 	var title string
 	if existing != nil {
-		if existing.Scope != "global" {
+		switch {
+		case existing.Shipped():
+			return Outcome{}, refused{rule.ID + " ships with Exemplar; narrow it with rule_settings in global.yaml, or give the draft a new id"}
+		case !config.IsOrgScope(existing.Scope):
 			return Outcome{}, refused{rule.ID + " is a repo's own rule; change it in that repo"}
 		}
 		if ok, err := r.allowed(ctx, a.Actor, existing.Owner); err != nil {
