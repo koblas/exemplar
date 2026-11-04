@@ -22,6 +22,7 @@ import (
 
 	"github.com/koblas/exemplar/internal/buglane"
 	"github.com/koblas/exemplar/internal/gates"
+	"github.com/koblas/exemplar/internal/presets/evals"
 	"github.com/koblas/exemplar/internal/schema"
 	"github.com/koblas/exemplar/internal/scope"
 )
@@ -91,6 +92,8 @@ type CategorizerLabel struct {
 	schema.CategorizerLabel
 
 	Path string
+	// Shipped marks a label embedded in the binary (internal/presets/evals).
+	Shipped bool
 }
 
 // VerifierLabel is a labeled finding and the file it came from.
@@ -98,6 +101,9 @@ type VerifierLabel struct {
 	schema.VerifierLabel
 
 	Path string
+	// Shipped marks a label embedded in the binary; its rule is a shipped
+	// preset rule.
+	Shipped bool
 }
 
 // AdversarialCase is a decoded case from evals/_adversarial.
@@ -105,7 +111,19 @@ type AdversarialCase struct {
 	schema.AdversarialCase
 
 	Path string
+	// Shipped marks a case embedded in the binary; its rules are shipped
+	// preset rules.
+	Shipped bool
 }
+
+// IsShipped reports whether the entry is embedded in the binary.
+func (x AdversarialCase) IsShipped() bool { return x.Shipped }
+
+// IsShipped reports whether the entry is embedded in the binary.
+func (x VerifierLabel) IsShipped() bool { return x.Shipped }
+
+// IsShipped reports whether the entry is embedded in the binary.
+func (x CategorizerLabel) IsShipped() bool { return x.Shipped }
 
 // Problem is one validation failure in a config tree.
 type Problem struct { //nolint:errname // pairs with Problems, whose exported name callers outside config match by type
@@ -186,32 +204,19 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 	})
 	s.Presets = loadPresets(fsys, &probs)
 
+	// Shipped evals load first, so a config entry that reuses a shipped id
+	// is the one warned about.
+	s.loadShipped(&probs)
 	walkYAML(fsys, "evals", &probs, func(p string, data []byte) {
-		if strings.HasPrefix(p, AdversarialDir+"/") {
-			var c schema.AdversarialCase
-			if err := schema.Decode(schema.DocAdversarial, data, &c); err != nil {
-				probs.add(p, err)
-				return
-			}
-			s.Adversarial = append(s.Adversarial, AdversarialCase{AdversarialCase: c, Path: p})
+		switch {
+		case strings.HasPrefix(p, AdversarialDir+"/"):
+			s.addAdversarial(p, data, false, &probs)
 			return
-		}
-		if strings.HasPrefix(p, CategorizerDir+"/") {
-			var l schema.CategorizerLabel
-			if err := schema.Decode(schema.DocCategorizerLabel, data, &l); err != nil {
-				probs.add(p, err)
-				return
-			}
-			s.CategorizerLabels = append(s.CategorizerLabels, CategorizerLabel{CategorizerLabel: l, Path: p})
+		case strings.HasPrefix(p, CategorizerDir+"/"):
+			s.addCategorizerLabel(p, data, false, &probs)
 			return
-		}
-		if strings.HasPrefix(p, VerifierDir+"/") {
-			var l schema.VerifierLabel
-			if err := schema.Decode(schema.DocVerifierLabel, data, &l); err != nil {
-				probs.add(p, err)
-				return
-			}
-			s.VerifierLabels = append(s.VerifierLabels, VerifierLabel{VerifierLabel: l, Path: p})
+		case strings.HasPrefix(p, VerifierDir+"/"):
+			s.addVerifierLabel(p, data, false, &probs)
 			return
 		}
 		if path.Base(p) != "cases.yaml" {
@@ -234,6 +239,51 @@ func LoadSnapshot(fsys fs.FS, version string) (*Snapshot, error) {
 	}
 	slices.SortFunc(s.Rules, func(a, b Rule) int { return strings.Compare(a.ID, b.ID) })
 	return s, nil
+}
+
+// loadShipped adds the defence evals embedded in the binary. Their paths
+// carry evals.PathPrefix.
+func (s *Snapshot) loadShipped(probs *Problems) {
+	sets := []struct {
+		dir string
+		add func(string, []byte, bool, *Problems)
+	}{
+		{evals.AdversarialDir, s.addAdversarial},
+		{evals.VerifierDir, s.addVerifierLabel},
+		{evals.CategorizerDir, s.addCategorizerLabel},
+	}
+	for _, set := range sets {
+		walkYAML(evals.FS, set.dir, probs, func(p string, data []byte) {
+			set.add(evals.PathPrefix+p, data, true, probs)
+		})
+	}
+}
+
+func (s *Snapshot) addAdversarial(p string, data []byte, shipped bool, probs *Problems) {
+	var c schema.AdversarialCase
+	if err := schema.Decode(schema.DocAdversarial, data, &c); err != nil {
+		probs.add(p, err)
+		return
+	}
+	s.Adversarial = append(s.Adversarial, AdversarialCase{AdversarialCase: c, Path: p, Shipped: shipped})
+}
+
+func (s *Snapshot) addCategorizerLabel(p string, data []byte, shipped bool, probs *Problems) {
+	var l schema.CategorizerLabel
+	if err := schema.Decode(schema.DocCategorizerLabel, data, &l); err != nil {
+		probs.add(p, err)
+		return
+	}
+	s.CategorizerLabels = append(s.CategorizerLabels, CategorizerLabel{CategorizerLabel: l, Path: p, Shipped: shipped})
+}
+
+func (s *Snapshot) addVerifierLabel(p string, data []byte, shipped bool, probs *Problems) {
+	var l schema.VerifierLabel
+	if err := schema.Decode(schema.DocVerifierLabel, data, &l); err != nil {
+		probs.add(p, err)
+		return
+	}
+	s.VerifierLabels = append(s.VerifierLabels, VerifierLabel{VerifierLabel: l, Path: p, Shipped: shipped})
 }
 
 // crossCheck validates references between files. defined is every rule id
@@ -353,13 +403,20 @@ func (s *Snapshot) crossCheck(defined map[string]string, probs *Problems) {
 		}
 		denied[d.Repo] = true
 	}
-	labelIDs := map[string]bool{}
-	for _, l := range s.VerifierLabels {
-		if labelIDs[l.ID] {
-			probs.add(l.Path, fmt.Errorf("%w: verifier label id %s already used", ErrDuplicateID, l.ID))
+	shippedIDs := map[string]string{}
+	for _, r := range s.Presets[evals.Preset] {
+		shippedIDs[r.ID] = r.Path
+	}
+	ruleIDs := func(shipped bool) map[string]string {
+		if shipped {
+			return shippedIDs
 		}
-		labelIDs[l.ID] = true
-		if _, ok := ids[l.Candidate.Rule]; !ok {
+		return ids
+	}
+	labelIDs := newIDSet("verifier label")
+	for _, l := range s.VerifierLabels {
+		labelIDs.add(l.Path, l.ID, l.Shipped, s, probs)
+		if _, ok := ruleIDs(l.Shipped)[l.Candidate.Rule]; !ok {
 			probs.add(l.Path, fmt.Errorf("%w: label names unknown rule %s", ErrUnknownRule, l.Candidate.Rule))
 		}
 		if l.Candidate.EndLine < l.Candidate.StartLine {
@@ -382,24 +439,45 @@ func (s *Snapshot) crossCheck(defined map[string]string, probs *Problems) {
 			}
 		}
 	}
-	catIDs := map[string]bool{}
+	catIDs := newIDSet("categorizer label")
 	for _, l := range s.CategorizerLabels {
-		if catIDs[l.ID] {
-			probs.add(l.Path, fmt.Errorf("%w: categorizer label id %s already used", ErrDuplicateID, l.ID))
-		}
-		catIDs[l.ID] = true
+		catIDs.add(l.Path, l.ID, l.Shipped, s, probs)
 	}
-	caseIDs := map[string]bool{}
+	caseIDs := newIDSet("adversarial case")
 	for _, c := range s.Adversarial {
-		if caseIDs[c.ID] {
-			probs.add(c.Path, fmt.Errorf("%w: adversarial case id %s already used", ErrDuplicateID, c.ID))
-		}
-		caseIDs[c.ID] = true
+		caseIDs.add(c.Path, c.ID, c.Shipped, s, probs)
 		for _, id := range c.Rules {
-			if _, ok := ids[id]; !ok {
+			if _, ok := ruleIDs(c.Shipped)[id]; !ok {
 				probs.add(c.Path, fmt.Errorf("%w: case names unknown rule %s", ErrUnknownRule, id))
 			}
 		}
+	}
+}
+
+// idSet finds duplicate eval ids. An id used twice in one source (shipped
+// or the config repo) is an error; a config entry reusing a shipped id is
+// a warning, and both run.
+type idSet struct {
+	kind    string
+	shipped map[string]bool
+	local   map[string]bool
+}
+
+func newIDSet(kind string) *idSet {
+	return &idSet{kind: kind, shipped: map[string]bool{}, local: map[string]bool{}}
+}
+
+func (ids *idSet) add(p, id string, shipped bool, s *Snapshot, probs *Problems) {
+	seen, other := ids.local, ids.shipped
+	if shipped {
+		seen, other = ids.shipped, ids.local
+	}
+	if seen[id] {
+		probs.add(p, fmt.Errorf("%w: %s id %s already used", ErrDuplicateID, ids.kind, id))
+	}
+	seen[id] = true
+	if other[id] && !shipped {
+		s.Warnings = append(s.Warnings, Problem{Path: p, Err: fmt.Errorf("%w: %s id %s is also a shipped %s; both run", ErrDuplicateID, ids.kind, id, ids.kind)})
 	}
 }
 

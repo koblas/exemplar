@@ -26,7 +26,7 @@ fixture:
         	return rows.Close()
         }
 candidate:
-  rule: propagate-context
+  rule: exemplar.propagate-context
   path: orders.go
   start_line: 9
   end_line: 9

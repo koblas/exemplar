@@ -30,7 +30,7 @@ fixture:
         	return resp.Body.Close()
         }
 candidate:
-  rule: propagate-context
+  rule: exemplar.propagate-context
   path: prices.go
   start_line: 13
   end_line: 13

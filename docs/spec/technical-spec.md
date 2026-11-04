@@ -1514,6 +1514,7 @@ Cases reference code by `repo@sha:path#Lstart-Lend` (plus `patch` for synthetic 
 - the organization's global settings, with `auto_approve: true`;
 - a repository config with `shadow: false` and `auto_approve.enabled: true`, overridable per case with an inline `repo_config` when a case needs one;
 - the policy inputs a synthetic workspace cannot supply set so they pass unless the case sets them: `auto_approve.paths: ["**"]`, `unowned_paths: allow`, an author who meets the author policy, size limits above the case, verifier calibration on, branch rules present, merge-safety history passing;
+- a bug lane when `global.yaml` enables no class: every allowlisted class that needs no search references, since auto-approve requires the bug lane at full coverage and without one no case could approve;
 - everything a review computes from the diff runs for real: coverage, unreviewed files, the bug lane, findings and the model-derived Stage 2 categorization and review confidence, since those are what an injection attacks;
 - no eligibility check: `engine.Prepare` accepts the profile only for a workspace `synth.Build` made, never for a clone URL.
 

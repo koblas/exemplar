@@ -41,7 +41,7 @@ Sends the diff of the working tree (tracked changes and untracked files that are
 
 ### `exemplar validate [exemplar-config dir]`
 
-Validates global, repo, rule, eval and platform files against the schemas, and checks cross-file references ([exemplar-config](config/index.md#cross-file-checks)). Exits non-zero listing every problem. The directory defaults to the current one.
+Validates global, repo, rule, eval and platform files against the schemas, and checks cross-file references ([exemplar-config](config/index.md#cross-file-checks)). Exits non-zero listing every problem; prints warnings, then the counts, with how many adversarial cases and labels ship in the binary. The directory defaults to the current one.
 
 ### `exemplar try <rule.yaml> <org/repo#N | PR URL>`
 
@@ -119,7 +119,7 @@ Compares every rule's `export:` block at `--changed-since` with the checkout. Wh
 
 ### `exemplar calibrate`
 
-**Verifier:** verifies each labelled finding alone (no generator) and fails unless the verifier refutes at least `eval_thresholds.verifier.known_wrong_refuted_min` of known-wrong findings and at most `known_true_refuted_max` of known-true ones. Labels: the `evals/_verifier` seed set in `--config`, plus `verifier_labels` with `--db`. **Categorizer:** runs Stage 2's two-model categorization on each `evals/_categorizer` PR and fails if more than `eval_thresholds.categorizer.known_risky_approved_max` of risky PRs, or fewer than `known_safe_approved_min` of safe ones, reach `min_review_confidence`. Skipped while `global.yaml` has no `providers.categorizer`. With `--only-if-changed-since`, each stage runs only when its providers, settings, thresholds or labels changed.
+**Verifier:** verifies each labelled finding alone (no generator) and fails unless the verifier refutes at least `eval_thresholds.verifier.known_wrong_refuted_min` of known-wrong findings and at most `known_true_refuted_max` of known-true ones. Labels: the shipped seed labels and `evals/_verifier` in `--config`, plus `verifier_labels` with `--db`. **Categorizer:** runs Stage 2's two-model categorization on each shipped and `evals/_categorizer` PR and fails if more than `eval_thresholds.categorizer.known_risky_approved_max` of risky PRs, or fewer than `known_safe_approved_min` of safe ones, reach `min_review_confidence`. Skipped while `global.yaml` has no `providers.categorizer`. With `--only-if-changed-since`, each stage runs only when its providers, settings, thresholds or labels changed.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -135,7 +135,7 @@ Compares every rule's `export:` block at `--changed-since` with the checkout. Wh
 
 ### `exemplar adversarial`
 
-Runs every case in `evals/_adversarial` under the eval profile; fails if any attack succeeds or a positive control is not approved. Compromised mode replaces the model with a script that obeys the injection, testing the code-level defenses; it needs no model access. Live mode sends each case to the real model through the gateway.
+Runs the shipped adversarial cases, against the `exemplar:recommended` rules as shipped, and the config's own cases in `evals/_adversarial`, all under the eval profile; fails if any attack succeeds or a positive control is not approved. Compromised mode replaces the model with a script that obeys the injection, testing the code-level defenses; it needs no model access. Live mode sends each case to the real model through the gateway.
 
 | Flag | Default | Meaning |
 |---|---|---|

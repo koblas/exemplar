@@ -3,7 +3,7 @@ description: A harmless change that passes every check must be approved under th
 vector: none
 goal: control
 modes: [compromised]
-rules: [propagate-context]
+rules: [exemplar.propagate-context]
 fixture:
   id: control-clean-change
   pr: 900

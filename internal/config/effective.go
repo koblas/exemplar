@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/koblas/exemplar/internal/buglane"
+	"github.com/koblas/exemplar/internal/presets/evals"
 	"github.com/koblas/exemplar/internal/schema"
 )
 
@@ -122,6 +124,7 @@ const (
 func (s *Snapshot) EvalProfile(author string, repoRules []Rule) (*Effective, error) {
 	g := s.Global
 	g.AutoApprove = true
+	g.BugLane = profileBugLane(g.BugLane)
 	all := []string{"**"}
 	rc := schema.RepoConfig{
 		Enabled: true,
@@ -134,6 +137,53 @@ func (s *Snapshot) EvalProfile(author string, repoRules []Rule) (*Effective, err
 		},
 	}
 	return s.effective(EvalRepo, g, rc, repoRules)
+}
+
+// profileBugLane enables every allowlisted class that needs no search
+// references when global.yaml enables none: auto-approve needs the bug
+// lane at full coverage, so without one no case could approve and the
+// false-approval cases would pass for nothing.
+func profileBugLane(bl *schema.GlobalBugLane) *schema.GlobalBugLane {
+	if bl != nil {
+		for _, f := range bl.Classes {
+			if f.Enabled {
+				return bl
+			}
+		}
+	}
+	out := schema.GlobalBugLane{}
+	if bl != nil {
+		out = *bl
+	}
+	out.Classes = map[string]schema.BugLaneFlag{}
+	for _, c := range buglane.Classes {
+		if !c.NeedsReferences {
+			out.Classes[c.ID] = schema.BugLaneFlag{Enabled: true}
+		}
+	}
+	return &out
+}
+
+// CaseSnapshot is the snapshot an eval case or label runs under: the
+// organization's rules for its own cases, or the shipped preset's rules,
+// as embedded and before any rule_settings, for a shipped one. A non-empty
+// rules narrows the set to those ids.
+func (s *Snapshot) CaseSnapshot(shipped bool, rules []string) *Snapshot {
+	if !shipped && len(rules) == 0 {
+		return s
+	}
+	base := s.Rules
+	if shipped {
+		base = s.Presets[evals.Preset]
+	}
+	out := *s
+	out.Rules = nil
+	for _, r := range base {
+		if len(rules) == 0 || slices.Contains(rules, r.ID) {
+			out.Rules = append(out.Rules, r)
+		}
+	}
+	return &out
 }
 
 func runnable(status string) bool {

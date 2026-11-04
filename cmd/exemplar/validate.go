@@ -35,9 +35,22 @@ func newValidateCmd() *cobra.Command {
 			for _, w := range s.Warnings {
 				fmt.Fprintln(cmd.ErrOrStderr(), "warning: "+w.Error())
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "ok: %d rules, %d repos, %d eval sets, %d adversarial cases, %d verifier labels, %d categorizer labels\n",
-				len(s.Rules), len(s.Repos), len(s.Evals), len(s.Adversarial), len(s.VerifierLabels), len(s.CategorizerLabels))
+			adv, ver, cat := shippedCount(s.Adversarial, config.AdversarialCase.IsShipped),
+				shippedCount(s.VerifierLabels, config.VerifierLabel.IsShipped),
+				shippedCount(s.CategorizerLabels, config.CategorizerLabel.IsShipped)
+			fmt.Fprintf(cmd.OutOrStdout(), "ok: %d rules, %d repos, %d eval sets, %d adversarial cases (%d shipped), %d verifier labels (%d shipped), %d categorizer labels (%d shipped)\n",
+				len(s.Rules), len(s.Repos), len(s.Evals), len(s.Adversarial), adv, len(s.VerifierLabels), ver, len(s.CategorizerLabels), cat)
 			return nil
 		},
 	}
+}
+
+func shippedCount[T any](xs []T, shipped func(T) bool) int {
+	n := 0
+	for _, x := range xs {
+		if shipped(x) {
+			n++
+		}
+	}
+	return n
 }

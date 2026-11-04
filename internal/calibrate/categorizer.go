@@ -21,13 +21,17 @@ type PRLabel struct {
 	ID      string
 	Label   string // schema.LabelSafe | schema.LabelRisky
 	Fixture schema.Fixture
+	// Shipped marks a label embedded in the binary: it replays against the
+	// shipped preset's rules.
+	Shipped bool
 }
 
-// SeedPRLabels converts a snapshot's evals/_categorizer set.
+// SeedPRLabels converts a snapshot's categorizer seed set: the shipped
+// labels and the config's evals/_categorizer.
 func SeedPRLabels(snap *config.Snapshot) []PRLabel {
 	out := make([]PRLabel, 0, len(snap.CategorizerLabels))
 	for _, l := range snap.CategorizerLabels {
-		out = append(out, PRLabel{ID: l.ID, Label: l.Label, Fixture: l.Fixture})
+		out = append(out, PRLabel{ID: l.ID, Label: l.Label, Fixture: l.Fixture, Shipped: l.Shipped})
 	}
 	return out
 }
@@ -137,7 +141,7 @@ func (r *Runner) categorize(ctx context.Context, l PRLabel, dir string) (gates.S
 	if err != nil {
 		return gates.Stage2Categorization{}, 0, fmt.Errorf("check out fixture: %w", err)
 	}
-	p, err := engine.Prepare(ctx, ws, r.Snapshot, replay.PRInfo(l.Fixture, ws), r.Scanner)
+	p, err := engine.Prepare(ctx, ws, r.Snapshot.CaseSnapshot(l.Shipped, nil), replay.PRInfo(l.Fixture, ws), r.Scanner)
 	if err != nil {
 		return gates.Stage2Categorization{}, 0, fmt.Errorf("prepare: %w", err)
 	}
