@@ -6,6 +6,26 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.11.0](https://github.com/koblas/exemplar/compare/v0.10.0...v0.11.0) (2026-11-04)
+
+
+### Features
+
+* **config:** exemplar:recommended preset, extends, disabled_rules, rule_settings ([73b6674](https://github.com/koblas/exemplar/commit/73b667438d73a42d83a9d07f8e6b03f85f557027))
+* **config:** exemplar:recommended preset, extends, disabled_rules, rule_settings ([91f2a11](https://github.com/koblas/exemplar/commit/91f2a1155b9ee53505f0c064e0a352612a0894a8))
+* **config:** starter config extends exemplar:recommended and enrols no repo ([a7f3c3d](https://github.com/koblas/exemplar/commit/a7f3c3d00456b6033b82cd8a543fbcc606a0bf68))
+* **config:** starter config extends exemplar:recommended and enrols no repo ([b0788a8](https://github.com/koblas/exemplar/commit/b0788a8c4620835f322f6b00d82f055ad8a0ef9a))
+* **eval:** defence evals ship with the binary ([ff04758](https://github.com/koblas/exemplar/commit/ff047584713256ad565defee9caf7ea68b404806))
+* **eval:** defence evals ship with the binary ([43a8c08](https://github.com/koblas/exemplar/commit/43a8c0829f72202d2282fcdb5f35cffb3dacab26))
+* **learn:** preset rules get owners and change through rule_settings ([6e4c911](https://github.com/koblas/exemplar/commit/6e4c9115059bb2bad0ba98b62caac5d8e4a6ffc0))
+* **learn:** preset rules get owners and change through rule_settings ([f15f008](https://github.com/koblas/exemplar/commit/f15f0084772b81cb105726f7f0d127fcf46b9bf0))
+
+
+### Bug Fixes
+
+* **eval:** synthetic cases run under an eval profile ([39d75be](https://github.com/koblas/exemplar/commit/39d75be132d511a90be2c8f213e4c61ab9d7af8d))
+* **eval:** synthetic cases run under an eval profile ([3c0f73e](https://github.com/koblas/exemplar/commit/3c0f73ed0217ba257b4525dfcd96c36219ab0620))
+
 ## [0.10.0](https://github.com/koblas/exemplar/compare/v0.9.2...v0.10.0) (2026-11-02)
 
 
