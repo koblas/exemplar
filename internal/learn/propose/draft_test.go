@@ -72,7 +72,7 @@ func TestDraftLoadsIntoConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	fsys := fstest.MapFS{}
-	root := "../../../examples/exemplar-config"
+	root := "../../../testdata/exemplar-config"
 	err = filepath.WalkDir(root, func(p string, e os.DirEntry, err error) error {
 		if err != nil || e.IsDir() {
 			return err
@@ -192,7 +192,7 @@ func TestDraftWithEvalCases(t *testing.T) {
 func exampleTree(t *testing.T) fstest.MapFS {
 	t.Helper()
 	fsys := fstest.MapFS{}
-	root := "../../../examples/exemplar-config"
+	root := "../../../testdata/exemplar-config"
 	err := filepath.WalkDir(root, func(p string, e os.DirEntry, err error) error {
 		if err != nil || e.IsDir() {
 			return err

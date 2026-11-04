@@ -23,7 +23,7 @@ func TestEvaluateEvalMode(t *testing.T) {
 	ctx := t.Context()
 	const cfgRepo = "acme/exemplar-config"
 	cfgDir := filepath.Join(t.TempDir(), "cfg")
-	if err := os.CopyFS(cfgDir, os.DirFS("../../examples/exemplar-config")); err != nil {
+	if err := os.CopyFS(cfgDir, os.DirFS("../../testdata/exemplar-config")); err != nil {
 		t.Fatal(err)
 	}
 	git := func(args ...string) string {

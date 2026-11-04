@@ -36,7 +36,7 @@ func flagHTTPGet(task string, files []string) ([]string, string) {
 
 func newRunner(t *testing.T) *Runner {
 	t.Helper()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-replay")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cfg-replay")
 	if err != nil {
 		t.Fatal(err)
 	}

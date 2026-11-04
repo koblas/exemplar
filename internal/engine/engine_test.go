@@ -85,7 +85,7 @@ func goRulesOnly(snap *config.Snapshot) {
 
 func setup(t *testing.T, title, body string) env {
 	t.Helper()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -596,7 +596,7 @@ func TestCategorize(t *testing.T) {
 
 func TestPreparedCheckOwners(t *testing.T) {
 	t.Parallel()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1114,7 +1114,7 @@ func TestBugContractWithReferences(t *testing.T) {
 
 func TestPrepareForks(t *testing.T) {
 	t.Parallel()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1148,7 +1148,7 @@ func TestPrepareForks(t *testing.T) {
 
 func TestReviewCarry(t *testing.T) {
 	t.Parallel()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1350,7 +1350,7 @@ func TestReviewRoundCapped(t *testing.T) {
 
 func TestPrepareEvalProfile(t *testing.T) {
 	t.Parallel()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -62,7 +62,7 @@ func (g grepMatcher) Run(_ context.Context, dir, _, _ string, paths []string) ([
 
 func snapshot(t *testing.T) *config.Snapshot {
 	t.Helper()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "eval")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "eval")
 	if err != nil {
 		t.Fatal(err)
 	}

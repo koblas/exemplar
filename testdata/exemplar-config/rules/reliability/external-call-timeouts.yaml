@@ -1,0 +1,27 @@
+id: external-call-timeouts
+kind: exemplar
+category: Reliability
+severity: important
+owner: "@platform/exemplar"
+status: active
+review_by: 2027-10-01
+file_patterns: ["**/*.{go,py,js,jsx,mjs,cjs,ts,tsx,java,kt,kts,scala,rb,php,cs,rs,swift,c,cc,cpp,h,hpp,ex,exs,sh}", "!**/{test,tests,__tests__,spec,testdata,fixtures}/**", "!**/*{_test,.test,.spec,_spec}.*", "!**/test_*.py"]
+description: |
+  Every call that leaves the process (HTTP, RPC, database, cache, queue)
+  must be bounded in time, and retries must be bounded in count and spaced
+  out, so one slow dependency cannot hang or overload the service.
+preferred_approach: |
+  Set a timeout or deadline on the client or the call, pass the caller's
+  deadline or cancellation through, and retry only idempotent operations
+  with a capped number of attempts and exponential backoff with jitter.
+what_to_flag: |
+  - A new client or call to a network dependency with no timeout or
+    deadline, where the library's default is to wait forever.
+  - Retry loops with no attempt limit, no delay, or a fixed delay and no
+    jitter, or that retry non-idempotent writes.
+  Do not flag calls whose timeout is set on a shared client or wrapper
+  visible in the change, or one-off scripts and CLI setup.
+fix_policy: suggest
+export:
+  agents: true
+  summary: "Bound every network call with a timeout; cap retries and back off with jitter."

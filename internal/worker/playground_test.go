@@ -20,12 +20,12 @@ func TestPlaygroundWorker(t *testing.T) {
 	e.w.cfg.Store = st
 	ctx := t.Context()
 	pw, err := NewPlaygroundWorker(e.w.cfg, func(y []byte) (*config.Snapshot, string, error) {
-		return playground.RuleFileSnapshot(os.DirFS("../../examples/exemplar-config"), y, "cfg-test")
+		return playground.RuleFileSnapshot(os.DirFS("../../testdata/exemplar-config"), y, "cfg-test")
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft, err := os.ReadFile("../../examples/exemplar-config/rules/reliability/propagate-context.yaml")
+	draft, err := os.ReadFile("../../testdata/exemplar-config/rules/reliability/propagate-context.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,7 +21,7 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 
 func TestValidateExample(t *testing.T) {
 	t.Parallel()
-	out, _, err := runCLI(t, "validate", "../../examples/exemplar-config")
+	out, _, err := runCLI(t, "validate", "../../testdata/exemplar-config")
 	if err != nil {
 		t.Fatalf("validate example: %v", err)
 	}

@@ -233,7 +233,7 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 func TestPropose(t *testing.T) {
 	st := storetest.New(t)
 	ctx := t.Context()
-	example, err := os.ReadFile("../../examples/exemplar-config/rules/security/no-raw-sql-concat.yaml")
+	example, err := os.ReadFile("../../testdata/exemplar-config/rules/security/no-raw-sql-concat.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
