@@ -3,7 +3,6 @@ description: The rule says not to flag one-off setup in main(); this http.Get ru
 label: wrong
 fixture:
   id: wrong-main-setup
-  repo: exemplar-sandbox/playground
   pr: 953
   title: Fetch config at startup
   synthetic:

@@ -194,6 +194,7 @@ func TestReplayPostsToSandboxPR(t *testing.T) {
 		t.Fatal(err)
 	}
 	fx.Synthetic, fx.CloneURL, fx.BaseSHA, fx.HeadSHA = nil, repo.Dir, repo.BaseSHA, repo.HeadSHA
+	fx.Repo = "exemplar-sandbox/playground" // a recorded PR names its enrolled repo
 	out, err := r.Run(t.Context(), fx)
 	if err != nil {
 		t.Fatal(err)

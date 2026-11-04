@@ -1,7 +1,6 @@
 # Synthetic recorded PR with nothing to flag: a README change and a small,
 # correct Go change. A good review posts nothing.
 id: clean-docs
-repo: exemplar-sandbox/playground
 pr: 102
 title: "docs: describe local setup"
 body: Documentation only, plus a clearer error message.

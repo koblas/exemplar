@@ -188,7 +188,7 @@ func (e *Evaluator) Rule(ctx context.Context, rule config.Rule, cases []Case) (R
 	for i, c := range cases {
 		o := Outcome{Case: c.Name, Synthetic: c.Synthetic, Expected: len(c.Expect) > 0}
 		if !e.Eligible(c.Repo) {
-			o.Result, o.Detail = "unavailable", "repo is not eligible"
+			o.Result, o.Detail = ResultIneligible, "repo is not eligible"
 			rep.Outcomes = append(rep.Outcomes, o)
 			continue
 		}
@@ -196,6 +196,10 @@ func (e *Evaluator) Rule(ctx context.Context, rule config.Rule, cases []Case) (R
 		rep.CostUSD += cost
 		var un unavailable
 		switch {
+		case errors.Is(err, engine.ErrIneligible):
+			o.Result, o.Detail = ResultIneligible, "repo is not eligible"
+			rep.Outcomes = append(rep.Outcomes, o)
+			continue
 		case errors.As(err, &un):
 			o.Result, o.Detail = "unavailable", un.reason
 			rep.Outcomes = append(rep.Outcomes, o)
@@ -231,6 +235,11 @@ func (e *Evaluator) Rule(ctx context.Context, rule config.Rule, cases []Case) (R
 // Gate applies eval_thresholds to a report.
 func Gate(rep *Report, t schema.EvalThresholds) {
 	rep.Reasons = nil
+	// A recorded case on a repo that is not eligible is a failure, never a
+	// skip: the rule would otherwise pass on the cases that remain.
+	if n := countResult(rep.Outcomes, ResultIneligible); n > 0 {
+		rep.Reasons = append(rep.Reasons, fmt.Sprintf("%d %s on a repo that is not eligible", n, plural(n, "case", "cases")))
+	}
 	if rep.All.Cases < t.MinCases {
 		rep.Reasons = append(rep.Reasons, fmt.Sprintf("%d scored cases, below the minimum %d", rep.All.Cases, t.MinCases))
 	}
@@ -241,6 +250,20 @@ func Gate(rep *Report, t schema.EvalThresholds) {
 		rep.Reasons = append(rep.Reasons, fmt.Sprintf("recall %.2f below %.2f", rep.All.Recall, t.Recall))
 	}
 	rep.Pass = len(rep.Reasons) == 0
+}
+
+// ResultIneligible is a case whose repo may not be reviewed. Gate fails
+// the report on one.
+const ResultIneligible = "ineligible"
+
+func countResult(os []Outcome, result string) int {
+	n := 0
+	for _, o := range os {
+		if o.Result == result {
+			n++
+		}
+	}
+	return n
 }
 
 type unavailable struct{ reason string }
@@ -308,9 +331,6 @@ func (e *Evaluator) review(ctx context.Context, rule config.Rule, c Case, files 
 	}
 	pr := engine.PRInfo{Repo: c.Repo, Title: "eval: " + c.Name, BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA}
 	p, err := engine.Prepare(ctx, ws, e.Snapshot, pr, e.Scanner)
-	if errors.Is(err, engine.ErrIneligible) {
-		return nil, 0, unavailable{"repo is not eligible"}
-	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("prepare: %w", err)
 	}

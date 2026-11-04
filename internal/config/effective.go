@@ -73,11 +73,14 @@ func (s *Snapshot) Effective(repo string, repoRules []Rule) (*Effective, error) 
 	if err := s.CheckEligible(repo); err != nil {
 		return nil, err
 	}
-	rc := s.Repos[repo]
+	return s.effective(repo, s.Global, s.Repos[repo], repoRules)
+}
+
+func (s *Snapshot) effective(repo string, g schema.GlobalConfig, rc schema.RepoConfig, repoRules []Rule) (*Effective, error) {
 	e := &Effective{
 		ConfigVersion: s.Version,
 		Repo:          repo,
-		Global:        s.Global,
+		Global:        g,
 		RepoConfig:    rc,
 	}
 	seen := map[string]bool{}
@@ -99,6 +102,38 @@ func (s *Snapshot) Effective(repo string, repoRules []Rule) (*Effective, error) 
 		seen[r.ID] = true
 	}
 	return e, nil
+}
+
+// The eval profile's fixed repository and owner. A synthetic case reads
+// no real repository, so neither names one; the repo matches no
+// compliance or config-repo name.
+const (
+	EvalRepo  = "exemplar-eval/synthetic"
+	EvalOwner = "@exemplar-eval/owners"
+)
+
+// EvalProfile is the configuration a synthetic eval case runs with
+// (spec §8.8): the organization's settings and rules with auto_approve on,
+// and a repo config that posts and auto-approves every path for author.
+// Policy inputs a synthetic workspace cannot supply are set to pass, so a
+// case is approved or not on what the review computes. Eligibility is not
+// checked: no repository is read. Callers must only use it for a
+// workspace built from the case.
+func (s *Snapshot) EvalProfile(author string, repoRules []Rule) (*Effective, error) {
+	g := s.Global
+	g.AutoApprove = true
+	all := []string{"**"}
+	rc := schema.RepoConfig{
+		Enabled: true,
+		AutoApprove: &schema.RepoAutoApprove{
+			Enabled:          true,
+			Paths:            all,
+			AllowedAuthors:   []string{author},
+			ApprovableOwners: []string{EvalOwner},
+			BotAuthors:       []schema.BotAuthor{{Identity: author, Paths: all}},
+		},
+	}
+	return s.effective(EvalRepo, g, rc, repoRules)
 }
 
 func runnable(status string) bool {

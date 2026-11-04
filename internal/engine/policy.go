@@ -58,3 +58,20 @@ func (p *Prepared) policyInput(ctx context.Context, opt Options) gates.PolicyInp
 	}
 	return in
 }
+
+// profileOptions supplies the eval profile's approval inputs a synthetic
+// case has no source for, where the caller set none: a passed verifier
+// calibration, branch rules a bot approval satisfies, and a merge-safety
+// score of 1 (no path history).
+func profileOptions(opt Options) Options {
+	opt.VerifierCalibrated = true
+	if opt.BranchRules == nil {
+		opt.BranchRules = func(context.Context) (gates.BranchRules, error) {
+			return gates.BranchRules{RequiredApprovals: 1, DismissStaleReviews: true}, nil
+		}
+	}
+	if opt.MergeSafety == nil {
+		opt.MergeSafety = &gates.MergeSafetyResult{Score: 1}
+	}
+	return opt
+}

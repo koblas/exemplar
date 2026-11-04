@@ -58,7 +58,7 @@ Loads exemplar-config from `--config` with the rule file added (replacing a rule
 
 ### `exemplar eval`
 
-Runs each selected rule over its `evals/<rule>/cases.yaml`: compiled rules on the engine, exemplar rules through the lane and verifier (`caller=eval`). Reports precision, recall and F1 for historical and synthetic cases and fails when any rule is below `global.yaml` `eval_thresholds`. With `--changed-since`, evaluates the rules a config PR changes, with eligibility taken from that base revision. Case files are read with the token in `EXEMPLAR_EVAL_TOKEN` (read-only).
+Runs each selected rule over its `evals/<rule>/cases.yaml`: compiled rules on the engine, exemplar rules through the lane and verifier (`caller=eval`). Reports precision, recall and F1 for historical and synthetic cases and fails when any rule is below `global.yaml` `eval_thresholds`. With `--changed-since`, evaluates the rules a config PR changes, with eligibility taken from that base revision. A case whose repo is not eligible is reported `ineligible` and fails the rule. Case files are read with the token in `EXEMPLAR_EVAL_TOKEN` (read-only).
 
 With `--remote`, the evaluation runs in exemplar-worker instead: the CLI sends the config PR's merge-base with `--changed-since` and its HEAD (both pushed) to exemplar-api's `/v1/evaluate`, authenticated with `EXEMPLAR_TOKEN` (an Auth0 service token in CI, or `exemplar login`) at `EXEMPLAR_API_URL`, so CI holds no model or GitHub credentials.
 
@@ -135,7 +135,7 @@ Compares every rule's `export:` block at `--changed-since` with the checkout. Wh
 
 ### `exemplar adversarial`
 
-Runs every case in `evals/_adversarial`; fails if any attack succeeds. Compromised mode replaces the model with a script that obeys the injection, testing the code-level defenses; it needs no model access. Live mode sends each case to the real model through the gateway.
+Runs every case in `evals/_adversarial` under the eval profile; fails if any attack succeeds or a positive control is not approved. Compromised mode replaces the model with a script that obeys the injection, testing the code-level defenses; it needs no model access. Live mode sends each case to the real model through the gateway.
 
 | Flag | Default | Meaning |
 |---|---|---|

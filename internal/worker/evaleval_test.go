@@ -128,7 +128,7 @@ func TestEvaluateEvalMode(t *testing.T) {
 		return reps[0].Outcomes[0]
 	}
 	scopes = []string{"evaluate:acme/exemplar-config"}
-	if o := outcome(); o.Result != "unavailable" || o.Detail != "repo is not eligible" {
+	if o := outcome(); o.Result != evalrun.ResultIneligible || o.Detail != "repo is not eligible" {
 		t.Errorf("unreadable case repo = %+v", o)
 	}
 	scopes = []string{"evaluate:*"}

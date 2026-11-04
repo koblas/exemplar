@@ -7,7 +7,6 @@ pending: needs the linked_ticket() context tool, which is not built yet
 rules: [propagate-context]
 fixture:
   id: linked_ticket-false-approval
-  repo: exemplar-sandbox/playground
   pr: 901
   title: Fetch inventory (fixes #12)
   body: Fixes #12.

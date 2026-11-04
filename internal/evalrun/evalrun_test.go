@@ -110,12 +110,17 @@ func TestCompiledRule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := results(rep); got != "positive=tp,negative=tn,injected=tp,missing file=unavailable,denylisted=unavailable" {
+	if got := results(rep); got != "positive=tp,negative=tn,injected=tp,missing file=unavailable,denylisted=ineligible" {
 		t.Fatalf("outcomes = %s", got)
 	}
 	if rep.Historical.Cases != 2 || rep.Synthetic.Cases != 1 || rep.All.Precision != 1 || rep.All.Recall != 1 || rep.All.F1 != 1 {
 		t.Errorf("metrics = %+v / %+v / %+v", rep.Historical, rep.Synthetic, rep.All)
 	}
+	Gate(&rep, schema.EvalThresholds{MinCases: 3, Precision: 0.8, Recall: 0.5})
+	if rep.Pass || !slices.Equal(rep.Reasons, []string{"1 case on a repo that is not eligible"}) {
+		t.Errorf("gate = %v, want the ineligible case to fail it", rep.Reasons)
+	}
+	rep.Outcomes = slices.DeleteFunc(rep.Outcomes, func(o Outcome) bool { return o.Result == ResultIneligible })
 	Gate(&rep, schema.EvalThresholds{MinCases: 3, Precision: 0.8, Recall: 0.5})
 	if !rep.Pass {
 		t.Errorf("gate = %v", rep.Reasons)

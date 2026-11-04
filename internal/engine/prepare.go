@@ -39,6 +39,11 @@ type PRInfo struct {
 	CommitMessages []string
 	// Labels are the PR's labels (agent marks).
 	Labels []string
+
+	// Synthetic reviews a workspace built from an eval case under the
+	// eval profile (config.Snapshot.EvalProfile) instead of Repo's config.
+	// Prepare refuses it for any workspace not from CheckoutSynthetic.
+	Synthetic bool
 }
 
 // Exclusion is a path that is not reviewed, with the reason.
@@ -90,10 +95,24 @@ type Prepared struct {
 	// Incomplete is set when an input could not be redacted; such a run
 	// sends nothing to a model and posts nothing.
 	Incomplete string
+
+	// profile is set for a synthetic case under the eval profile; Review
+	// then supplies the approval inputs a synthetic case cannot.
+	profile bool
 }
 
 // ErrIneligible wraps every reason a PR is not reviewed at all.
 var ErrIneligible = errors.New("engine: not eligible for review")
+
+// ErrNotSyntheticWorkspace is a PRInfo.Synthetic review of a workspace not
+// built from an eval case.
+var ErrNotSyntheticWorkspace = errors.New("engine: the eval profile needs a workspace from CheckoutSynthetic")
+
+// Eval profile defaults for a synthetic case that names no author.
+const (
+	evalAuthor     = "eval-author"
+	evalAuthorType = "User"
+)
 
 const maxFileBytes = 1 << 20
 
@@ -104,11 +123,22 @@ func Prepare(ctx context.Context, ws *Workspace, snap *config.Snapshot, pr PRInf
 	if err != nil {
 		return nil, fmt.Errorf("engine: read base config: %w", err)
 	}
+	if pr.Synthetic {
+		if !ws.synthetic {
+			return nil, ErrNotSyntheticWorkspace
+		}
+		pr = profilePR(pr)
+	}
 	repoRules, err := config.LoadRepoRules(base, pr.Repo)
 	if err != nil {
 		return nil, fmt.Errorf("engine: repo rules: %w", err)
 	}
-	eff, err := snap.Effective(pr.Repo, repoRules)
+	var eff *config.Effective
+	if pr.Synthetic {
+		eff, err = snap.EvalProfile(pr.Author, repoRules)
+	} else {
+		eff, err = snap.Effective(pr.Repo, repoRules)
+	}
 	if err != nil {
 		if errors.Is(err, config.ErrNotOptedIn) || errors.Is(err, config.ErrDenylisted) ||
 			errors.Is(err, config.ErrRepoDisabled) || errors.Is(err, config.ErrDisabledGlobally) {
@@ -129,7 +159,11 @@ func Prepare(ctx context.Context, ws *Workspace, snap *config.Snapshot, pr PRInf
 	if err != nil {
 		return nil, err
 	}
-	p := &Prepared{PR: pr, Effective: eff, Diff: diff, Workspace: ws, Hunks: map[string]string{}, CodeOwners: baseCodeOwners(base)}
+	p := &Prepared{PR: pr, Effective: eff, Diff: diff, Workspace: ws, Hunks: map[string]string{}, CodeOwners: baseCodeOwners(base), profile: pr.Synthetic}
+	if p.profile && !hasCodeOwners(base) {
+		// No CODEOWNERS in the case: every path is the profile owner's.
+		p.CodeOwners = codeowners.Parse("* " + config.EvalOwner)
+	}
 
 	rules := exclude.Load(fileText(base, ".gitattributes"), fileText(base, ".exemplarignore"))
 	p.Exclusions = rules
@@ -176,6 +210,23 @@ func Prepare(ctx context.Context, ws *Workspace, snap *config.Snapshot, pr PRInf
 
 	p.scope()
 	return p, nil
+}
+
+// profilePR fills the PR facts a synthetic case cannot have: the profile
+// repo, an author (the case's, or a default), and a head in the base repo.
+func profilePR(pr PRInfo) PRInfo {
+	pr.Repo, pr.HeadRepo = config.EvalRepo, config.EvalRepo
+	if pr.Author == "" {
+		pr.Author = evalAuthor
+	}
+	if pr.AuthorType == "" {
+		pr.AuthorType = evalAuthorType
+	}
+	if len(pr.CommitMessages) == 0 {
+		pr.CommitMessages = []string{"head"}
+	}
+	pr.Draft = false
+	return pr
 }
 
 func redactField(s *redact.Scanner, text string) (string, bool) {

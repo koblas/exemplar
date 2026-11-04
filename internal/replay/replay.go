@@ -150,24 +150,11 @@ func (r *Runner) Run(ctx context.Context, fx schema.Fixture) (*Outcome, error) {
 	if err := os.RemoveAll(dir); err != nil {
 		return nil, fmt.Errorf("clear work dir: %w", err)
 	}
-	cloneURL, base, head, err := Materialize(ctx, fx, filepath.Join(dir, "source"))
+	ws, err := Checkout(ctx, fx, dir, r.CloneTokenFor)
 	if err != nil {
 		return nil, err
 	}
-	token := ""
-	if fx.Synthetic == nil && r.CloneTokenFor != nil {
-		if token, err = r.CloneTokenFor(ctx, fx.Repo); err != nil {
-			return nil, err
-		}
-	}
-	ws, err := engine.Checkout(ctx, filepath.Join(dir, "worktree"), engine.CheckoutOptions{
-		CloneURL: cloneURL, BaseSHA: base, HeadSHA: head, Token: token,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("check out: %w", err)
-	}
-	pr := engine.PRInfo{Repo: fx.Repo, Number: fx.PR, Title: fx.Title, Body: fx.Body, Author: fx.Author, Draft: fx.Draft, BaseSHA: base, HeadSHA: head}
-	p, err := engine.Prepare(ctx, ws, r.Snapshot, pr, r.Scanner)
+	p, err := engine.Prepare(ctx, ws, r.Snapshot, PRInfo(fx, ws), r.Scanner)
 	if errors.Is(err, engine.ErrIneligible) {
 		out.Skipped = err.Error()
 		return out, nil
@@ -227,21 +214,46 @@ func (r *Runner) Run(ctx context.Context, fx schema.Fixture) (*Outcome, error) {
 	return out, nil
 }
 
-// Materialize prepares fx's repository: synthetic fixtures are built in
-// dir; recorded ones return their clone URL and commits.
-func Materialize(ctx context.Context, fx schema.Fixture, dir string) (string, string, string, error) {
+// Checkout prepares fx's workspace under dir. A synthetic fixture is built
+// there and checked out for the eval profile; a recorded one is fetched
+// from its clone URL with the token that token returns (nil: none).
+func Checkout(ctx context.Context, fx schema.Fixture, dir string, token func(ctx context.Context, repo string) (string, error)) (*engine.Workspace, error) {
 	if fx.Synthetic != nil {
-		repo, err := synth.Build(ctx, dir, fx.Synthetic.Base, fx.Synthetic.Head, fx.Synthetic.Deleted)
+		repo, err := synth.Build(ctx, filepath.Join(dir, "source"), fx.Synthetic.Base, fx.Synthetic.Head, fx.Synthetic.Deleted)
 		if err != nil {
-			return "", "", "", fmt.Errorf("build synthetic repo: %w", err)
+			return nil, fmt.Errorf("build synthetic repo: %w", err)
 		}
-		return repo.Dir, repo.BaseSHA, repo.HeadSHA, nil
+		ws, err := engine.CheckoutSynthetic(ctx, filepath.Join(dir, "wt"), repo)
+		if err != nil {
+			return nil, fmt.Errorf("check out: %w", err)
+		}
+		return ws, nil
 	}
 	url := fx.CloneURL
 	if url == "" {
 		url = "https://github.com/" + fx.Repo + ".git"
 	}
-	return url, fx.BaseSHA, fx.HeadSHA, nil
+	tok := ""
+	if token != nil {
+		var err error
+		if tok, err = token(ctx, fx.Repo); err != nil {
+			return nil, err
+		}
+	}
+	ws, err := engine.Checkout(ctx, filepath.Join(dir, "wt"), engine.CheckoutOptions{CloneURL: url, BaseSHA: fx.BaseSHA, HeadSHA: fx.HeadSHA, Token: tok})
+	if err != nil {
+		return nil, fmt.Errorf("check out: %w", err)
+	}
+	return ws, nil
+}
+
+// PRInfo is fx as the PR Prepare reviews: a synthetic fixture runs under
+// the eval profile, whatever repo it names.
+func PRInfo(fx schema.Fixture, ws *engine.Workspace) engine.PRInfo {
+	return engine.PRInfo{
+		Repo: fx.Repo, Number: fx.PR, Title: fx.Title, Body: fx.Body, Author: fx.Author, Draft: fx.Draft,
+		BaseSHA: ws.BaseSHA, HeadSHA: ws.HeadSHA, Synthetic: fx.Synthetic != nil,
+	}
 }
 
 func fill(out *Outcome, reviewID int64, res *engine.Result) {

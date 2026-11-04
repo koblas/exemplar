@@ -32,6 +32,9 @@ func newValidateCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			for _, w := range s.Warnings {
+				fmt.Fprintln(cmd.ErrOrStderr(), "warning: "+w.Error())
+			}
 			fmt.Fprintf(cmd.OutOrStdout(), "ok: %d rules, %d repos, %d eval sets, %d adversarial cases, %d verifier labels, %d categorizer labels\n",
 				len(s.Rules), len(s.Repos), len(s.Evals), len(s.Adversarial), len(s.VerifierLabels), len(s.CategorizerLabels))
 			return nil

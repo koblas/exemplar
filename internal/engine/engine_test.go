@@ -1347,3 +1347,100 @@ func TestReviewRoundCapped(t *testing.T) {
 		t.Fatalf("secret = %+v", sec)
 	}
 }
+
+func TestPrepareEvalProfile(t *testing.T) {
+	t.Parallel()
+	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No repo enrolled: the profile does not consult eligibility.
+	snap.Repos = map[string]schema.RepoConfig{}
+	sc, err := redact.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := func(t *testing.T, base map[string]string) *synth.Repo {
+		t.Helper()
+		repo, err := synth.Build(t.Context(), filepath.Join(t.TempDir(), "src"), base, map[string]string{"main.go": "package main\n\nfunc x() {}\n"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return repo
+	}
+	plain := map[string]string{"main.go": "package main\n"}
+	tests := []struct {
+		name      string
+		base      map[string]string
+		synthetic bool // workspace from CheckoutSynthetic
+		pr        PRInfo
+		wantErr   error
+		check     func(t *testing.T, p *Prepared)
+	}{
+		{name: "profile", base: plain, synthetic: true, pr: PRInfo{Synthetic: true}, check: func(t *testing.T, p *Prepared) {
+			t.Helper()
+			e := p.Effective
+			aa := e.RepoConfig.AutoApprove
+			if e.Repo != config.EvalRepo || !e.Global.AutoApprove || e.RepoConfig.Shadow || aa == nil || !aa.Enabled ||
+				!slices.Equal(aa.Paths, []string{"**"}) || !slices.Equal(aa.AllowedAuthors, []string{"eval-author"}) {
+				t.Errorf("effective = %+v, auto_approve %+v", e, aa)
+			}
+			if p.PR.HeadRepo != config.EvalRepo || p.PR.AuthorType != "User" || len(p.PR.CommitMessages) == 0 {
+				t.Errorf("pr = %+v", p.PR)
+			}
+			if own := p.CheckOwners(); !own.Pass {
+				t.Errorf("owners = %+v, want the profile owner on every path", own)
+			}
+			if snap.Global.AutoApprove {
+				t.Error("profile changed the snapshot")
+			}
+		}},
+		{name: "case author kept", base: plain, synthetic: true, pr: PRInfo{Synthetic: true, Author: "dev-c"}, check: func(t *testing.T, p *Prepared) {
+			t.Helper()
+			if p.PR.Author != "dev-c" || !slices.Equal(p.Effective.RepoConfig.AutoApprove.AllowedAuthors, []string{"dev-c"}) {
+				t.Errorf("author = %s, allowed %v", p.PR.Author, p.Effective.RepoConfig.AutoApprove.AllowedAuthors)
+			}
+		}},
+		{
+			name: "case CODEOWNERS checked for real", base: map[string]string{"main.go": "package main\n", "CODEOWNERS": "* @acme/core\n"},
+			synthetic: true, pr: PRInfo{Synthetic: true}, check: func(t *testing.T, p *Prepared) {
+				t.Helper()
+				if own := p.CheckOwners(); own.Pass {
+					t.Errorf("owners = %+v, want @acme/core not approvable", own)
+				}
+			},
+		},
+		{name: "cloned workspace refused", base: plain, pr: PRInfo{Synthetic: true}, wantErr: ErrNotSyntheticWorkspace},
+		{name: "not synthetic keeps eligibility", base: plain, synthetic: true, pr: PRInfo{Repo: sandboxRepo}, wantErr: ErrIneligible},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := build(t, tt.base)
+			dir := filepath.Join(t.TempDir(), "ws")
+			var ws *Workspace
+			var err error
+			if tt.synthetic {
+				ws, err = CheckoutSynthetic(t.Context(), dir, repo)
+			} else {
+				ws, err = Checkout(t.Context(), dir, CheckoutOptions{CloneURL: repo.Dir, BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			pr := tt.pr
+			pr.Number, pr.BaseSHA, pr.HeadSHA = 1, repo.BaseSHA, repo.HeadSHA
+			p, err := Prepare(t.Context(), ws, snap, pr, sc)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("Prepare = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, p)
+		})
+	}
+}

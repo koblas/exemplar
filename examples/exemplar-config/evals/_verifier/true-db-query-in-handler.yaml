@@ -3,7 +3,6 @@ description: A handler with a ctx runs db.Query instead of db.QueryContext.
 label: "true"
 fixture:
   id: true-db-query-in-handler
-  repo: exemplar-sandbox/playground
   pr: 951
   title: List orders
   synthetic:

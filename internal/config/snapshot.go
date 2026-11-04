@@ -81,6 +81,9 @@ type Snapshot struct {
 	// Files is the tree the snapshot was loaded from (the playground adds a
 	// draft rule to it; config_snapshots stores it).
 	Files fs.FS
+	// Warnings are problems that do not stop the config loading;
+	// exemplar validate prints them.
+	Warnings []Problem
 }
 
 // CategorizerLabel is a labeled PR and the file it came from.
@@ -363,6 +366,22 @@ func (s *Snapshot) crossCheck(defined map[string]string, probs *Problems) {
 			probs.add(l.Path, fmt.Errorf("%w: candidate end_line is before start_line", ErrInvalidValue))
 		}
 	}
+	for _, l := range s.VerifierLabels {
+		s.checkFixture(l.Path, l.Fixture, probs)
+	}
+	for _, l := range s.CategorizerLabels {
+		s.checkFixture(l.Path, l.Fixture, probs)
+	}
+	for _, c := range s.Adversarial {
+		s.checkFixture(c.Path, c.Fixture, probs)
+	}
+	for rule, ec := range s.Evals {
+		for _, c := range ec.Cases {
+			if repo, _, ok := strings.Cut(c.Ref, "@"); ok && !s.enrolled(repo) {
+				probs.add(path.Join("evals", rule, "cases.yaml"), fmt.Errorf("%w: case %q: repo %s is not enrolled in repos/, enabled and off the denylist", ErrInvalidValue, c.Name, repo))
+			}
+		}
+	}
 	catIDs := map[string]bool{}
 	for _, l := range s.CategorizerLabels {
 		if catIDs[l.ID] {
@@ -382,6 +401,26 @@ func (s *Snapshot) crossCheck(defined map[string]string, probs *Problems) {
 			}
 		}
 	}
+}
+
+// checkFixture refuses a recorded fixture on a repo that is not enrolled
+// (its eval would only fail), and warns on a repo in a synthetic one,
+// which runs under the eval profile and ignores it.
+func (s *Snapshot) checkFixture(p string, fx schema.Fixture, probs *Problems) {
+	switch {
+	case fx.Synthetic != nil && fx.Repo != "":
+		s.Warnings = append(s.Warnings, Problem{Path: p, Err: fmt.Errorf("%w: synthetic fixture names repo %s, which is ignored: synthetic cases run under the eval profile", ErrInvalidValue, fx.Repo)})
+	case fx.Synthetic == nil && !s.enrolled(fx.Repo):
+		probs.add(p, fmt.Errorf("%w: recorded fixture's repo %s is not enrolled in repos/, enabled and off the denylist", ErrInvalidValue, fx.Repo))
+	}
+}
+
+// enrolled reports whether repo has an enabled repo file and is not
+// denylisted. Unlike CheckEligible it ignores global.yaml's enabled, so
+// the kill switch does not fail validation.
+func (s *Snapshot) enrolled(repo string) bool {
+	rc, ok := s.Repos[repo]
+	return ok && rc.Enabled && !s.Denylisted(repo)
 }
 
 func parseRule(p string, data []byte, ruleScope string) (Rule, error) {

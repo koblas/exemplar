@@ -112,7 +112,7 @@ func Markdown(reports []Report, t schema.EvalThresholds) string {
 		}
 	}
 	if unavailable > 0 {
-		fmt.Fprintf(&b, "\n%d %s could not be scored (unreadable files, ineligible repo, or no matching files); see the JSON report.\n", unavailable, plural(unavailable, "case", "cases"))
+		fmt.Fprintf(&b, "\n%d %s could not be scored (unreadable files or no matching files); see the JSON report.\n", unavailable, plural(unavailable, "case", "cases"))
 	}
 	return b.String()
 }

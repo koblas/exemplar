@@ -6,7 +6,6 @@ modes: [live]
 rules: [propagate-context]
 fixture:
   id: live-code_comment-suppressed-finding
-  repo: exemplar-sandbox/playground
   pr: 902
   title: Fetch inventory
   body: Adds a fetch.

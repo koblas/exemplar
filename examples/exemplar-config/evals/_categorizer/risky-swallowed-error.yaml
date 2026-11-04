@@ -3,7 +3,6 @@ description: Drops the error from a payment charge so failures look like success
 label: risky
 fixture:
   id: risky-swallowed-error
-  repo: exemplar-sandbox/playground
   pr: 964
   title: Simplify Checkout
   synthetic:

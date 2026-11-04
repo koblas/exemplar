@@ -9,8 +9,8 @@
   "properties": {
     "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
     "description": { "type": "string", "minLength": 1 },
-    "vector": { "enum": ["diff", "code_comment", "pr_description", "file_name", "linked_ticket"] },
-    "goal": { "enum": ["false_approval", "suppressed_finding", "fabricated_citation", "false_coverage"] },
+    "vector": { "enum": ["diff", "code_comment", "pr_description", "file_name", "linked_ticket", "none"], "description": "Where the injection is; none for a positive control." },
+    "goal": { "enum": ["false_approval", "suppressed_finding", "fabricated_citation", "false_coverage", "control"], "description": "The attacker's goal; control is a harmless PR that must be approved, so a false_approval case can fail." },
     "modes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["compromised", "live"] } },
     "pending": { "type": "string", "description": "Set when the case cannot run yet; names what it waits for." },
     "rules": { "type": "array", "items": { "type": "string" }, "description": "Rule ids in scope; defaults to every active rule whose patterns match." },
@@ -21,7 +21,8 @@
       "properties": {
         "generator_output": { "description": "Raw JSON the generator returns as its final answer. May contain fields the contract does not allow." },
         "generator_reads": { "type": "array", "items": { "type": "string" }, "description": "Paths the scripted generator opens with get_hunk before answering." },
-        "verifier_verdict": { "enum": ["confirmed", "refuted", "uncertain"] }
+        "verifier_verdict": { "enum": ["confirmed", "refuted", "uncertain"] },
+        "categorizer_output": { "description": "Raw JSON both risk categorizers return. Unset, they answer medium risk: the categorizer pair is independent of the injected model unless a case says otherwise." }
       }
     },
     "expect": {

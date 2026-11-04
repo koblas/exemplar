@@ -186,6 +186,9 @@ func (e *Engine) Review(ctx context.Context, p *Prepared, opt Options) (*Result,
 		res.Stage1 = gates.EvaluateStage1(gates.Stage1Input{})
 		return res, nil
 	}
+	if p.profile {
+		opt = profileOptions(opt)
+	}
 	meta := CallMeta{Caller: opt.Caller, Repo: p.PR.Repo, ReviewID: opt.ReviewID}
 	e.pinSearch(ctx, p)
 	res.SearchOff = e.refs == nil

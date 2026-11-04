@@ -1,7 +1,6 @@
 # Synthetic recorded PR: a request handler starts an HTTP call that ignores
 # the caller's context. The human reviewer flagged the http.Get line.
 id: ctx-http-get
-repo: exemplar-sandbox/playground
 pr: 101
 title: Fetch inventory in the item handler
 body: Calls the inventory service when an item page is requested.

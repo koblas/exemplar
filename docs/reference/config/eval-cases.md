@@ -16,7 +16,7 @@ Unknown fields are rejected. Code is referenced by `repo@sha`, never copied. The
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string, non-empty | yes | The case name. |
-| `ref` | string, pattern `^[^/@\s]+/[^/@\s]+@[0-9a-f]{7,40}$` | yes | The commit the case runs against, as `owner/repo@sha`. |
+| `ref` | string, pattern `^[^/@\s]+/[^/@\s]+@[0-9a-f]{7,40}$` | yes | The commit the case runs against, as `owner/repo@sha`. `exemplar validate` rejects a repo with no enabled file under `repos/` or on the eligibility denylist; `exemplar eval` reports a case on a repo that is not eligible as `ineligible`, which fails the rule. |
 | `synthetic` | boolean | no | Whether the case applies a `patch` on top of `ref`. |
 | `patch` | string, non-empty | see constraints | The patch applied for a synthetic case. |
 | `paths` | array of non-empty string, up to 20, unique | no | Files the rule runs on. Defaults to the `expect` paths; negatives (cases that expect nothing) need it. |
