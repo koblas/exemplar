@@ -331,4 +331,4 @@ Hand the person to [Your first review](../../tutorials/first-review.md), which t
 | App created on GitHub but the pod restarted before the file was applied | The App's key lived only in that pod | Delete the App on GitHub, press **Start over** on the setup page, repeat step 7 |
 | Gateway pod not ready | A provider in `global.yaml` has no credentials | Gateway log names the variable; add the key to `exemplar-providers` |
 | A pod refuses to start naming `example-org` or `exemplar.example.invalid` | A placeholder left in `settings.yaml` | Fix the value and `kubectl apply -k quickstart/` again |
-| Config repo's CI is red | Owner teams or repo file still the example's | See [Config CI is red on a fresh copy](../operate/troubleshoot.md#config-ci-is-red-on-a-fresh-copy) |
+| Config repo's CI is red | A job other than `validate` runs without its variables and secrets | See [Config CI is red on a fresh copy](../operate/troubleshoot.md#config-ci-is-red-on-a-fresh-copy) |

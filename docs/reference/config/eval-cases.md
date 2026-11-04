@@ -37,18 +37,18 @@ An expected finding overlapping the line range.
 
 ## Example
 
-The example config carries no `cases.yaml`; a minimal valid file:
+The example config carries no `cases.yaml`; a minimal valid `evals/exemplar.propagate-context/cases.yaml`, for a shipped rule and the enrolled repo `acme/billing`:
 
 ```yaml
-rule: propagate-context
+rule: exemplar.propagate-context
 cases:
   - name: http-get-in-handler
-    ref: exemplar-sandbox/playground@0123abc
+    ref: acme/billing@0123abc
     expect:
       - path: handler.go
         lines: [10, 10]
   - name: main-setup-is-fine
-    ref: exemplar-sandbox/playground@0123abc
+    ref: acme/billing@0123abc
     paths: [main.go]
     expect: []
 ```
