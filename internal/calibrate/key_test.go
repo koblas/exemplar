@@ -10,7 +10,7 @@ import (
 
 func exampleSnapshot(t *testing.T) *config.Snapshot {
 	t.Helper()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
 	}

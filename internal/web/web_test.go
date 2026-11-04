@@ -308,7 +308,7 @@ func TestUI(t *testing.T) {
 		if tok == nil {
 			t.Fatal("no playground form")
 		}
-		rule, err := os.ReadFile("../../examples/exemplar-config/rules/security/no-raw-sql-concat.yaml")
+		rule, err := os.ReadFile("../../testdata/exemplar-config/rules/security/no-raw-sql-concat.yaml")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -392,7 +392,7 @@ func TestEFPBarFromCurrentConfig(t *testing.T) {
 	if got := h.efpBar(t.Context()); got != demote.DefaultEFPBar {
 		t.Fatalf("no stored config: bar %v, want the default %v", got, demote.DefaultEFPBar)
 	}
-	tree, err := config.ReadTree(os.DirFS("../../examples/exemplar-config"))
+	tree, err := config.ReadTree(os.DirFS("../../testdata/exemplar-config"))
 	if err != nil {
 		t.Fatal(err)
 	}

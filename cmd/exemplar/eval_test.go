@@ -21,7 +21,7 @@ import (
 func copyConfig(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	src := "../../examples/exemplar-config"
+	src := "../../testdata/exemplar-config"
 	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -61,7 +61,7 @@ func git(t *testing.T, dir string, args ...string) string {
 
 func TestChangedRules(t *testing.T) {
 	t.Parallel()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "x")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "x")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -182,7 +182,7 @@ func TestRunnerWatchesCancel(t *testing.T) {
 func TestStoredSnapshot(t *testing.T) {
 	t.Parallel()
 	st := storetest.New(t)
-	tree, err := config.ReadTree(os.DirFS("../../examples/exemplar-config"))
+	tree, err := config.ReadTree(os.DirFS("../../testdata/exemplar-config"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import (
 
 func setup(t *testing.T, verdictFor func(task string) string) (*Runner, *engine.ScriptedTransport, []Label) {
 	t.Helper()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cal")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cal")
 	if err != nil {
 		t.Fatal(err)
 	}

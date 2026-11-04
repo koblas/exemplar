@@ -1,0 +1,143 @@
+# Organization-wide defaults. Each repo's file under repos/ can narrow these.
+
+# Master switch. false stops Exemplar from reviewing any repo.
+enabled: true
+# Lets Exemplar approve low-risk PRs on its own. Repos must also opt in;
+# setting this to false is the org-wide kill switch.
+auto_approve: false
+# How long workers cache this config. A push to this repo refreshes it
+# immediately; the TTL is only a backstop.
+cache_ttl_seconds: 900
+budgets:
+  # Model spend (USD) for one review at which Exemplar starts dropping
+  # optional work to stay under it. A runaway guard, not a target.
+  soft_ceiling_usd: 10
+degrade:
+  # A review step slower than this is treated as degraded, and optional
+  # work is dropped to keep the review moving.
+  stage_timeout_seconds: 300
+# Most rules run against one PR. When more apply, the lowest-precision ones
+# are skipped and listed in the check run as "not run on this review".
+max_exemplar_rules: 40
+queues:
+  # Reviews that may run at once for one repo. A fairness limit so one busy
+  # repo can't starve the rest.
+  per_repo_concurrency: 4
+concurrency:
+  # Model agents running in parallel within a single review, shared between
+  # rule checks and bug hunting.
+  agents_per_review: 3
+providers:
+  # Each list is tried in order: when a provider times out, errors or is
+  # rate limited, the call moves to the next one.
+  #
+  # Providers must be registered in internal/llm (claude, bedrock, openai). Bedrock
+  # model ids take the anthropic. prefix; some regions need a cross-region
+  # inference profile id such as us.anthropic.claude-opus-5-5.
+  #
+  # claude needs the exemplar-providers Secret (anthropic-api-key), openai
+  # the same Secret's openai-api-key, and bedrock workload identity on the
+  # gateway's service account. The gateway builds every provider listed here
+  # and skips one whose credentials are missing, as long as each stage keeps
+  # a provider that works. Uncomment the bedrock entries to fail over to it.
+  #
+  # claude and bedrock serve Claude, so they fail over for availability but
+  # are one model family. The verifier is meant to be a different family
+  # from the model that raised the finding, so with Claude alone every
+  # finding is flagged same_family, which blocks auto-approve. openai is a
+  # second family: uncomment its verifier entry and move it above claude,
+  # and set it as categorizer side b (below), for independent verification
+  # and auto-approve.
+  #
+  # generator: writes review findings. Rules start on the "standard" model
+  # and move to "high" if their eval precision falls short; blocking and
+  # security rules and bug hunting start on "high".
+  generator:
+    - { provider: claude,  standard: claude-sonnet-5-5,           high: claude-opus-5-5 }
+    # - { provider: bedrock, standard: anthropic.claude-sonnet-5-5, high: anthropic.claude-opus-5-5 }
+  # verifier: independently checks each finding before it is posted.
+  verifier:
+    - { provider: claude,  model: claude-opus-5-5 }
+    # - { provider: openai,  model: gpt-5.5 }
+    # - { provider: bedrock, model: anthropic.claude-opus-5-5 }
+  # light: cheap, quick calls such as scoring how much a finding matters.
+  light:
+    - { provider: claude,  model: claude-haiku-5-5 }
+    # - { provider: bedrock, model: anthropic.claude-haiku-5-5 }
+  # categorizer: the auto-approve risk categorizer's two sides, which must
+  # be different model families; there is no failover between them.
+  # categorizer:
+  #   a: { provider: claude, model: claude-sonnet-5-5 }
+  #   b: { provider: openai, model: gpt-5.5 }
+  # embed: the model that embeds extractions for clustering (learning
+  # plane). One entry, no failover: vectors from two models cannot be
+  # compared. Needs VOYAGE_API_KEY (exemplar-providers Secret, key
+  # voyage-api-key); without it the gateway still serves reviews and the
+  # embed job fails until the key is set.
+  embed: { provider: voyage, model: voyage-code-3 }
+# importance_min: findings the verifier scores below this importance (0-1)
+# are stored but not posted.
+verifier:
+  importance_min: 0.5
+  # Findings checked together in one verifier call.
+  max_candidates_per_call: 8
+  # Bug-lane findings (and rules with `verify: quorum`) go to n verifiers,
+  # each a separate call, rotated across providers.verifier; they post only
+  # when k confirm. Each such candidate costs n verifier calls.
+  quorum: { n: 3, k: 2 }
+# Bug hunting: agents look for common classes of bugs, independent of any
+# rule. They run on risky PRs (critical paths, >= 80 changed non-test lines,
+# a low merge-safety score, or an incident or revert in the last 90 days)
+# and always on PRs being considered for auto-approve. Findings are recorded
+# but not posted for now.
+#
+# bug.contract needs find_references from exemplar-search; it stays off
+# until the worker is wired to it. Enabled without it, the class is skipped
+# on every run, which blocks auto-approve.
+bug_lane:
+  # Changed non-test lines that make a PR large enough to hunt for bugs.
+  min_changed_lines: 80
+  # Stricter than verifier.importance_min: bug findings must matter more.
+  importance_min: 0.6
+  classes:
+    bug.nil-deref:      { enabled: true }
+    bug.error-handling: { enabled: true }
+    bug.concurrency:    { enabled: true }
+    bug.resource-leak:  { enabled: false }
+    bug.off-by-one:     { enabled: false }
+    bug.contract:       { enabled: false }
+# Most comments Exemplar posts, per PR and per file, so reviews stay readable.
+# Security and blocking findings are always posted; if they alone exceed the
+# limit, they are grouped into one comment per file.
+comment_budget:
+  per_pr: 7
+  per_file: 3
+# More than this many occurrences of one rule or bug class in a review post
+# as one grouped comment listing every place, with one thread and one set
+# of feedback controls.
+posting:
+  class_threshold: 3
+# Review rounds per PR: after this many pushes that each posted new
+# findings, new ones (except blocking and Security) go to one summary
+# comment until a person reviews the PR or it leaves draft. A repo file may
+# lower it.
+rounds:
+  max: 3
+# Share of PRs that also get a generic, rule-free review for comparison. Its
+# findings are stored, never posted. Sampled evenly across each repo and
+# PR size (up to 50, up to 300, over 300 changed lines).
+baseline:
+  sample_rate: 0.10
+  strata: [repo, size_bucket]
+# Bars a rule or prompt change must clear in eval CI before it merges.
+eval_thresholds:
+  # Labeled cases a rule needs before its scores count.
+  min_cases: 10
+  precision: 0.80
+  recall: 0.50
+  # The verifier must reject at least 90% of known-wrong findings and at most
+  # 10% of known-true ones.
+  verifier: { known_wrong_refuted_min: 0.90, known_true_refuted_max: 0.10 }
+  # Auto-approve categorizer: share of labeled risky PRs it may approve, and
+  # of safe ones it must (approval = review_confidence >= 0.8). Owner: Security.
+  categorizer: { known_risky_approved_max: 0.05, known_safe_approved_min: 0.50 }

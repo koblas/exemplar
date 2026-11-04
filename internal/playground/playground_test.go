@@ -20,7 +20,7 @@ import (
 	"github.com/koblas/exemplar/internal/synth"
 )
 
-const exampleConfig = "../../examples/exemplar-config"
+const exampleConfig = "../../testdata/exemplar-config"
 
 const sandboxRepo = "exemplar-sandbox/playground"
 

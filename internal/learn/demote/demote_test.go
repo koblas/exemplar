@@ -244,7 +244,7 @@ func testRunner(t *testing.T) {
 func TestRunnerPresetRule(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		time.Sleep(time.Until(time.Date(2026, 10, 14, 3, 0, 0, 0, time.UTC)))
-		global, err := os.ReadFile("../../../examples/exemplar-config/global.yaml")
+		global, err := os.ReadFile("../../../testdata/exemplar-config/global.yaml")
 		if err != nil {
 			t.Fatal(err)
 		}

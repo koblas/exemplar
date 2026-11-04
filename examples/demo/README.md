@@ -71,7 +71,7 @@ The render is `examples/exemplar-config` plus:
 - a repo file for `ledger`: posting on, native approve, auto-approve for `README.md` and `docs/**` from the author;
 - the noisy `demo-todo-comments` rule, owned by the owner, with ten eval cases (the example's `min_cases`);
 - a CODEOWNERS naming the owner;
-- in `global.yaml`: `auto_approve: true`, the categorizer on Claude and OpenAI, OpenAI first among verifiers, and every head sampled for the baseline.
+- in `global.yaml`: `preset_owner` set to the owner, so the shipped rules route to them too, `auto_approve: true`, the categorizer on Claude and OpenAI, OpenAI first among verifiers, and every head sampled for the baseline.
 - also in `global.yaml`: `verifier.importance_min` at 0.3 instead of 0.5. The demo rule is noise by design, and at 0.5 the verifier's importance check may hold its findings back before anyone can reject them. A real install keeps 0.5.
 
 Two settings on `exemplar-config` are needed:
@@ -131,7 +131,7 @@ go run ./examples/demo/kit -phase prs -org <org>
 ```
 
 **Show:**
-- **Beat A:** *Add the refund endpoint* gets one review, with inline comments for `propagate-context` (`http.Get` in a handler) and `no-raw-sql-concat`. Each comment carries its label and rule link, and a suggestion where the fix is local.
+- **Beat A:** *Add the refund endpoint* gets one review, with inline comments for `exemplar.propagate-context` (`http.Get` in a handler) and `exemplar.no-raw-sql-concat`. Each comment carries its label and rule link, and a suggestion where the fix is local.
   - The check run's held-back counts show what the verifier refuted. `notify.go` passes `ctx` correctly and is the bait for a refuted finding.
   - The lanes board's *Verifier refutation by rule* shows the same.
 - **Beat B:** *Fix a typo in the README* is approved by the App with no human. Approval needs the bug lane to have covered every changed file, the README included; if its check run shows the bug lane incomplete, that is the reason. *Expire sessions after twelve hours* touches `internal/auth`, so its check run says it was routed to humans and gives the gate reasons.

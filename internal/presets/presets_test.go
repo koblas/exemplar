@@ -11,10 +11,10 @@ import (
 )
 
 // TestRecommendedMatchesStarter keeps exemplar:recommended in step with the
-// starter rules in examples/exemplar-config, which differ only in the id
+// starter rules in testdata/exemplar-config, which differ only in the id
 // prefix until the starter extends the preset.
 func TestRecommendedMatchesStarter(t *testing.T) {
-	starter, err := filepath.Glob("../../examples/exemplar-config/rules/*/*.yaml")
+	starter, err := filepath.Glob("../../testdata/exemplar-config/rules/*/*.yaml")
 	if err != nil || len(starter) == 0 {
 		t.Fatalf("no starter rules: %v", err)
 	}

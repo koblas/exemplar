@@ -39,7 +39,7 @@ func copyTree(t *testing.T, from, to string) {
 func TestMutations(t *testing.T) {
 	t.Parallel()
 	cfg := filepath.Join(t.TempDir(), "cfg")
-	copyTree(t, "../../examples/exemplar-config", cfg)
+	copyTree(t, "../../testdata/exemplar-config", cfg)
 	src := t.TempDir()
 	git := func(args ...string) string {
 		t.Helper()

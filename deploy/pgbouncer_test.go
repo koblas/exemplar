@@ -144,7 +144,7 @@ func TestPgbouncerTransactionMode(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	// Control stores the config version runners load.
-	snap, err := config.LoadSnapshot(os.DirFS("../examples/exemplar-config"), "cfg")
+	snap, err := config.LoadSnapshot(os.DirFS("../testdata/exemplar-config"), "cfg")
 	if err != nil {
 		t.Fatal(err)
 	}

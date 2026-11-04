@@ -22,7 +22,7 @@ const repo = "exemplar-sandbox/playground"
 
 func snapshot(t *testing.T, linters ...string) *config.Snapshot {
 	t.Helper()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "x")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "x")
 	if err != nil {
 		t.Fatal(err)
 	}

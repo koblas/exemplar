@@ -1,0 +1,10 @@
+# One repo Exemplar reviews. Copy this file to repos/<owner>/<repo>.yaml
+# for each repo, so its path names the repo. Files that do not end in .yaml
+# are not loaded, so this template enrols nothing.
+enabled: true                 # kill switch for this repo
+shadow: false                 # set true for a first install: review and store, post nothing
+review_drafts: true
+forks:
+  review: false
+sensitive_paths: ["internal/auth/**"]
+approval_mode: native_approve

@@ -547,7 +547,7 @@ func setupWith(t *testing.T, repoName string, wrap func(http.RoundTripper) http.
 	if err != nil {
 		t.Fatal(err)
 	}
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "cfg-test")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "cfg-test")
 	if err != nil {
 		t.Fatal(err)
 	}

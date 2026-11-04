@@ -133,7 +133,7 @@ func runAll(t *testing.T, fsys fstest.MapFS) []Result {
 // exampleTree is the example config as a mutable in-memory tree.
 func exampleTree(t *testing.T) fstest.MapFS {
 	t.Helper()
-	root := "../../examples/exemplar-config"
+	root := "../../testdata/exemplar-config"
 	out := fstest.MapFS{}
 	err := fs.WalkDir(os.DirFS(root), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -174,7 +174,7 @@ func appendGlobal(fsys fstest.MapFS, lines string) {
 
 // TestCheckDetectsAttacks makes sure the checker is not vacuous.
 func TestCheckDetectsAttacks(t *testing.T) {
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "adv")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "adv")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ var profileReasons = []string{
 
 func seedRunner(t *testing.T) *Runner {
 	t.Helper()
-	snap, err := config.LoadSnapshot(os.DirFS("../../examples/exemplar-config"), "adv")
+	snap, err := config.LoadSnapshot(os.DirFS("../../testdata/exemplar-config"), "adv")
 	if err != nil {
 		t.Fatal(err)
 	}

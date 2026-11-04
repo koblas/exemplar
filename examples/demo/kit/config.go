@@ -15,6 +15,7 @@ var errExample = errors.New("example config")
 // renderConfig builds the demo's exemplar-config tree: the example tree
 // (src) without its own repo files, the demo overlay, and global.yaml with
 // what the beats need switched on (docs/plans/demo.md §1):
+//   - the shipped rules owned by the demo owner (preset_owner);
 //   - auto_approve on, so beat B can approve and the check run lists every
 //     gate reason;
 //   - the Stage 2 categorizer on two families (claude and openai) and the
@@ -54,18 +55,20 @@ func renderConfig(src fs.FS, v Vars) (map[string]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w has no global.yaml", errExample)
 	}
-	if out["global.yaml"], err = demoGlobal(g); err != nil {
+	if out["global.yaml"], err = demoGlobal(g, v.Owner); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func demoGlobal(src string) (string, error) {
+func demoGlobal(src, owner string) (string, error) {
 	var g map[string]any
 	if err := yaml.Unmarshal([]byte(src), &g); err != nil {
 		return "", fmt.Errorf("decode global.yaml: %w", err)
 	}
 	g["auto_approve"] = true
+	// The shipped rules route to the demo owner, as the demo rule does.
+	g["preset_owner"] = "@" + owner
 	providers, ok := g["providers"].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("%w: global.yaml has no providers", errExample)

@@ -16,7 +16,7 @@ import (
 	"github.com/koblas/exemplar/internal/schema"
 )
 
-const exampleConfig = "../../examples/exemplar-config"
+const exampleConfig = "../../testdata/exemplar-config"
 
 func loadExample(t *testing.T) *Snapshot {
 	t.Helper()

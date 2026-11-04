@@ -12,7 +12,7 @@ from exemplar_learning.contracts.global_config import GlobalConfig
 from exemplar_learning.contracts.rule import CodeReviewRule
 from exemplar_learning.yamlio import load
 
-CONFIG = Path(__file__).resolve().parents[2] / "examples" / "exemplar-config"
+CONFIG = Path(__file__).resolve().parents[2] / "testdata" / "exemplar-config"
 RULES = sorted((CONFIG / "rules").rglob("*.yaml"))
 
 
