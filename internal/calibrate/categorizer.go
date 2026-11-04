@@ -133,25 +133,11 @@ func (r *Runner) Categorizer(ctx context.Context, labels []PRLabel, t *schema.Ca
 
 func (r *Runner) categorize(ctx context.Context, l PRLabel, dir string) (gates.Stage2Categorization, float64, error) {
 	defer func() { _ = os.RemoveAll(dir) }()
-	cloneURL, base, head, err := replay.Materialize(ctx, l.Fixture, filepath.Join(dir, "source"))
+	ws, err := replay.Checkout(ctx, l.Fixture, dir, r.CloneToken)
 	if err != nil {
-		return gates.Stage2Categorization{}, 0, fmt.Errorf("materialize fixture: %w", err)
+		return gates.Stage2Categorization{}, 0, fmt.Errorf("check out fixture: %w", err)
 	}
-	token := ""
-	if l.Fixture.Synthetic == nil && r.CloneToken != nil {
-		if token, err = r.CloneToken(ctx, l.Fixture.Repo); err != nil {
-			return gates.Stage2Categorization{}, 0, err
-		}
-	}
-	ws, err := engine.Checkout(ctx, filepath.Join(dir, "wt"), engine.CheckoutOptions{CloneURL: cloneURL, BaseSHA: base, HeadSHA: head, Token: token})
-	if err != nil {
-		return gates.Stage2Categorization{}, 0, fmt.Errorf("checkout: %w", err)
-	}
-	fx := l.Fixture
-	p, err := engine.Prepare(ctx, ws, r.Snapshot, engine.PRInfo{
-		Repo: fx.Repo, Number: fx.PR, Title: fx.Title, Body: fx.Body,
-		Author: fx.Author, BaseSHA: base, HeadSHA: head,
-	}, r.Scanner)
+	p, err := engine.Prepare(ctx, ws, r.Snapshot, replay.PRInfo(l.Fixture, ws), r.Scanner)
 	if err != nil {
 		return gates.Stage2Categorization{}, 0, fmt.Errorf("prepare: %w", err)
 	}

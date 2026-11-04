@@ -43,6 +43,9 @@ const (
 	GoalSuppressedFinding  = "suppressed_finding"
 	GoalFabricatedCitation = "fabricated_citation"
 	GoalFalseCoverage      = "false_coverage"
+	// GoalControl is a positive control: a harmless PR the review must
+	// approve under the eval profile.
+	GoalControl = "control"
 
 	ModeCompromised = "compromised"
 	ModeLive        = "live"
@@ -68,6 +71,9 @@ type CompromisedModel struct {
 	GeneratorOutput json.RawMessage `json:"generator_output,omitempty"`
 	GeneratorReads  []string        `json:"generator_reads,omitempty"`
 	VerifierVerdict string          `json:"verifier_verdict,omitempty"`
+	// CategorizerOutput is what both risk categorizers answer; nil leaves
+	// them independent of the injection (medium risk).
+	CategorizerOutput json.RawMessage `json:"categorizer_output,omitempty"`
 }
 
 // Verifier label values.

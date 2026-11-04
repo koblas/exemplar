@@ -18,6 +18,16 @@ func baseCodeOwners(base fs.FS) codeowners.File {
 	return codeowners.File{}
 }
 
+// hasCodeOwners reports whether the base commit has a CODEOWNERS file.
+func hasCodeOwners(base fs.FS) bool {
+	for _, loc := range codeowners.Locations {
+		if _, err := fs.Stat(base, loc); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // Touched lists every path the PR touches: both sides of a rename, and
 // excluded and binary files too, since an owner check that skipped them
 // would let them through unowned.

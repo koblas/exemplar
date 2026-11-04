@@ -3,7 +3,6 @@ description: Adds a doc comment to an exported function; behavior is unchanged.
 label: safe
 fixture:
   id: safe-doc-comment
-  repo: exemplar-sandbox/playground
   pr: 962
   title: Document Total
   synthetic:

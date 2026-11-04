@@ -251,4 +251,17 @@ human_comments:
 	if err := Decode(DocFixture, []byte(neither), &f); err == nil {
 		t.Error("fixture with neither synthetic repo nor shas accepted")
 	}
+	// repo is required only for a recorded PR.
+	for _, tt := range []struct {
+		name, doc string
+		ok        bool
+	}{
+		{"synthetic without repo", `{id: x, pr: 1, title: t, synthetic: {base: {}, head: {"a.go": "package a\n"}}}`, true},
+		{"recorded without repo", `{id: x, pr: 1, title: t, base_sha: abcdef1, head_sha: abcdef2}`, false},
+		{"recorded with repo", `{id: x, repo: a/b, pr: 1, title: t, base_sha: abcdef1, head_sha: abcdef2}`, true},
+	} {
+		if err := Decode(DocFixture, []byte(tt.doc), &f); (err == nil) != tt.ok {
+			t.Errorf("%s: Decode = %v, want ok %v", tt.name, err, tt.ok)
+		}
+	}
 }

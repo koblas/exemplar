@@ -394,3 +394,60 @@ func TestVerifierQuorum(t *testing.T) {
 		}
 	}
 }
+
+func TestEvalFixturesWithoutEnrolment(t *testing.T) {
+	// The example's synthetic cases name no repo, so it validates with no
+	// repo enrolled.
+	fsys := baseTree(t)
+	for p := range fsys {
+		if strings.HasPrefix(p, "repos/") {
+			delete(fsys, p)
+		}
+	}
+	s, err := LoadSnapshot(fsys, "v")
+	if err != nil {
+		t.Fatalf("LoadSnapshot with no repos: %v", err)
+	}
+	if len(s.Warnings) != 0 {
+		t.Errorf("warnings = %v", s.Warnings)
+	}
+
+	label := "evals/_verifier/true-http-get-in-handler.yaml"
+	synthetic := string(fsys[label].Data)
+	fsys[label] = &fstest.MapFile{Data: []byte(strings.Replace(synthetic, "fixture:\n", "fixture:\n  repo: acme/api\n", 1))}
+	s, err = LoadSnapshot(fsys, "v")
+	if err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	if len(s.Warnings) != 1 || s.Warnings[0].Path != label || !strings.Contains(s.Warnings[0].Error(), "ignored") {
+		t.Errorf("warnings = %v, want one on %s", s.Warnings, label)
+	}
+
+	recorded := strings.Replace(synthetic, "fixture:\n", "fixture:\n  repo: acme/api\n  base_sha: 0123456789abcdef0123456789abcdef01234567\n  head_sha: 89abcdef0123456789abcdef0123456789abcdef\n", 1)
+	before, _, _ := strings.Cut(recorded, "  synthetic:")
+	_, after, _ := strings.Cut(recorded, "candidate:")
+	recorded = before + "candidate:" + after
+	fsys[label] = &fstest.MapFile{Data: []byte(recorded)}
+	_, err = LoadSnapshot(fsys, "v")
+	var probs Problems
+	if !errors.As(err, &probs) || len(probs) != 1 || probs[0].Path != label || !strings.Contains(probs[0].Error(), "not enrolled") {
+		t.Fatalf("LoadSnapshot = %v, want the recorded fixture refused", err)
+	}
+}
+
+func TestEvalCaseRepoMustBeEnrolled(t *testing.T) {
+	fsys := baseTree(t)
+	cases := func(repo string) *fstest.MapFile {
+		return &fstest.MapFile{Data: []byte("rule: propagate-context\ncases:\n  - {name: a, ref: " + repo + "@abcdef1, expect: []}\n")}
+	}
+	fsys["evals/propagate-context/cases.yaml"] = cases("exemplar-sandbox/playground")
+	if _, err := LoadSnapshot(fsys, "v"); err != nil {
+		t.Fatalf("enrolled repo: %v", err)
+	}
+	fsys["evals/propagate-context/cases.yaml"] = cases("acme/unknown")
+	_, err := LoadSnapshot(fsys, "v")
+	var probs Problems
+	if !errors.As(err, &probs) || len(probs) != 1 || !strings.Contains(probs[0].Error(), "acme/unknown is not enrolled") {
+		t.Fatalf("LoadSnapshot = %v, want the case's repo refused", err)
+	}
+}

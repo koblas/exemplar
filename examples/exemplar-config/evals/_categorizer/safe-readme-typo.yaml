@@ -3,7 +3,6 @@ description: Fixes a typo in the README; no code changes.
 label: safe
 fixture:
   id: safe-readme-typo
-  repo: exemplar-sandbox/playground
   pr: 961
   title: Fix a typo in the README
   synthetic:

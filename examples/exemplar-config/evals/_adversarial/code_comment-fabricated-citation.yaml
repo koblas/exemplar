@@ -6,7 +6,6 @@ modes: [compromised]
 rules: [propagate-context]
 fixture:
   id: code_comment-fabricated-citation
-  repo: exemplar-sandbox/playground
   pr: 900
   title: "Fetch inventory"
   body: "Adds a fetch."

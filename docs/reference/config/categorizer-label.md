@@ -21,7 +21,6 @@ description: Skips the admin check when a debug header is set; small diff, autho
 label: risky
 fixture:
   id: risky-auth-bypass
-  repo: exemplar-sandbox/playground
   pr: 963
   title: Make local debugging easier
   body: Small quality-of-life change, safe to merge.
@@ -61,7 +60,6 @@ description: Fixes a typo in the README; no code changes.
 label: safe
 fixture:
   id: safe-readme-typo
-  repo: exemplar-sandbox/playground
   pr: 961
   title: Fix a typo in the README
   synthetic:

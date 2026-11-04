@@ -3,7 +3,6 @@ description: The finding claims ctx is ignored, but the request is built with ht
 label: wrong
 fixture:
   id: wrong-context-already-passed
-  repo: exemplar-sandbox/playground
   pr: 952
   title: Fetch prices with the caller's context
   synthetic:

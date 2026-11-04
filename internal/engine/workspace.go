@@ -14,6 +14,7 @@ import (
 	"github.com/koblas/exemplar/internal/gitexec"
 	"github.com/koblas/exemplar/internal/scope"
 	"github.com/koblas/exemplar/internal/search/mirror"
+	"github.com/koblas/exemplar/internal/synth"
 )
 
 // gitTimeout bounds each git command in a workspace.
@@ -35,6 +36,21 @@ type Workspace struct {
 	BaseSHA string
 	HeadSHA string
 	env     []string
+	// synthetic is set only by CheckoutSynthetic: the workspace holds a
+	// repository built from an eval case, so Prepare may review it under
+	// the eval profile.
+	synthetic bool
+}
+
+// CheckoutSynthetic checks out a repository synth.Build made from an eval
+// case. Only such a workspace may be reviewed with PRInfo.Synthetic.
+func CheckoutSynthetic(ctx context.Context, dir string, repo *synth.Repo) (*Workspace, error) {
+	ws, err := Checkout(ctx, dir, CheckoutOptions{CloneURL: repo.Dir, BaseSHA: repo.BaseSHA, HeadSHA: repo.HeadSHA})
+	if err != nil {
+		return nil, err
+	}
+	ws.synthetic = true
+	return ws, nil
 }
 
 // CheckoutOptions configures Checkout.

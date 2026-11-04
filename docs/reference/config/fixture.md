@@ -9,7 +9,7 @@ Unknown fields are rejected.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `id` | string, pattern `^[a-z0-9][a-z0-9._-]*$` | yes | The fixture id. |
-| `repo` | string, pattern `^[^/\s]+/[^/\s]+$` | yes | The repo as `owner/name`. |
+| `repo` | string, pattern `^[^/\s]+/[^/\s]+$` | see constraints | The repo as `owner/name`. `exemplar validate` rejects a recorded fixture whose repo has no enabled file under `repos/` or is on the eligibility denylist. |
 | `pr` | integer, minimum 1 | yes | The PR number. |
 | `title` | string | yes | The PR title. |
 | `body` | string | no | The PR description. |
@@ -24,6 +24,7 @@ Unknown fields are rejected.
 Constraints:
 
 - Exactly one of two shapes: `synthetic` without `base_sha` or `head_sha`, or both `base_sha` and `head_sha` without `synthetic`.
+- `repo` is required without `synthetic`. A synthetic fixture runs under the [eval profile](../../concepts/glossary.md) and names no repo; a `repo` on one is ignored, and `exemplar validate` warns about it.
 
 ### `synthetic`
 
@@ -49,7 +50,6 @@ Constraints:
 # Synthetic recorded PR: a request handler starts an HTTP call that ignores
 # the caller's context. The human reviewer flagged the http.Get line.
 id: ctx-http-get
-repo: exemplar-sandbox/playground
 pr: 101
 title: Fetch inventory in the item handler
 body: Calls the inventory service when an item page is requested.

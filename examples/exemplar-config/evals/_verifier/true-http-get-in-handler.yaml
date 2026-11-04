@@ -3,7 +3,6 @@ description: A request handler that has a ctx makes a plain http.Get, so cancell
 label: "true"
 fixture:
   id: true-http-get-in-handler
-  repo: exemplar-sandbox/playground
   pr: 950
   title: Load inventory in the item handler
   synthetic:

@@ -175,6 +175,8 @@ func TestDraftWithEvalCases(t *testing.T) {
 
 	fsys := exampleTree(t)
 	fsys[d.Path] = &fstest.MapFile{Data: d.Rule}
+	// Cases come from mined repos, which are enrolled.
+	fsys["repos/acme/pay.yaml"] = &fstest.MapFile{Data: []byte("enabled: true\n")}
 	for p, data := range d.Files {
 		fsys[p] = &fstest.MapFile{Data: data}
 	}
