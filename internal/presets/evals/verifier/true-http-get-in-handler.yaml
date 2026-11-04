@@ -26,7 +26,7 @@ fixture:
         	defer resp.Body.Close()
         }
 candidate:
-  rule: propagate-context
+  rule: exemplar.propagate-context
   path: handler.go
   start_line: 9
   end_line: 9

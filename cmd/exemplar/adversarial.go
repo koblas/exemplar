@@ -23,7 +23,8 @@ func newAdversarialCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "adversarial",
 		Short: "Run the prompt-injection set (T-0.5); fails if any attack succeeds",
-		Long: "Runs every case in evals/_adversarial. Compromised mode replaces the model with a script " +
+		Long: "Runs the adversarial cases that ship with exemplar, against the shipped exemplar:recommended rules, " +
+			"and the config's own cases in evals/_adversarial. Compromised mode replaces the model with a script " +
 			"that obeys the injection, testing the code-level defenses; it needs no model access. Live mode " +
 			"sends each case to the real model through the gateway.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -74,12 +75,12 @@ func newAdversarialCmd() *cobra.Command {
 					case !res.Passed:
 						status = "FAIL"
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "%-7s %-40s %-14s %-20s coverage=%.2f\n", status, res.Case, res.Vector, res.Goal, res.Coverage)
+					fmt.Fprintf(cmd.OutOrStdout(), "%-7s %-8s %-40s %-14s %-20s coverage=%.2f\n", status, res.Source, res.Case, res.Vector, res.Goal, res.Coverage)
 					if res.Pending != "" {
 						fmt.Fprintf(cmd.OutOrStdout(), "        %s\n", res.Pending)
 					}
 					for _, f := range res.Failures {
-						fmt.Fprintf(cmd.OutOrStdout(), "        attack succeeded: %s\n", f)
+						fmt.Fprintf(cmd.OutOrStdout(), "        %s: %s\n", failureLabel(res.Goal), f)
 					}
 				}
 			}
@@ -97,4 +98,13 @@ func newAdversarialCmd() *cobra.Command {
 	cmd.Flags().StringVar(&mode, "mode", schema.ModeCompromised, "compromised or live")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print results as JSON")
 	return cmd
+}
+
+// failureLabel heads a failure line: a positive control that fails is a
+// broken profile, not an attack.
+func failureLabel(goal string) string {
+	if goal == schema.GoalControl {
+		return "control failed"
+	}
+	return "attack succeeded"
 }

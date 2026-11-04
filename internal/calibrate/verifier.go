@@ -33,14 +33,18 @@ type Label struct {
 	Fixture   schema.Fixture
 	Candidate engine.Candidate
 	Source    string // seed | verifier_labels
+	// Shipped marks a seed label embedded in the binary: it replays against
+	// the shipped preset's rules, not the organization's.
+	Shipped bool
 }
 
-// SeedLabels converts a snapshot's evals/_verifier set.
+// SeedLabels converts a snapshot's verifier seed set: the shipped labels
+// and the config's evals/_verifier.
 func SeedLabels(snap *config.Snapshot) []Label {
 	out := make([]Label, 0, len(snap.VerifierLabels))
 	for _, l := range snap.VerifierLabels {
 		c := l.Candidate
-		out = append(out, Label{ID: l.ID, Label: l.Label, Fixture: l.Fixture, Source: "seed", Candidate: engine.Candidate{
+		out = append(out, Label{ID: l.ID, Label: l.Label, Fixture: l.Fixture, Source: "seed", Shipped: l.Shipped, Candidate: engine.Candidate{
 			RuleID: c.Rule, Path: c.Path, Side: c.Side, StartLine: c.StartLine, EndLine: c.EndLine, Claim: c.Claim,
 		}})
 	}
@@ -151,7 +155,11 @@ func (r *Runner) one(ctx context.Context, l Label, dir string) (string, float64,
 	if err != nil {
 		return "", 0, "", fmt.Errorf("check out fixture: %w", err)
 	}
-	p, err := engine.Prepare(ctx, ws, r.Snapshot, replay.PRInfo(l.Fixture, ws), r.Scanner)
+	snap := r.Snapshot
+	if l.Shipped {
+		snap = snap.CaseSnapshot(true, []string{l.Candidate.RuleID})
+	}
+	p, err := engine.Prepare(ctx, ws, snap, replay.PRInfo(l.Fixture, ws), r.Scanner)
 	if err != nil {
 		return "", 0, "", fmt.Errorf("prepare: %w", err)
 	}

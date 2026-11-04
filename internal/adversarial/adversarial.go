@@ -35,7 +35,10 @@ var ErrNotSynthetic = errors.New("adversarial fixtures must be synthetic")
 
 // Result is one case in one mode.
 type Result struct {
-	Case     string   `json:"case"`
+	Case string `json:"case"`
+	// Source is "shipped" for a case embedded in the binary, "config" for
+	// one from the config repo's evals/_adversarial.
+	Source   string   `json:"source"`
 	Mode     string   `json:"mode"`
 	Vector   string   `json:"vector"`
 	Goal     string   `json:"goal"`
@@ -66,16 +69,20 @@ func (r *Runner) RunAll(ctx context.Context, mode string) ([]Result, error) {
 		if !contains(c.Modes, mode) {
 			continue
 		}
-		res := Result{Case: c.ID, Mode: mode, Vector: c.Vector, Goal: c.Goal}
+		res := Result{Case: c.ID, Source: source(c), Mode: mode, Vector: c.Vector, Goal: c.Goal}
 		switch {
 		case c.Pending != "":
 			res.Pending, res.Passed = c.Pending, true
 		case mode == schema.ModeLive && r.Live == nil:
 			res.Pending, res.Passed = "live mode needs --gateway-url and --gateway-token", true
+		case mode == schema.ModeLive && c.Goal == schema.GoalFalseApproval && r.Snapshot.Global.Providers.Categorizer == nil:
+			// Without a categorizer pair nothing can approve, so the case
+			// would pass without testing the categorizers it attacks.
+			res.Pending, res.Passed = "live false_approval needs providers.categorizer in global.yaml", true
 		default:
-			got, err := r.run(ctx, c.AdversarialCase, mode)
+			got, err := r.run(ctx, c, mode)
 			if err != nil {
-				return nil, fmt.Errorf("case %s: %w", c.ID, err)
+				return nil, fmt.Errorf("%s case %s: %w", res.Source, c.ID, err)
 			}
 			res = got
 		}
@@ -84,13 +91,29 @@ func (r *Runner) RunAll(ctx context.Context, mode string) ([]Result, error) {
 	return out, nil
 }
 
-func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string) (Result, error) {
-	res := Result{Case: c.ID, Mode: mode, Vector: c.Vector, Goal: c.Goal}
+// Sources of a case.
+const (
+	SourceShipped = "shipped"
+	SourceConfig  = "config"
+)
+
+func source(c config.AdversarialCase) string {
+	if c.Shipped {
+		return SourceShipped
+	}
+	return SourceConfig
+}
+
+func (r *Runner) run(ctx context.Context, sc config.AdversarialCase, mode string) (Result, error) {
+	c := sc.AdversarialCase
+	res := Result{Case: c.ID, Source: source(sc), Mode: mode, Vector: c.Vector, Goal: c.Goal}
 	fx := c.Fixture
 	if fx.Synthetic == nil {
 		return res, ErrNotSynthetic
 	}
-	dir := filepath.Join(r.WorkDir, c.ID+"-"+mode)
+	// A config case may reuse a shipped id, so the source keeps their work
+	// directories apart.
+	dir := filepath.Join(r.WorkDir, res.Source, c.ID+"-"+mode)
 	repo, err := synth.Build(ctx, filepath.Join(dir, "src"), fx.Synthetic.Base, fx.Synthetic.Head, fx.Synthetic.Deleted)
 	if err != nil {
 		return res, fmt.Errorf("build synthetic repo: %w", err)
@@ -99,7 +122,10 @@ func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string)
 	if err != nil {
 		return res, fmt.Errorf("check out workspace: %w", err)
 	}
-	snap := r.snapshotFor(c)
+	// A shipped case runs against the shipped preset as embedded, so the
+	// organization's extends, disabled_rules and rule_settings do not
+	// change its result.
+	snap := r.Snapshot.CaseSnapshot(sc.Shipped, c.Rules)
 	// The eval profile posts and auto-approves every path, so the attack is
 	// judged on what the review computes, not on a repo's rollout state.
 	p, err := engine.Prepare(ctx, ws, snap, engine.PRInfo{
@@ -126,21 +152,6 @@ func (r *Runner) run(ctx context.Context, c schema.AdversarialCase, mode string)
 	res.Failures = check(c, snap, out)
 	res.Passed = len(res.Failures) == 0
 	return res, nil
-}
-
-// snapshotFor narrows the rule set to the case's rules, if it names any.
-func (r *Runner) snapshotFor(c schema.AdversarialCase) *config.Snapshot {
-	if len(c.Rules) == 0 {
-		return r.Snapshot
-	}
-	s := *r.Snapshot
-	s.Rules = nil
-	for _, rule := range r.Snapshot.Rules {
-		if contains(c.Rules, rule.ID) {
-			s.Rules = append(s.Rules, rule)
-		}
-	}
-	return &s
 }
 
 func compromisedScript(ctx context.Context, c schema.AdversarialCase, ws *engine.Workspace) engine.Script {

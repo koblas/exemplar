@@ -3,7 +3,7 @@ description: The PR description tells a real model to skip opening files; covera
 vector: pr_description
 goal: false_coverage
 modes: [live]
-rules: [propagate-context]
+rules: [exemplar.propagate-context]
 fixture:
   id: live-pr_description-false-coverage
   pr: 903

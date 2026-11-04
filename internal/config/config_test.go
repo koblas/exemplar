@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/koblas/exemplar/internal/presets/evals"
 	"github.com/koblas/exemplar/internal/schema"
 )
 
@@ -412,8 +414,9 @@ func TestEvalFixturesWithoutEnrolment(t *testing.T) {
 		t.Errorf("warnings = %v", s.Warnings)
 	}
 
-	label := "evals/_verifier/true-http-get-in-handler.yaml"
-	synthetic := string(fsys[label].Data)
+	label := "evals/_verifier/local-http-get.yaml"
+	synthetic := localCopy(t, "verifier/true-http-get-in-handler.yaml", "local-http-get")
+	fsys[label] = &fstest.MapFile{Data: []byte(synthetic)}
 	fsys[label] = &fstest.MapFile{Data: []byte(strings.Replace(synthetic, "fixture:\n", "fixture:\n  repo: acme/api\n", 1))}
 	s, err = LoadSnapshot(fsys, "v")
 	if err != nil {
@@ -432,6 +435,83 @@ func TestEvalFixturesWithoutEnrolment(t *testing.T) {
 	var probs Problems
 	if !errors.As(err, &probs) || len(probs) != 1 || probs[0].Path != label || !strings.Contains(probs[0].Error(), "not enrolled") {
 		t.Fatalf("LoadSnapshot = %v, want the recorded fixture refused", err)
+	}
+}
+
+// localCopy turns a shipped eval into a config one: a new id, and the
+// starter rule in place of the preset rule.
+func localCopy(t *testing.T, shipped, id string) string {
+	t.Helper()
+	data, err := fs.ReadFile(evals.FS, shipped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := strings.ReplaceAll(string(data), "exemplar.propagate-context", "propagate-context")
+	old, _, _ := strings.Cut(strings.SplitN(s, "id: ", 2)[1], "\n")
+	return strings.Replace(s, "id: "+old, "id: "+id, 1)
+}
+
+func TestShippedEvals(t *testing.T) {
+	s := loadExample(t)
+	if len(s.Adversarial) == 0 || len(s.VerifierLabels) == 0 || len(s.CategorizerLabels) == 0 {
+		t.Fatalf("shipped evals: %d adversarial, %d verifier, %d categorizer", len(s.Adversarial), len(s.VerifierLabels), len(s.CategorizerLabels))
+	}
+	for _, l := range s.VerifierLabels {
+		if !l.Shipped {
+			t.Errorf("verifier label %s not shipped", l.ID)
+		}
+	}
+	for _, l := range s.CategorizerLabels {
+		if !l.Shipped {
+			t.Errorf("categorizer label %s not shipped", l.ID)
+		}
+	}
+	// Shipped cases load first; the example adds one of its own.
+	local := 0
+	for i, c := range s.Adversarial {
+		if c.Shipped != strings.HasPrefix(c.Path, evals.PathPrefix) {
+			t.Errorf("%s: shipped %v at %s", c.ID, c.Shipped, c.Path)
+		}
+		if !c.Shipped {
+			local++
+			if i < len(s.Adversarial)-1 && s.Adversarial[i+1].Shipped {
+				t.Errorf("config case %s loaded before a shipped one", c.ID)
+			}
+		}
+	}
+	if local != 1 {
+		t.Errorf("%d config adversarial cases in the example, want 1", local)
+	}
+
+	// A config case reusing a shipped id is a warning, and both load.
+	fsys := baseTree(t)
+	fsys["evals/_adversarial/mine.yaml"] = &fstest.MapFile{Data: []byte(localCopy(t, "adversarial/diff-false-approval.yaml", "diff-false-approval"))}
+	s, err := LoadSnapshot(fsys, "v")
+	if err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	if len(s.Warnings) != 1 || s.Warnings[0].Path != "evals/_adversarial/mine.yaml" || !errors.Is(s.Warnings[0].Err, ErrDuplicateID) {
+		t.Errorf("warnings = %v, want one on the shadowing case", s.Warnings)
+	}
+	n := 0
+	for _, c := range s.Adversarial {
+		if c.ID == "diff-false-approval" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("%d cases with the shared id, want 2", n)
+	}
+
+	// The shipped cases name preset rules whatever the config extends; a
+	// config case naming one the config does not run is an error.
+	fsys = baseTree(t)
+	mine := strings.ReplaceAll(localCopy(t, "adversarial/diff-false-approval.yaml", "mine"), "propagate-context", "exemplar.propagate-context")
+	fsys["evals/_adversarial/mine.yaml"] = &fstest.MapFile{Data: []byte(mine)}
+	_, err = LoadSnapshot(fsys, "v")
+	var probs Problems
+	if !errors.As(err, &probs) || len(probs) != 1 || probs[0].Path != "evals/_adversarial/mine.yaml" || !errors.Is(probs[0].Err, ErrUnknownRule) {
+		t.Fatalf("LoadSnapshot = %v, want the config case's preset rule refused", err)
 	}
 }
 

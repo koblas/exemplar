@@ -194,8 +194,11 @@ func TestLayeringErrors(t *testing.T) {
 			appendGlobal(f, "rule_settings:\n  nope: { status: shadow }\n")
 		}, GlobalPath, ErrUnknownRule},
 		{
-			"cases name a disabled rule", func(f fstest.MapFS) { appendGlobal(f, "disabled_rules: [propagate-context]\n") },
-			"evals/_adversarial/diff-false-approval.yaml", ErrUnknownRule,
+			"cases name a disabled rule", func(f fstest.MapFS) {
+				f["evals/_adversarial/mine.yaml"] = &fstest.MapFile{Data: []byte(localCopy(t, "adversarial/diff-false-approval.yaml", "mine"))}
+				appendGlobal(f, "disabled_rules: [propagate-context]\n")
+			},
+			"evals/_adversarial/mine.yaml", ErrUnknownRule,
 		},
 		{"exclude_paths invalid", func(f fstest.MapFS) {
 			appendGlobal(f, "rule_settings:\n  propagate-context: { exclude_paths: [\"!x/**\"] }\n")

@@ -1,6 +1,6 @@
 # evals/_categorizer/*.yaml
 
-One labeled PR per file for auto-approve categorizer calibration, under `evals/_categorizer/` in exemplar-config: safe PRs the two-model categorization should approve, and risky ones it must not. The bar the categorizer must clear against them is `eval_thresholds.categorizer` in [global.yaml](global.md#eval_thresholdscategorizer); the categorizer's two providers are `providers.categorizer` there. In the example CODEOWNERS the directory is owned by `@platform/exemplar`. `exemplar validate` checks them; ids must be unique across the directory. Schema file: [categorizer-label.schema.json](https://github.com/koblas/exemplar/blob/main/schema/categorizer-label.schema.json).
+One labeled PR per file for auto-approve categorizer calibration, under `evals/_categorizer/` in exemplar-config: safe PRs the two-model categorization should approve, and risky ones it must not. Labels shipped in the `exemplar` binary replay with them. The bar the categorizer must clear against them is `eval_thresholds.categorizer` in [global.yaml](global.md#eval_thresholdscategorizer); the categorizer's two providers are `providers.categorizer` there. In the example CODEOWNERS the directory is owned by `@platform/exemplar`. `exemplar validate` checks them; ids must be unique across the directory; reusing a shipped label's id is a warning. Schema file: [categorizer-label.schema.json](https://github.com/koblas/exemplar/blob/main/schema/categorizer-label.schema.json).
 
 Unknown fields are rejected.
 

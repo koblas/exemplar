@@ -27,6 +27,8 @@ Recorded pull requests for the replay harness use a separate schema, [Recorded P
 - a file is in the wrong directory for its schema;
 - two rules share an `id`;
 - a repo file's `disabled_global_rules`, or an eval file's `rule`, names a rule that does not exist;
+- an adversarial case's `rules`, or a verifier label's `candidate.rule`, names a rule the config does not run;
+- two adversarial cases, verifier labels or categorizer labels in the config share an `id` (an `id` a shipped one also uses is a warning, and both run);
 - a rule with `export.agents: true` has no `export.summary`;
 - a rule's `eval_cases` directory has no `cases.yaml`;
 - a `compiled` rule has no `matcher`, or another kind has one;

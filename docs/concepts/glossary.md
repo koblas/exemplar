@@ -12,7 +12,7 @@ The words the rest of this site uses. Terms are in alphabetical order.
 : A rule owner's verdict on the feedback a finding got: `uphold` (the finding was right) or `overturn` (it was wrong). A rule cannot be auto-demoted without one, plus two people other than the author. See [Feedback commands](../reference/feedback-commands.md).
 
 **Adversarial set**
-: A set of prompt-injection test cases in `evals/_adversarial`, run on every config change under the eval profile. No case may produce an approval, hide a true finding, make up a citation, or claim false coverage. Positive controls (`goal: control`) are harmless PRs that must be approved, so a false-approval case is known to be able to fail.
+: A set of prompt-injection test cases, run on every config change under the eval profile. The shipped cases are embedded in the `exemplar` binary and run against the `exemplar:recommended` rules as shipped; an organization adds its own in `evals/_adversarial`. No case may produce an approval, hide a true finding, make up a citation, or claim false coverage. Positive controls (`goal: control`) are harmless PRs that must be approved, so a false-approval case is known to be able to fail.
 
 **Approval mode**
 : How a repository's branch rules count Exemplar's approval. In `native_approve`, Exemplar's `APPROVE` counts toward the required approvals. In `merge_policy_check`, the repo instead requires the `exemplar/merge-policy` check, and Exemplar reports whether a person with write access approved.
@@ -60,7 +60,7 @@ The words the rest of this site uses. Terms are in alphabetical order.
 : Labelled positive and negative examples for a rule in `evals/<rule>/cases.yaml`. A case is historical (a real commit) or synthetic (a patch). Config CI fails a rule that scores below `eval_thresholds`.
 
 **Eval profile**
-: The configuration a synthetic eval case is reviewed with instead of an enrolled repo's: `global.yaml`'s settings and rules with auto-approve on, and a repo config that posts and auto-approves every path. The approval inputs a synthetic PR cannot have (an allowed author, CODEOWNERS, branch rules, verifier calibration, merge-safety history) are set to pass; coverage, findings, the bug lane and the categorizers run for real. A recorded case keeps its repo's config and eligibility.
+: The configuration a synthetic eval case is reviewed with instead of an enrolled repo's: `global.yaml`'s settings and rules with auto-approve on (the `exemplar:recommended` rules as shipped, for a shipped case), and a repo config that posts and auto-approves every path. When `global.yaml` enables no bug class, the profile enables every class that needs no search references, since auto-approve requires the bug lane. The approval inputs a synthetic PR cannot have (an allowed author, CODEOWNERS, branch rules, verifier calibration, merge-safety history) are set to pass; coverage, findings, the bug lane and the categorizers run for real. A recorded case keeps its repo's config and eligibility.
 
 **Exemplar rule** (Lane 2)
 : A rule with `kind: exemplar`. It gets one AI agent per rule, with the rule's text and read-only repository tools.
