@@ -6,6 +6,13 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.12.0](https://github.com/koblas/exemplar/compare/v0.11.1...v0.12.0) (2026-11-05)
+
+
+### Features
+
+* **setup:** show a done state with the next step ([f240168](https://github.com/koblas/exemplar/commit/f2401685047e8f7fabd583630fd3ba9880b684fe))
+
 ## [0.11.1](https://github.com/koblas/exemplar/compare/v0.11.0...v0.11.1) (2026-11-05)
 
 
