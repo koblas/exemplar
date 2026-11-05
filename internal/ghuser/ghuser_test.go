@@ -41,6 +41,8 @@ func testChecker(t *testing.T) {
 			_, _ = w.Write([]byte(`{"permissions": {"pull": true}}`))
 		case "Bearer u /repos/acme/down":
 			w.WriteHeader(http.StatusBadGateway)
+		case "Bearer u /orgs/acme/members/alice":
+			w.WriteHeader(http.StatusNoContent)
 		case "Bearer x /user":
 			w.WriteHeader(http.StatusUnauthorized)
 		default:
@@ -67,6 +69,28 @@ func testChecker(t *testing.T) {
 	if _, err := c.CanRead(ctx, "u", "acme/down"); err == nil {
 		t.Error("a GitHub failure read as no access")
 	}
+	// A personal account named in orgs is its owner's own; GitHub has no
+	// membership endpoint for it, so it matches without a call, and only
+	// for that login.
+	for _, tc := range []struct {
+		name, token, login string
+		orgs               []string
+		want               bool
+	}{
+		{"own account", "u", "alice", []string{"alice"}, true},
+		{"own account, case and space", "u", "alice", []string{"other", " Alice "}, true},
+		{"org member", "u", "alice", []string{"acme"}, true},
+		{"someone else's account", "v", "bob", []string{"alice"}, false},
+		{"empty login", "v", "", []string{""}, false},
+	} {
+		if ok, err := c.InOrgs(ctx, tc.token, tc.login, tc.orgs); err != nil || ok != tc.want {
+			t.Errorf("%s: InOrgs = %v, %v; want %v", tc.name, ok, err, tc.want)
+		}
+	}
+	if calls["Bearer u /orgs/alice/members/alice"] != 0 || calls["Bearer v /orgs/alice/members/bob"] != 1 {
+		t.Errorf("own-account match called GitHub, or another user skipped the check: %v", calls)
+	}
+
 	// Cached for TTL, then asked again.
 	_, _ = c.Login(ctx, "u")
 	_, _ = c.CanRead(ctx, "u", "acme/app")

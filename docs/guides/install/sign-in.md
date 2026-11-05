@@ -6,7 +6,7 @@ People sign in to exemplar-api with GitHub OAuth, OpenID Connect, or both. The s
 
 It is on once `exemplar-github-app` exists (it holds the App's client id and secret). Register `https://<api>/oauth/callback` as the App's callback URL; the setup page does this for you.
 
-- By default only members of the config repo's owner may sign in. Set `EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS` (comma-separated) to change that, or `EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE=true` to open it to anyone.
+- By default only members of the config repo's owner may sign in. When a user account owns the config repo, that user may sign in. Set `EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS` (comma-separated) to change that, or `EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE=true` to open it to anyone.
 - Each person sees the repos their GitHub permissions allow.
 - For GitHub Enterprise Server, set `EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL`.
 

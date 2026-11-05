@@ -174,7 +174,16 @@ func (c *Checker) call(ctx context.Context, token, path string, out any) (int, e
 
 // InOrgs reports whether login is a member of any of orgs, asked with
 // their own token (a member sees their own membership, public or not).
+// An entry naming login itself matches: a config repo owned by a personal
+// account defaults orgs to that account, whose only member is its owner,
+// and GitHub has no membership endpoint for user accounts. login is the
+// token's own /user login, so the match grants no one else.
 func (c *Checker) InOrgs(ctx context.Context, token, login string, orgs []string) (bool, error) {
+	for _, org := range orgs {
+		if login != "" && strings.EqualFold(strings.TrimSpace(org), login) {
+			return true, nil
+		}
+	}
 	k := key(token) + " orgs " + strings.ToLower(strings.Join(orgs, ","))
 	if v, ok := c.get(c.access, k); ok {
 		return v == "1", nil
