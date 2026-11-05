@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// TTL is how long a token's login and repo access are trusted.
+// TTL is how long a token's login, repo access and org membership are trusted.
 const TTL = 5 * time.Minute
 
 // maxEntries bounds each cache before expired entries are swept.
