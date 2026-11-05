@@ -6,6 +6,14 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.11.1](https://github.com/koblas/exemplar/compare/v0.11.0...v0.11.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **api:** let a personal-account config repo owner sign in ([74df0a9](https://github.com/koblas/exemplar/commit/74df0a9e7cd1ff9b12d554830eb2702b7e46e1f5))
+* **api:** let a personal-account config repo owner sign in ([e16c451](https://github.com/koblas/exemplar/commit/e16c451daa70b2a27e984d57dd509171f61f4951))
+
 ## [0.11.0](https://github.com/koblas/exemplar/compare/v0.10.0...v0.11.0) (2026-11-04)
 
 
