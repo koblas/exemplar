@@ -277,7 +277,7 @@ Expect: `200`. A `403` means the request did not name `localhost:8081`; use exac
 
 Keep the setup tab and the port-forward open throughout. If exemplar-api's pod restarts between creating the App and applying the file, the App's key is lost: the person must delete that App in GitHub's settings and start the page again (its **Start over** button does the reset on the Exemplar side).
 
-When the person gives you the path to `exemplar-secrets.yaml`, apply it and restart exemplar-api. Do not read the file's contents into your output.
+When the person gives you the path to `exemplar-secrets.yaml`, apply it and restart exemplar-api. If the setup tab is still open, it shows **Setup is complete** once the pod sees the Secret; the restart doesn't need to wait for it. Do not read the file's contents into your output.
 
 ```bash
 kubectl apply -f <path>/exemplar-secrets.yaml
