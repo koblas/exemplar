@@ -2,6 +2,8 @@
 open step is the first one that isn't done, whatever happened elsewhere. States:
 .InstallError: "not-installed" (after Check only), "list-failed", "config-missing";
 .ProviderError: "key-missing", "key-invalid" (not kept);
+.Done: an App's Secret is applied and exemplar-api has its database: the banner under the title says so and holds the restart,
+every step reads done, and Start over stays collapsed at the bottom (setup.go);
 .AppliedAppID: an App Secret mounted while this pod holds no App (offer the restart);
 .AppSecret: "not-applied", "applied", "other", "unknown"; .ReviewGone/.ExportsGone: an App GitHub no longer knows (setup only
 forgets it when asked); .StartedOver: right after Start over; .ExportsOnConfig: the exports app can reach exemplar-config;
@@ -10,6 +12,11 @@ Links to GitHub and the docs open in a new tab, so this page and its state stay 
 since GitHub redirects back here. */}}
 {{define "status"}}{{template "head"}}
 <h1 style="font-size:1.3rem">Register Exemplar's GitHub App on {{.Org}}</h1>
+{{if .Done}}<section class="success" role="status"><h2>Setup is complete</h2>
+<p>The App's Secret is applied and exemplar-api has its database: nothing on this page is left to do.</p>
+{{template "restart" .}}
+{{if .Review.Created}}<p class="muted">To register a different App instead, open <b>Start over</b> at the bottom of this page.</p>{{end}}
+</section>{{end}}
 {{if .OwnerUnknown}}<p class="notice" role="status">GitHub didn't say whether {{.Org}} is an organization or a personal account,
 so the GitHub links below assume an organization. If {{.Org}} is your own account, reload this page.</p>{{end}}
 {{if .StartedOver}}<p class="notice" role="status">Setup forgot the App it created. If it's still on GitHub, delete it in your
@@ -30,7 +37,7 @@ Keep this port-forward running until you've applied it.</p>{{end}}
 {{else if and (eq .Current 1) .AppliedAppID}}
 <p class="done">This cluster already has the Secret for App {{.AppliedAppID}}, applied from an earlier setup page
 (this pod started after it, or is another exemplar-api pod). Restarting exemplar-api finishes setup with it.</p>
-{{template "restart" .}}
+{{if not .Done}}{{template "restart" .}}{{end}}
 <details><summary>Create a different App instead</summary>{{template "create-app" .}}</details>
 {{else if eq .Current 1}}
 {{template "create-app" .}}
@@ -59,7 +66,7 @@ Choose the repositories Exemplar reviews, and <code>exemplar-config</code>. Then
 <p>For <code>exemplar login</code> from a terminal, tick <b>Enable Device Flow</b> in the <a href="{{.Review.AppURL}}" target="_blank" rel="noopener">App's settings</a>.</p>
 {{if eq .AppSecret "applied"}}
 <p class="done">exemplar-secrets.yaml is applied: this pod sees the App's Secret.</p>
-{{template "restart" .}}
+{{if not .Done}}{{template "restart" .}}{{end}}
 <details><summary>Download the file again (after adding rule exports, say)</summary>{{template "secrets-download" .}}</details>
 {{else}}
 {{if eq .AppSecret "other"}}<p class="error" role="alert">The <code>exemplar-github-app</code> Secret in the cluster belongs to another App,

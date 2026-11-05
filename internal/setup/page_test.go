@@ -50,6 +50,8 @@ const (
 	labelCheckInstall = "Check the installation"
 	labelCreateExport = "Create the exports app on GitHub"
 	labelBack         = "Back to setup"
+	titleDone         = "<h2>Setup is complete</h2>"
+	labelStartOver    = "<summary>Start over</summary>"
 )
 
 // failTitles is each error page's heading.
@@ -148,7 +150,7 @@ func TestPageSteps(t *testing.T) {
 	mustContain(t, p, "(installation 77)", "kubectl apply -f exemplar-secrets.yaml", "Download exemplar-secrets.yaml",
 		"Enable Device Flow", labelCreateExport, "Check again")
 	// Restarting before the Secrets are applied would lose the App's key.
-	mustNotContain(t, p, labelCheckInstall, "is applied")
+	mustNotContain(t, p, labelCheckInstall, "is applied", titleDone)
 	if strings.Count(p.body, "rollout restart") != 1 { // only in the by-hand check
 		t.Error("restart offered before the Secrets are applied")
 	}

@@ -388,10 +388,19 @@ type statusView struct {
 // pageErrors are the in-place errors a render shows.
 type pageErrors struct{ install, provider string }
 
+// Done: an App's Secret is applied (this setup's, or one from an earlier
+// setup this pod didn't hold) and exemplar-api has its database, so the
+// restart is all that's left. Not before the apply: restarting then loses
+// the key held in this pod.
+func (v statusView) Done() bool {
+	applied := v.AppSecret == secretApplied || v.AppliedAppID != ""
+	return applied && v.ReviewGone == "" && v.File.Database != dbExternal
+}
+
 // StepClass is step n's state for the template: done, current or todo.
 func (v statusView) StepClass(n int) string {
 	switch {
-	case n < v.Current:
+	case v.Done() || n < v.Current:
 		return "done"
 	case n == v.Current:
 		return "current"

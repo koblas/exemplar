@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -80,7 +81,7 @@ func TestAppSecretReconciled(t *testing.T) {
 
 	p := get(t, c, srv.URL+"/setup")
 	mustContain(t, p, "Check again", "Download exemplar-secrets.yaml")
-	mustNotContain(t, p, "belongs to another App", "is applied")
+	mustNotContain(t, p, "belongs to another App", "is applied", titleDone)
 	// No dead end if the kubelet never shows the mount: a way to check by
 	// hand, and the restart behind it.
 	if _, hatch, ok := strings.Cut(p.body, "Applied it, and this page still doesn't show it?"); !ok ||
@@ -96,7 +97,7 @@ func TestAppSecretReconciled(t *testing.T) {
 	}
 	p = get(t, c, srv.URL+"/setup")
 	mustContain(t, p, "belongs to another App", "Download exemplar-secrets.yaml")
-	mustNotContain(t, p, "is applied")
+	mustNotContain(t, p, "is applied", titleDone)
 
 	if err := os.WriteFile(key, []byte(fake.pem), 0o600); err != nil {
 		t.Fatal(err)
@@ -108,6 +109,39 @@ func TestAppSecretReconciled(t *testing.T) {
 	mustContain(t, p, "exemplar-secrets.yaml is applied", "kubectl -n exemplar rollout restart deployment/exemplar-api",
 		"https://exemplar.acme.com/ui/setup", "Download the file again")
 	mustNotContain(t, p, "Check again", "belongs to another App", "Until you apply the Secrets file")
+	doneState(t, p)
+	// Start over stays, collapsed under the steps, and still works.
+	mustContain(t, p, "open <b>Start over</b> at the bottom of this page", labelStartOver, "Forget this App and start over")
+	if !strings.Contains(p.body, `<details><summary>Start over</summary>`) ||
+		strings.Index(p.body, labelStartOver) < strings.Index(p.body, "</ol>") {
+		t.Error("Start over is open or above the steps in the done state")
+	}
+	if p := do(t, c, http.MethodPost, srv.URL+"/setup/start-over", url.Values{"form": {formRe.FindStringSubmatch(p.body)[1]}}); p.status != http.StatusSeeOther {
+		t.Fatalf("start over = %d", p.status)
+	}
+	p = get(t, c, srv.URL+"/setup")
+	if currentStep(t, p) != titleCreate {
+		t.Errorf("after start over = %q", currentStep(t, p))
+	}
+	mustNotContain(t, p, titleDone)
+}
+
+// doneState checks the done state: the banner leads, names the restart
+// and /ui/setup, every step reads done, and the restart shows once.
+func doneState(t *testing.T, p page) {
+	t.Helper()
+	mustContain(t, p, titleDone, "nothing on this page is left to do",
+		"kubectl -n exemplar rollout restart deployment/exemplar-api", "https://exemplar.acme.com/ui/setup")
+	banner, steps, ok := strings.Cut(p.body, `<ol class="steps">`)
+	if !ok || !strings.Contains(banner, titleDone) || !strings.Contains(banner, "rollout restart") {
+		t.Errorf("the banner isn't above the steps, with the restart:\n%s", p.body)
+	}
+	if strings.Contains(steps, "rollout restart") {
+		t.Error("the restart shows twice")
+	}
+	if strings.Contains(p.body, `class="current"`) || strings.Contains(p.body, `class="todo"`) {
+		t.Errorf("a step doesn't read done:\n%s", p.body)
+	}
 }
 
 var linkRe = regexp.MustCompile(`<a href="(https?://[^"]+)"([^>]*)>`)
@@ -293,7 +327,7 @@ func TestAppliedSecretOnNewPod(t *testing.T) {
 	}
 	mustContain(t, p, "This cluster already has the Secret for App 4242", "Create a different App instead",
 		"Before the restart, create <code>exemplar-database</code>", "Check again")
-	mustNotContain(t, p, "rollout restart", "only in this exemplar-api pod's memory")
+	mustNotContain(t, p, "rollout restart", "only in this exemplar-api pod's memory", titleDone)
 	if mustState(t, p.body) == "" {
 		t.Error("no way to create a different App")
 	}
@@ -303,8 +337,10 @@ func TestAppliedSecretOnNewPod(t *testing.T) {
 	}
 	p = get(t, c, srv.URL+"/setup")
 	mustContain(t, p, "This cluster already has the Secret for App 4242",
-		"kubectl -n exemplar rollout restart deployment/exemplar-api", "exemplar-api-crash-loops-after-setup")
-	mustNotContain(t, p, "Before the restart, create <code>exemplar-database</code>")
+		"kubectl -n exemplar rollout restart deployment/exemplar-api", "exemplar-api-crash-loops-after-setup",
+		"Create a different App instead")
+	mustNotContain(t, p, "Before the restart, create <code>exemplar-database</code>", labelStartOver)
+	doneState(t, p)
 }
 
 // After applying the file with an external Postgres and no exemplar-database,
@@ -321,7 +357,7 @@ func TestRestartWaitsForDatabase(t *testing.T) {
 	}
 	p := get(t, c, srv.URL+"/setup")
 	mustContain(t, p, "exemplar-secrets.yaml is applied", "Before the restart, create <code>exemplar-database</code>")
-	mustNotContain(t, p, "rollout restart")
+	mustNotContain(t, p, "rollout restart", titleDone)
 
 	if err := os.WriteFile(dbFile, []byte("postgres://db.internal/exemplar"), 0o600); err != nil {
 		t.Fatal(err)
@@ -329,6 +365,7 @@ func TestRestartWaitsForDatabase(t *testing.T) {
 	p = get(t, c, srv.URL+"/setup")
 	mustContain(t, p, "kubectl -n exemplar rollout restart deployment/exemplar-api")
 	mustNotContain(t, p, "Before the restart")
+	doneState(t, p)
 	// The file leaves out a database Secret that now exists.
 	file := secretsIn(t, downloadSecrets(t, srv.URL, c, map[string][]string{"models": {modelsOwn}}).body)
 	if _, ok := file["exemplar-database"]; ok {
