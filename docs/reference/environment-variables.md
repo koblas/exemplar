@@ -38,7 +38,7 @@ Sign-in variables come from the `exemplar-auth` ConfigMap through `envFrom` ([Ho
 | `EXEMPLAR_SESSION_KEY_FILE` | derived from the root key | Explicit session key file. Rotating it signs everyone out; sessions last 8 hours. |
 | `EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID` | Secret `exemplar-github-app`, key `client-id` | The App's OAuth client id. Present means GitHub sign-in is on. Also the CLI's default `--client-id`. |
 | `EXEMPLAR_OAUTH2_GITHUB_CLIENT_SECRET_FILE` | fixed path to Secret `exemplar-github-app`, key `client-secret` | The OAuth client secret file. |
-| `EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS` | `exemplar-auth` | Comma-separated organizations whose members may sign in. Defaults to the config repo's owner. |
+| `EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS` | `exemplar-auth` | Comma-separated organizations whose members may sign in. Defaults to the config repo's owner. An entry naming a user account admits that user. |
 | `EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE` | `exemplar-auth` | `true` lets any GitHub user sign in. |
 | `EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL` | `exemplar-auth` | The GHES base URL for OAuth (`https://github.example.com`). |
 | `EXEMPLAR_OAUTH2_GITHUB_SIGN_IN` | `exemplar-auth` | `false` hides the GitHub sign-in button and keeps GitHub as the connect step only. |
