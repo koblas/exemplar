@@ -8,6 +8,7 @@ resources:
   - settings.yaml
   - serviceaccounts.yaml
   - rbac.yaml
+  - secrets.yaml
   - networkpolicies.yaml
   - webhook.yaml
   - api.yaml

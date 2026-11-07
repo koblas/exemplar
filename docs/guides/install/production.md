@@ -32,7 +32,7 @@ Put its URL in `exemplar-database` (`url`), for example `postgres://exemplar:<pa
 
 ## 3. Create the Secrets
 
-Create them from your secret manager; none are in this repository or the rendered manifests. Before applying: `exemplar-database`, `exemplar-root-key`, `exemplar-providers` (unless Bedrock only) and, with the tunnel, `exemplar-cloudflared`. The setup page's `exemplar-secrets.yaml` holds `exemplar-github-app` (and `exemplar-exports-app`), and leaves out every Secret exemplar-api already sees; choose **I've created exemplar-providers myself** under **Models**. `exemplar-oidc` is only for OIDC sign-in. Every key is listed in [Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md).
+Create them from your secret manager: `exemplar-database`, `exemplar-root-key`, `exemplar-providers` (unless Bedrock only) and, with the tunnel, `exemplar-cloudflared`. The manifests declare the Secrets the setup page writes with no data; applying them keeps the data your secret manager put there, and setup writes only keys that are empty, except an Anthropic key you paste on its last step. The setup page fills `exemplar-github-app` (and `exemplar-exports-app`); choose **I've created `exemplar-providers` myself** under **Models**. `exemplar-oidc` is only for OIDC sign-in. Every key is listed in [Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md).
 
 For Bedrock, annotate the `exemplar-gateway` service account for the cloud's identity federation. Don't add AWS keys to a Secret.
 

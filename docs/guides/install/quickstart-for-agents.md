@@ -7,11 +7,10 @@ The install needs both of you. The agent runs `kubectl`, `git` and `cloudflared`
 ## Rules for the agent
 
 1. **Confirm the cluster before the first `kubectl` that changes anything.** Run `kubectl config current-context` and show the person the name. Every `kubectl` below acts on the current context. If the person names a different cluster, add `--context <name>` to every command, or switch with `kubectl config use-context <name>` once and say so.
-2. **Never handle the Anthropic API key, the GitHub App key or the Postgres password.** The setup page collects the API key in the browser and generates the rest. The only file you apply is the one the person downloads. Do not print its contents.
+2. **Never handle the setup token, the Anthropic API key, the GitHub App key or the Postgres password.** The setup page collects the API key in the browser, generates the rest and writes them to the cluster itself. The person reads the setup token with `kubectl` on their own terminal. Do not print any Secret's contents.
 3. **Do not use `sudo`.** No step needs it. `sudo cloudflared …` looks in root's home for the certificate and fails.
 4. **Stop at every HANDOFF** and tell the person exactly what to do and what to come back with. Do not try to complete a browser step yourself.
-5. **Keep the port-forward in step 6 running** until step 7 is done. The setup state lives in one pod's memory. Run it in the background and remember how to stop it.
-6. **Report checks faithfully.** Show the command's actual output when a check fails. Do not say a step passed unless its expected result appeared.
+5. **Report checks faithfully.** Show the command's actual output when a check fails. Do not say a step passed unless its expected result appeared.
 
 ## Inputs
 
@@ -249,63 +248,55 @@ Then wait for exemplar-api:
 kubectl -n exemplar rollout status deployment/exemplar-api --timeout=180s
 ```
 
-Expect: `deployment "exemplar-api" successfully rolled out`. The other pods are **expected** to be not ready at this point. `kubectl -n exemplar get pods` shows them in `Init` or `CreateContainerConfigError` with `secret "exemplar-github-app" not found` (or `exemplar-database`, `exemplar-postgres`) in their events. That resolves in step 7. Do not try to fix it now.
+Expect: `deployment "exemplar-api" successfully rolled out`. The other pods are **expected** to be not ready at this point. `kubectl -n exemplar get pods` shows them in `ContainerCreating` or `CreateContainerConfigError`, waiting on `exemplar-root-key` or a key of `exemplar-github-app`. `exemplar-postgres-0` starts now: exemplar-api wrote its password. The rest resolves in step 7. Do not try to fix it now.
 
-## Step 6: Start the setup page
+## Step 6: Check the host answers
 
-Port-forward exemplar-api and leave it running:
-
-```bash
-kubectl -n exemplar port-forward deploy/exemplar-api 8081
-```
-
-Expect: `Forwarding from 127.0.0.1:8081 -> 8081`. Run this in the background and keep it alive through step 7. Then check the page answers:
+Setup runs on the public host, so the path from the internet to the pods must work first:
 
 ```bash
-curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:8081/setup
+curl -sS -o /dev/null -w '%{http_code}\n' https://<host>/setup
 ```
 
-Expect: `200`. A `403` means the request did not name `localhost:8081`; use exactly that address. A connection error means the port-forward died; start it again.
-
-## Step 7: Register the GitHub App
-
-**HANDOFF.** Ask the person to open <http://localhost:8081/setup> in their browser and work through its three steps. Tell them:
-
-1. **Create the App on GitHub.** The page shows the webhook and sign-in addresses, both on `https://<host>`; they should check those, press **Create the App on GitHub**, and confirm on GitHub. They may rename the App.
-2. **Install it.** Follow the install link, choose `<first-repo>` and `<config-repo>` (both are required), come back to the setup tab and press **Check the installation**.
-3. **Save the Secrets.** Tick **Enable Device Flow** in the App's settings (the page links there) so `exemplar login` works later. Paste the Anthropic API key under **Models** and press **Download exemplar-secrets.yaml**. Tell you where the file landed.
-
-Keep the setup tab and the port-forward open throughout. If exemplar-api's pod restarts between creating the App and applying the file, the App's key is lost: the person must delete that App in GitHub's settings and start the page again (its **Start over** button does the reset on the Exemplar side).
-
-When the person gives you the path to `exemplar-secrets.yaml`, apply it and restart exemplar-api. If the setup tab is still open, it shows **Setup is complete** once the pod sees the Secret; the restart doesn't need to wait for it. Do not read the file's contents into your output.
-
-```bash
-kubectl apply -f <path>/exemplar-secrets.yaml
-```
-
-Expect: `created` lines for `exemplar-github-app`, `exemplar-root-key`, `exemplar-postgres`, `exemplar-database` and `exemplar-providers`. The page leaves out any Secret that already exists, so fewer lines are fine if the person created some by hand.
-
-```bash
-kubectl -n exemplar rollout restart deployment/exemplar-api
-```
-
-Now the port-forward can be stopped. Wait for everything:
-
-```bash
-kubectl -n exemplar get pods
-```
-
-Expect, within a few minutes: `exemplar-api`, `exemplar-webhook`, `exemplar-gateway`, `exemplar-worker`, `exemplar-search-0` and `exemplar-postgres-0` all `Running` and `READY` with every container up, plus `exemplar-cloudflared` for the tunnel. CronJobs for `exemplar-learn-*` have no pods until they fire. If a pod is still waiting on a Secret after the restart, re-check that the apply above listed it. If exemplar-api crash-loops, read `kubectl -n exemplar logs deploy/exemplar-api` and follow [exemplar-api crash-loops after setup](../operate/troubleshoot.md#exemplar-api-crash-loops-after-setup). If the gateway is not ready, its log names the missing provider variable: [The gateway isn't ready](../operate/troubleshoot.md#the-gateway-isnt-ready).
-
-## Step 8: Verify from the outside
-
-Check that GitHub can reach the host:
+Expect: `401`, the setup sign-in page. Then:
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' https://<host>/webhook
 ```
 
-Expect: `405`. The webhook only accepts signed `POST` deliveries, so a `405` proves the path from the internet to the pod. A connection error or a `5xx` does not. For the tunnel, a `530` or `1033` from Cloudflare means the `exemplar-cloudflared` pod is not connected; check its log. For an Ingress, a connection error means DNS or the controller; a certificate error means `exemplar-tls`.
+Expect: `405`. The webhook only accepts signed `POST` deliveries, so a `405` proves the path to the webhook pod. A connection error or a `5xx` does not. For the tunnel, a `530` or `1033` from Cloudflare means the `exemplar-cloudflared` pod is not connected; check its log. For an Ingress, a connection error means DNS or the controller; a certificate error means `exemplar-tls`.
+
+## Step 7: Register the GitHub App
+
+**HANDOFF.** Ask the person to read the setup token in their own terminal, not through you:
+
+```bash
+kubectl -n exemplar get secret exemplar-setup -o jsonpath='{.data.token}' | base64 -d
+```
+
+Then to open `https://<host>/setup`, paste the token, click **Sign in**, and work through the page's three steps. Tell them:
+
+1. **Create the App on GitHub.** The page shows the webhook and sign-in addresses, both on `https://<host>`; they should check those, click **Create the App on GitHub**, and confirm on GitHub. They may rename the App.
+2. **Install it.** Follow the install link, choose `<first-repo>` and `<config-repo>` (both are required), come back to the setup tab and click **Check the installation**.
+3. **Finish.** Tick **Enable Device Flow** in the App's settings (the page links there) so `exemplar login` works later. Paste the Anthropic API key under **Models** and click **Finish setup**. The page shows **Setup is complete** and, within seconds, opens `/ui/setup`. Tell you when it has.
+
+Setup writes each value to the cluster as soon as it has it, so a pod restart or a closed tab loses nothing: reopening `https://<host>/setup` resumes at the first step that isn't done. **Start over**, at the bottom of the page, forgets the App and goes back to step 1.
+
+When the person says setup is complete, check the Secrets have keys, without printing values:
+
+```bash
+kubectl -n exemplar get secret exemplar-github-app exemplar-root-key exemplar-providers
+```
+
+Expect: `DATA` above 0 on each line (`exemplar-github-app` has 8). Then wait for everything:
+
+```bash
+kubectl -n exemplar get pods
+```
+
+Expect, within a few minutes: `exemplar-api`, `exemplar-webhook`, `exemplar-gateway`, `exemplar-worker`, `exemplar-search-0` and `exemplar-postgres-0` all `Running` and `READY` with every container up, plus `exemplar-cloudflared` for the tunnel. No restart is needed. CronJobs for `exemplar-learn-*` have no pods until they fire. If the setup page stays on **Setup is complete**, follow [exemplar-api stays in setup mode](../operate/troubleshoot.md#exemplar-api-stays-in-setup-mode). If exemplar-api crash-loops, read `kubectl -n exemplar logs deploy/exemplar-api` and follow [exemplar-api crash-loops after setup](../operate/troubleshoot.md#exemplar-api-crash-loops-after-setup). If the gateway is not ready, its log names the missing provider variable: [The gateway isn't ready](../operate/troubleshoot.md#the-gateway-isnt-ready).
+
+## Step 8: Verify the installation
 
 **HANDOFF.** Ask the person to open `https://<host>/ui/setup` and sign in with GitHub. The page runs the installation checks: the App's installation, its access to `<config-repo>`, GitHub's delivery log and the events stored. Every check should read **ok**. For a machine-readable copy, the same checks are at `https://<host>/ui/setup.json` once signed in, as a list of `{name, status, detail, fix}` objects with `status` of `ok`, `warn` or `fail`. The person can paste that JSON to you.
 
@@ -326,9 +317,11 @@ Hand the person to [Your first review](../../tutorials/first-review.md), which t
 | `dial tcp 127.0.0.1:6443: connect: connection refused` from any `kubectl` | The current context's cluster is not running | `kubectl config get-contexts`; switch to the right one or start the cluster |
 | `Cannot determine default origin certificate path` from `cloudflared` | Login not done, or the command ran under `sudo` | Run `cloudflared tunnel login` as the person, without `sudo` |
 | Pods in `CreateContainerConfigError` after step 5 | Expected before step 7 | Continue; they start once the Secrets exist |
-| Setup page returns `403` | Request did not use `localhost:8081` | Use that exact address through the port-forward |
+| `https://<host>/setup` doesn't answer `401` | The host doesn't reach exemplar-api | Check the tunnel or Ingress as in step 6 |
+| Setup page: "That isn't the setup token" | The paste included the shell prompt or missed characters | Run the `kubectl … exemplar-setup` command again and paste its whole output |
+| Setup page: a Secret "isn't in the cluster" | The manifests weren't all applied | `kubectl apply -k quickstart/` again; it keeps what setup wrote |
 | Setup page is gone, exemplar-api serves `/ui/` | `exemplar-github-app` already exists | Setup is done, or follow [exemplar-api crash-loops after setup](../operate/troubleshoot.md#exemplar-api-crash-loops-after-setup) to redo it |
-| App created on GitHub but the pod restarted before the file was applied | The App's key lived only in that pod | Delete the App on GitHub, press **Start over** on the setup page, repeat step 7 |
+| Setup page: "exemplar-api couldn't reach its Secrets" | Role, RoleBinding or NetworkPolicy changed by an overlay | [Setup says exemplar-api couldn't reach its Secrets](../operate/troubleshoot.md#setup-says-exemplar-api-couldnt-reach-its-secrets) |
 | Gateway pod not ready | A provider in `global.yaml` has no credentials | Gateway log names the variable; add the key to `exemplar-providers` |
 | A pod refuses to start naming `example-org` or `exemplar.example.invalid` | A placeholder left in `settings.yaml` | Fix the value and `kubectl apply -k quickstart/` again |
 | Config repo's CI is red | A job other than `validate` runs without its variables and secrets | See [Config CI is red on a fresh copy](../operate/troubleshoot.md#config-ci-is-red-on-a-fresh-copy) |

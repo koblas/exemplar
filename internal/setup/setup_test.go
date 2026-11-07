@@ -8,18 +8,26 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/koblas/exemplar/internal/envcfg"
 )
@@ -116,15 +124,35 @@ func newTestKey(t *testing.T) string {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}))
 }
 
-func newSetup(t *testing.T) (*httptest.Server, *fakeGitHub) {
+// testServer is setup on one exemplar-api pod, and the cluster's Secrets
+// it shares with any other pod a test starts (another).
+type testServer struct {
+	*httptest.Server
+
+	h    *Handler
+	kube *k8sfake.Clientset
+	cfg  Config
+}
+
+// emptySecrets are the Secrets deploy/k8s declares, empty, in exemplar.
+func emptySecrets() []runtime.Object {
+	names := []string{secretSetup, secretApp, secretExports, secretRootKey, secretPostgres, secretDatabase, secretProviders}
+	out := make([]runtime.Object, 0, len(names))
+	for _, name := range names {
+		out = append(out, &corev1.Secret{Name: name, Namespace: "exemplar"})
+	}
+	return out
+}
+
+func newSetup(t *testing.T) (*testServer, *fakeGitHub) {
 	t.Helper()
 	return newSetupWith(t, nil)
 }
 
-// newSetupWith is newSetup with the pod's view of the cluster changed by
-// edit: by default a fresh install with the in-cluster Postgres, no
-// database URL and no root key mounted.
-func newSetupWith(t *testing.T, edit func(*Config)) (*httptest.Server, *fakeGitHub) {
+// newSetupWith is newSetup with the configuration changed by edit: by
+// default a fresh install with the in-cluster Postgres and every Secret
+// declared empty.
+func newSetupWith(t *testing.T, edit func(*Config)) (*testServer, *fakeGitHub) {
 	t.Helper()
 	fake := &fakeGitHub{t: t, pem: newTestKey(t), used: map[string]bool{}}
 	gh := httptest.NewServer(fake)
@@ -135,43 +163,69 @@ func newSetupWith(t *testing.T, edit func(*Config)) (*httptest.Server, *fakeGitH
 	if err != nil {
 		t.Fatal(err)
 	}
+	kube := k8sfake.NewClientset(emptySecrets()...)
 	cfg := Config{
 		URLs: urls, ConfigRepo: "acme/exemplar-config", GitHubWeb: "https://github.com/", GitHubAPI: gh.URL + "/",
-		Base: "http://localhost:8081", Namespace: "exemplar", HTTP: gh.Client(),
-		RootKeyFile:       filepath.Join(t.TempDir(), "key"), // optional volume, Secret not there yet
-		AppSecretDir:      t.TempDir(),                       // likewise exemplar-github-app
+		Namespace: "exemplar", HTTP: gh.Client(), Secrets: KubeSecrets{Client: kube, Namespace: "exemplar"},
 		InClusterPostgres: func(context.Context) bool { return true },
 	}
 	if edit != nil {
 		edit(&cfg)
 	}
+	return start(t, cfg, kube), fake
+}
+
+// start serves cfg as one exemplar-api pod.
+func start(t *testing.T, cfg Config, kube *k8sfake.Clientset) *testServer {
+	t.Helper()
 	h, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The browser reaches it as localhost:8081, as through a port-forward.
-	srv := httptest.NewServer(asHost("localhost:8081", h.Routes()))
+	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
-	return srv, fake
+	return &testServer{Server: srv, h: h, kube: kube, cfg: cfg}
 }
 
-// asHost serves next as if every request named host, unless the test set
-// X-Test-Host.
-func asHost(host string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Host = host
-		if h := r.Header.Get("X-Test-Host"); h != "" {
-			r.Host = h
-		}
-		next.ServeHTTP(w, r)
-	})
+// another is a second exemplar-api pod on the same cluster.
+func (s *testServer) another(t *testing.T) *testServer {
+	t.Helper()
+	return start(t, s.cfg, s.kube)
 }
 
-// browser keeps cookies and doesn't follow redirects.
-func browser(t *testing.T) *http.Client {
+// secret reads a Secret's data as strings.
+func (s *testServer) secret(t *testing.T, name string) map[string]string {
+	t.Helper()
+	got, err := s.kube.CoreV1().Secrets("exemplar").Get(t.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for k, v := range got.Data {
+		out[k] = string(v)
+	}
+	return out
+}
+
+// anonymous keeps cookies and doesn't follow redirects.
+func anonymous(t *testing.T) *http.Client {
 	t.Helper()
 	jar := &jarOf{cookies: map[string]*http.Cookie{}}
 	return &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+}
+
+// browser is anonymous, signed in to srv with the setup token.
+func browser(t *testing.T, srv *testServer) *http.Client {
+	t.Helper()
+	c := anonymous(t)
+	if p := get(t, c, srv.URL+"/setup"); p.status != http.StatusUnauthorized { // runs Prepare
+		t.Fatalf("GET /setup before sign-in = %d", p.status)
+	}
+	token := srv.secret(t, secretSetup)[keyToken]
+	if p := do(t, c, http.MethodPost, srv.URL+"/setup/sign-in", url.Values{"token": {token}}); p.status != http.StatusSeeOther {
+		t.Fatalf("sign-in = %d\n%s", p.status, p.body)
+	}
+	return c
 }
 
 type jarOf struct {
@@ -242,7 +296,7 @@ var (
 
 func TestManifestFlow(t *testing.T) {
 	srv, fake := newSetup(t)
-	c := browser(t)
+	c := browser(t, srv)
 
 	p := get(t, c, srv.URL+"/setup")
 	if p.status != http.StatusOK || p.header.Get("Cache-Control") != "no-store" {
@@ -265,27 +319,45 @@ func TestManifestFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	hook, _ := m["hook_attributes"].(map[string]any)
-	if hook["url"] != "https://exemplar.acme.com/webhook" || m["redirect_url"] != "http://localhost:8081/setup/created" ||
+	if hook["url"] != "https://exemplar.acme.com/webhook" || m["redirect_url"] != "https://exemplar.acme.com/setup/created" ||
 		fmt.Sprint(m["callback_urls"]) != "[https://exemplar.acme.com/oauth/callback]" || m["public"] != false {
 		t.Errorf("manifest = %v", m)
 	}
 	state := au.Query().Get("state")
 
-	// Another browser, without the cookie, can't finish this setup.
-	if p := get(t, browser(t), srv.URL+"/setup/created?code=c1&state="+state); p.status != http.StatusBadRequest {
+	// Another signed-in browser, without the state cookie, can't finish
+	// this registration, nor can anyone with a forged state.
+	if p := get(t, browser(t, srv), srv.URL+"/setup/created?code=c1&state="+url.QueryEscape(state)); p.status != http.StatusBadRequest {
 		t.Fatalf("created without the cookie = %d", p.status)
 	}
-	// That attempt spent the state.
-	if p := get(t, c, srv.URL+"/setup/created?code=c1&state="+state); p.status != http.StatusBadRequest {
-		t.Fatalf("spent state = %d", p.status)
+	if p := get(t, c, srv.URL+"/setup/created?code=c1&state=review-x.9999999999.forged"); p.status != http.StatusBadRequest {
+		t.Fatalf("forged state = %d", p.status)
 	}
 
-	state = mustState(t, get(t, c, srv.URL+"/setup").body)
-	if p := get(t, c, srv.URL+"/setup/created?code=c2&state="+state); p.status != http.StatusSeeOther {
+	if p := get(t, c, srv.URL+"/setup/created?code=c2&state="+url.QueryEscape(state)); p.status != http.StatusSeeOther {
 		t.Fatalf("created = %d", p.status)
 	}
-	if p := get(t, c, srv.URL+"/setup/created?code=c2&state="+state); p.status != http.StatusBadRequest {
+	// GitHub's code works once: a replayed redirect fails there.
+	if p := get(t, c, srv.URL+"/setup/created?code=c2&state="+url.QueryEscape(state)); p.status != http.StatusBadRequest && p.status != http.StatusBadGateway {
 		t.Fatalf("replayed redirect = %d", p.status)
+	}
+	// The App's credentials are in the cluster the moment GitHub hands them over.
+	app := srv.secret(t, secretApp)
+	want := map[string]string{
+		"app-id": "4242", "client-id": "Iv23liAcme", "client-secret": "client-secret-value",
+		keyWebhookHeld: "webhook-secret-value", "private-key": fake.pem, "slug": "exemplar-acme",
+	}
+	for k, v := range want {
+		if app[k] != v {
+			t.Errorf("exemplar-github-app %s = %q, want %q", k, app[k], v)
+		}
+	}
+	// exemplar-webhook mounts webhook-secret: held back until the release,
+	// so it can't start with an App that Start over replaces.
+	for _, k := range []string{keyInstallation, keyWebhookSecret} {
+		if _, ok := app[k]; ok {
+			t.Errorf("%s before the App is installed", k)
+		}
 	}
 
 	p = get(t, c, srv.URL+"/setup")
@@ -293,44 +365,247 @@ func TestManifestFlow(t *testing.T) {
 	if form == nil || !strings.Contains(p.body, "installations/new") {
 		t.Fatalf("no install step in:\n%s", p.body)
 	}
-	post := func(token string) int {
-		return do(t, c, http.MethodPost, srv.URL+"/setup/installation", url.Values{"form": {token}}).status
+	post := func(path string, v url.Values) int {
+		return do(t, c, http.MethodPost, srv.URL+path, v).status
 	}
-	if code := post("forged"); code != http.StatusForbidden {
+	if code := post("/setup/installation", url.Values{"form": {"forged"}}); code != http.StatusForbidden {
 		t.Fatalf("forged form = %d", code)
 	}
-	if code := post(form[1]); code != http.StatusConflict {
+	if code := post("/setup/installation", url.Values{"form": {form[1]}}); code != http.StatusConflict {
 		t.Fatalf("before install = %d", code)
 	}
-	// No Secrets file until the App is installed.
-	if p := downloadSecrets(t, srv.URL, c, url.Values{"anthropic-key": {"sk-ant-test"}}); p.status != http.StatusConflict {
-		t.Fatalf("secrets before install = %d", p.status)
+	// Finish isn't open until the App is installed.
+	if code := post("/setup/finish", url.Values{"form": {form[1]}, "anthropic-key": {"sk-ant-test"}}); code != http.StatusConflict {
+		t.Fatalf("finish before install = %d", code)
 	}
 	fake.mu.Lock()
 	fake.installed = true
 	fake.mu.Unlock()
-	if code := post(form[1]); code != http.StatusSeeOther {
+	if code := post("/setup/installation", url.Values{"form": {form[1]}}); code != http.StatusSeeOther {
 		t.Fatalf("after install = %d", code)
 	}
+	if got := srv.secret(t, secretApp)[keyInstallation]; got != "77" {
+		t.Errorf("installation-id = %q, want 77", got)
+	}
+	if in, err := srv.h.Installed(t.Context()); err != nil || in != nil {
+		t.Fatalf("Installed before Finish = %+v, %v", in, err)
+	}
 
-	p = downloadSecrets(t, srv.URL, c, url.Values{"anthropic-key": {"sk-ant-test"}})
-	if p.status != http.StatusOK {
-		t.Fatalf("secrets = %d", p.status)
+	if code := post("/setup/finish", url.Values{"form": {form[1]}, "anthropic-key": {" sk-ant-test "}}); code != http.StatusSeeOther {
+		t.Fatalf("finish = %d", code)
 	}
-	secret := secretsIn(t, p.body)["exemplar-github-app"]
-	want := map[string]string{
-		"app-id": "4242", "installation-id": "77", "client-id": "Iv23liAcme",
-		"client-secret": "client-secret-value", "webhook-secret": "webhook-secret-value",
+	if got := srv.secret(t, secretProviders)[keyAnthropic]; got != "sk-ant-test" {
+		t.Errorf("exemplar-providers anthropic-api-key = %q", got)
 	}
-	for k, v := range want {
-		if secret.Data[k] != v {
-			t.Errorf("%s = %q, want %q", k, secret.Data[k], v)
+	if got := srv.secret(t, secretRootKey)[keyRootKey]; len(got) != 2*envcfg.MinRootKeyBytes {
+		t.Errorf("root key after Finish = %q", got)
+	}
+	if app := srv.secret(t, secretApp); app[keyWebhookSecret] != "webhook-secret-value" || app[keyWebhookHeld] != "" {
+		t.Errorf("after Finish: webhook-secret %q, held %q", app[keyWebhookSecret], app[keyWebhookHeld])
+	}
+	p = get(t, c, srv.URL+"/setup")
+	mustContain(t, p, titleDone, `<meta http-equiv="refresh" content="5">`)
+	select {
+	case <-srv.h.Finished():
+	default:
+		t.Error("Finished not closed after the finishing page")
+	}
+	in, err := srv.h.Installed(t.Context())
+	if err != nil || in == nil {
+		t.Fatalf("Installed = %v, %v", in, err)
+	}
+	db := srv.secret(t, secretDatabase)[keyDatabaseURL]
+	if in.AppID != 4242 || in.ClientID != "Iv23liAcme" || string(in.ClientSecret) != "client-secret-value" ||
+		string(in.PrivateKey) != fake.pem || string(in.RootKey) != srv.secret(t, secretRootKey)[keyRootKey] || in.DatabaseURL != db {
+		t.Errorf("Installed = %+v", in)
+	}
+}
+
+// Setup answers only a browser that signed in with the token in
+// exemplar-setup.
+func TestSignIn(t *testing.T) {
+	srv, _ := newSetup(t)
+	c := anonymous(t)
+	for _, path := range []string{"/setup", "/setup/created?code=c&state=s"} {
+		p := get(t, c, srv.URL+path)
+		if p.status != http.StatusUnauthorized {
+			t.Errorf("GET %s signed out = %d", path, p.status)
+		}
+		mustContain(t, p, "Sign in to set up Exemplar", "kubectl -n exemplar get secret exemplar-setup -o jsonpath='{.data.token}' | base64 -d")
+		mustNotContain(t, p, "That isn't the setup token", labelCreate)
+	}
+	if p := do(t, c, http.MethodPost, srv.URL+"/setup/installation", url.Values{"form": {"x"}}); p.status != http.StatusUnauthorized {
+		t.Errorf("POST signed out = %d", p.status)
+	}
+	p := do(t, c, http.MethodPost, srv.URL+"/setup/sign-in", url.Values{"token": {"guess"}})
+	if p.status != http.StatusForbidden {
+		t.Errorf("wrong token = %d", p.status)
+	}
+	mustContain(t, p, "That isn't the setup token.")
+
+	// A forged session cookie is a signed-out browser.
+	forged := anonymous(t)
+	u, _ := url.Parse(srv.URL)
+	forged.Jar.SetCookies(u, []*http.Cookie{{Name: sessionCookie, Value: "operator.9999999999.00"}})
+	if p := get(t, forged, srv.URL+"/setup"); p.status != http.StatusUnauthorized {
+		t.Errorf("forged session = %d", p.status)
+	}
+
+	token := srv.secret(t, secretSetup)[keyToken]
+	if len(token) < 32 {
+		t.Fatalf("token %q is too short", token)
+	}
+	p = do(t, c, http.MethodPost, srv.URL+"/setup/sign-in", url.Values{"token": {token + "\n"}})
+	if p.status != http.StatusSeeOther {
+		t.Fatalf("right token = %d", p.status)
+	}
+	if !strings.Contains(p.header.Get("Set-Cookie"), "Secure") || !strings.Contains(p.header.Get("Set-Cookie"), "HttpOnly") {
+		t.Errorf("session cookie = %q", p.header.Get("Set-Cookie"))
+	}
+	if p := get(t, c, srv.URL+"/setup"); p.status != http.StatusOK || currentStep(t, p) != titleCreate {
+		t.Errorf("signed in = %d", p.status)
+	}
+	// The session works on every pod.
+	if p := get(t, c, srv.another(t).URL+"/setup"); p.status != http.StatusOK {
+		t.Errorf("signed in, another pod = %d", p.status)
+	}
+}
+
+// Prepare writes the token, the root key and the in-cluster database's
+// password and URL once, whichever pod runs it, and keeps them after.
+func TestPrepare(t *testing.T) {
+	srv, _ := newSetup(t)
+	if err := srv.h.Prepare(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	setup, pg, db := srv.secret(t, secretSetup), srv.secret(t, secretPostgres), srv.secret(t, secretDatabase)
+	if setup[keyToken] == "" || setup[keySigning] == "" || pg[keyPassword] == "" {
+		t.Fatalf("after Prepare: setup %v, postgres %v", setup, pg)
+	}
+	// The other workloads wait for the root key: not before Finish.
+	if root := srv.secret(t, secretRootKey); len(root) != 0 {
+		t.Errorf("root key before Finish: %v", root)
+	}
+	if want := "postgres://exemplar:" + pg[keyPassword] + "@exemplar-postgres.exemplar.svc:5432/exemplar"; db[keyDatabaseURL] != want {
+		t.Errorf("database url = %q, want %q", db[keyDatabaseURL], want)
+	}
+	if err := srv.another(t).h.Prepare(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if srv.secret(t, secretSetup)[keyToken] != setup[keyToken] || srv.secret(t, secretPostgres)[keyPassword] != pg[keyPassword] {
+		t.Error("a second Prepare changed what the first wrote")
+	}
+
+	for name, edit := range map[string]func(*Config){
+		"database in the environment": func(c *Config) { c.HasDatabase = true },
+		"external database":           func(c *Config) { c.InClusterPostgres = func(context.Context) bool { return false } },
+	} {
+		srv, _ := newSetupWith(t, edit)
+		if err := srv.h.Prepare(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if len(srv.secret(t, secretPostgres)) != 0 || len(srv.secret(t, secretDatabase)) != 0 {
+			t.Errorf("%s: Prepare wrote the database Secrets", name)
 		}
 	}
-	if secret.Kind != "Secret" || secret.Metadata["name"] != "exemplar-github-app" || secret.Metadata["namespace"] != "exemplar" ||
-		secret.Data["private-key"] != fake.pem {
-		t.Errorf("secret = %+v", secret)
+}
+
+// Two pods racing: the loser of a write reads the winner's values.
+func TestPrepareConflict(t *testing.T) {
+	srv, _ := newSetup(t)
+	conflicts := 1
+	srv.kube.PrependReactor("patch", "secrets", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		if pa, ok := a.(k8stesting.PatchAction); !ok || pa.GetName() != secretSetup || conflicts == 0 {
+			return false, nil, nil
+		}
+		conflicts--
+		// Another pod's write lands first.
+		_, err := srv.kube.Tracker().Get(corev1.SchemeGroupVersion.WithResource("secrets"), "exemplar", secretSetup)
+		if err != nil {
+			t.Error(err)
+		}
+		if err := srv.kube.Tracker().Update(corev1.SchemeGroupVersion.WithResource("secrets"), &corev1.Secret{
+			Name: secretSetup, Namespace: "exemplar",
+			Data: map[string][]byte{keyToken: []byte("winner"), keySigning: []byte("winner-key")},
+		}, "exemplar"); err != nil {
+			t.Error(err)
+		}
+		return true, nil, apierrors.NewConflict(schema.GroupResource{Resource: "secrets"}, secretSetup, errors.New("changed"))
+	})
+	if err := srv.h.Prepare(t.Context()); err != nil {
+		t.Fatal(err)
 	}
+	if got := srv.secret(t, secretSetup)[keyToken]; got != "winner" {
+		t.Errorf("token = %q, want the other pod's", got)
+	}
+	c := anonymous(t)
+	if p := do(t, c, http.MethodPost, srv.URL+"/setup/sign-in", url.Values{"token": {"winner"}}); p.status != http.StatusSeeOther {
+		t.Errorf("sign-in with the winner's token = %d", p.status)
+	}
+}
+
+// A pod that restarts, or another pod, picks up where setup was: the
+// App is in its Secret, and a state one pod issued works on the other.
+func TestResumeOnAnotherPod(t *testing.T) {
+	a, fake := newSetup(t)
+	c := browser(t, a)
+	b := a.another(t)
+
+	state := mustState(t, get(t, c, a.URL+"/setup").body)
+	if p := get(t, c, b.URL+"/setup/created?code=c1&state="+url.QueryEscape(state)); p.status != http.StatusSeeOther {
+		t.Fatalf("GitHub's redirect to the other pod = %d", p.status)
+	}
+	p := get(t, c, b.URL+"/setup")
+	if currentStep(t, p) != titleInstall {
+		t.Errorf("other pod, after create = %q", currentStep(t, p))
+	}
+	fresh := a.another(t) // a restarted pod: nothing in memory
+	p = get(t, c, fresh.URL+"/setup")
+	if currentStep(t, p) != titleInstall {
+		t.Errorf("restarted pod = %q", currentStep(t, p))
+	}
+	form := formRe.FindStringSubmatch(p.body)
+	fake.mu.Lock()
+	fake.installed = true
+	fake.mu.Unlock()
+	if p := do(t, c, http.MethodPost, a.URL+"/setup/installation", url.Values{"form": {form[1]}}); p.status != http.StatusSeeOther {
+		t.Fatalf("form from one pod, posted to another = %d", p.status)
+	}
+	if p := do(t, c, http.MethodPost, b.URL+"/setup/finish", url.Values{"form": {form[1]}, "models": {modelsOwn}}); p.status != http.StatusSeeOther {
+		t.Fatalf("finish = %d", p.status)
+	}
+	if got := a.secret(t, secretSetup)[keyProviders]; got != modelsOwn {
+		t.Errorf("providers = %q", got)
+	}
+	// Every pod sees setup complete, not just the one that finished it.
+	for _, s := range []*testServer{a, b, fresh} {
+		if in, err := s.h.Installed(t.Context()); err != nil || in == nil {
+			t.Errorf("Installed = %v, %v", in, err)
+		}
+	}
+}
+
+// The Secrets setup can't read or write get a page naming the cause.
+func TestSecretsUnavailable(t *testing.T) {
+	srv, _ := newSetup(t)
+	if err := srv.kube.CoreV1().Secrets("exemplar").Delete(t.Context(), secretSetup, metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	p := get(t, anonymous(t), srv.URL+"/setup")
+	if p.status != http.StatusServiceUnavailable {
+		t.Errorf("Secret missing = %d", p.status)
+	}
+	mustContain(t, p, "The <code>exemplar-setup</code> Secret isn't in the cluster", "kubectl apply -k", labelBack)
+
+	down, _ := newSetup(t)
+	down.kube.PrependReactor("get", "secrets", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "secrets"}, secretSetup, errors.New("no role"))
+	})
+	p = get(t, anonymous(t), down.URL+"/setup")
+	if p.status != http.StatusServiceUnavailable {
+		t.Errorf("API refused = %d", p.status)
+	}
+	mustContain(t, p, "exemplar-api couldn't reach its Secrets", "exemplar-api-setup", labelBack)
 }
 
 func mustState(t *testing.T, page string) string {
@@ -350,7 +625,7 @@ func TestUserOwnedConfigRepo(t *testing.T) {
 	fake.mu.Lock()
 	fake.userOwner = true
 	fake.mu.Unlock()
-	c := browser(t)
+	c := browser(t, srv)
 	p := get(t, c, srv.URL+"/setup")
 	action := actionRe.FindStringSubmatch(p.body)
 	if action == nil {
@@ -361,7 +636,7 @@ func TestUserOwnedConfigRepo(t *testing.T) {
 		t.Errorf("manifest posts to %s, want the user's own App settings", au)
 	}
 	state := au.Query().Get("state")
-	if p := get(t, c, srv.URL+"/setup/created?code=c1&state="+state); p.status != http.StatusSeeOther {
+	if p := get(t, c, srv.URL+"/setup/created?code=c1&state="+url.QueryEscape(state)); p.status != http.StatusSeeOther {
 		t.Fatalf("created = %d", p.status)
 	}
 	p = get(t, c, srv.URL+"/setup")
@@ -370,38 +645,10 @@ func TestUserOwnedConfigRepo(t *testing.T) {
 	}
 }
 
-func TestRefusesOtherHosts(t *testing.T) {
-	srv, _ := newSetup(t)
-	for _, path := range []string{"/setup", "/setup/created"} {
-		for host, want := range map[string]int{"evil.example": http.StatusForbidden, "127.0.0.1:8081": http.StatusOK, "localhost:8081": http.StatusOK} {
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+path, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set("X-Test-Host", host)
-			resp, err := srv.Client().Do(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			if want == http.StatusForbidden && !strings.Contains(string(body), "Open http://localhost:8081/setup through kubectl port-forward instead.") {
-				t.Errorf("GET %s as %s says %q", path, host, body)
-			}
-			if path != "/setup" && want == http.StatusOK {
-				want = http.StatusBadRequest // no state, but the host passed
-			}
-			if resp.StatusCode != want {
-				t.Errorf("GET %s as %s = %d, want %d", path, host, resp.StatusCode, want)
-			}
-		}
-	}
-}
-
 func TestExportsManifest(t *testing.T) {
 	h, err := New(Config{
 		URLs:       envcfg.URLs{API: "https://e.acme.com", Webhook: "https://e.acme.com/webhook", Callback: "https://e.acme.com/oauth/callback"},
-		ConfigRepo: "acme/exemplar-config", Base: "http://localhost:8081", Namespace: "exemplar",
+		ConfigRepo: "acme/exemplar-config", Namespace: "exemplar", Secrets: KubeSecrets{},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -26,15 +26,15 @@
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-stale-form"}}{{template "error-top" .}}
-<h1>This page is from before exemplar-api restarted</h1>
-<p>The pod that showed this page is gone, and the new App's key went with it.</p>
-<p>Open setup again. If it asks you to create the App, first delete the one GitHub already has in your App settings.</p>
+<h1>This page is out of date</h1>
+<p>Its form no longer matches setup's signing key, which changes when the <code>exemplar-setup</code> Secret is emptied or replaced.</p>
+<p>Open setup again and repeat what you were doing.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-not-ready"}}{{template "error-top" .}}
-<h1>There's no Secrets file yet</h1>
-<p>The file holds the App's key and its installation, so it exists once both steps are done.</p>
-<p>Create the App and install it from setup first. If you already had, exemplar-api restarted since and lost the App's key: delete that App in your App settings, then start again from setup.</p>
+<h1>That step isn't open yet</h1>
+<p>Setup needs the App created and installed, with <code>exemplar-config</code>, before this step.</p>
+<p>Open setup again: it shows the step to do next.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-manifest"}}{{template "error-top" .}}
@@ -43,9 +43,15 @@
 <p>Report it, with the log, at https://github.com/koblas/exemplar/issues.</p>
 {{template "error-bottom" .}}{{end}}
 
-{{/* .Base is where setup answers; the request named another host, maybe from another site's page (DNS rebinding). */}}
-{{define "fail-other-host"}}{{template "error-top" .}}
-<h1>Setup doesn't answer on this address</h1>
-<p>It answers only on the address kubectl port-forward gives it, so a page on another site can't reach the App's key.</p>
-<p>Open {{.Base}}/setup through kubectl port-forward instead.</p>
+{{/* .Secret: the Secret the cluster lacks. The manifests declare every Secret setup writes, empty, so exemplar-api's Role can name it. */}}
+{{define "fail-secret-missing"}}{{template "error-top" .}}
+<h1>The <code>{{.Secret}}</code> Secret isn't in the cluster</h1>
+<p>Setup writes into Secrets the manifests create empty, and this one is missing, so the manifests weren't all applied (or the Secret was deleted since).</p>
+<p>Apply your installation's manifests again (<code>kubectl apply -k</code> on your overlay), then open setup again.</p>
+{{template "error-bottom" .}}{{end}}
+
+{{define "fail-kube-api"}}{{template "error-top" .}}
+<h1>exemplar-api couldn't reach its Secrets</h1>
+<p>The Kubernetes API refused or didn't answer when setup read or wrote the installation's Secrets. The exemplar-api log has its answer.</p>
+<p>Check that the <code>exemplar-api-setup</code> Role and RoleBinding are in namespace {{.Namespace}}, and that the exemplar-api NetworkPolicy lets it reach the API server; then reload.</p>
 {{template "error-bottom" .}}{{end}}

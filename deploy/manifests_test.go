@@ -8,6 +8,7 @@ package deploy
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -358,11 +359,13 @@ func checkManifests(t *testing.T, docs []obj, images []any, want int) {
 	checkKubeAPI(t, docs, ws)
 }
 
-// checkKubeAPI checks that only exemplar-worker (control) can call the
-// Kubernetes API: it alone mounts a service account token, in its worker
-// container only, and it alone is bound to a Role, which reaches Jobs,
-// pods and the runner PodTemplate in the namespace. The runner template
-// mounts no token, no config checkout and nothing of the App.
+// checkKubeAPI checks who can call the Kubernetes API: exemplar-worker
+// (control), in its worker container, bound to a Role that reaches Jobs,
+// pods and the runner PodTemplate; and exemplar-api, in its api container,
+// bound to a Role that gets and patches only the Secrets setup writes, each
+// declared in the build. Nothing else mounts a token or has a Role. The
+// runner template mounts no token, no config checkout and nothing of the
+// App.
 func checkKubeAPI(t *testing.T, docs []obj, ws []workload) {
 	t.Helper()
 	for _, w := range ws {
@@ -374,12 +377,13 @@ func checkKubeAPI(t *testing.T, docs []obj, ws []workload) {
 				}
 			}
 		}
-		if len(tokens) > 0 && w.name != "exemplar-worker" {
+		tokenContainer := map[string]string{"exemplar-worker": "worker", "exemplar-api": "api"}[w.name]
+		if len(tokens) > 0 && tokenContainer == "" {
 			t.Errorf("%s mounts a service account token", w.name)
 		}
 		for _, c := range containers(t, w.spec) {
 			for _, m := range list(c, "volumeMounts") {
-				if tokens[str(m, "name")] && str(c, "name") != "worker" {
+				if tokens[str(m, "name")] && str(c, "name") != tokenContainer {
 					t.Errorf("%s/%s mounts the service account token", w.name, str(c, "name"))
 				}
 			}
@@ -414,27 +418,65 @@ func checkKubeAPI(t *testing.T, docs []obj, ws []workload) {
 			}
 		}
 	}
+	// Each Role, and the one account bound to it.
+	bindings := map[string]string{"exemplar-worker-runners": "exemplar-worker", "exemplar-api-setup": "exemplar-api"}
+	secrets := map[string]bool{}
 	for _, d := range docs {
+		if str(d, "kind") == "Secret" {
+			secrets[str(d, "metadata", "name")] = true
+		}
+	}
+	for _, d := range docs {
+		name := str(d, "metadata", "name")
 		switch str(d, "kind") {
 		case "RoleBinding", "ClusterRoleBinding":
 			for _, s := range list(d, "subjects") {
-				if str(s, "name") != "exemplar-worker" {
-					t.Errorf("%s %s binds %s", str(d, "kind"), str(d, "metadata", "name"), str(s, "name"))
+				if want, ok := bindings[name]; !ok || str(s, "name") != want || str(d, "roleRef", "name") != name {
+					t.Errorf("%s %s binds %s to %s", str(d, "kind"), name, str(s, "name"), str(d, "roleRef", "name"))
 				}
 			}
 			if str(d, "roleRef", "kind") != "Role" {
-				t.Errorf("%s %s is not a namespaced Role", str(d, "kind"), str(d, "metadata", "name"))
+				t.Errorf("%s %s is not a namespaced Role", str(d, "kind"), name)
 			}
 		case "ClusterRole":
-			t.Errorf("ClusterRole %s: control needs only its namespace", str(d, "metadata", "name"))
+			t.Errorf("ClusterRole %s: exemplar needs only its namespace", name)
 		case "Role":
-			for _, r := range list(d, "rules") {
-				for _, res := range list(r, "resources") {
-					if !slices.Contains([]any{"jobs", "pods", "podtemplates"}, res) {
-						t.Errorf("Role %s reaches %v", str(d, "metadata", "name"), res)
+			checkRole(t, d, secrets)
+		}
+	}
+}
+
+// checkRole checks a Role's reach: the worker's Jobs, pods and runner
+// template, or setup's named Secrets, get and patch only, each one a
+// Secret the build declares (an undeclared one would need create).
+func checkRole(t *testing.T, d obj, secrets map[string]bool) {
+	t.Helper()
+	name := str(d, "metadata", "name")
+	for _, r := range list(d, "rules") {
+		for _, res := range list(r, "resources") {
+			switch {
+			case name == "exemplar-api-setup" && res == "secrets":
+				if verbs := fmt.Sprint(list(r, "verbs")); verbs != "[get patch]" {
+					t.Errorf("Role %s: verbs %s on Secrets, want [get patch]", name, verbs)
+				}
+				names := list(r, "resourceNames")
+				if len(names) == 0 {
+					t.Errorf("Role %s reaches every Secret", name)
+				}
+				for _, n := range names {
+					if !secrets[fmt.Sprint(n)] {
+						t.Logf("Role %s names Secret %v, which this build doesn't declare", name, n)
 					}
 				}
+			case name == "exemplar-worker-runners" && slices.Contains([]any{"jobs", "pods", "podtemplates"}, res):
+			default:
+				t.Errorf("Role %s reaches %v", name, res)
 			}
+		}
+	}
+	for _, n := range []string{"exemplar-setup", "exemplar-github-app", "exemplar-exports-app", "exemplar-root-key", "exemplar-providers"} {
+		if name == "exemplar-api-setup" && !secrets[n] {
+			t.Errorf("Secret %s isn't declared: exemplar-api's setup can't create it", n)
 		}
 	}
 }

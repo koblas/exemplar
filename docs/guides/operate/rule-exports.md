@@ -6,7 +6,7 @@ Exports render the active rules' one-line summaries into coding-agent instructio
 
 === "During setup"
 
-    On the setup page's last step ([Quickstart step 5](../install/quickstart.md#5-register-the-github-app)), before downloading the Secrets, open **Rule exports (optional)** and press **Create the exports app on GitHub**. Install it only on the repos that opt in. Its Secret, `exemplar-exports-app`, is then in `exemplar-secrets.yaml`.
+    On the setup page's last step ([Quickstart step 5](../install/quickstart.md#5-register-the-github-app)), before **Finish setup**, open **Rule exports (optional)** and click **Create the exports app on GitHub**. Install it only on the repos that opt in. Setup saves its key in `exemplar-exports-app`.
 
 === "After setup"
 

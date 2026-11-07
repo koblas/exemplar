@@ -1,7 +1,11 @@
 {{/* Shared head and the error page frame. Every user-facing string of /setup is in this directory (.claude/rules/ux-flows.md).
-The docs (docs/guides/install/quickstart.md#5-register-the-github-app, docs/guides/operate/rule-exports.md) quote the step titles
+The docs (docs/guides/install/quickstart.md, docs/guides/operate/rule-exports.md) quote the step titles
 and button labels: rename them there too. */}}
-{{define "head"}}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+{{define "head"}}{{template "head-start"}}{{template "head-end"}}{{end}}
+{{/* "head-refresh": the page reloads itself every 5 seconds (the CSP allows no script). Only the finishing state uses it. */}}
+{{define "head-refresh"}}{{template "head-start"}}<meta http-equiv="refresh" content="5">{{template "head-end"}}{{end}}
+{{define "head-end"}}</head><body><header><strong>Exemplar setup</strong></header>{{end}}
+{{define "head-start"}}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Exemplar setup</title><style>
 :root{color-scheme:light dark}
 body{font:15px/1.5 system-ui,sans-serif;max-width:46rem;margin:0 auto;padding:0 1rem 3rem}
@@ -18,7 +22,7 @@ p.done::before{content:"\2713  ";color:#1a7f37}
 li.done h2::after{content:" \2713";color:#1a7f37}li.todo{opacity:.55}
 fieldset{border:1px solid #8884;border-radius:4px}legend{font-weight:600}ul{padding-left:1.25rem}
 dl{display:grid;grid-template-columns:max-content 1fr;gap:.2rem 1rem}dt{font-weight:600}dd{margin:0}
-</style></head><body><header><strong>Exemplar setup</strong></header>{{end}}
+</style>{{end}}
 
 {{/* An error page: "error-top", then a title, what failed and why, and what to do, then "error-bottom". */}}
 {{define "error-top"}}{{template "head"}}<div class="error" role="alert">{{end}}
