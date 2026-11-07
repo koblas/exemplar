@@ -1,11 +1,8 @@
 package setup
 
 import (
-	"context"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -16,7 +13,7 @@ import (
 // it back, and a GitHub outage keeps the last known state with a notice.
 func TestInstallReconciled(t *testing.T) {
 	srv, fake := newSetup(t)
-	c := browser(t)
+	c := browser(t, srv)
 	createReview(t, srv.URL, c)
 	set := func(f func()) {
 		fake.mu.Lock()
@@ -45,8 +42,8 @@ func TestInstallReconciled(t *testing.T) {
 	if p := checkInstall(t, srv.URL, c); p.status != http.StatusConflict {
 		t.Errorf("check without the config repo = %d", p.status)
 	}
-	if p := downloadSecrets(t, srv.URL, c, map[string][]string{"models": {modelsOwn}}); p.status != http.StatusConflict {
-		t.Errorf("secrets without the config repo = %d", p.status)
+	if got := srv.secret(t, secretApp)[keyInstallation]; got != "" {
+		t.Errorf("installation-id %q recorded without the config repo", got)
 	}
 
 	// Fixed on GitHub: a reload is enough.
@@ -64,84 +61,43 @@ func TestInstallReconciled(t *testing.T) {
 	mustContain(t, p, "GitHub didn't answer this page's checks")
 	set(func() { fake.listDown = false })
 
-	// Uninstalled since: back to the install step.
+	if got := srv.secret(t, secretApp)[keyInstallation]; got != "77" {
+		t.Errorf("installation-id = %q after a reload", got)
+	}
+
+	// Uninstalled since: back to the install step, and forgotten.
 	set(func() { fake.installed = false })
 	if p := get(t, c, srv.URL+"/setup"); currentStep(t, p) != titleInstall {
 		t.Errorf("after uninstall = %q", currentStep(t, p))
 	}
+	if got := srv.secret(t, secretApp)[keyInstallation]; got != "" {
+		t.Errorf("installation-id %q kept after uninstall", got)
+	}
 }
 
-// The last step watches exemplar-github-app's mount: the restart shows
-// only once this App's Secret is applied, and another App's is called out.
-func TestAppSecretReconciled(t *testing.T) {
-	dir := t.TempDir()
-	srv, fake := newSetupWith(t, func(c *Config) { c.AppSecretDir = dir })
-	c := installed(t, srv.URL, fake)
-	key := filepath.Join(dir, "private-key")
-
-	p := get(t, c, srv.URL+"/setup")
-	mustContain(t, p, "Check again", "Download exemplar-secrets.yaml")
-	mustNotContain(t, p, "belongs to another App", "is applied", titleDone)
-	// No dead end if the kubelet never shows the mount: a way to check by
-	// hand, and the restart behind it.
-	if _, hatch, ok := strings.Cut(p.body, "Applied it, and this page still doesn't show it?"); !ok ||
-		!strings.Contains(hatch, "kubectl -n exemplar get secret exemplar-github-app") ||
-		!strings.Contains(hatch, "rollout restart deployment/exemplar-api") {
-		t.Errorf("no way forward without the mount:\n%s", p.body)
-	} else if strings.Count(p.body, "rollout restart") != 1 {
-		t.Error("the restart shows outside the by-hand check before the Secret is applied")
-	}
-
-	if err := os.WriteFile(key, []byte(newTestKey(t)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	p = get(t, c, srv.URL+"/setup")
-	mustContain(t, p, "belongs to another App", "Download exemplar-secrets.yaml")
-	mustNotContain(t, p, "is applied", titleDone)
-
-	if err := os.WriteFile(key, []byte(fake.pem), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	p = get(t, c, srv.URL+"/setup")
-	if currentStep(t, p) != titleFinish {
-		t.Fatalf("applied = %q", currentStep(t, p))
-	}
-	mustContain(t, p, "exemplar-secrets.yaml is applied", "kubectl -n exemplar rollout restart deployment/exemplar-api",
-		"https://exemplar.acme.com/ui/setup", "Download the file again")
-	mustNotContain(t, p, "Check again", "belongs to another App", "Until you apply the Secrets file")
-	doneState(t, p)
-	// Start over stays, collapsed under the steps, and still works.
-	mustContain(t, p, "open <b>Start over</b> at the bottom of this page", labelStartOver, "Forget this App and start over")
-	if !strings.Contains(p.body, `<details><summary>Start over</summary>`) ||
-		strings.Index(p.body, labelStartOver) < strings.Index(p.body, "</ol>") {
-		t.Error("Start over is open or above the steps in the done state")
-	}
-	if p := do(t, c, http.MethodPost, srv.URL+"/setup/start-over", url.Values{"form": {formRe.FindStringSubmatch(p.body)[1]}}); p.status != http.StatusSeeOther {
-		t.Fatalf("start over = %d", p.status)
-	}
-	p = get(t, c, srv.URL+"/setup")
-	if currentStep(t, p) != titleCreate {
-		t.Errorf("after start over = %q", currentStep(t, p))
-	}
-	mustNotContain(t, p, titleDone)
-}
-
-// doneState checks the done state: the banner leads, names the restart
-// and /ui/setup, every step reads done, and the restart shows once.
-func doneState(t *testing.T, p page) {
+// installed is a signed-in browser on the last step: the App created and
+// installed with the config repo.
+func installed(t *testing.T, srv *testServer, fake *fakeGitHub) *http.Client {
 	t.Helper()
-	mustContain(t, p, titleDone, "nothing on this page is left to do",
-		"kubectl -n exemplar rollout restart deployment/exemplar-api", "https://exemplar.acme.com/ui/setup")
-	banner, steps, ok := strings.Cut(p.body, `<ol class="steps">`)
-	if !ok || !strings.Contains(banner, titleDone) || !strings.Contains(banner, "rollout restart") {
-		t.Errorf("the banner isn't above the steps, with the restart:\n%s", p.body)
+	c := browser(t, srv)
+	fake.mu.Lock()
+	fake.installed = true
+	fake.mu.Unlock()
+	createReview(t, srv.URL, c)
+	if p := get(t, c, srv.URL+"/setup"); currentStep(t, p) != titleFinish {
+		t.Fatalf("installed = %q", currentStep(t, p))
 	}
-	if strings.Contains(steps, "rollout restart") {
-		t.Error("the restart shows twice")
+	return c
+}
+
+// finish presses Finish with the models choice made elsewhere.
+func finish(t *testing.T, srv *testServer, c *http.Client) page {
+	t.Helper()
+	form := formRe.FindStringSubmatch(get(t, c, srv.URL+"/setup").body)
+	if p := do(t, c, http.MethodPost, srv.URL+"/setup/finish", url.Values{"form": {form[1]}, "models": {modelsOwn}}); p.status != http.StatusSeeOther {
+		t.Fatalf("finish = %d", p.status)
 	}
-	if strings.Contains(p.body, `class="current"`) || strings.Contains(p.body, `class="todo"`) {
-		t.Errorf("a step doesn't read done:\n%s", p.body)
-	}
+	return get(t, c, srv.URL+"/setup")
 }
 
 var linkRe = regexp.MustCompile(`<a href="(https?://[^"]+)"([^>]*)>`)
@@ -149,13 +105,9 @@ var linkRe = regexp.MustCompile(`<a href="(https?://[^"]+)"([^>]*)>`)
 // Links out of setup open in a new tab, so this page and its state stay
 // where they are; only the create forms leave it, since GitHub comes back.
 func TestLinksOpenNewTab(t *testing.T) {
-	dir := t.TempDir()
-	srv, fake := newSetupWith(t, func(c *Config) { c.AppSecretDir = dir })
-	c := installed(t, srv.URL, fake)
-	if err := os.WriteFile(filepath.Join(dir, "private-key"), []byte(fake.pem), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	pages := []page{get(t, c, srv.URL+"/setup"), get(t, browser(t), srv.URL+"/setup/created?code=x&state=y")}
+	srv, fake := newSetup(t)
+	c := installed(t, srv, fake)
+	pages := []page{get(t, c, srv.URL+"/setup"), get(t, c, srv.URL+"/setup/created?code=x&state=y"), finish(t, srv, c)}
 	n := 0
 	for _, p := range pages {
 		for _, m := range linkRe.FindAllStringSubmatch(p.body, -1) {
@@ -173,7 +125,7 @@ func TestLinksOpenNewTab(t *testing.T) {
 // The exports app must never reach exemplar-config; the page checks.
 func TestExportsOnConfig(t *testing.T) {
 	srv, fake := newSetup(t)
-	c := installed(t, srv.URL, fake)
+	c := installed(t, srv, fake)
 	state := mustState(t, get(t, c, srv.URL+"/setup").body)
 	if p := get(t, c, srv.URL+"/setup/created?code=exports&state="+state); p.status != http.StatusSeeOther {
 		t.Fatalf("exports created = %d", p.status)
@@ -194,7 +146,7 @@ func TestExportsOnConfig(t *testing.T) {
 func TestAppDeletedOrRenamed(t *testing.T) {
 	for _, status := range []int{http.StatusNotFound, http.StatusUnauthorized} {
 		srv, fake := newSetup(t)
-		c := browser(t)
+		c := browser(t, srv)
 		createReview(t, srv.URL, c)
 
 		fake.mu.Lock()
@@ -247,7 +199,7 @@ func TestAppDeletedOrRenamed(t *testing.T) {
 // them on GitHub.
 func TestStartOver(t *testing.T) {
 	srv, fake := newSetup(t)
-	c := installed(t, srv.URL, fake)
+	c := installed(t, srv, fake)
 	p := get(t, c, srv.URL+"/setup")
 	mustContain(t, p, "Start over", "Forget this App and start over")
 	if !strings.Contains(p.body, `href="https://github.com/organizations/acme/settings/apps/exemplar-acme/advanced" target="_blank"`) {
@@ -276,7 +228,7 @@ func TestStartOver(t *testing.T) {
 // it leaves the review app alone.
 func TestExportsAppDeleted(t *testing.T) {
 	srv, fake := newSetup(t)
-	c := installed(t, srv.URL, fake)
+	c := installed(t, srv, fake)
 	state := mustState(t, get(t, c, srv.URL+"/setup").body)
 	if p := get(t, c, srv.URL+"/setup/created?code=exports&state="+state); p.status != http.StatusSeeOther {
 		t.Fatalf("exports created = %d", p.status)
@@ -304,79 +256,10 @@ func TestExportsAppDeleted(t *testing.T) {
 	mustContain(t, p, labelCreateExport)
 }
 
-// A setup pod holding no App that sees an applied App Secret (it restarted
-// after the apply, or it's the other replica) offers the restart, not a
-// second App; with no database yet, it holds the restart back.
-func TestAppliedSecretOnNewPod(t *testing.T) {
-	appDir, dbDir := t.TempDir(), t.TempDir()
-	dbFile := filepath.Join(dbDir, "url")
-	srv, _ := newSetupWith(t, func(c *Config) {
-		c.AppSecretDir, c.DatabaseFile = appDir, dbFile
-		c.InClusterPostgres = func(context.Context) bool { return false }
-	})
-	c := browser(t)
-	for name, body := range map[string]string{"app-id": "4242\n", "private-key": newTestKey(t)} {
-		if err := os.WriteFile(filepath.Join(appDir, name), []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	p := get(t, c, srv.URL+"/setup")
-	if currentStep(t, p) != titleCreate {
-		t.Fatalf("step = %q", currentStep(t, p))
-	}
-	mustContain(t, p, "This cluster already has the Secret for App 4242", "Create a different App instead",
-		"Before the restart, create <code>exemplar-database</code>", "Check again")
-	mustNotContain(t, p, "rollout restart", "only in this exemplar-api pod's memory", titleDone)
-	if mustState(t, p.body) == "" {
-		t.Error("no way to create a different App")
-	}
-
-	if err := os.WriteFile(dbFile, []byte("postgres://db.internal/exemplar"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	p = get(t, c, srv.URL+"/setup")
-	mustContain(t, p, "This cluster already has the Secret for App 4242",
-		"kubectl -n exemplar rollout restart deployment/exemplar-api", "exemplar-api-crash-loops-after-setup",
-		"Create a different App instead")
-	mustNotContain(t, p, "Before the restart, create <code>exemplar-database</code>", labelStartOver)
-	doneState(t, p)
-}
-
-// After applying the file with an external Postgres and no exemplar-database,
-// step 3 doesn't offer the restart that would crash-loop exemplar-api.
-func TestRestartWaitsForDatabase(t *testing.T) {
-	appDir, dbFile := t.TempDir(), filepath.Join(t.TempDir(), "url")
-	srv, fake := newSetupWith(t, func(c *Config) {
-		c.AppSecretDir, c.DatabaseFile = appDir, dbFile
-		c.InClusterPostgres = func(context.Context) bool { return false }
-	})
-	c := installed(t, srv.URL, fake)
-	if err := os.WriteFile(filepath.Join(appDir, "private-key"), []byte(fake.pem), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	p := get(t, c, srv.URL+"/setup")
-	mustContain(t, p, "exemplar-secrets.yaml is applied", "Before the restart, create <code>exemplar-database</code>")
-	mustNotContain(t, p, "rollout restart", titleDone)
-
-	if err := os.WriteFile(dbFile, []byte("postgres://db.internal/exemplar"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	p = get(t, c, srv.URL+"/setup")
-	mustContain(t, p, "kubectl -n exemplar rollout restart deployment/exemplar-api")
-	mustNotContain(t, p, "Before the restart")
-	doneState(t, p)
-	// The file leaves out a database Secret that now exists.
-	file := secretsIn(t, downloadSecrets(t, srv.URL, c, map[string][]string{"models": {modelsOwn}}).body)
-	if _, ok := file["exemplar-database"]; ok {
-		t.Error("the file replaces exemplar-database")
-	}
-}
-
 // GitHub fails silently for missing org roles; the page says which.
 func TestRoleHints(t *testing.T) {
 	srv, _ := newSetup(t)
-	c := browser(t)
+	c := browser(t, srv)
 	mustContain(t, get(t, c, srv.URL+"/setup"), "GitHub App manager role", "answers the button with a 404 page")
 	createReview(t, srv.URL, c)
 	mustContain(t, checkInstall(t, srv.URL, c), "GitHub sent its owners a request to approve the installation")
@@ -385,7 +268,7 @@ func TestRoleHints(t *testing.T) {
 	ufake.mu.Lock()
 	ufake.userOwner = true
 	ufake.mu.Unlock()
-	uc := browser(t)
+	uc := browser(t, user)
 	mustNotContain(t, get(t, uc, user.URL+"/setup"), "GitHub App manager role")
 	createReview(t, user.URL, uc)
 	mustNotContain(t, checkInstall(t, user.URL, uc), "request to approve")

@@ -1,12 +1,15 @@
 package setup
 
 import (
+	"context"
 	"html"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var currentRe = regexp.MustCompile(`aria-current="step"><h2>([^<]+)</h2>`)
@@ -45,7 +48,8 @@ func mustNotContain(t *testing.T, p page, unwanted ...string) {
 const (
 	titleCreate       = "Create the App on GitHub"
 	titleInstall      = "Install it"
-	titleFinish       = "Save the Secrets and restart exemplar-api"
+	titleFinish       = "Finish"
+	labelFinish       = "Finish setup"
 	labelCreate       = "Create the App on GitHub"
 	labelCheckInstall = "Check the installation"
 	labelCreateExport = "Create the exports app on GitHub"
@@ -56,21 +60,22 @@ const (
 
 // failTitles is each error page's heading.
 var failTitles = map[failure]string{
-	failSpentState:   "This link from GitHub was already used or has expired",
-	failOtherBrowser: "This browser didn't start that registration",
-	failConversion:   "GitHub created the App but didn't hand over its key",
-	failKey:          "The new App's private key didn't load",
-	failStaleForm:    "This page is from before exemplar-api restarted",
-	failNotReady:     "There's no Secrets file yet",
-	failManifest:     "Setup couldn't build the App manifest",
-	failOtherHost:    "Setup doesn't answer on this address",
+	failSpentState:    "This link from GitHub was already used or has expired",
+	failOtherBrowser:  "This browser didn't start that registration",
+	failConversion:    "GitHub created the App but didn't hand over its key",
+	failKey:           "The new App's private key didn't load",
+	failStaleForm:     "This page is out of date",
+	failNotReady:      "That step isn't open yet",
+	failManifest:      "Setup couldn't build the App manifest",
+	failSecretMissing: "The <code>exemplar-setup</code> Secret isn't in the cluster",
+	failKubeAPI:       "exemplar-api couldn't reach its Secrets",
 }
 
 // Every error page renders, with its heading, a next action and a way back.
 func TestFailurePagesRender(t *testing.T) {
 	for f, title := range failTitles {
 		var b strings.Builder
-		if err := pages.ExecuteTemplate(&b, string(f), failPage{Base: "http://localhost:8081"}); err != nil {
+		if err := pages.ExecuteTemplate(&b, string(f), failPage{Namespace: "exemplar", Secret: "exemplar-setup"}); err != nil {
 			t.Fatalf("%s: %v", f, err)
 		}
 		p := page{body: b.String()}
@@ -116,14 +121,14 @@ func checkInstall(t *testing.T, srv string, c *http.Client) page {
 // nothing from the later ones.
 func TestPageSteps(t *testing.T) {
 	srv, fake := newSetup(t)
-	c := browser(t)
+	c := browser(t, srv)
 
 	p := get(t, c, srv.URL+"/setup")
 	if got := currentStep(t, p); got != titleCreate {
 		t.Errorf("first step = %q", got)
 	}
 	mustContain(t, p, labelCreate, "https://exemplar.acme.com/webhook", "EXEMPLAR_API_URL")
-	mustNotContain(t, p, labelCheckInstall, labelCreateExport, "rollout restart", "only in this exemplar-api pod's memory",
+	mustNotContain(t, p, labelCheckInstall, labelCreateExport, labelFinish, "rollout restart", "port-forward",
 		"isn't an organization", "organization or a personal account")
 
 	createReview(t, srv.URL, c)
@@ -131,8 +136,8 @@ func TestPageSteps(t *testing.T) {
 	if got := currentStep(t, p); got != titleInstall {
 		t.Errorf("after create = %q", got)
 	}
-	mustContain(t, p, "Install exemplar-acme on acme", labelCheckInstall, "only in this exemplar-api pod's memory")
-	mustNotContain(t, p, labelCreate+"</button>", labelCreateExport, "rollout restart", "kubectl apply")
+	mustContain(t, p, "Install exemplar-acme on acme", labelCheckInstall, "Its key is saved in <code>exemplar-github-app</code>.")
+	mustNotContain(t, p, labelCreate+"</button>", labelCreateExport, labelFinish, "rollout restart", "kubectl apply")
 	if !strings.Contains(p.body, `href="https://github.com/apps/exemplar-acme/installations/new"`) {
 		t.Errorf("no install link:\n%s", p.body)
 	}
@@ -147,13 +152,9 @@ func TestPageSteps(t *testing.T) {
 	if got := currentStep(t, p); got != titleFinish {
 		t.Errorf("after install = %q", got)
 	}
-	mustContain(t, p, "(installation 77)", "kubectl apply -f exemplar-secrets.yaml", "Download exemplar-secrets.yaml",
-		"Enable Device Flow", labelCreateExport, "Check again")
-	// Restarting before the Secrets are applied would lose the App's key.
-	mustNotContain(t, p, labelCheckInstall, "is applied", titleDone)
-	if strings.Count(p.body, "rollout restart") != 1 { // only in the by-hand check
-		t.Error("restart offered before the Secrets are applied")
-	}
+	mustContain(t, p, "(installation 77)", labelFinish, "Enable Device Flow", labelCreateExport, "Setup saves it in <code>exemplar-providers</code>.")
+	mustNotContain(t, p, labelCheckInstall, titleDone, "rollout restart", "kubectl apply", "Download",
+		"has no in-cluster Postgres") // the in-cluster database: Prepare wrote its URL
 	if strings.Contains(p.body, "<details open>") {
 		t.Error("rule exports open before anyone asked for them")
 	}
@@ -167,17 +168,97 @@ func TestPageSteps(t *testing.T) {
 	if got := currentStep(t, p); got != titleFinish {
 		t.Errorf("after exports = %q", got)
 	}
-	mustContain(t, p, "exemplar-exports-app</code>: the exports app's id and key.")
+	mustContain(t, p, "Setup saved its key in <code>exemplar-exports-app</code>.")
 	mustNotContain(t, p, labelCreateExport)
-	if p := downloadSecrets(t, srv.URL, c, url.Values{"models": {modelsOwn}}); p.status != http.StatusOK || !strings.Contains(p.body, "name: exemplar-exports-app") {
-		t.Errorf("exports secret = %d\n%s", p.status, p.body)
+	if got := srv.secret(t, secretExports); got[keyAppID] != "4343" || got[keyPrivateKey] != fake.pem || got[keyClientSecret] != "" {
+		t.Errorf("exemplar-exports-app = %v", got)
+	}
+	if got := srv.secret(t, secretApp)[keyAppID]; got != "4242" {
+		t.Errorf("the exports app replaced the review app: app-id %q", got)
+	}
+
+	// Finish: the finishing page, every step done, nothing left to press.
+	form := formRe.FindStringSubmatch(p.body)
+	if p := do(t, c, http.MethodPost, srv.URL+"/setup/finish", url.Values{"form": {form[1]}, "models": {modelsOwn}}); p.status != http.StatusSeeOther {
+		t.Fatalf("finish = %d", p.status)
+	}
+	p = get(t, c, srv.URL+"/setup")
+	mustContain(t, p, titleDone, "https://exemplar.acme.com/ui/setup", `<meta http-equiv="refresh" content="5">`)
+	mustNotContain(t, p, labelFinish, labelStartOver, labelCheckInstall, `aria-current="step"`)
+	if strings.Count(p.body, `class="done"`) != 3 {
+		t.Errorf("not every step reads done:\n%s", p.body)
+	}
+}
+
+// Without an in-cluster Postgres, the last step asks for exemplar-database
+// and setup doesn't finish until it's there.
+func TestExternalDatabase(t *testing.T) {
+	srv, fake := newSetupWith(t, func(c *Config) { c.InClusterPostgres = func(context.Context) bool { return false } })
+	c := browser(t, srv)
+	fake.mu.Lock()
+	fake.installed = true
+	fake.mu.Unlock()
+	createReview(t, srv.URL, c)
+	p := get(t, c, srv.URL+"/setup")
+	mustContain(t, p, "This installation has no in-cluster Postgres", "Check again", labelFinish)
+	form := formRe.FindStringSubmatch(p.body)
+	if p := do(t, c, http.MethodPost, srv.URL+"/setup/finish", url.Values{"form": {form[1]}, "anthropic-key": {"sk-ant"}}); p.status != http.StatusSeeOther {
+		t.Fatalf("finish = %d", p.status)
+	}
+	p = get(t, c, srv.URL+"/setup")
+	mustNotContain(t, p, titleDone)
+	mustContain(t, p, "This installation has no in-cluster Postgres")
+	if in, _ := srv.h.Installed(t.Context()); in != nil {
+		t.Fatal("Installed without a database")
+	}
+
+	s, err := srv.kube.CoreV1().Secrets("exemplar").Get(t.Context(), secretDatabase, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Data = map[string][]byte{keyDatabaseURL: []byte("postgres://db.example/exemplar")}
+	if _, err := srv.kube.CoreV1().Secrets("exemplar").Update(t.Context(), s, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, get(t, c, srv.URL+"/setup"), titleDone)
+	if in, _ := srv.h.Installed(t.Context()); in == nil || in.DatabaseURL != "postgres://db.example/exemplar" {
+		t.Errorf("Installed = %+v", in)
+	}
+}
+
+// The models field: missing and malformed keys show in place and write
+// nothing.
+func TestProviderKey(t *testing.T) {
+	srv, fake := newSetup(t)
+	c := browser(t, srv)
+	fake.mu.Lock()
+	fake.installed = true
+	fake.mu.Unlock()
+	createReview(t, srv.URL, c)
+	form := formRe.FindStringSubmatch(get(t, c, srv.URL+"/setup").body)
+	for key, want := range map[string]string{
+		"":              "Paste your Anthropic API key, or choose that you've created exemplar-providers yourself.",
+		"sk ant":        "That doesn't look like an API key",
+		"sk-ant-\u00e9": "That doesn't look like an API key",
+	} {
+		p := do(t, c, http.MethodPost, srv.URL+"/setup/finish", url.Values{"form": {form[1]}, "anthropic-key": {key}})
+		if p.status != http.StatusUnprocessableEntity || currentStep(t, p) != titleFinish {
+			t.Errorf("key %q = %d", key, p.status)
+		}
+		mustContain(t, p, want)
+		if strings.Contains(p.body, key) && key != "" {
+			t.Errorf("key %q echoed back", key)
+		}
+	}
+	if len(srv.secret(t, secretProviders)) != 0 {
+		t.Error("a rejected key reached exemplar-providers")
 	}
 }
 
 // Install errors show in place, with the install link, and don't stick.
 func TestInstallErrorsInline(t *testing.T) {
 	srv, fake := newSetup(t)
-	c := browser(t)
+	c := browser(t, srv)
 	createReview(t, srv.URL, c)
 
 	p := checkInstall(t, srv.URL, c)
@@ -202,16 +283,16 @@ func TestInstallErrorsInline(t *testing.T) {
 
 func TestErrorPages(t *testing.T) {
 	srv, _ := newSetup(t)
-	c := browser(t)
+	c := browser(t, srv)
 
 	// Other host's browser: the state is real, the cookie isn't there.
 	state := mustState(t, get(t, c, srv.URL+"/setup").body)
-	failurePage(t, get(t, browser(t), srv.URL+"/setup/created?code=c1&state="+state), http.StatusBadRequest, failOtherBrowser)
-	failurePage(t, get(t, c, srv.URL+"/setup/created?code=c1&state="+state), http.StatusBadRequest, failSpentState)
+	failurePage(t, get(t, browser(t, srv), srv.URL+"/setup/created?code=c1&state="+state), http.StatusBadRequest, failOtherBrowser)
+	failurePage(t, get(t, c, srv.URL+"/setup/created?code=c1&state=review-0.1.00"), http.StatusBadRequest, failSpentState)
 
 	// GitHub refuses the code: two browsers started, and the fake spends
 	// each code once.
-	other := browser(t)
+	other := browser(t, srv)
 	state = mustState(t, get(t, c, srv.URL+"/setup").body)
 	otherState := mustState(t, get(t, other, srv.URL+"/setup").body)
 	if p := get(t, other, srv.URL+"/setup/created?code=c2&state="+otherState); p.status != http.StatusSeeOther {
@@ -222,12 +303,17 @@ func TestErrorPages(t *testing.T) {
 	failurePage(t, do(t, c, http.MethodPost, srv.URL+"/setup/installation", url.Values{"form": {"earlier"}}),
 		http.StatusForbidden, failStaleForm)
 	// The App exists (the other browser), but isn't installed yet.
-	failurePage(t, downloadSecrets(t, srv.URL, c, url.Values{"models": {modelsOwn}}), http.StatusConflict, failNotReady)
+	form := formRe.FindStringSubmatch(get(t, c, srv.URL+"/setup").body)
+	p := do(t, c, http.MethodPost, srv.URL+"/setup/finish", url.Values{"form": {form[1]}, "models": {modelsOwn}})
+	if p.status != http.StatusConflict {
+		t.Errorf("finish before install = %d", p.status)
+	}
+	mustContain(t, p, failTitles[failNotReady], labelBack)
 }
 
 func TestNoInstallFormBeforeApp(t *testing.T) {
 	srv, _ := newSetup(t)
-	c := browser(t)
+	c := browser(t, srv)
 	form := formRe.FindStringSubmatch(get(t, c, srv.URL+"/setup").body)
 	if form != nil {
 		t.Fatal("install form before the App exists")
@@ -241,7 +327,7 @@ func TestOwnerUnknown(t *testing.T) {
 	fake.mu.Lock()
 	fake.ownerDown = true
 	fake.mu.Unlock()
-	c := browser(t)
+	c := browser(t, srv)
 	p := get(t, c, srv.URL+"/setup")
 	mustContain(t, p, "GitHub didn't say whether acme is an organization or a personal account")
 	if currentStep(t, p) != titleCreate {
@@ -258,11 +344,11 @@ func TestOwnerUnknown(t *testing.T) {
 	}
 }
 
-// After exemplar-api restarts mid-flow, an old page's download form says
-// the App's key is gone and where to delete the App.
-func TestSecretAfterRestart(t *testing.T) {
-	srv, _ := newSetup(t) // a fresh process: nothing created
-	p := do(t, browser(t), http.MethodPost, srv.URL+"/setup/exemplar-secrets.yaml", url.Values{"form": {"from-the-old-pod"}})
+// A form whose token no longer matches setup's key (exemplar-setup was
+// emptied and written again) says to open setup again.
+func TestStaleForm(t *testing.T) {
+	srv, _ := newSetup(t)
+	p := do(t, browser(t, srv), http.MethodPost, srv.URL+"/setup/start-over", url.Values{"form": {"from-an-old-page"}})
 	failurePage(t, p, http.StatusForbidden, failStaleForm)
-	mustContain(t, p, "the new App's key went with it")
+	mustContain(t, p, "Open setup again")
 }

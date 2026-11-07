@@ -27,9 +27,9 @@
 // It holds no installation credentials.
 //
 // Without EXEMPLAR_GH_APP_ID it runs in setup mode (internal/setup): the
-// public listener answers only probes and a pointer to setup, and the
-// setup page, on a loopback listener reached with kubectl port-forward,
-// registers the GitHub App and hands out its Secret.
+// public listener answers only probes and /setup, which registers the
+// GitHub App and writes its Secret through the Kubernetes API. Once setup
+// is complete it leaves setup mode in place, with the values it wrote.
 //
 //	EXEMPLAR_DATABASE_URL                Postgres (findings, River)
 //	EXEMPLAR_API_URL                     this server's public https base
@@ -101,14 +101,14 @@ func main() {
 	}
 }
 
-func secretFile(env string) ([]byte, error) {
-	p := os.Getenv(env)
+func secretFile(e env, name string) ([]byte, error) {
+	p := e.get(name)
 	if p == "" {
-		return nil, fmt.Errorf("%s is %w", env, errRequired)
+		return nil, fmt.Errorf("%s is %w", name, errRequired)
 	}
-	b, err := os.ReadFile(p) //nolint:gosec // G703: the path comes from the operator's environment, not from a request
+	b, err := e.read(p)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", env, err)
+		return nil, fmt.Errorf("read %s: %w", name, err)
 	}
 	return bytes.TrimSpace(b), nil
 }
@@ -122,10 +122,7 @@ func run(args []string) error {
 	perMinute := fs.Int("evaluate-per-minute", 6, "each caller's new evaluations per minute")
 	tryUSD := fs.Float64("playground-daily-usd", 5, "each viewer's daily model spend in the web UI playground")
 	tryRuns := fs.Int("playground-daily-runs", 20, "each viewer's daily web UI playground runs")
-	setupAddr := fs.String("setup-addr", "127.0.0.1:8081", "setup mode: the setup page's listen address (loopback: reached with kubectl port-forward)")
-	setupURL := fs.String("setup-url", "http://localhost:8081", "setup mode: where the operator's browser reaches the setup page")
-	setupDB := fs.String("setup-database-file", "/var/run/secrets/exemplar/database/url", "setup mode: where exemplar-database's url is mounted, to see it applied after the pod started")
-	namespace := fs.String("namespace", "exemplar", "setup mode: the namespace the setup page's Secrets go in")
+	namespace := fs.String("namespace", "exemplar", "setup mode: the namespace of the Secrets setup writes")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}
@@ -133,18 +130,36 @@ func run(args []string) error {
 		"EXEMPLAR_GH_WEB_URL", "EXEMPLAR_GH_API_URL", "EXEMPLAR_OIDC_ISSUER_URL"); err != nil {
 		return fmt.Errorf("settings: %w", err)
 	}
-	// Until setup has produced exemplar-github-app, serve only setup.
-	if os.Getenv("EXEMPLAR_GH_APP_ID") == "" {
-		return runSetup(setupFlags{addr: *addr, setupAddr: *setupAddr, setupURL: *setupURL, namespace: *namespace, databaseFile: *setupDB, drain: *drain})
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	log, shutdown, err := telemetry.Setup(ctx, "exemplar-api")
+	if err != nil {
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
-	dbURL, public := os.Getenv("EXEMPLAR_DATABASE_URL"), os.Getenv("EXEMPLAR_API_URL")
+	defer func() { _ = shutdown(context.Background()) }()
+	e := osEnv()
+	// Until setup has produced exemplar-github-app, serve only setup; then
+	// carry on with what it wrote, as a restarted pod would read it.
+	if e.get("EXEMPLAR_GH_APP_ID") == "" {
+		secrets, err := kubeSecrets(*namespace)
+		if err != nil {
+			return err
+		}
+		in, err := runSetup(ctx, log, secrets, setupFlags{addr: *addr, namespace: *namespace, drain: *drain})
+		if err != nil || in == nil { // nil: stopped before setup finished
+			return err
+		}
+		e = e.with(in)
+		log.Info("setup is complete: leaving setup mode", "app_id", in.AppID)
+	}
+	dbURL, public := e.get("EXEMPLAR_DATABASE_URL"), e.get("EXEMPLAR_API_URL")
 	if dbURL == "" {
 		return fmt.Errorf("EXEMPLAR_DATABASE_URL is %w: create the exemplar-database Secret (key url), then restart exemplar-api", errRequired)
 	}
 	if public == "" {
 		return fmt.Errorf("EXEMPLAR_API_URL is %w", errRequired)
 	}
-	keys := envcfg.NewKeys(os.Getenv, os.ReadFile)
+	keys := envcfg.NewKeys(e.get, e.read)
 	linkKey, err := keys.File("EXEMPLAR_LINK_KEY_FILE", envcfg.LabelLink)
 	if err != nil {
 		return fmt.Errorf("link key: %w (is the exemplar-root-key Secret there? Create it, then restart exemplar-api)", err)
@@ -153,7 +168,7 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("session key: %w", err)
 	}
-	github, ghWeb, ghAPI, err := githubFromEnv()
+	github, ghWeb, ghAPI, err := githubFromEnv(e)
 	if err != nil {
 		return err
 	}
@@ -162,13 +177,6 @@ func run(args []string) error {
 		return fmt.Errorf("feedback links: %w", err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
-	defer stop()
-	log, shutdown, err := telemetry.Setup(ctx, "exemplar-api")
-	if err != nil {
-		return fmt.Errorf("set up telemetry: %w", err)
-	}
-	defer func() { _ = shutdown(context.Background()) }()
 	st, err := store.Open(ctx, dbURL)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
@@ -183,7 +191,7 @@ func run(args []string) error {
 		return err
 	}
 	var provider *oidc.Provider
-	if cfg, on, err := oidc.FromEnv(os.Getenv, os.ReadFile); err != nil {
+	if cfg, on, err := oidc.FromEnv(e.get, e.read); err != nil {
 		return fmt.Errorf("load OIDC config: %w", err)
 	} else if on {
 		dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -195,7 +203,7 @@ func run(args []string) error {
 	}
 	users := ghuser.New(ghAPI, nil)
 	identities := identityStore{st}
-	link := os.Getenv("EXEMPLAR_OIDC_GITHUB_LINK")
+	link := e.get("EXEMPLAR_OIDC_GITHUB_LINK")
 	srv, err := api.New(api.Config{
 		Links: links, SessionKey: sessionKey, PublicURL: public, GitHub: github, OIDC: provider, Users: users,
 		Identities: identities, GitHubLink: link,
@@ -220,7 +228,7 @@ func run(args []string) error {
 
 	// Service callers: Auth0 access tokens for this API.
 	var sources svcauth.Multi
-	switch domain, aud := os.Getenv("EXEMPLAR_AUTH0_DOMAIN"), os.Getenv("EXEMPLAR_AUTH0_AUDIENCE"); {
+	switch domain, aud := e.get("EXEMPLAR_AUTH0_DOMAIN"), e.get("EXEMPLAR_AUTH0_AUDIENCE"); {
 	case domain != "" && aud != "":
 		v, err := auth0.New(domain, aud)
 		if err != nil {
@@ -299,7 +307,7 @@ func run(args []string) error {
 
 	formKey := hmac.New(sha256.New, sessionKey)
 	formKey.Write([]byte("ui-forms"))
-	checks, err := installChecks(st)
+	checks, err := installChecks(st, e)
 	if err != nil {
 		return err
 	}
@@ -365,6 +373,8 @@ func run(args []string) error {
 	mux.Handle("/ui/", ui.Routes())
 	mux.HandleFunc("GET /ui/connect-github", srv.Relink)
 	mux.Handle("GET /ui", http.RedirectHandler("/ui/", http.StatusMovedPermanently))
+	// The setup page's last state reloads /setup until this answers.
+	mux.Handle("GET /setup", http.RedirectHandler("/ui/setup", http.StatusFound))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if draining.Load() {
@@ -410,33 +420,33 @@ func run(args []string) error {
 
 // githubFromEnv reads the EXEMPLAR_OAUTH2_GITHUB_* sign-in settings (nil
 // when no client id is set) and the GitHub web and API bases.
-func githubFromEnv() (*api.GitHubAuth, string, string, error) {
-	web, apiURL := os.Getenv("EXEMPLAR_GH_WEB_URL"), os.Getenv("EXEMPLAR_GH_API_URL")
-	if base := strings.TrimSuffix(os.Getenv("EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL"), "/"); base != "" {
+func githubFromEnv(e env) (*api.GitHubAuth, string, string, error) {
+	web, apiURL := e.get("EXEMPLAR_GH_WEB_URL"), e.get("EXEMPLAR_GH_API_URL")
+	if base := strings.TrimSuffix(e.get("EXEMPLAR_OAUTH2_GITHUB_ENTERPRISE_BASE_URL"), "/"); base != "" {
 		if !strings.HasPrefix(base, "https://") {
 			return nil, "", "", errEnterpriseNotHTTPS
 		}
 		web, apiURL = base+"/", base+"/api/v3/"
 	}
-	id := os.Getenv("EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID")
+	id := e.get("EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID")
 	if id == "" {
 		return nil, web, apiURL, nil
 	}
-	secret, err := secretFile("EXEMPLAR_OAUTH2_GITHUB_CLIENT_SECRET_FILE")
+	secret, err := secretFile(e, "EXEMPLAR_OAUTH2_GITHUB_CLIENT_SECRET_FILE")
 	if err != nil {
 		return nil, "", "", err
 	}
 	gh := &api.GitHubAuth{
-		ClientID: id, ClientSecret: string(secret), AllowEveryone: os.Getenv("EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE") == "true",
-		SignInDisabled: os.Getenv("EXEMPLAR_OAUTH2_GITHUB_SIGN_IN") == "false",
+		ClientID: id, ClientSecret: string(secret), AllowEveryone: e.get("EXEMPLAR_OAUTH2_GITHUB_ALLOW_EVERYONE") == "true",
+		SignInDisabled: e.get("EXEMPLAR_OAUTH2_GITHUB_SIGN_IN") == "false",
 	}
-	for o := range strings.SplitSeq(os.Getenv("EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS"), ",") {
+	for o := range strings.SplitSeq(e.get("EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS"), ",") {
 		if o = strings.TrimSpace(o); o != "" {
 			gh.AllowedOrgs = append(gh.AllowedOrgs, o)
 		}
 	}
 	// Unset, sign-in is for members of the org that owns exemplar-config.
-	if owner := envcfg.Owner(os.Getenv("EXEMPLAR_CONFIG_REPO")); len(gh.AllowedOrgs) == 0 && !gh.AllowEveryone && owner != "" {
+	if owner := envcfg.Owner(e.get("EXEMPLAR_CONFIG_REPO")); len(gh.AllowedOrgs) == 0 && !gh.AllowEveryone && owner != "" {
 		gh.AllowedOrgs = []string{owner}
 	}
 	return gh, web, apiURL, nil

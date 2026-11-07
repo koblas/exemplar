@@ -16,12 +16,13 @@ var pages = template.Must(template.ParseFS(pageFiles, "pages/*.html"))
 type failure string
 
 const (
-	failSpentState   failure = "fail-spent-state"
-	failOtherBrowser failure = "fail-other-browser"
-	failConversion   failure = "fail-conversion"
-	failKey          failure = "fail-key"
-	failStaleForm    failure = "fail-stale-form"
-	failNotReady     failure = "fail-not-ready"
-	failManifest     failure = "fail-manifest"
-	failOtherHost    failure = "fail-other-host"
+	failSpentState    failure = "fail-spent-state"
+	failOtherBrowser  failure = "fail-other-browser"
+	failConversion    failure = "fail-conversion"
+	failKey           failure = "fail-key"
+	failStaleForm     failure = "fail-stale-form"
+	failNotReady      failure = "fail-not-ready"
+	failManifest      failure = "fail-manifest"
+	failSecretMissing failure = "fail-secret-missing"
+	failKubeAPI       failure = "fail-kube-api"
 )
