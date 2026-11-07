@@ -135,7 +135,7 @@ The words the rest of this site uses. Terms are in alphabetical order.
 : A finding whose verifier came from the same model family as its generator. It is posted, but blocks auto-approve.
 
 **Setup mode**
-: What `exemplar-api` runs until the `exemplar-github-app` Secret exists: a page reached over a port-forward that registers the GitHub App from a manifest.
+: What `exemplar-api` runs until the `exemplar-github-app` Secret holds an App: a page at `/setup` on the public host, behind a token from the `exemplar-setup` Secret, that registers the GitHub App from a manifest and writes the installation's Secrets.
 
 **Shadow**
 : Reviewing without writing anything to the PR. Applies to a whole repository (`shadow: true`) or to one rule (`status: shadow`).

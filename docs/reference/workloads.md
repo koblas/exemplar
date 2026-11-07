@@ -40,7 +40,7 @@ The tunnel is locally managed: routing is in the `exemplar-cloudflared` ConfigMa
 | Binary | Kind | Replicas | Port | Probes | Shutdown → grace | Notes |
 |---|---|---|---|---|---|---|
 | `exemplar-webhook` | Deployment + Service + (Ingress) | 2 | 8080 `http`, Service 80 | `/healthz`, `/readyz` | 15 s → 30 s | Public for GitHub at `/webhook`; egress to Postgres only |
-| `exemplar-api` | Deployment + Service + (Ingress) | 2 | 8080 `http`, Service 80; 8081 `setup` (loopback, no Service) | `/healthz`, `/readyz` | 15 s → 30 s | Public for people, behind org SSO at the edge; egress to Postgres and GitHub OAuth |
+| `exemplar-api` | Deployment + Service + (Ingress) | 2 | 8080 `http`, Service 80 | `/healthz`, `/readyz` | 15 s → 30 s | Public for people, behind org SSO at the edge; egress to Postgres, GitHub, and the Kubernetes API (setup mode's Secrets) |
 | `exemplar-gateway` | Deployment + Service | 2 | 8080 `http`, Service 80 | `/healthz`, `/readyz` | 25 s → 40 s | The only holder of provider keys; serves `POST /v1/messages` (and batches), `POST /v1/embeddings` and `GET /v1/embeddings/model`; marks itself unready and starts shutting down at the same moment, so a request routed in that window is retried by the caller |
 | `exemplar-worker` | Deployment | 2 (×4 reviews each) | 8080 `http` (probes only) | `/healthz`, `/readyz` | 80 s → 120 s | Control: routes events, runs the cheap queues and River's periodic jobs on its leader, and dispatches reviews to runners ([Runners](#runners)) |
 | `exemplar-runner` | PodTemplate → a Job per review | One per review in flight | none | none | 60 s grace | `--launcher=kubernetes` only. One review, then exits; no config checkout, no Kubernetes API token |
@@ -124,7 +124,13 @@ The worker's own periodic jobs (`reconcile_deliveries`, `sweep_prs`, `poll_react
 
 ## Setup mode
 
-Until `exemplar-github-app` exists, exemplar-api serves only its probes and, on `127.0.0.1:8081` (`--setup-addr`, the container's `setup` port, behind no Service), the setup page (`internal/setup`). The page answers only requests for its own host (`localhost:8081`, or `127.0.0.1` on its port), against DNS rebinding. It registers the App from a manifest in the config repo owner's App settings (an organization's, or a user's own: it asks GitHub which the owner is), finds its installation and offers the Secret as YAML; the state lives in that pod's memory. After setup, `/ui/setup` checks the installation's GitHub side.
+Until `EXEMPLAR_GH_APP_ID` is set (`exemplar-github-app` has an `app-id`), exemplar-api serves only its probes and the setup page (`internal/setup`) at `/setup` on its public port; every other path redirects there. The page answers only a browser signed in with the token in the `exemplar-setup` Secret (`token`), which exemplar-api generates on its first start; the session cookie lasts 12 hours and works on every replica. The log names the `kubectl` command that reads the token, never the token.
+
+Setup registers the App from a manifest in the config repo owner's App settings (an organization's, or a user's own: it asks GitHub which the owner is), finds its installation, and writes everything it learns into Secrets through the Kubernetes API as it goes: no state is kept in a pod. On its first start it writes `exemplar-setup` and, when `components/postgres` is in the build and exemplar-api has no `EXEMPLAR_DATABASE_URL`, `exemplar-postgres` and `exemplar-database`. **Finish setup** writes `exemplar-providers` (or records that the operator manages it) and `exemplar-root-key` last, so the other workloads, which mount the root key, start only then. Values already in a Secret are kept.
+
+Setup uses the `exemplar-api` service account's projected token and the `exemplar-api-setup` Role: `get` and `patch` on the seven Secrets it writes, by name, and nothing else. The manifests declare each of them with no data, since RBAC can't limit `create` to a name; applying them again leaves their data in place, and deleting them deletes the App's key. `--namespace` names their namespace (default: the pod's own, from the token's projection). The token stays mounted after setup, though App mode makes no Kubernetes API call.
+
+Once setup is complete, each exemplar-api pod in setup mode notices (at once on the pod that finished it, otherwise within 10 s), reads the App's id, client id and secret, private key, root key and database URL from the Secrets, and starts App mode in the same process, without a restart. In App mode `GET /setup` redirects to `/ui/setup`, which checks the installation's GitHub side.
 
 ## Merge policy repos
 

@@ -68,7 +68,7 @@ Copy your way in's overlay directory. In `settings.yaml` set your config repo an
 kubectl apply -k quickstart/
 ```
 
-This creates the `exemplar` namespace. exemplar-api starts and serves the setup page; the other pods wait with `secret "exemplar-github-app" not found` (or `exemplar-database`, `exemplar-postgres`) until the next step.
+This creates the `exemplar` namespace and the Secrets setup fills, empty. exemplar-api starts and serves the setup page at `https://exemplar.acme.com/setup`, and writes the in-cluster Postgres password, so the database starts now. The other pods wait on `exemplar-root-key` (`CreateContainerConfigError` or `ContainerCreating`) until setup finishes.
 
 === "Cloudflare Tunnel"
 
@@ -84,30 +84,21 @@ This creates the `exemplar` namespace. exemplar-api starts and serves the setup 
 
 ## 5. Register the GitHub App
 
-Port-forward exemplar-api. The setup state lives in the pod's memory, so keep this one port-forward running for the whole step:
+Open `https://exemplar.acme.com/setup`. It asks for the setup token, which exemplar-api wrote to the `exemplar-setup` Secret; reading it takes access to the namespace's Secrets, which is what keeps someone who finds the host name first out:
 
 ```bash
-kubectl -n exemplar port-forward deploy/exemplar-api 8081
+kubectl -n exemplar get secret exemplar-setup -o jsonpath='{.data.token}' | base64 -d
 ```
 
-Open <http://localhost:8081/setup>. It walks through three steps, one at a time. Each time the page loads it checks GitHub and the cluster, so it always opens the first step that isn't done, says what's missing, and picks up what you fixed elsewhere. Links to GitHub open in a new tab; keep the setup tab open.
+Paste it and click **Sign in**. The page walks through three steps, one at a time. Each time it loads it checks GitHub and the cluster, so it always opens the first step that isn't done, says what's missing, and picks up what you fixed elsewhere. Setup saves its progress in the cluster's Secrets as it goes: either exemplar-api pod answers, and a pod restart loses nothing. Links to GitHub open in a new tab; keep the setup tab open.
 
 1. **Create the App on GitHub.** Check the webhook and sign-in addresses it shows, then press **Create the App on GitHub**. GitHub opens with the App's permissions, events and URLs filled in, in your organization's (or account's) App settings; rename it if you like, and confirm.
 2. **Install it.** Follow the install link, choose the repos Exemplar reviews and `exemplar-config`, then come back and press **Check the installation**. If the installation leaves out `exemplar-config`, the page says so and links the installation's settings.
-3. **Save the Secrets and restart exemplar-api.** For `exemplar login`, tick **Enable Device Flow** in the App's settings (the page links there). If you want [rule exports](../operate/rule-exports.md), set them up under **Rule exports (optional)** now. Paste your Anthropic API key under **Models** and press **Download exemplar-secrets.yaml**. The file holds the App's Secret, a new root key (which every internal key derives from), the in-cluster Postgres password and its URL, and your key. Apply it, then press **Check again**: once the pod sees the App's Secret (Kubernetes can take a minute), the page shows **Setup is complete** at the top, with the restart.
+3. **Finish.** For `exemplar login`, tick **Enable Device Flow** in the App's settings (the page links there). If you want [rule exports](../operate/rule-exports.md), set them up under **Rule exports (optional)** now. Paste your Anthropic API key under **Models** and click **Finish setup**. Setup writes your key to `exemplar-providers` and a new root key, which every internal key derives from, to `exemplar-root-key`.
 
-```bash
-kubectl apply -f exemplar-secrets.yaml
-```
+The page then shows **Setup is complete** and reloads itself until exemplar-api has left setup mode, which takes seconds and no restart; it then opens `/ui/setup`. The other workloads start on their own now that their Secrets are there. Claude alone is enough to review in shadow and to post. An OpenAI key, for independent verification and auto-approve, and a Voyage AI key, for mining review history into rules, can be added at any time: [How to add model providers](model-providers.md).
 
-```bash
-kubectl -n exemplar rollout restart deployment/exemplar-api
-```
-
-The page lists what the file holds and leaves out whatever exemplar-api already has, so a Secret you created yourself is never replaced. Claude alone is enough to review in shadow and to post. An OpenAI key, for independent verification and auto-approve, and a Voyage AI key, for mining review history into rules, can be added at any time: [How to add model providers](model-providers.md).
-
-!!! warning "Keep the port-forward until the Secrets are applied"
-    The App's key lives only in that pod's memory, and the Postgres password is generated there too: apply the file you downloaded from this pod, once. If the pod restarts after GitHub created the App but before you applied the file, delete that App in your GitHub settings and start the step again. The setup page says the same, with the link, if it happens. If you delete or rename the App on GitHub mid-way, the page notices on its next load: it follows a rename, and after a delete it goes back to step 1 and offers to forget the old App. **Start over**, at the bottom of the page, forgets the App at any point and goes back to step 1. If exemplar-api doesn't come back after the restart, see [Troubleshooting](../operate/troubleshoot.md#exemplar-api-crash-loops-after-setup).
+If you delete or rename the App on GitHub mid-way, the page notices on its next load: it follows a rename, and after a delete it goes back to step 1 and offers to forget the old App. **Start over**, at the bottom of the page, forgets the App at any point and goes back to step 1. If the page stays on **Setup is complete**, see [Troubleshooting](../operate/troubleshoot.md#exemplar-api-stays-in-setup-mode).
 
 ## 6. Check it
 

@@ -10,7 +10,9 @@ Set `EXEMPLAR_LOG_LEVEL=debug` on a workload for more.
 
 ## Pods wait on a missing Secret
 
-`secret "exemplar-github-app" not found` on the worker, search, learn and git-sync containers is expected until you apply the Secrets file the setup page produces ([Quickstart, step 5](../install/quickstart.md#5-register-the-github-app)); so are `exemplar-database` and `exemplar-postgres` on a fresh install. exemplar-api needs a restart once the Secrets exist.
+On a fresh install the worker, search, learn and git-sync containers wait in `CreateContainerConfigError` or `ContainerCreating`, naming `exemplar-root-key` or a key of `exemplar-github-app`, until setup finishes ([Quickstart, step 5](../install/quickstart.md#5-register-the-github-app)): setup writes the root key last, when you click **Finish setup**. They start on their own once it's there.
+
+A setup page saying the `exemplar-setup` Secret (or another Secret setup writes) isn't in the cluster means the manifests weren't all applied: apply your overlay again. The Secrets are declared empty in the manifests, and applying them again keeps what setup wrote.
 
 A pod that refuses to start naming a value such as `example-org` or `exemplar.example.invalid` still has a placeholder from the example overlay in `exemplar-settings`.
 
@@ -56,29 +58,38 @@ Slash commands and reactions keep working, so no feedback is lost beyond the lin
 - GitHub: the person is not a member of an allowed organization (`EXEMPLAR_OAUTH2_GITHUB_ALLOWED_ORGS`, defaulting to the config repo's owner), or the App's callback URL doesn't match `EXEMPLAR_API_URL` plus `/oauth/callback`.
 - OIDC: the issuer must serve discovery at `EXEMPLAR_OIDC_ISSUER_URL`; the redirect URI must be `https://<api>/oidc/callback`; the email domain and allowed groups must match. An OIDC user who sees no repositories has no group in `EXEMPLAR_OIDC_GROUP_REPOS`.
 
+## exemplar-api stays in setup mode
+
+After **Finish setup**, every exemplar-api pod reads the Secrets setup wrote and leaves setup mode within 10 s. If the page keeps showing **Setup is complete**, the exemplar-api log says why:
+
+- `setup: reading the installation's Secrets failed`: the pod can't reach the Kubernetes API. Check the `exemplar-api-setup` Role and RoleBinding, and that the exemplar-api NetworkPolicy allows the API server's address ([Workloads, ports and probes](../../reference/workloads.md)).
+- `EXEMPLAR_DATABASE_URL is required` or a database error: `exemplar-database` has no working URL ([Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md)).
+
+Restarting exemplar-api also finishes it: a new pod reads the same Secrets.
+
 ## exemplar-api crash-loops after setup
 
-Once `exemplar-github-app` exists, exemplar-api starts in App mode, and the setup page is gone. Its log names what's missing:
+Once `exemplar-github-app` has an `app-id`, exemplar-api starts in App mode, and the setup page is gone. Its log names what's missing:
 
-- `EXEMPLAR_DATABASE_URL is required`: create `exemplar-database` with your Postgres URL ([Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md)). The pod starts on its own once the Secret exists.
-- `link key: … exemplar-root-key`: create `exemplar-root-key`, or apply the setup page's file again if you still have it.
+- `EXEMPLAR_DATABASE_URL is required`: create `exemplar-database` with your Postgres URL ([Secrets and ConfigMaps](../../reference/secrets-and-configmaps.md)). The pod starts on its own once the Secret has it.
+- `link key: … exemplar-root-key`: `exemplar-root-key` has no `key`. Setup writes it at **Finish setup**; otherwise set one (`openssl rand -hex 32`).
 - GitHub refusing the App (in the log, or on `/ui/setup`): `exemplar-github-app` holds another App's key or a revoked one.
 
-To run setup again, delete the App's Secret and restart exemplar-api, which then serves the setup page:
+To run setup again, empty the App's Secret and restart exemplar-api, which then serves the setup page:
 
 ```bash
-kubectl -n exemplar delete secret exemplar-github-app
+kubectl -n exemplar patch secret exemplar-github-app --type=json -p '[{"op":"remove","path":"/data"}]'
 ```
 
 ```bash
 kubectl -n exemplar rollout restart deployment/exemplar-api
 ```
 
-Delete the old App in your GitHub settings, then follow [Quickstart, step 5](../install/quickstart.md#5-register-the-github-app). Secrets that already exist (root key, database) are left out of the new file.
+Delete the old App in your GitHub settings, then follow [Quickstart, step 5](../install/quickstart.md#5-register-the-github-app). Secrets that already hold values (root key, database) keep them.
 
-## Setup page refuses with 403
+## Setup says exemplar-api couldn't reach its Secrets
 
-The setup listener answers only requests naming `localhost:8081` (or `127.0.0.1` on its port), against DNS rebinding. Open it through the port-forward exactly as the quickstart shows, and keep the same pod for the whole flow.
+Setup reads and patches its Secrets through the Kubernetes API with the pod's own service account. The page names the cause; the exemplar-api log has the API server's answer. A `Forbidden` means the `exemplar-api-setup` Role or RoleBinding is missing or names another namespace; a timeout means the NetworkPolicy, or an overlay that narrowed it, doesn't reach the API server.
 
 ## Config CI is red on a fresh copy
 
