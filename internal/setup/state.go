@@ -29,6 +29,7 @@ const (
 	keyClientID      = "client-id"
 	keyClientSecret  = "client-secret"
 	keyWebhookSecret = "webhook-secret"
+	keyWebhookHeld   = "setup-webhook-secret" // webhook-secret until release: exemplar-webhook starts once it's there
 	keyPrivateKey    = "private-key"
 	keySlug          = "slug"     // shown on the page; GitHub's answer replaces it on each load
 	keyHTMLURL       = "html-url" // likewise
@@ -124,9 +125,10 @@ func (h *Handler) ensure(ctx context.Context, name string, fill func(Secret) map
 // already there stay: Postgres keeps the first password it initializes
 // with. Safe to call from every pod, any number of times.
 //
-// The root key comes last, from Finish (writeRootKey): every other
-// workload mounts it, so none starts before the App and the models are in
-// their Secrets (the gateway reads exemplar-providers only as it starts).
+// The root key and the App's webhook-secret come last (release): every
+// other workload mounts one of them and reads it only as it starts, so none
+// starts before the App, the models and the database are settled, and none
+// keeps an App that Start over replaced.
 func (h *Handler) Prepare(ctx context.Context) error {
 	st, err := h.ensure(ctx, secretSetup, func(s Secret) map[string][]byte {
 		if s.Has(keyToken) && s.Has(keySigning) {
@@ -165,15 +167,44 @@ func (h *Handler) Prepare(ctx context.Context) error {
 	return err
 }
 
-// writeRootKey writes a root key unless there is one.
-func (h *Handler) writeRootKey(ctx context.Context) error {
-	_, err := h.ensure(ctx, secretRootKey, func(s Secret) map[string][]byte {
-		if s.Has(keyRootKey) {
-			return nil
+// ready: every step but the release is done (the App installed with the
+// config repo, a database, a models choice).
+func (h *Handler) ready(s snapshot, review *app) bool {
+	return review != nil && review.installation != 0 && h.databaseState(s) == dbReady && providersChosen(s)
+}
+
+// release lets the other workloads start, once ready: it moves the App's
+// webhook secret to webhook-secret (exemplar-webhook mounts it) and writes
+// a root key unless there is one (every other workload mounts it). It
+// reports whether it wrote anything.
+func (h *Handler) release(ctx context.Context, s snapshot, review *app) (bool, error) {
+	if !h.ready(s, review) {
+		return false, nil
+	}
+	wrote := false
+	if review.secret.Has(keyWebhookHeld) {
+		if _, err := h.ensure(ctx, secretApp, func(s Secret) map[string][]byte {
+			if !s.Has(keyWebhookHeld) {
+				return nil
+			}
+			return map[string][]byte{keyWebhookSecret: s.Data[keyWebhookHeld], keyWebhookHeld: nil}
+		}); err != nil {
+			return false, err
 		}
-		return map[string][]byte{keyRootKey: []byte(randomHex(envcfg.MinRootKeyBytes))}
-	})
-	return err
+		wrote = true
+	}
+	if !s.rootKey.Has(keyRootKey) {
+		if _, err := h.ensure(ctx, secretRootKey, func(s Secret) map[string][]byte {
+			if s.Has(keyRootKey) {
+				return nil
+			}
+			return map[string][]byte{keyRootKey: []byte(randomHex(envcfg.MinRootKeyBytes))}
+		}); err != nil {
+			return false, err
+		}
+		wrote = true
+	}
+	return wrote, nil
 }
 
 // postgresResolves reports whether components/postgres's Service exists:
@@ -199,7 +230,7 @@ func (h *Handler) appFrom(s Secret) (*app, error) {
 	}
 	created := &gh.CreatedApp{
 		ID: id, Slug: s.String(keySlug), HTMLURL: s.String(keyHTMLURL), PEM: s.String(keyPrivateKey),
-		ClientID: s.String(keyClientID), ClientSecret: s.String(keyClientSecret), WebhookSecret: s.String(keyWebhookSecret),
+		ClientID: s.String(keyClientID), ClientSecret: s.String(keyClientSecret), WebhookSecret: cmpOr(s.String(keyWebhookSecret), s.String(keyWebhookHeld)),
 	}
 	client, err := gh.NewApp(gh.AppConfig{
 		AppID: id, PrivateKey: s.Data[keyPrivateKey], ConfigRepo: h.cfg.ConfigRepo, BaseURL: h.cfg.GitHubAPI,
@@ -221,7 +252,8 @@ func appData(kind string, c *gh.CreatedApp) map[string][]byte {
 		keySlug: []byte(c.Slug), keyHTMLURL: []byte(c.HTMLURL), keyInstallation: nil,
 	}
 	if kind == KindReview {
-		d[keyClientID], d[keyClientSecret], d[keyWebhookSecret] = []byte(c.ClientID), []byte(c.ClientSecret), []byte(c.WebhookSecret)
+		// Held back until release; an earlier App's webhook-secret goes now.
+		d[keyClientID], d[keyClientSecret], d[keyWebhookHeld], d[keyWebhookSecret] = []byte(c.ClientID), []byte(c.ClientSecret), []byte(c.WebhookSecret), nil
 	}
 	return d
 }
@@ -253,8 +285,7 @@ func providersChosen(s snapshot) bool {
 // the App installed with the config repo, a root key, a database, and a
 // models choice.
 func (h *Handler) installed(s snapshot, review *app) *Installed {
-	if review == nil || review.installation == 0 || !s.rootKey.Has(keyRootKey) ||
-		h.databaseState(s) != dbReady || !providersChosen(s) {
+	if !h.ready(s, review) || !s.rootKey.Has(keyRootKey) || !review.secret.Has(keyWebhookSecret) {
 		return nil
 	}
 	return &Installed{

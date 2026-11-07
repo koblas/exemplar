@@ -10,7 +10,7 @@ Set `EXEMPLAR_LOG_LEVEL=debug` on a workload for more.
 
 ## Pods wait on a missing Secret
 
-On a fresh install the worker, search, learn and git-sync containers wait in `CreateContainerConfigError` or `ContainerCreating`, naming `exemplar-root-key` or a key of `exemplar-github-app`, until setup finishes ([Quickstart, step 5](../install/quickstart.md#5-register-the-github-app)): setup writes the root key last, when you click **Finish setup**. They start on their own once it's there.
+On a fresh install the worker, search, learn and git-sync containers wait in `CreateContainerConfigError` or `ContainerCreating`, naming `exemplar-root-key` or a key of `exemplar-github-app`, until setup finishes ([Quickstart, step 5](../install/quickstart.md#5-register-the-github-app)): setup writes the root key and the App's `webhook-secret` last, once the models are chosen and `exemplar-database` has a URL. They start on their own once those are there.
 
 A setup page saying the `exemplar-setup` Secret (or another Secret setup writes) isn't in the cluster means the manifests weren't all applied: apply your overlay again. The Secrets are declared empty in the manifests, and applying them again keeps what setup wrote.
 
@@ -75,7 +75,7 @@ Once `exemplar-github-app` has an `app-id`, exemplar-api starts in App mode, and
 - `link key: … exemplar-root-key`: `exemplar-root-key` has no `key`. Setup writes it at **Finish setup**; otherwise set one (`openssl rand -hex 32`).
 - GitHub refusing the App (in the log, or on `/ui/setup`): `exemplar-github-app` holds another App's key or a revoked one.
 
-To run setup again, empty the App's Secret and restart exemplar-api, which then serves the setup page:
+To run setup again, empty the App's Secret and restart exemplar-api, which then serves the setup page. Restart exemplar-webhook and the worker too once setup is done again: they read the App's Secret only as they start.
 
 ```bash
 kubectl -n exemplar patch secret exemplar-github-app --type=json -p '[{"op":"remove","path":"/data"}]'

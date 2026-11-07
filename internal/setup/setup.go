@@ -27,9 +27,10 @@
 //     mode in place (Installed), without a restart.
 //
 // Prepare writes, for the in-cluster Postgres, its password and URL before
-// anyone signs in, so the database starts during steps 1–3. Finish writes
-// the root key last: every other workload mounts it, so they start only
-// once the App and the models are in place.
+// anyone signs in, so the database starts during steps 1–3. Once the models
+// are chosen and the database is there, the page's next load writes the
+// root key and the App's webhook-secret (release, state.go): every other
+// workload mounts one of them, so they start only then.
 //
 // The page shows three numbered steps (create, install, finish), the first
 // unfinished one open. It doesn't update live: the CSP allows no script,
@@ -512,6 +513,22 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, code int,
 		v.Current = 2
 	default:
 		v.Current = 3
+		// The release happens here, not in finish: an external database
+		// can arrive after the models were chosen.
+		if wrote, err := h.release(ctx, snap, review); err != nil {
+			h.failSecrets(w, err)
+			return
+		} else if wrote {
+			if snap, err = h.load(ctx); err != nil {
+				h.failSecrets(w, err)
+				return
+			}
+			if review, err = h.appFrom(snap.app); err != nil || review == nil {
+				h.failApp(ctx, w, http.StatusInternalServerError, failKey)
+				return
+			}
+			review.installation = storedInstallation(review.secret)
+		}
 		v.Finishing = h.installed(snap, review) != nil
 		if exports != nil {
 			if id, err := exports.client.ConfigInstallation(ctx); err == nil {
@@ -678,7 +695,16 @@ func (h *Handler) finish(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err == nil {
-		err = h.writeRootKey(ctx) // last: the other workloads start once it's there
+		// Release now when the database is there, so every pod sees setup
+		// complete without waiting for this browser's next load.
+		var snap snapshot
+		if snap, err = h.load(ctx); err == nil {
+			var review *app
+			if review, err = h.appFrom(snap.app); err == nil && review != nil {
+				review.installation = storedInstallation(review.secret)
+				_, err = h.release(ctx, snap, review)
+			}
+		}
 	}
 	if err != nil {
 		h.failSecrets(w, err)

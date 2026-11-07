@@ -109,7 +109,7 @@ func TestRunSetupLeavesWhenComplete(t *testing.T) {
 	secrets := secretsWith(map[string]map[string][]byte{
 		"exemplar-github-app": {
 			"app-id": []byte("4242"), "private-key": key, "installation-id": []byte("77"),
-			"client-id": []byte("Iv23li"), "client-secret": []byte("cs"),
+			"client-id": []byte("Iv23li"), "client-secret": []byte("cs"), "webhook-secret": []byte("ws"),
 		},
 		"exemplar-root-key":  {"key": []byte("root")},
 		"exemplar-providers": {"anthropic-api-key": []byte("sk-ant")},

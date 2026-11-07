@@ -345,15 +345,19 @@ func TestManifestFlow(t *testing.T) {
 	app := srv.secret(t, secretApp)
 	want := map[string]string{
 		"app-id": "4242", "client-id": "Iv23liAcme", "client-secret": "client-secret-value",
-		"webhook-secret": "webhook-secret-value", "private-key": fake.pem, "slug": "exemplar-acme",
+		keyWebhookHeld: "webhook-secret-value", "private-key": fake.pem, "slug": "exemplar-acme",
 	}
 	for k, v := range want {
 		if app[k] != v {
 			t.Errorf("exemplar-github-app %s = %q, want %q", k, app[k], v)
 		}
 	}
-	if _, ok := app[keyInstallation]; ok {
-		t.Error("installation-id before the App is installed")
+	// exemplar-webhook mounts webhook-secret: held back until the release,
+	// so it can't start with an App that Start over replaces.
+	for _, k := range []string{keyInstallation, keyWebhookSecret} {
+		if _, ok := app[k]; ok {
+			t.Errorf("%s before the App is installed", k)
+		}
 	}
 
 	p = get(t, c, srv.URL+"/setup")
@@ -395,6 +399,9 @@ func TestManifestFlow(t *testing.T) {
 	}
 	if got := srv.secret(t, secretRootKey)[keyRootKey]; len(got) != 2*envcfg.MinRootKeyBytes {
 		t.Errorf("root key after Finish = %q", got)
+	}
+	if app := srv.secret(t, secretApp); app[keyWebhookSecret] != "webhook-secret-value" || app[keyWebhookHeld] != "" {
+		t.Errorf("after Finish: webhook-secret %q, held %q", app[keyWebhookSecret], app[keyWebhookHeld])
 	}
 	p = get(t, c, srv.URL+"/setup")
 	mustContain(t, p, titleDone, `<meta http-equiv="refresh" content="5">`)

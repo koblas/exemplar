@@ -211,6 +211,11 @@ func TestExternalDatabase(t *testing.T) {
 	if in, _ := srv.h.Installed(t.Context()); in != nil {
 		t.Fatal("Installed without a database")
 	}
+	// The other workloads would crash-loop without a database: nothing
+	// releases them yet.
+	if len(srv.secret(t, secretRootKey)) != 0 || srv.secret(t, secretApp)[keyWebhookSecret] != "" {
+		t.Error("root key or webhook-secret written before the database exists")
+	}
 
 	s, err := srv.kube.CoreV1().Secrets("exemplar").Get(t.Context(), secretDatabase, metav1.GetOptions{})
 	if err != nil {
