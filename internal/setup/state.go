@@ -119,10 +119,14 @@ func (h *Handler) ensure(ctx context.Context, name string, fill func(Secret) map
 }
 
 // Prepare writes what the installation needs before anyone signs in: setup's
-// token and signing key, the root key, and for the in-cluster Postgres its
-// password and URL, so the database starts while the operator registers
-// the App. Values already there stay: Postgres keeps the first password
-// it initializes with. Safe to call from every pod, any number of times.
+// token and signing key, and for the in-cluster Postgres its password and
+// URL, so the database starts while the operator registers the App. Values
+// already there stay: Postgres keeps the first password it initializes
+// with. Safe to call from every pod, any number of times.
+//
+// The root key comes last, from Finish (writeRootKey): every other
+// workload mounts it, so none starts before the App and the models are in
+// their Secrets (the gateway reads exemplar-providers only as it starts).
 func (h *Handler) Prepare(ctx context.Context) error {
 	st, err := h.ensure(ctx, secretSetup, func(s Secret) map[string][]byte {
 		if s.Has(keyToken) && s.Has(keySigning) {
@@ -137,14 +141,6 @@ func (h *Handler) Prepare(ctx context.Context) error {
 	h.signing = st.Data[keySigning]
 	h.token = st.Data[keyToken]
 	h.mu.Unlock()
-	if _, err := h.ensure(ctx, secretRootKey, func(s Secret) map[string][]byte {
-		if s.Has(keyRootKey) {
-			return nil
-		}
-		return map[string][]byte{keyRootKey: []byte(randomHex(envcfg.MinRootKeyBytes))}
-	}); err != nil {
-		return err
-	}
 	if h.cfg.HasDatabase || !h.cfg.InClusterPostgres(ctx) {
 		return nil
 	}
@@ -165,6 +161,17 @@ func (h *Handler) Prepare(ctx context.Context) error {
 			return nil
 		}
 		return map[string][]byte{keyDatabaseURL: []byte(dbURL)}
+	})
+	return err
+}
+
+// writeRootKey writes a root key unless there is one.
+func (h *Handler) writeRootKey(ctx context.Context) error {
+	_, err := h.ensure(ctx, secretRootKey, func(s Secret) map[string][]byte {
+		if s.Has(keyRootKey) {
+			return nil
+		}
+		return map[string][]byte{keyRootKey: []byte(randomHex(envcfg.MinRootKeyBytes))}
 	})
 	return err
 }

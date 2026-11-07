@@ -122,7 +122,7 @@ func run(args []string) error {
 	perMinute := fs.Int("evaluate-per-minute", 6, "each caller's new evaluations per minute")
 	tryUSD := fs.Float64("playground-daily-usd", 5, "each viewer's daily model spend in the web UI playground")
 	tryRuns := fs.Int("playground-daily-runs", 20, "each viewer's daily web UI playground runs")
-	namespace := fs.String("namespace", "exemplar", "setup mode: the namespace of the Secrets setup writes")
+	namespace := fs.String("namespace", "", "setup mode: the namespace of the Secrets setup writes (default: the pod's own)")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}
@@ -141,11 +141,12 @@ func run(args []string) error {
 	// Until setup has produced exemplar-github-app, serve only setup; then
 	// carry on with what it wrote, as a restarted pod would read it.
 	if e.get("EXEMPLAR_GH_APP_ID") == "" {
-		secrets, err := kubeSecrets(*namespace)
+		ns := podNamespace(*namespace)
+		secrets, err := kubeSecrets(ns)
 		if err != nil {
 			return err
 		}
-		in, err := runSetup(ctx, log, secrets, setupFlags{addr: *addr, namespace: *namespace, drain: *drain})
+		in, err := runSetup(ctx, log, secrets, setupFlags{addr: *addr, namespace: ns, drain: *drain})
 		if err != nil || in == nil { // nil: stopped before setup finished
 			return err
 		}

@@ -26,8 +26,10 @@
 //     exemplar-api pod sees setup complete in the Secrets and leaves setup
 //     mode in place (Installed), without a restart.
 //
-// Prepare writes the root key and, for the in-cluster Postgres, its password
-// and URL before anyone signs in, so the database starts during steps 1–3.
+// Prepare writes, for the in-cluster Postgres, its password and URL before
+// anyone signs in, so the database starts during steps 1–3. Finish writes
+// the root key last: every other workload mounts it, so they start only
+// once the App and the models are in place.
 //
 // The page shows three numbered steps (create, install, finish), the first
 // unfinished one open. It doesn't update live: the CSP allows no script,
@@ -674,6 +676,9 @@ func (h *Handler) finish(w http.ResponseWriter, r *http.Request) {
 		_, err = h.ensure(ctx, secretProviders, func(Secret) map[string][]byte {
 			return map[string][]byte{keyAnthropic: []byte(k)}
 		})
+	}
+	if err == nil {
+		err = h.writeRootKey(ctx) // last: the other workloads start once it's there
 	}
 	if err != nil {
 		h.failSecrets(w, err)

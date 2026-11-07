@@ -46,9 +46,6 @@ spec:
           args: ["--addr=:8080", "--drain=5s"]
           ports:
             - {name: http, containerPort: 8080}
-            # Setup mode only, on the pod's loopback: reached with kubectl
-            # port-forward, never through a Service.
-            - {name: setup, containerPort: 8081}
           # OTel destinations (internal/telemetry): optional, set per installation.
           envFrom:
             - configMapRef: {name: exemplar-otel, optional: true}
@@ -58,9 +55,10 @@ spec:
             - configMapRef: {name: exemplar-auth, optional: true}
             - secretRef: {name: exemplar-otel, optional: true}
           env:
-            # Optional so setup mode starts on a fresh install: the setup page
-            # offers exemplar-database and exemplar-root-key. In App mode
-            # exemplar-api refuses to start without them.
+            # Optional so setup mode starts on a fresh install: setup writes
+            # exemplar-database and exemplar-root-key, and leaves setup mode
+            # with them without a restart (cmd/exemplar-api/env.go). In App
+            # mode exemplar-api refuses to start without them.
             - name: EXEMPLAR_DATABASE_URL
               valueFrom: {secretKeyRef: {name: exemplar-database, key: url, optional: true}}
             - name: EXEMPLAR_API_URL
@@ -69,8 +67,8 @@ spec:
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_CONFIG_REPO}}
             - name: EXEMPLAR_WEBHOOK_URL
               valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_WEBHOOK_URL, optional: true}}
-            # The review app, once setup has produced exemplar-github-app.
-            # Without it exemplar-api serves only the setup page (docs/guides/install/quickstart.md).
+            # The review app, once setup has filled exemplar-github-app.
+            # Without it exemplar-api serves only /setup (docs/guides/install/quickstart.md).
             - name: EXEMPLAR_GH_APP_ID
               valueFrom: {secretKeyRef: {name: exemplar-github-app, key: app-id, optional: true}}
             - name: EXEMPLAR_OAUTH2_GITHUB_CLIENT_ID
@@ -109,9 +107,8 @@ spec:
             - {name: root-key, mountPath: /var/run/secrets/exemplar/root, readOnly: true}
             - {name: github-app, mountPath: /var/run/secrets/exemplar/github-app, readOnly: true}
             - {name: oidc-secret, mountPath: /var/run/secrets/exemplar/oidc, readOnly: true}
-            # Setup mode only: whether exemplar-database exists yet, which
-            # EXEMPLAR_DATABASE_URL can't show once the pod has started.
-            - {name: database, mountPath: /var/run/secrets/exemplar/database, readOnly: true}
+            # Setup mode's Kubernetes API access (rbac.yaml's exemplar-api-setup).
+            - {name: kube-api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
         - name: root-key
@@ -119,19 +116,21 @@ spec:
         - name: github-app
           secret:
             secretName: exemplar-github-app
-            # app-id: setup mode reads it to see an App Secret applied
-            # after the pod started (internal/setup).
-            items: [{key: app-id, path: app-id}, {key: client-secret, path: client-secret}, {key: private-key, path: private-key}]
+            items: [{key: client-secret, path: client-secret}, {key: private-key, path: private-key}]
             defaultMode: 0400
             optional: true
         - name: oidc-secret
           secret: {secretName: exemplar-oidc, defaultMode: 0400, optional: true}
-        - name: database
-          secret:
-            secretName: exemplar-database
-            items: [{key: url, path: url}]
-            defaultMode: 0400
-            optional: true
+        - name: kube-api
+          projected:
+            defaultMode: 0444
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3607}
+              - configMap:
+                  name: kube-root-ca.crt
+                  items: [{key: ca.crt, path: ca.crt}]
+              - downwardAPI:
+                  items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]
         - name: tmp
           emptyDir: {sizeLimit: 64Mi}
 ---

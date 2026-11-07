@@ -1,7 +1,9 @@
-# exemplar-worker (control) is the only identity that calls the Kubernetes
-# API: with --launcher=kubernetes it reads the runner PodTemplate, makes
-# and deletes a Job per review, and reads the Job's pod for the runner's
-# exit code. Namespaced; runners get no token and no role.
+# Two identities call the Kubernetes API, each with a namespaced Role:
+# exemplar-worker (control), which with --launcher=kubernetes reads the
+# runner PodTemplate, makes and deletes a Job per review, and reads the
+# Job's pod for the runner's exit code; and exemplar-api, whose setup mode
+# reads and fills the Secrets it writes (secrets.yaml), by name. Runners get
+# no token and no role.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -33,4 +35,34 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: exemplar-worker
+    namespace: exemplar
+---
+# exemplar-api's setup (internal/setup): get and patch, never create, list or
+# delete, and only the Secrets it writes. App mode doesn't call the API, but
+# the token stays mounted; see docs/reference/workloads.md.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: exemplar-api-setup
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [exemplar-setup, exemplar-github-app, exemplar-exports-app, exemplar-root-key, exemplar-providers, exemplar-postgres, exemplar-database]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: exemplar-api-setup
+  namespace: exemplar
+  labels: {app.kubernetes.io/name: exemplar-api, app.kubernetes.io/part-of: exemplar}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: exemplar-api-setup
+subjects:
+  - kind: ServiceAccount
+    name: exemplar-api
     namespace: exemplar

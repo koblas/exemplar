@@ -123,6 +123,21 @@ func waitInstalled(ctx context.Context, h *setup.Handler, log *slog.Logger, errc
 	}
 }
 
+// namespaceFile is the pod's namespace in its service account projection
+// (deploy/k8s/core/api.yaml).
+const namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
+// podNamespace is flag, or the pod's own namespace, or exemplar.
+func podNamespace(flag string) string {
+	if flag != "" {
+		return flag
+	}
+	if b, err := os.ReadFile(namespaceFile); err == nil && len(strings.TrimSpace(string(b))) > 0 {
+		return strings.TrimSpace(string(b))
+	}
+	return "exemplar"
+}
+
 // kubeSecrets reaches the namespace's Secrets with the pod's projected
 // service account token (deploy/k8s/core/api.yaml).
 func kubeSecrets(namespace string) (setup.Secrets, error) {

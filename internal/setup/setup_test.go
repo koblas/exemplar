@@ -393,6 +393,9 @@ func TestManifestFlow(t *testing.T) {
 	if got := srv.secret(t, secretProviders)[keyAnthropic]; got != "sk-ant-test" {
 		t.Errorf("exemplar-providers anthropic-api-key = %q", got)
 	}
+	if got := srv.secret(t, secretRootKey)[keyRootKey]; len(got) != 2*envcfg.MinRootKeyBytes {
+		t.Errorf("root key after Finish = %q", got)
+	}
 	p = get(t, c, srv.URL+"/setup")
 	mustContain(t, p, titleDone, `<meta http-equiv="refresh" content="5">`)
 	select {
@@ -468,9 +471,13 @@ func TestPrepare(t *testing.T) {
 	if err := srv.h.Prepare(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	setup, root, pg, db := srv.secret(t, secretSetup), srv.secret(t, secretRootKey), srv.secret(t, secretPostgres), srv.secret(t, secretDatabase)
-	if setup[keyToken] == "" || setup[keySigning] == "" || len(root[keyRootKey]) != 2*envcfg.MinRootKeyBytes || pg[keyPassword] == "" {
-		t.Fatalf("after Prepare: setup %v, root %v, postgres %v", setup, root, pg)
+	setup, pg, db := srv.secret(t, secretSetup), srv.secret(t, secretPostgres), srv.secret(t, secretDatabase)
+	if setup[keyToken] == "" || setup[keySigning] == "" || pg[keyPassword] == "" {
+		t.Fatalf("after Prepare: setup %v, postgres %v", setup, pg)
+	}
+	// The other workloads wait for the root key: not before Finish.
+	if root := srv.secret(t, secretRootKey); len(root) != 0 {
+		t.Errorf("root key before Finish: %v", root)
 	}
 	if want := "postgres://exemplar:" + pg[keyPassword] + "@exemplar-postgres.exemplar.svc:5432/exemplar"; db[keyDatabaseURL] != want {
 		t.Errorf("database url = %q, want %q", db[keyDatabaseURL], want)
@@ -478,8 +485,7 @@ func TestPrepare(t *testing.T) {
 	if err := srv.another(t).h.Prepare(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if srv.secret(t, secretSetup)[keyToken] != setup[keyToken] || srv.secret(t, secretRootKey)[keyRootKey] != root[keyRootKey] ||
-		srv.secret(t, secretPostgres)[keyPassword] != pg[keyPassword] {
+	if srv.secret(t, secretSetup)[keyToken] != setup[keyToken] || srv.secret(t, secretPostgres)[keyPassword] != pg[keyPassword] {
 		t.Error("a second Prepare changed what the first wrote")
 	}
 
@@ -493,9 +499,6 @@ func TestPrepare(t *testing.T) {
 		}
 		if len(srv.secret(t, secretPostgres)) != 0 || len(srv.secret(t, secretDatabase)) != 0 {
 			t.Errorf("%s: Prepare wrote the database Secrets", name)
-		}
-		if srv.secret(t, secretRootKey)[keyRootKey] == "" {
-			t.Errorf("%s: no root key", name)
 		}
 	}
 }
