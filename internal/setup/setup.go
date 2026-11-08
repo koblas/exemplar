@@ -66,6 +66,7 @@ import (
 
 	"github.com/koblas/exemplar/internal/envcfg"
 	"github.com/koblas/exemplar/internal/gh"
+	"github.com/koblas/exemplar/internal/webassets"
 )
 
 // Kinds of App setup registers.
@@ -186,12 +187,13 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /setup/installation", h.signedIn(h.posted(h.findInstallation)))
 	mux.HandleFunc("POST /setup/finish", h.signedIn(h.posted(h.finish)))
 	mux.HandleFunc("POST /setup/start-over", h.signedIn(h.posted(h.startOver)))
+	mux.Handle("GET "+webassets.Prefix, webassets.Handler())
 	mux.Handle("GET /", http.RedirectHandler("/setup", http.StatusFound))
 	return h.headers(mux)
 }
 
 func (h *Handler) headers(next http.Handler) http.Handler {
-	csp := "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' " + strings.TrimSuffix(h.cfg.GitHubWeb, "/") +
+	csp := "default-src 'none'; style-src 'self'; form-action 'self' " + strings.TrimSuffix(h.cfg.GitHubWeb, "/") +
 		"; frame-ancestors 'none'; base-uri 'none'"
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()

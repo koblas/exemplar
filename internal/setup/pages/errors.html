@@ -2,56 +2,56 @@
 .AppsURL, when set, is the owner's App settings, where an App GitHub already created is deleted. */}}
 
 {{define "fail-spent-state"}}{{template "error-top" .}}
-<h1>This link from GitHub was already used or has expired</h1>
+<h1 class="title is-5">This link from GitHub was already used or has expired</h1>
 <p>GitHub's link back to setup works once and lasts an hour.</p>
 <p>If setup shows the App as created, carry on there. Otherwise delete the App GitHub created in your App settings, then create it again from setup.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-other-browser"}}{{template "error-top" .}}
-<h1>This browser didn't start that registration</h1>
+<h1 class="title is-5">This browser didn't start that registration</h1>
 <p>Setup only accepts an App's key in the browser that sent it to GitHub, so it ignored this one.</p>
 <p>Delete the App GitHub just created in your App settings, then create it again from setup in this browser.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-conversion"}}{{template "error-top" .}}
-<h1>GitHub created the App but didn't hand over its key</h1>
+<h1 class="title is-5">GitHub created the App but didn't hand over its key</h1>
 <p>Exchanging GitHub's one-time code for the App's id and private key failed. The exemplar-api log has GitHub's answer.</p>
 <p>Delete the App in your App settings, then create it again from setup.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-key"}}{{template "error-top" .}}
-<h1>The new App's private key didn't load</h1>
+<h1 class="title is-5">The new App's private key didn't load</h1>
 <p>GitHub returned a key setup can't parse, so it can't look for the App's installation.</p>
 <p>Delete the App in your App settings, then create it again from setup.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-stale-form"}}{{template "error-top" .}}
-<h1>This page is out of date</h1>
+<h1 class="title is-5">This page is out of date</h1>
 <p>Its form no longer matches setup's signing key, which changes when the <code>exemplar-setup</code> Secret is emptied or replaced.</p>
 <p>Open setup again and repeat what you were doing.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-not-ready"}}{{template "error-top" .}}
-<h1>That step isn't open yet</h1>
+<h1 class="title is-5">That step isn't open yet</h1>
 <p>Setup needs the App created and installed, with <code>exemplar-config</code>, before this step.</p>
 <p>Open setup again: it shows the step to do next.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-manifest"}}{{template "error-top" .}}
-<h1>Setup couldn't build the App manifest</h1>
+<h1 class="title is-5">Setup couldn't build the App manifest</h1>
 <p>This is a bug in Exemplar; the exemplar-api log has the details.</p>
 <p>Report it, with the log, at https://github.com/koblas/exemplar/issues.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{/* .Secret: the Secret the cluster lacks. The manifests declare every Secret setup writes, empty, so exemplar-api's Role can name it. */}}
 {{define "fail-secret-missing"}}{{template "error-top" .}}
-<h1>The <code>{{.Secret}}</code> Secret isn't in the cluster</h1>
+<h1 class="title is-5">The <code>{{.Secret}}</code> Secret isn't in the cluster</h1>
 <p>Setup writes into Secrets the manifests create empty, and this one is missing, so the manifests weren't all applied (or the Secret was deleted since).</p>
 <p>Apply your installation's manifests again (<code>kubectl apply -k</code> on your overlay), then open setup again.</p>
 {{template "error-bottom" .}}{{end}}
 
 {{define "fail-kube-api"}}{{template "error-top" .}}
-<h1>exemplar-api couldn't reach its Secrets</h1>
+<h1 class="title is-5">exemplar-api couldn't reach its Secrets</h1>
 <p>The Kubernetes API refused or didn't answer when setup read or wrote the installation's Secrets. The exemplar-api log has its answer.</p>
 <p>Check that the <code>exemplar-api-setup</code> Role and RoleBinding are in namespace {{.Namespace}}, and that the exemplar-api NetworkPolicy lets it reach the API server; then reload.</p>
 {{template "error-bottom" .}}{{end}}

@@ -1,32 +1,25 @@
 {{/* Shared head and the error page frame. Every user-facing string of /setup is in this directory (.claude/rules/ux-flows.md).
 The docs (docs/guides/install/quickstart.md, docs/guides/operate/rule-exports.md) quote the step titles
-and button labels: rename them there too. */}}
+and button labels: rename them there too. The pages use Bulma from internal/webassets (the CSP allows no inline style);
+the stylesheet paths are webassets.Bulma and webassets.App. */}}
 {{define "head"}}{{template "head-start"}}{{template "head-end"}}{{end}}
 {{/* "head-refresh": the page reloads itself every 5 seconds (the CSP allows no script). Only the finishing state uses it. */}}
 {{define "head-refresh"}}{{template "head-start"}}<meta http-equiv="refresh" content="5">{{template "head-end"}}{{end}}
-{{define "head-end"}}</head><body><header><strong>Exemplar setup</strong></header>{{end}}
+{{define "head-end"}}</head><body>
+<header class="navbar has-shadow"><div class="container is-max-tablet"><div class="navbar-brand"><span class="navbar-item"><strong>Exemplar setup</strong></span></div></div></header>
+<main class="section"><div class="container is-max-tablet content">{{end}}
 {{define "head-start"}}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Exemplar setup</title><style>
-:root{color-scheme:light dark}
-body{font:15px/1.5 system-ui,sans-serif;max-width:46rem;margin:0 auto;padding:0 1rem 3rem}
-header{border-bottom:1px solid #8884;padding:.75rem 0;margin-bottom:1rem}button{font:inherit;padding:.35rem .9rem}
-code,pre{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-wrap;background:#8881;padding:.5rem;border-radius:4px}
-.notice{background:#f5c54222;border:1px solid #f5c54288;padding:.5rem;border-radius:4px}
-.error{background:#cf222e1a;border:1px solid #cf222e88;padding:.5rem;border-radius:4px}
-.error h1{font-size:1.15rem;margin:0}
-.success{background:#1a7f371a;border:1px solid #1a7f3788;padding:.5rem .75rem;border-radius:4px}
-.success h2{font-size:1.15rem;margin:0}.success h2::before{content:"\2713  ";color:#1a7f37}
-.muted{opacity:.7}
-ol.steps{padding-left:1.5rem}ol.steps>li{margin:1rem 0}ol.steps h2{font-size:1.05rem;margin:0}
-p.done::before{content:"\2713  ";color:#1a7f37}
-li.done h2::after{content:" \2713";color:#1a7f37}li.todo{opacity:.55}
-fieldset{border:1px solid #8884;border-radius:4px}legend{font-weight:600}ul{padding-left:1.25rem}
-dl{display:grid;grid-template-columns:max-content 1fr;gap:.2rem 1rem}dt{font-weight:600}dd{margin:0}
-</style>{{end}}
+<meta name="color-scheme" content="light dark">
+<title>Exemplar setup</title>
+<link rel="stylesheet" href="/static/bulma-1.0.4.min.css"><link rel="stylesheet" href="/static/app.css">{{end}}
+{{define "foot"}}</div></main></body></html>{{end}}
+
+{{/* A step's state as a tag: .  is "done", "current" or "todo" (statusView.StepClass). */}}
+{{define "step-tag"}}{{if eq . "done"}}<span class="tag is-success">Done</span>{{else if eq . "current"}}<span class="tag is-link">Current</span>{{else}}<span class="tag">To do</span>{{end}}{{end}}
 
 {{/* An error page: "error-top", then a title, what failed and why, and what to do, then "error-bottom". */}}
-{{define "error-top"}}{{template "head"}}<div class="error" role="alert">{{end}}
-{{define "error-bottom"}}</div>
+{{define "error-top"}}{{template "head"}}<article class="message is-danger" role="alert"><div class="message-body">{{end}}
+{{define "error-bottom"}}</div></article>
 {{if .AppsURL}}<p>Your App settings: <a href="{{.AppsURL}}" target="_blank" rel="noopener">{{.AppsURL}}</a></p>{{end}}
-<p><a href="/setup">Back to setup</a></p>
-</body></html>{{end}}
+<p><a class="button" href="/setup">Back to setup</a></p>
+{{template "foot"}}{{end}}

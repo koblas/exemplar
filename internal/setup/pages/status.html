@@ -8,88 +8,88 @@ reloads itself every 5 seconds until exemplar-api answers with the web UI instea
 .ReviewGone/.ExportsGone: an App GitHub no longer knows (setup only forgets it when asked); .StartedOver: right after Start
 over; .ExportsOnConfig: the exports app can reach exemplar-config.
 Links to GitHub and the docs open in a new tab, so this page and its state stay put; the create forms stay in this tab,
-since GitHub redirects back here. */}}
+since GitHub redirects back here. Each step is a box with its state ("step-tag"); the open one carries aria-current. */}}
 {{define "status"}}{{if .Finishing}}{{template "head-refresh"}}{{else}}{{template "head"}}{{end}}
-<h1 style="font-size:1.3rem">Register Exemplar's GitHub App on {{.Org}}</h1>
-{{if .Finishing}}<section class="success" role="status"><h2>Setup is complete</h2>
+<h1 class="title is-4">Register Exemplar's GitHub App on {{.Org}}</h1>
+{{if .Finishing}}<section class="message is-success" role="status"><div class="message-body"><h2 class="title is-5">Setup is complete</h2>
 <p>exemplar-api is leaving setup mode, and the other workloads start now that their Secrets are there. This page reloads
 on its own; in a few seconds it opens <a href="{{.URLs.API}}/ui/setup" target="_blank" rel="noopener">{{.URLs.API}}/ui/setup</a>, which checks the installation
 and the webhook deliveries once you sign in.</p>
 <p class="muted">Still here after a minute? See <a href="https://koblas.github.io/exemplar/guides/operate/troubleshoot/#exemplar-api-stays-in-setup-mode" target="_blank" rel="noopener">Troubleshooting</a>.</p>
-</section>{{end}}
-{{if .OwnerUnknown}}<p class="notice" role="status">GitHub didn't say whether {{.Org}} is an organization or a personal account,
-so the GitHub links below assume an organization. If {{.Org}} is your own account, reload this page.</p>{{end}}
-{{if .StartedOver}}<p class="notice" role="status">Setup forgot the App it created. If it's still on GitHub, delete it in your
-<a href="{{.AppsURL}}" target="_blank" rel="noopener">App settings</a> so its name is free, then create it again below.</p>{{end}}
-{{if .GitHubUnreachable}}<p class="notice" role="status">GitHub didn't answer this page's checks, so it shows what setup last saw.
-Reload in a moment; if it keeps failing, the exemplar-api log has GitHub's answer.</p>{{end}}
+</div></section>{{end}}
+{{if .OwnerUnknown}}<article class="message is-warning" role="status"><p class="message-body">GitHub didn't say whether {{.Org}} is an organization or a personal account,
+so the GitHub links below assume an organization. If {{.Org}} is your own account, reload this page.</p></article>{{end}}
+{{if .StartedOver}}<article class="message is-warning" role="status"><p class="message-body">Setup forgot the App it created. If it's still on GitHub, delete it in your
+<a href="{{.AppsURL}}" target="_blank" rel="noopener">App settings</a> so its name is free, then create it again below.</p></article>{{end}}
+{{if .GitHubUnreachable}}<article class="message is-warning" role="status"><p class="message-body">GitHub didn't answer this page's checks, so it shows what setup last saw.
+Reload in a moment; if it keeps failing, the exemplar-api log has GitHub's answer.</p></article>{{end}}
 <ol class="steps">
 
-<li class="{{.StepClass 1}}" {{if and (eq .Current 1) (not .Finishing)}}aria-current="step"{{end}}><h2>Create the App on GitHub</h2>
+<li class="box" data-state="{{.StepClass 1}}" {{if and (eq .Current 1) (not .Finishing)}}aria-current="step"{{end}}><div class="step-head"><h2 class="title is-5">Create the App on GitHub</h2>{{template "step-tag" (.StepClass 1)}}</div>
 {{if .ReviewGone}}
-<div class="error" role="alert"><p>GitHub no longer knows {{.ReviewGone}}: it was deleted or its key was revoked
+<article class="message is-danger" role="alert"><div class="message-body"><p>GitHub no longer knows {{.ReviewGone}}: it was deleted or its key was revoked
 (or this pod's clock is far enough off that GitHub rejects its sign-in).</p>
 <p>If you deleted it, forget it here and create the App again. Otherwise reload once the cause is fixed.</p>
 <form method="post" action="/setup/start-over"><input type="hidden" name="form" value="{{.Form}}">
-<button type="submit">Forget {{.ReviewGone}} and start over</button></form></div>
+<button class="button is-danger" type="submit">Forget {{.ReviewGone}} and start over</button></form></div></article>
 {{else if eq .Current 1}}
 {{template "create-app" .}}
 {{else}}<p>Created <a href="{{.Review.AppURL}}" target="_blank" rel="noopener">{{.Review.Name}}</a>. Its key is saved in <code>exemplar-github-app</code>.</p>{{end}}
 </li>
 
-<li class="{{.StepClass 2}}" {{if and (eq .Current 2) (not .Finishing)}}aria-current="step"{{end}}><h2>Install it</h2>
+<li class="box" data-state="{{.StepClass 2}}" {{if and (eq .Current 2) (not .Finishing)}}aria-current="step"{{end}}><div class="step-head"><h2 class="title is-5">Install it</h2>{{template "step-tag" (.StepClass 2)}}</div>
 {{if eq .Current 2}}
-{{if eq .InstallError "not-installed"}}<p class="error" role="alert">GitHub lists no installation of {{.Review.Name}} on {{.Org}}.
+{{if eq .InstallError "not-installed"}}<article class="message is-danger" role="alert"><p class="message-body">GitHub lists no installation of {{.Review.Name}} on {{.Org}}.
 Install it on {{.Org}} (the account that owns exemplar-config), then check again.{{if .OwnerIsOrg}} If you aren't an owner of {{.Org}},
-GitHub sent its owners a request to approve the installation instead: it shows here once one of them approves it.{{end}}</p>
-{{else if eq .InstallError "list-failed"}}<p class="error" role="alert">GitHub didn't answer when setup asked for the App's installations.
-Check again in a moment; if it keeps failing, the exemplar-api log has GitHub's answer.</p>
-{{else if eq .InstallError "config-missing"}}<p class="error" role="alert">{{.Review.Name}} is installed on {{.Org}}, but its repositories
+GitHub sent its owners a request to approve the installation instead: it shows here once one of them approves it.{{end}}</p></article>
+{{else if eq .InstallError "list-failed"}}<article class="message is-danger" role="alert"><p class="message-body">GitHub didn't answer when setup asked for the App's installations.
+Check again in a moment; if it keeps failing, the exemplar-api log has GitHub's answer.</p></article>
+{{else if eq .InstallError "config-missing"}}<article class="message is-danger" role="alert"><p class="message-body">{{.Review.Name}} is installed on {{.Org}}, but its repositories
 don't include <code>exemplar-config</code>, which every workload reads its configuration from.
-<a href="{{.InstallationURL}}" target="_blank" rel="noopener">Add it to the installation's repositories</a>, then check again.</p>{{end}}
+<a href="{{.InstallationURL}}" target="_blank" rel="noopener">Add it to the installation's repositories</a>, then check again.</p></article>{{end}}
 {{if ne .InstallError "config-missing"}}<p><a href="{{.Review.InstallURL}}" target="_blank" rel="noopener">Install {{.Review.Name}} on {{.Org}}</a> on GitHub (it opens in a new tab).
 Choose the repositories Exemplar reviews, and <code>exemplar-config</code>. Then come back here:</p>{{end}}
 <form method="post" action="/setup/installation"><input type="hidden" name="form" value="{{.Form}}">
-<button type="submit">Check the installation</button></form>
+<button class="button is-primary" type="submit">Check the installation</button></form>
 {{else if gt .Current 2}}<p>Installed on {{.Org}}, with <code>exemplar-config</code> (installation {{.Review.Installation}}).</p>{{end}}
 </li>
 
-<li class="{{.StepClass 3}}" {{if and (eq .Current 3) (not .Finishing)}}aria-current="step"{{end}}><h2>Finish</h2>
+<li class="box" data-state="{{.StepClass 3}}" {{if and (eq .Current 3) (not .Finishing)}}aria-current="step"{{end}}><div class="step-head"><h2 class="title is-5">Finish</h2>{{template "step-tag" (.StepClass 3)}}</div>
 {{if and (eq .Current 3) (not .Finishing)}}
 <p>For <code>exemplar login</code> from a terminal, tick <b>Enable Device Flow</b> in the <a href="{{.Review.AppURL}}" target="_blank" rel="noopener">App's settings</a>.</p>
 <details {{if or .Exports.Created .ExportsGone}}open{{end}}><summary>Rule exports (optional)</summary>
-{{if .ExportsGone}}<div class="error" role="alert"><p>GitHub no longer knows {{.ExportsGone}}: it was deleted or its key was revoked.</p>
+{{if .ExportsGone}}<article class="message is-danger" role="alert"><div class="message-body"><p>GitHub no longer knows {{.ExportsGone}}: it was deleted or its key was revoked.</p>
 <form method="post" action="/setup/start-over"><input type="hidden" name="form" value="{{.Form}}"><input type="hidden" name="kind" value="exports">
-<button type="submit">Forget {{.ExportsGone}}</button></form></div>
+<button class="button is-danger" type="submit">Forget {{.ExportsGone}}</button></form></div></article>
 {{else}}
 <p>Exports write instruction files to the repositories that opt in, with a second App installed only on those repositories.
 Skip this unless you want them; <a href="https://koblas.github.io/exemplar/guides/operate/rule-exports/" target="_blank" rel="noopener">you can add it later</a>.</p>
 {{if not .Exports.Created}}
 <form method="post" action="{{.Exports.Action}}"><input type="hidden" name="manifest" value="{{.Exports.Manifest}}">
-<button type="submit">Create the exports app on GitHub</button></form>
+<button class="button" type="submit">Create the exports app on GitHub</button></form>
 {{else}}
-{{if .ExportsOnConfig}}<p class="error" role="alert">{{.Exports.Name}} is installed on <code>exemplar-config</code>, where it could
-rewrite the rules. <a href="{{.Exports.InstallationURL}}" target="_blank" rel="noopener">Remove exemplar-config from its repositories</a>, then reload.</p>{{end}}
+{{if .ExportsOnConfig}}<article class="message is-danger" role="alert"><p class="message-body">{{.Exports.Name}} is installed on <code>exemplar-config</code>, where it could
+rewrite the rules. <a href="{{.Exports.InstallationURL}}" target="_blank" rel="noopener">Remove exemplar-config from its repositories</a>, then reload.</p></article>{{end}}
 <p>Created <a href="{{.Exports.AppURL}}" target="_blank" rel="noopener">{{.Exports.Name}}</a>. <a href="{{.Exports.InstallURL}}" target="_blank" rel="noopener">Install it</a> only on the repositories
 that opt into exports, never on <code>exemplar-config</code>. Setup saved its key in <code>exemplar-exports-app</code>.</p>
 {{end}}
 {{end}}
 </details>
-{{if eq .Database "external"}}<div class="notice" role="status"><p>This installation has no in-cluster Postgres, and exemplar-api has no database yet.
+{{if eq .Database "external"}}<article class="message is-warning" role="status"><div class="message-body"><p>This installation has no in-cluster Postgres, and exemplar-api has no database yet.
 Create <code>exemplar-database</code> with your Postgres URL
 (<a href="https://koblas.github.io/exemplar/reference/secrets-and-configmaps/" target="_blank" rel="noopener">Secrets and ConfigMaps</a>),
 then check again: setup finishes once it's there.</p>
-<form method="get" action="/setup"><button type="submit">Check again</button></form></div>{{end}}
+<form method="get" action="/setup"><button class="button" type="submit">Check again</button></form></div></article>{{end}}
 <form method="post" action="/setup/finish"><input type="hidden" name="form" value="{{.Form}}">
-<fieldset><legend>Models</legend>
-{{if eq .ProviderError "key-missing"}}<p class="error" role="alert">Paste your Anthropic API key, or choose that you've created exemplar-providers yourself.</p>
-{{else if eq .ProviderError "key-invalid"}}<p class="error" role="alert">That doesn't look like an API key: it has spaces or characters keys don't use. Paste the key again, on its own.</p>{{end}}
-<p><label><input type="radio" name="models" value="anthropic" checked> Anthropic API key</label><br>
-<input type="password" name="anthropic-key" aria-label="Anthropic API key" autocomplete="off" spellcheck="false" size="50"></p>
-<p class="muted">Setup saves it in <code>exemplar-providers</code>.</p>
-<p><label><input type="radio" name="models" value="own"> I've created <code>exemplar-providers</code> myself (Bedrock, or keys from a secret manager)</label></p>
+<fieldset class="field"><legend class="label">Models</legend>
+{{if eq .ProviderError "key-missing"}}<article class="message is-danger" role="alert"><p class="message-body">Paste your Anthropic API key, or choose that you've created exemplar-providers yourself.</p></article>
+{{else if eq .ProviderError "key-invalid"}}<article class="message is-danger" role="alert"><p class="message-body">That doesn't look like an API key: it has spaces or characters keys don't use. Paste the key again, on its own.</p></article>{{end}}
+<div class="field"><div class="control"><label class="radio"><input type="radio" name="models" value="anthropic" checked> Anthropic API key</label></div>
+<div class="control"><input class="input" type="password" name="anthropic-key" aria-label="Anthropic API key" autocomplete="off" spellcheck="false" size="50"></div>
+<p class="help muted">Setup saves it in <code>exemplar-providers</code>.</p></div>
+<div class="field"><div class="control"><label class="radio"><input type="radio" name="models" value="own"> I've created <code>exemplar-providers</code> myself (Bedrock, or keys from a secret manager)</label></div></div>
 </fieldset>
-<p><button type="submit">Finish setup</button></p>
+<div class="field"><div class="control"><button class="button is-primary" type="submit">Finish setup</button></div></div>
 </form>
 {{end}}
 </li>
@@ -101,10 +101,10 @@ it empties <code>exemplar-github-app</code>{{if .Exports.Created}} and <code>exe
 The App stays on GitHub: delete it in its <a href="{{.Review.AppURL}}/advanced" target="_blank" rel="noopener">settings</a>
 (Advanced, Delete GitHub App) so its name is free.</p>
 <form method="post" action="/setup/start-over"><input type="hidden" name="form" value="{{.Form}}">
-<button type="submit">Forget this App and start over</button></form>
+<button class="button is-danger is-outlined" type="submit">Forget this App and start over</button></form>
 </details>
 {{end}}
-</body></html>{{end}}
+{{template "foot"}}{{end}}
 
 {{/* Step 1's create form, with what to check first. */}}
 {{define "create-app"}}
@@ -114,5 +114,5 @@ The App stays on GitHub: delete it in its <a href="{{.Review.AppURL}}/advanced" 
 {{if .OwnerIsOrg}}<p class="muted">Creating an App for {{.Org}} needs its owner role, or its GitHub App manager role; without either,
 GitHub answers the button with a 404 page. An owner can make you an App manager in {{.Org}}'s settings, under GitHub Apps.</p>{{end}}
 <form method="post" action="{{.Review.Action}}"><input type="hidden" name="manifest" value="{{.Review.Manifest}}">
-<button type="submit">Create the App on GitHub</button></form>
+<button class="button is-primary" type="submit">Create the App on GitHub</button></form>
 {{end}}
