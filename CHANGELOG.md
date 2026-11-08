@@ -6,6 +6,23 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.13.0](https://github.com/koblas/exemplar/compare/v0.12.0...v0.13.0) (2026-11-08)
+
+
+### Features
+
+* **api:** setup at the public URL with state in Secrets ([fcce458](https://github.com/koblas/exemplar/commit/fcce458eaff916d9790ac74b99f04c543d2ff730))
+* **api:** setup at the public URL with state in Secrets, no restart ([6e2df02](https://github.com/koblas/exemplar/commit/6e2df026fd9f34de12b0ee0ed88c4f903d8fbfcf))
+* **deploy:** exemplar-api Role, token and declared Secrets for setup ([5f44799](https://github.com/koblas/exemplar/commit/5f44799ba519c2eefe6ea3ac95a9248e3464a54f))
+* **ui:** restyle /setup and /ui/ with vendored Bulma 1.0.4 ([e93f684](https://github.com/koblas/exemplar/commit/e93f684dd5c2c9978f89f83adc047112acc3d72e))
+* **ui:** restyle /setup and /ui/ with vendored Bulma 1.0.4 ([1ac9b87](https://github.com/koblas/exemplar/commit/1ac9b87abe1ca32b595f673169a767b679d6cfc1))
+
+
+### Bug Fixes
+
+* **api:** hold workloads until setup is done ([c881b3f](https://github.com/koblas/exemplar/commit/c881b3f31a8c1638d95dab9458defef15e229ca9))
+* **deps:** bump brotli and klauspost/compress for GO-2026-6888, GO-2026-6865 ([030147f](https://github.com/koblas/exemplar/commit/030147f6b9645f38424e4954d111b65a79224cc2))
+
 ## [0.12.0](https://github.com/koblas/exemplar/compare/v0.11.1...v0.12.0) (2026-11-05)
 
 
