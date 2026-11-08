@@ -86,6 +86,7 @@ import (
 	"github.com/koblas/exemplar/internal/svcauth"
 	"github.com/koblas/exemplar/internal/telemetry"
 	"github.com/koblas/exemplar/internal/web"
+	"github.com/koblas/exemplar/internal/webassets"
 )
 
 var (
@@ -372,6 +373,7 @@ func run(args []string) error {
 	mux.Handle("/", srv.Handler())
 	mux.Handle("/v1/", evals.Handler())
 	mux.Handle("/ui/", ui.Routes())
+	mux.Handle("GET "+webassets.Prefix, webassets.Handler())
 	mux.HandleFunc("GET /ui/connect-github", srv.Relink)
 	mux.Handle("GET /ui", http.RedirectHandler("/ui/", http.StatusMovedPermanently))
 	// The setup page's last state reloads /setup until this answers.

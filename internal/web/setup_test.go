@@ -55,7 +55,7 @@ func TestSetupPage(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("GET /ui/setup = %d", code)
 	}
-	for _, want := range []string{"GitHub App installed on acme", "Installation 7.", "fail", "Check that the tunnel routes /webhook.", `href="/ui/setup" class="on"`} {
+	for _, want := range []string{"GitHub App installed on acme", "Installation 7.", "fail", "Check that the tunnel routes /webhook.", `href="/ui/setup" aria-current="page"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page misses %q", want)
 		}

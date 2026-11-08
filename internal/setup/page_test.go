@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var currentRe = regexp.MustCompile(`aria-current="step"><h2>([^<]+)</h2>`)
+var currentRe = regexp.MustCompile(`aria-current="step"><div class="step-head"><h2 class="title is-5">([^<]+)</h2>`)
 
 // text is what the page says, entities decoded.
 func (p page) text() string { return html.UnescapeString(p.body) }
@@ -54,7 +54,7 @@ const (
 	labelCheckInstall = "Check the installation"
 	labelCreateExport = "Create the exports app on GitHub"
 	labelBack         = "Back to setup"
-	titleDone         = "<h2>Setup is complete</h2>"
+	titleDone         = ">Setup is complete</h2>"
 	labelStartOver    = "<summary>Start over</summary>"
 )
 
@@ -79,7 +79,7 @@ func TestFailurePagesRender(t *testing.T) {
 			t.Fatalf("%s: %v", f, err)
 		}
 		p := page{body: b.String()}
-		mustContain(t, p, "<h1>"+title+"</h1>", labelBack)
+		mustContain(t, p, `<h1 class="title is-5">`+title+"</h1>", labelBack)
 		if strings.Count(p.body, "<p>") < 3 {
 			t.Errorf("%s doesn't say why and what next:\n%s", f, p.body)
 		}
@@ -185,7 +185,7 @@ func TestPageSteps(t *testing.T) {
 	p = get(t, c, srv.URL+"/setup")
 	mustContain(t, p, titleDone, "https://exemplar.acme.com/ui/setup", `<meta http-equiv="refresh" content="5">`)
 	mustNotContain(t, p, labelFinish, labelStartOver, labelCheckInstall, `aria-current="step"`)
-	if strings.Count(p.body, `class="done"`) != 3 {
+	if strings.Count(p.body, `data-state="done"`) != 3 || strings.Count(p.body, `<span class="tag is-success">Done</span>`) != 3 {
 		t.Errorf("not every step reads done:\n%s", p.body)
 	}
 }

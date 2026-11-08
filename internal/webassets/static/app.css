@@ -1,0 +1,24 @@
+/* Exemplar's overrides on Bulma: only what Bulma has no class for. Colors come from Bulma's variables, so dark mode follows it. */
+.muted{color:var(--bulma-text-weak)}
+.content{overflow-wrap:break-word}
+.content pre{white-space:pre-wrap}
+.content .button{white-space:normal;height:auto}
+.content dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}
+.content dl dt{font-weight:var(--bulma-weight-semibold)}
+.content dl dd{margin:0}
+
+/* The /setup step list: numbered boxes, the current one outlined. */
+.content ol.steps{list-style:none;margin-inline-start:0;counter-reset:step}
+.content ol.steps>li{counter-increment:step}
+.content ol.steps>li+li{margin-top:1rem}
+.step-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.75rem}
+.content .step-head h2{margin:0}
+.step-head h2::before{content:counter(step) ". "}
+.steps>li[data-state=todo]{opacity:.6}
+.steps>li[aria-current=step]{outline:2px solid var(--bulma-link);outline-offset:-2px}
+
+/* The /ui/ playground's rule editor. */
+textarea.code{font-family:var(--bulma-code-family)}
+
+/* The /ui/ tables' one-field forms (a reason and a button). */
+td .field.has-addons .input{min-width:8rem}

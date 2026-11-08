@@ -1,13 +1,13 @@
 {{/* Sign-in: setup answers on the public URL, so the operator proves cluster access with the token in the exemplar-setup
 Secret. .Wrong: the token posted didn't match (not kept: a reload clears it). The field starts empty on every render. */}}
 {{define "sign-in"}}{{template "head"}}
-<h1 style="font-size:1.3rem">Sign in to set up Exemplar</h1>
+<h1 class="title is-4">Sign in to set up Exemplar</h1>
 <p>Setup registers Exemplar's GitHub App and writes its key into the cluster, so it asks for the setup token first.
 Read it from the cluster:</p>
 <pre>kubectl -n {{.Namespace}} get secret exemplar-setup -o jsonpath='{.data.token}' | base64 -d</pre>
-{{if .Wrong}}<p class="error" role="alert">That isn't the setup token. Run the command again and paste its whole output, without the shell prompt.</p>{{end}}
-<form method="post" action="/setup/sign-in">
-<p><label>Setup token<br><input type="password" name="token" autocomplete="off" spellcheck="false" size="50" required autofocus></label></p>
-<p><button type="submit">Sign in</button></p>
+{{if .Wrong}}<article class="message is-danger" role="alert"><p class="message-body">That isn't the setup token. Run the command again and paste its whole output, without the shell prompt.</p></article>{{end}}
+<form class="box" method="post" action="/setup/sign-in">
+<div class="field"><label class="label" for="token">Setup token</label><div class="control"><input class="input" id="token" type="password" name="token" autocomplete="off" spellcheck="false" size="50" required autofocus></div></div>
+<div class="field"><div class="control"><button class="button is-primary" type="submit">Sign in</button></div></div>
 </form>
-</body></html>{{end}}
+{{template "foot"}}{{end}}
