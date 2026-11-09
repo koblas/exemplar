@@ -42,6 +42,8 @@ The copy reviews no repo yet. Copy `repos/example-org/example-service.yaml.examp
     cloudflared tunnel route dns exemplar exemplar.acme.com
     ```
 
+    The host answers nothing yet. The tunnel's connector is the `exemplar-cloudflared` Deployment inside the cluster, which starts in step 4: until then Cloudflare shows error 1033, "unable to resolve" the tunnel, on `https://exemplar.acme.com`. If it still does after step 4, see [The host shows Cloudflare error 1033](../operate/troubleshoot.md#the-host-shows-cloudflare-error-1033).
+
 === "Ingress"
 
     Point the host's DNS at your controller. After step 4, have a TLS Secret named `exemplar-tls` for it in the `exemplar` namespace: a cert-manager `Certificate`, or
@@ -52,15 +54,65 @@ The copy reviews no repo yet. Copy `repos/example-org/example-service.yaml.examp
 
 ## 3. Write the overlay
 
-Copy your way in's overlay directory. In `settings.yaml` set your config repo and `https://exemplar.acme.com`. In `kustomization.yaml`, replace the resource with the release's install file URL and drop the `images` list (the file pins them); see [Releases and images](../../reference/releases.md).
+The overlay is a directory of two files, `kustomization.yaml` and `settings.yaml`, that step 4 applies. Start from the example for your way in and make the edits below; the result pulls the release's rendered manifests, so no clone of this repository is needed. Pick the release to install from the [releases page](https://github.com/koblas/exemplar/releases); the commands use `v0.13.0`.
 
-=== "Cloudflare Tunnel"
+1. Fetch the example directory at that release. The archive's top folder drops the `v`:
 
-    The resource is the release's `install-tunnel.yaml`.
+    === "Cloudflare Tunnel"
 
-=== "Ingress"
+        ```bash
+        curl -fsSL https://github.com/koblas/exemplar/archive/refs/tags/v0.13.0.tar.gz | tar -xz --strip-components=3 exemplar-0.13.0/examples/k8s/quickstart
+        ```
 
-    The resource is the release's `install-direct.yaml`. Set the host in the two Ingress patches, and the class if it isn't `nginx`.
+    === "Ingress"
+
+        ```bash
+        curl -fsSL https://github.com/koblas/exemplar/archive/refs/tags/v0.13.0.tar.gz | tar -xz --strip-components=3 exemplar-0.13.0/examples/k8s/quickstart-direct && mv quickstart-direct quickstart
+        ```
+
+    You now have `quickstart/` with the two files.
+
+2. In `kustomization.yaml`, point both references at the release and drop the image pins. The example's `resources:` and `components:` are relative paths that only resolve inside a clone; the `images:` list carries all-zero digests that the release file replaces. Delete the `images:` block entirely and set the two paths so the file begins:
+
+    === "Cloudflare Tunnel"
+
+        ```yaml
+        resources:
+          - https://github.com/koblas/exemplar/releases/download/v0.13.0/install-tunnel.yaml
+        components:
+          - github.com/koblas/exemplar//deploy/k8s/components/postgres?ref=v0.13.0
+        ```
+
+    === "Ingress"
+
+        ```yaml
+        resources:
+          - https://github.com/koblas/exemplar/releases/download/v0.13.0/install-direct.yaml
+        components:
+          - github.com/koblas/exemplar//deploy/k8s/components/postgres?ref=v0.13.0
+        ```
+
+        Then, in the two `Ingress` patches, replace `exemplar.acme.com` with your host, and `nginx` with your controller's class if it differs (`kubectl get ingressclass` lists it).
+
+    Leave the `patches:` block as it is: one replica of everything, reviews inside the worker pod, and the trial's storage sizes.
+
+3. In `settings.yaml`, set the two values: `EXEMPLAR_CONFIG_REPO` is your config repository as `owner/name`, and `EXEMPLAR_API_URL` is `https://` plus the host from step 2, with no trailing slash.
+
+    ```yaml
+    data:
+      EXEMPLAR_CONFIG_REPO: "acme/exemplar-config"
+      EXEMPLAR_API_URL: "https://exemplar.acme.com"
+    ```
+
+4. Render it, without applying:
+
+    ```bash
+    kubectl kustomize quickstart/ | grep -c '^kind:'
+    ```
+
+    A count above 30 and no error means both release references resolved. An error naming the release URL means that version has no such asset; an error naming `../../../deploy` means a relative path from step 2 is still there.
+
+[Releases and images](../../reference/releases.md) describes the install files and the other ways to pin a version.
 
 ## 4. Apply it
 

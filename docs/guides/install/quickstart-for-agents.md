@@ -101,6 +101,8 @@ Expect: the repository's `validate` workflow run is green on the push. The other
 
     Expect: `Added CNAME <host> which will route to this tunnel`. If the output is `Cannot determine default origin certificate path`, the login step did not finish, or the command ran under `sudo`. Repeat the login without `sudo`.
 
+    Do not test `https://<host>` yet. The tunnel's connector is the `exemplar-cloudflared` Deployment, created in step 5, so until then Cloudflare answers with error 1033. That is expected, not a failure.
+
 === "Ingress"
 
     **HANDOFF.** Ask the person to point `<host>`'s DNS at the ingress controller and to provide a TLS certificate and key for it, or a cert-manager `Certificate` that will create a Secret named `exemplar-tls` in the `exemplar` namespace. If they give you files, keep them for step 5.

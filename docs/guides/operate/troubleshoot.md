@@ -20,6 +20,25 @@ A pod that refuses to start naming a value such as `example-org` or `exemplar.ex
 
 A provider in `global.yaml` has no credentials: the gateway's log names the variable (`anthropic-api-key` in `exemplar-providers` for `claude`, `openai-api-key` for `openai`; workload identity for `bedrock`). The gateway skips a provider whose credentials are missing with a warning, and fails only when a stage is left with none. The embedding provider is the exception: without `voyage-api-key` the gateway starts anyway, logs `embedding provider skipped`, and `POST /v1/embeddings` answers 503, so the `exemplar-learn-embed` CronJob fails and nothing reaches clustering until the key is set.
 
+## The host shows Cloudflare error 1033
+
+Cloudflare's "unable to resolve" page for the tunnel host means DNS routes the host to the tunnel, but no connector is attached to it. The connector is the `exemplar-cloudflared` Deployment in the cluster, not a process on your desktop, so the page is expected between [Quickstart, step 2](../install/quickstart.md#2-open-the-way-in) and step 4. After step 4, check the pods:
+
+```bash
+kubectl -n exemplar get pods -l app.kubernetes.io/name=exemplar-cloudflared
+```
+
+Readiness passes only once a connection to Cloudflare's edge is up, so `0/1` means not connected. The log says why:
+
+```bash
+kubectl -n exemplar logs deploy/exemplar-cloudflared --tail=50
+```
+
+- `CreateContainerConfigError`, or the log naming the `exemplar-cloudflared` Secret: the Secret from step 4 is missing, or not in the `exemplar` namespace.
+- A credentials or authentication error: `tunnel-id` in the Secret is not the id of the tunnel whose `<id>.json` it holds. `cloudflared tunnel list` shows the ids; recreate the Secret with the matching pair.
+- Connection timeouts to `*.argotunnel.com` on port 7844: egress from the cluster is blocked, by the node network or a cluster-wide NetworkPolicy that overrides the component's.
+- `Registered tunnel connection` in the log and the pod `1/1`: the tunnel is up and the host points at another tunnel. `cloudflared tunnel route dns` does not replace a CNAME that already exists; in the Cloudflare dashboard, the host's CNAME must end in `<tunnel id>.cfargotunnel.com` for this tunnel's id.
+
 ## No review arrives
 
 Work down the chain:
