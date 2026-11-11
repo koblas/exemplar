@@ -105,8 +105,14 @@ spec:
             - {name: EXEMPLAR_ROOT_KEY_FILE, value: /var/run/secrets/exemplar/root/key}
             - name: EXEMPLAR_DATABASE_URL
               valueFrom: {secretKeyRef: {name: exemplar-database, key: url}}
-            # Only the providers global.yaml routes to need credentials;
-            # Bedrock uses workload identity instead (see docs/reference/workloads.md).
+            # Only the providers global.yaml routes to need credentials.
+            # Bedrock takes workload identity on this service account (IRSA),
+            # or a Bedrock API key in bedrock-api-key; its region is
+            # EXEMPLAR_BEDROCK_REGION, else the AWS_REGION IRSA injects.
+            - name: EXEMPLAR_BEDROCK_REGION
+              valueFrom: {configMapKeyRef: {name: exemplar-settings, key: EXEMPLAR_BEDROCK_REGION, optional: true}}
+            - name: AWS_BEARER_TOKEN_BEDROCK
+              valueFrom: {secretKeyRef: {name: exemplar-providers, key: bedrock-api-key, optional: true}}
             - name: ANTHROPIC_API_KEY
               valueFrom: {secretKeyRef: {name: exemplar-providers, key: anthropic-api-key, optional: true}}
             - name: OPENAI_API_KEY

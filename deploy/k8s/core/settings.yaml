@@ -7,8 +7,8 @@
 #   exemplar-exports-app     app-id, private-key (optional: the separate exports app)
 #   exemplar-root-key        key (at least 32 bytes: openssl rand -hex 32); the link, session,
 #                            gateway, search and pseudonym keys derive from it (internal/envcfg)
-#   exemplar-providers       anthropic-api-key, openai-api-key (each optional: the providers
-#                            global.yaml routes to)
+#   exemplar-providers       anthropic-api-key, openai-api-key, voyage-api-key, bedrock-api-key
+#                            (each optional: the providers global.yaml routes to)
 #   exemplar-oidc            client-secret (optional: the OIDC sign-in client's)
 #   exemplar-cloudflared     credentials.json, tunnel-id (the tunnel's, Cloudflare Tunnel builds only)
 #   exemplar-postgres        password (the in-cluster Postgres superuser's, components/postgres only)
@@ -41,6 +41,8 @@ data:
   # In-cluster services.
   EXEMPLAR_GATEWAY_URL: "http://exemplar-gateway.exemplar.svc"
   EXEMPLAR_SEARCH_URL: "http://exemplar-search.exemplar.svc"
+  # The Bedrock region for the gateway; empty falls back to AWS_REGION.
+  EXEMPLAR_BEDROCK_REGION: ""
 ---
 # Sign-in sources for exemplar-api, Coder-style (internal/api/signin.go).
 # GitHub OAuth is on once the exemplar-github-app Secret has the App's

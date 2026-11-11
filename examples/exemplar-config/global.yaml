@@ -44,9 +44,9 @@ providers:
   #
   # claude needs the exemplar-providers Secret (anthropic-api-key), openai
   # the same Secret's openai-api-key, and bedrock workload identity on the
-  # gateway's service account. The gateway builds every provider listed here
-  # and skips one whose credentials are missing, as long as each stage keeps
-  # a provider that works. Uncomment the bedrock entries to fail over to it.
+  # gateway's service account or the Secret's bedrock-api-key. The gateway
+  # builds every provider listed here and skips one whose credentials are
+  # missing, as long as each stage keeps a provider that works. Uncomment the bedrock entries to fail over to it.
   #
   # claude and bedrock serve Claude, so they fail over for availability but
   # are one model family. The verifier is meant to be a different family
