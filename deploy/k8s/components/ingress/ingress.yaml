@@ -1,6 +1,10 @@
 # GitHub posts webhooks here: EXEMPLAR_API_URL's host plus /webhook, or
 # EXEMPLAR_WEBHOOK_URL's host. Host, class and TLS secret are set by the
 # overlay; restrict /webhook to GitHub's hook CIDRs (api.github.com/meta).
+# If a load balancer in front of the controller terminates TLS, the overlay
+# removes spec.tls ({op: remove, path: /spec/tls}): the certificate lives on
+# the load balancer, not in exemplar-*-tls, and Traefik serves an Ingress
+# with spec.tls only on TLS routers.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -48,8 +52,11 @@ spec:
                 name: exemplar-api
                 port: {name: http}
 ---
-# The controller's namespace may reach the webhook and the API. Change the
-# namespace to match the cluster's controller.
+# The controller's namespace may reach the webhook and the API. The overlay
+# must set it to the cluster's controller's namespace unless that is
+# ingress-nginx (path .../matchLabels/kubernetes.io~1metadata.name). A load
+# balancer that sends to pod addresses itself (ALB target-type ip, no
+# controller) comes from the VPC's CIDR instead: an ipBlock, not a namespace.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

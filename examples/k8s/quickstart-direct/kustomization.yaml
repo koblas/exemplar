@@ -29,8 +29,12 @@ images:
 patches:
   - path: settings.yaml
   # EXEMPLAR_API_URL's host on both Ingresses (the webhook's serves /webhook
-  # only), the TLS Secret (exemplar-tls, created by you or cert-manager) and
-  # the controller's class.
+  # only): it MUST match settings.yaml, and go test ./deploy checks that it
+  # does. Then the TLS Secret (exemplar-tls, created by you or cert-manager)
+  # and the controller's class. If a load balancer in front of the
+  # controller ends TLS, replace the two tls lines with
+  # {op: remove, path: /spec/tls}: Traefik, for one, serves an Ingress with
+  # spec.tls only on TLS routers, and plain HTTP gets a 404.
   - target: {kind: Ingress, name: exemplar-webhook}
     patch: |-
       - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
@@ -43,8 +47,8 @@ patches:
       - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar.acme.com}
       - {op: replace, path: /spec/tls/0/secretName, value: exemplar-tls}
       - {op: replace, path: /spec/ingressClassName, value: nginx}
-  # If the controller doesn't run in the ingress-nginx namespace, change the
-  # namespace the webhook and API admit:
+  # Required unless the controller runs in the ingress-nginx namespace: the
+  # namespace the webhook and API admit (~1 is the / in the label key).
   # - target: {kind: NetworkPolicy, name: "exemplar-(webhook|api)-from-ingress"}
   #   patch: |-
   #     - {op: replace, path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name, value: <controller-namespace>}

@@ -1,0 +1,46 @@
+# The shared ALB's side: a member of its IngressGroup that adds the
+# exemplar host's certificate and, with external-dns, its DNS record. It
+# routes / to the Traefik Service, so it lives in Traefik's namespace.
+#
+# Every alb.ingress.kubernetes.io/ group setting (scheme, subnets, security
+# groups, load balancer name and attributes, target group attributes,
+# health checks) must equal the other members', or the group merge fails
+# on the conflict. Copy them from an existing member:
+#   kubectl get ingress -A -o json | jq '.items[] | select(.metadata.annotations["alb.ingress.kubernetes.io/group.name"] == "<alb-group>") | .metadata'
+# Kustomize can't copy them from a live object, so they are written here
+# by hand (or by your infrastructure repo's templates). The values below
+# are examples.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: exemplar-alb
+  namespace: traefik
+  labels: {app.kubernetes.io/part-of: exemplar}
+  annotations:
+    alb.ingress.kubernetes.io/group.name: <alb-group>
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/subnets: <subnet-ids>
+    alb.ingress.kubernetes.io/security-groups: <security-group-ids>
+    alb.ingress.kubernetes.io/load-balancer-name: <alb-name>
+    alb.ingress.kubernetes.io/healthcheck-path: /ping
+    # The exemplar host's ACM certificate. aws acm describe-certificate
+    # must show it ISSUED, with the host in its names.
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<region>:<account-id>:certificate/<id>
+    # With external-dns: the record for the host, pointing at the ALB (or
+    # at what fronts it).
+    external-dns.alpha.kubernetes.io/hostname: exemplar.acme.com
+    external-dns.alpha.kubernetes.io/target: <alb-or-frontend-dns-name>
+spec:
+  ingressClassName: alb
+  rules:
+    - host: exemplar.acme.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: traefik
+                port: {number: 80}
