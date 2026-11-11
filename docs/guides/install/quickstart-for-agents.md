@@ -195,6 +195,11 @@ Create a directory `quickstart/` with two files. Do not clone this repository fo
           - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 10Gi}
     ```
 
+    Ask the user two things before rendering, and patch to match:
+
+    - **The controller's namespace.** If it isn't `ingress-nginx`, add this patch, or the controller can't reach the pods: `- target: {kind: NetworkPolicy, name: "exemplar-(webhook|api)-from-ingress"}` with `patch: |-` and `- {op: replace, path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name, value: <controller-namespace>}`.
+    - **Whether a load balancer in front of the controller ends TLS.** If it does, replace the two `/spec/tls/0/...` lines in each Ingress patch with `- {op: remove, path: /spec/tls}`. For an AWS ALB in front of Traefik, stop and follow [How to install behind a shared ALB and Traefik](traefik-alb.md) instead.
+
 `quickstart/settings.yaml`, for either way in:
 
 ```yaml
@@ -250,7 +255,7 @@ Then wait for exemplar-api:
 kubectl -n exemplar rollout status deployment/exemplar-api --timeout=180s
 ```
 
-Expect: `deployment "exemplar-api" successfully rolled out`. The other pods are **expected** to be not ready at this point. `kubectl -n exemplar get pods` shows them in `ContainerCreating` or `CreateContainerConfigError`, waiting on `exemplar-root-key` or a key of `exemplar-github-app`. `exemplar-postgres-0` starts now: exemplar-api wrote its password. The rest resolves in step 7. Do not try to fix it now.
+Expect: `deployment "exemplar-api" successfully rolled out`. The other pods are **expected** to be not ready at this point. `kubectl -n exemplar get pods` shows the webhook, gateway, worker, search and learn pods in `Init:0/1`, `ContainerCreating` or `CreateContainerConfigError`, with events such as `MountVolume.SetUp failed … references non-existent secret key: private-key`, waiting on `exemplar-root-key` or a key of `exemplar-github-app`. `exemplar-postgres-0` starts now: exemplar-api wrote its password. The rest resolves in step 7. Do not try to fix it now.
 
 ## Step 6: Check the host answers
 

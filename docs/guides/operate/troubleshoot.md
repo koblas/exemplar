@@ -10,7 +10,7 @@ Set `EXEMPLAR_LOG_LEVEL=debug` on a workload for more.
 
 ## Pods wait on a missing Secret
 
-On a fresh install the worker, search, learn and git-sync containers wait in `CreateContainerConfigError` or `ContainerCreating`, naming `exemplar-root-key` or a key of `exemplar-github-app`, until setup finishes ([Quickstart, step 5](../install/quickstart.md#5-register-the-github-app)): setup writes the root key and the App's `webhook-secret` last, once the models are chosen and `exemplar-database` has a URL. They start on their own once those are there.
+On a fresh install only exemplar-api runs (and `exemplar-postgres`, with the in-cluster database) until setup finishes. The webhook, gateway, worker, search and learn pods wait in `Init:0/1`, `ContainerCreating` or `CreateContainerConfigError`, and their events say `MountVolume.SetUp failed … references non-existent secret key: private-key` (or `webhook-secret`), or name `exemplar-root-key`. That is expected, not a fault: open `/setup` on the host and finish it ([Quickstart, step 5](../install/quickstart.md#5-register-the-github-app)): setup writes the root key and the App's `webhook-secret` last, once the models are chosen and `exemplar-database` has a URL. They start on their own once those are there.
 
 A setup page saying the `exemplar-setup` Secret (or another Secret setup writes) isn't in the cluster means the manifests weren't all applied: apply your overlay again. The Secrets are declared empty in the manifests, and applying them again keeps what setup wrote.
 
@@ -18,7 +18,7 @@ A pod that refuses to start naming a value such as `example-org` or `exemplar.ex
 
 ## The gateway isn't ready
 
-A provider in `global.yaml` has no credentials: the gateway's log names the variable (`anthropic-api-key` in `exemplar-providers` for `claude`, `openai-api-key` for `openai`; workload identity for `bedrock`). The gateway skips a provider whose credentials are missing with a warning, and fails only when a stage is left with none. The embedding provider is the exception: without `voyage-api-key` the gateway starts anyway, logs `embedding provider skipped`, and `POST /v1/embeddings` answers 503, so the `exemplar-learn-embed` CronJob fails and nothing reaches clustering until the key is set.
+A provider in `global.yaml` has no credentials: the gateway's log names the variable (`anthropic-api-key` in `exemplar-providers` for `claude`, `openai-api-key` for `openai`; workload identity or `bedrock-api-key` for `bedrock`, [How to use Bedrock on EKS](../install/bedrock-on-eks.md)). The gateway skips a provider whose credentials are missing with a warning, and fails only when a stage is left with none. The embedding provider is the exception: without `voyage-api-key` the gateway starts anyway, logs `embedding provider skipped`, and `POST /v1/embeddings` answers 503, so the `exemplar-learn-embed` CronJob fails and nothing reaches clustering until the key is set.
 
 ## The host shows Cloudflare error 1033
 
@@ -43,7 +43,7 @@ kubectl -n exemplar logs deploy/exemplar-cloudflared --tail=50
 
 Work down the chain:
 
-1. **Did GitHub deliver?** `/ui/setup` reads GitHub's delivery log for the App's webhook. A failed delivery with a connection error means the host isn't reachable: with the tunnel, check the `exemplar-cloudflared` pods and `cloudflared tunnel route dns`; with an Ingress, the host's DNS and the `exemplar-tls` Secret. A 401 means the webhook secret in `exemplar-github-app` doesn't match the App's. The rejection log's `remote` behind the tunnel is a cloudflared pod's address, not GitHub's.
+1. **Did GitHub deliver?** `/ui/setup` reads GitHub's delivery log for the App's webhook. A failed delivery with a connection error means the host isn't reachable: with the tunnel, check the `exemplar-cloudflared` pods and `cloudflared tunnel route dns`; with an Ingress, the host's DNS and the `exemplar-tls` Secret (behind a load balancer that ends TLS, see [How to install behind a shared ALB and Traefik](../install/traefik-alb.md#if-it-doesnt-work)). A 401 means the webhook secret in `exemplar-github-app` doesn't match the App's. The rejection log's `remote` behind the tunnel is a cloudflared pod's address, not GitHub's.
 2. **Was it stored?** `/ui/setup` also counts the events stored. If deliveries arrive but nothing is stored, the webhook pod's log says why (database, signature).
 3. **Was it routed?** The worker's log shows the `gh_event` job and what it enqueued. A repository with no file under `repos/` in `exemplar-config`, with `enabled: false`, or on the eligibility denylist is skipped silently. Draft PRs need `review_drafts: true`; fork PRs need `forks.review: true`.
 4. **Did the review run?** The check run on the PR says `in_progress`, then neutral with the summary. In a `shadow: true` repo there is no check run: look at the rule pages in the web UI.

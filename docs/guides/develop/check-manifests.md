@@ -18,7 +18,7 @@ It runs every check on each of six builds: `base`, `direct`, `base` with the ing
 - **Inbound:** the build has the Ingresses it should (none in the default); each Ingress and tunnel route goes to a Service port; the tunnel's routes end in a catch-all; the webhook and the API admit exactly the build's sources; the webhook's only egress is Postgres, whichever policies select it.
 - **Environment:** every `EXEMPLAR_*` variable is one the Go or Python code actually reads; `EXEMPLAR_DATABASE_URL` is always the direct `url`, and only the runner template uses the pooled `runner-url`.
 - **The pooler, live:** the PgBouncer component's config, in its pinned image and run as the pod runs it (its user, read-only root, no capabilities), in front of a test Postgres; a runner's queries and River calls go through it, and its preStop stops it with a client connected. It starts containers with testcontainers-go and skips without a container runtime, unless `EXEMPLAR_REQUIRE_DB=1`.
-- **Example overlays:** `examples/k8s/acme`, `quickstart` and `quickstart-direct` map every image the base names, pin each by digest, and list only paths that exist.
+- **Example overlays:** `examples/k8s/acme`, `quickstart`, `quickstart-direct`, `gke-autopilot` and `eks-traefik-alb` map every image the base names, pin each by digest, and list only paths that exist. Every host their Ingress patches set, and every rule host of an Ingress they add, is `EXEMPLAR_API_URL`'s host in their settings (`EXEMPLAR_WEBHOOK_URL`'s for the webhook, when set).
 
 Keep components resource-only (no patches), since the test reads them without kustomize.
 

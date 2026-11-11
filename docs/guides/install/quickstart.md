@@ -14,7 +14,7 @@ Pick how GitHub reaches the cluster. Both are first-class, and the steps differ 
 
 === "Ingress"
 
-    You need an ingress controller already in the cluster (`ingress-nginx` by default), DNS for the host pointing at it, and a TLS certificate for it. Overlay: [`examples/k8s/quickstart-direct`](https://github.com/koblas/exemplar/tree/main/examples/k8s/quickstart-direct).
+    You need an ingress controller already in the cluster (`ingress-nginx` by default), DNS for the host pointing at it, and a TLS certificate for it. Overlay: [`examples/k8s/quickstart-direct`](https://github.com/koblas/exemplar/tree/main/examples/k8s/quickstart-direct). Behind a load balancer that ends TLS in front of Traefik, see [How to install behind a shared ALB and Traefik](traefik-alb.md).
 
 ## 1. Create `exemplar-config`
 
