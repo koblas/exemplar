@@ -1,6 +1,6 @@
 # The installation's values (docs/guides/install/production.md). The host
-# of EXEMPLAR_API_URL is also the Ingress host in kustomization.yaml and in
-# alb-member.yaml: change all three together.
+# of EXEMPLAR_API_URL is also the host of every Ingress: kustomization.yaml's
+# replacements copy it from here.
 apiVersion: v1
 kind: ConfigMap
 metadata:

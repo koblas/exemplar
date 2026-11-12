@@ -906,12 +906,36 @@ func checkOverlay(t *testing.T, dir string) {
 	checkOverlayHosts(t, dir, example)
 }
 
-// checkOverlayHosts keeps an overlay's host in one value: every host its
-// Ingress patches set, and every rule host of an Ingress it adds (a shared
-// load balancer's member), is EXEMPLAR_API_URL's host in its settings, or
+// checkOverlayHosts keeps an overlay's host in one value. An overlay that
+// builds on direct takes its Ingress hosts from EXEMPLAR_API_URL in its
+// settings with a kustomize replacement. Any host an Ingress patch still
+// sets, and any rule host of an Ingress it adds (a shared load balancer's
+// member) that the replacement does not fill, is that URL's host, or
 // EXEMPLAR_WEBHOOK_URL's for the webhook when that is set.
 func checkOverlayHosts(t *testing.T, dir string, k obj) {
 	t.Helper()
+	replaced := false
+	for _, r := range list(k, "replacements") {
+		src := get(r, "source")
+		if str(src, "kind") != "ConfigMap" || str(src, "name") != "exemplar-settings" || str(src, "fieldPath") != "data.EXEMPLAR_API_URL" {
+			continue
+		}
+		// https://host splits on "/" into "https:", "" and the host.
+		if str(src, "options", "delimiter") != "/" || get(src, "options", "index") != uint64(2) {
+			t.Errorf("%s: the host replacement must take EXEMPLAR_API_URL's third /-separated part", dir)
+		}
+		for _, tg := range list(r, "targets") {
+			replaced = replaced || str(tg, "select", "kind") == "Ingress" && slices.Contains(list(tg, "fieldPaths"), any("spec.rules.0.host"))
+		}
+	}
+	direct := false
+	for _, r := range list(k, "resources") {
+		s, _ := r.(string)
+		direct = direct || strings.HasSuffix(s, "/deploy/k8s/direct")
+	}
+	if direct && !replaced {
+		t.Errorf("%s: builds on direct without a replacement that copies EXEMPLAR_API_URL's host to the Ingresses", dir)
+	}
 	settings := map[string]string{}
 	var resources []obj
 	for _, p := range append(list(k, "patches"), list(k, "resources")...) {
@@ -976,11 +1000,11 @@ func checkOverlayHosts(t *testing.T, dir string, k obj) {
 	}
 	for _, d := range resources {
 		for _, r := range list(d, "spec", "rules") {
-			if got := str(r, "host"); got != "" && got != api {
+			if got := str(r, "host"); got != "" && got != api && !replaced {
 				t.Errorf("Ingress %s: host %s, EXEMPLAR_API_URL's host is %s", str(d, "metadata", "name"), got, api)
 			}
 		}
-		if got := str(d, "metadata", "annotations", "external-dns.alpha.kubernetes.io/hostname"); got != "" && got != api {
+		if got := str(d, "metadata", "annotations", "external-dns.alpha.kubernetes.io/hostname"); got != "" && got != api && !replaced {
 			t.Errorf("Ingress %s: external-dns host %s, EXEMPLAR_API_URL's host is %s", str(d, "metadata", "name"), got, api)
 		}
 	}

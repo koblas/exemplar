@@ -29,13 +29,14 @@ metadata:
     # must show it ISSUED, with the host in its names.
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<region>:<account-id>:certificate/<id>
     # With external-dns: the record for the host, pointing at the ALB (or
-    # at what fronts it).
-    external-dns.alpha.kubernetes.io/hostname: exemplar.acme.com
+    # at what fronts it). The overlay's replacements set the host, here and
+    # in the rule below, from EXEMPLAR_API_URL.
+    external-dns.alpha.kubernetes.io/hostname: exemplar.example.invalid
     external-dns.alpha.kubernetes.io/target: <alb-or-frontend-dns-name>
 spec:
   ingressClassName: alb
   rules:
-    - host: exemplar.acme.com
+    - host: exemplar.example.invalid
       http:
         paths:
           - path: /

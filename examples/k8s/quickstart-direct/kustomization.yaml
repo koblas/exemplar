@@ -28,23 +28,14 @@ images:
 
 patches:
   - path: settings.yaml
-  # EXEMPLAR_API_URL's host on both Ingresses (the webhook's serves /webhook
-  # only): it MUST match settings.yaml, and go test ./deploy checks that it
-  # does. Then the TLS Secret (exemplar-tls, created by you or cert-manager)
-  # and the controller's class. If a load balancer in front of the
-  # controller ends TLS, replace the two tls lines with
+  # The TLS Secret (exemplar-tls, created by you or cert-manager) and the
+  # controller's class, on both Ingresses. Their host comes from
+  # settings.yaml (replacements, below). If a load balancer in front of the
+  # controller ends TLS, replace the secretName line with
   # {op: remove, path: /spec/tls}: Traefik, for one, serves an Ingress with
   # spec.tls only on TLS routers, and plain HTTP gets a 404.
-  - target: {kind: Ingress, name: exemplar-webhook}
+  - target: {kind: Ingress, name: "exemplar-(webhook|api)"}
     patch: |-
-      - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
-      - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar.acme.com}
-      - {op: replace, path: /spec/tls/0/secretName, value: exemplar-tls}
-      - {op: replace, path: /spec/ingressClassName, value: nginx}
-  - target: {kind: Ingress, name: exemplar-api}
-    patch: |-
-      - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
-      - {op: replace, path: /spec/tls/0/hosts/0, value: exemplar.acme.com}
       - {op: replace, path: /spec/tls/0/secretName, value: exemplar-tls}
       - {op: replace, path: /spec/ingressClassName, value: nginx}
   # Required unless the controller runs in the ingress-nginx namespace: the
@@ -73,3 +64,17 @@ patches:
   - target: {kind: StatefulSet, name: exemplar-postgres}
     patch: |-
       - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 10Gi}
+
+# The Ingress host is EXEMPLAR_API_URL's host: set it once, in settings.yaml.
+# With a separate EXEMPLAR_WEBHOOK_URL, patch exemplar-webhook's host instead
+# of listing it here.
+replacements:
+  - source:
+      kind: ConfigMap
+      name: exemplar-settings
+      fieldPath: data.EXEMPLAR_API_URL
+      options: {delimiter: "/", index: 2}
+    targets:
+      - select: {kind: Ingress}
+        fieldPaths: [spec.rules.0.host, spec.tls.0.hosts.0]
+        options: {create: false}

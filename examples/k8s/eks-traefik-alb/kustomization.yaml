@@ -40,21 +40,13 @@ images:
 
 patches:
   - path: settings.yaml
-  # The host is EXEMPLAR_API_URL's host in settings.yaml, and must match it
-  # here and in alb-member.yaml (go test ./deploy checks the Ingresses).
   # The ALB ends TLS and sends plain HTTP, and Traefik serves an Ingress
   # with spec.tls only on TLS routers, so spec.tls goes. Pin the router to
   # the entrypoint behind the Traefik Service port the ALB targets: web here,
-  # but names vary (docs/guides/install/traefik-alb.md, step 1).
-  - target: {kind: Ingress, name: exemplar-webhook}
+  # but names vary (docs/guides/install/traefik-alb.md, step 1). The host
+  # comes from settings.yaml (replacements, below).
+  - target: {kind: Ingress, name: "exemplar-(webhook|api)"}
     patch: |-
-      - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
-      - {op: replace, path: /spec/ingressClassName, value: traefik}
-      - {op: remove, path: /spec/tls}
-      - {op: add, path: /metadata/annotations, value: {traefik.ingress.kubernetes.io/router.entrypoints: web}}
-  - target: {kind: Ingress, name: exemplar-api}
-    patch: |-
-      - {op: replace, path: /spec/rules/0/host, value: exemplar.acme.com}
       - {op: replace, path: /spec/ingressClassName, value: traefik}
       - {op: remove, path: /spec/tls}
       - {op: add, path: /metadata/annotations, value: {traefik.ingress.kubernetes.io/router.entrypoints: web}}
@@ -73,3 +65,18 @@ patches:
     patch: |-
       - {op: replace, path: /spec/volumeClaimTemplates/0/spec/storageClassName, value: gp3}
       - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 500Gi}
+
+# The host is EXEMPLAR_API_URL's host: set it once, in settings.yaml. It
+# lands on both exemplar Ingresses and on the ALB member's rule and
+# external-dns record.
+replacements:
+  - source:
+      kind: ConfigMap
+      name: exemplar-settings
+      fieldPath: data.EXEMPLAR_API_URL
+      options: {delimiter: "/", index: 2}
+    targets:
+      - select: {kind: Ingress}
+        fieldPaths: [spec.rules.0.host]
+      - select: {kind: Ingress, name: exemplar-alb}
+        fieldPaths: ["metadata.annotations.[external-dns.alpha.kubernetes.io/hostname]"]
