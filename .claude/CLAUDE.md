@@ -75,7 +75,7 @@ the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md
 ## Environment and Commands
 
 - Use the repository's devenv environment (`devenv shell` or its direnv setup).
-- Check tool availability first. Devenv provides Git, Go 1.27.3, golangci-lint v2.15,
+- Check tool availability first. Devenv provides Git, Go 1.27.4, golangci-lint v2.15,
   ripgrep, ast-grep, Semgrep, universal-ctags, Python 3.13 and uv, but not
   Postgres (tests run it with testcontainers), kubectl, Helm, or container tooling
   (`gh` and `bd` come from the host). Do not silently install tools or change devenv.
