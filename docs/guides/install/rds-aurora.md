@@ -29,7 +29,7 @@ Run a throwaway `postgres:16` pod in a namespace without a default-deny NetworkP
 kubectl -n default run psql-tmp --rm -it --restart=Never --image=postgres:16 -- psql "host=<endpoint> dbname=postgres user=<admin-user> sslmode=require"
 ```
 
-psql asks for the password. If the pod hangs before the prompt, the database's security group isn't admitting the cluster.
+psql asks for the password, then shows the `postgres=>` prompt. If the pod hangs before asking, the database's security group isn't admitting the cluster.
 
 The RDS console's query editor works too when the cluster has the Data API enabled, but it can't run `\c`: connect it to the `exemplar` database for the last statement.
 
@@ -44,6 +44,8 @@ CREATE DATABASE exemplar OWNER exemplar;
 \c exemplar
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
+
+psql answers `CREATE ROLE`, `GRANT ROLE`, `CREATE DATABASE`, `You are now connected to database "exemplar"` and `CREATE EXTENSION`, in that order.
 
 The `GRANT` is what lets the admin user, which isn't a superuser on RDS or Aurora, create a database owned by `exemplar` on PostgreSQL 16. The extension is created here because the `exemplar` role can't; the first migration then finds it.
 
@@ -67,6 +69,8 @@ printf %s "$URL" | kubectl -n exemplar create secret generic exemplar-database -
 unset PGPASS URL
 ```
 
+The third command prints `secret/exemplar-database created`, or `configured` when the Secret was already there.
+
 `kubectl apply` replaces `url` in a Secret that is already there, which an in-cluster database's setup may have written ([How to run Postgres in the cluster](in-cluster-postgres.md#move-to-an-outside-database)).
 
 ## 5. Restart and check
@@ -88,3 +92,15 @@ The log has no database error.
 - **`must be able to SET ROLE "exemplar"`** on `CREATE DATABASE`: the `GRANT exemplar TO CURRENT_USER` didn't run first.
 - **`permission denied to create extension "vector"`**: the extension was created as `exemplar`, or not created before the first start. Run `CREATE EXTENSION IF NOT EXISTS vector;` in the `exemplar` database as the admin user, and restart.
 - **`extension "vector" is not available`**: the engine version has no pgvector. Upgrade to PostgreSQL 16 or later.
+
+## With a coding agent
+
+Steps 1 to 4 handle the admin password and the `exemplar` role's password, so they are the person's: each is a **HANDOFF** in the sense of [How to run the quickstart from a coding agent](quickstart-for-agents.md#rules-for-the-agent). The person runs them in their own terminal, and the agent never reads the Secrets Manager secret, the psql session or `exemplar-database`.
+
+An agent can do the parts with no secret in them: find the secret's ARN and the endpoint (step 1's first command, and `aws rds describe-db-clusters --query 'DBClusters[0].Endpoint'`), fill them into the commands for the person to run, and run step 5. To confirm step 4 without printing it:
+
+```bash
+kubectl -n exemplar get secret exemplar-database -o jsonpath='{.data.url}' | wc -c
+```
+
+A count above 0 means `url` is set.

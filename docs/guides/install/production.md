@@ -63,25 +63,7 @@ Startup refuses any value left from the examples (`example-org`, `Iv1.example`, 
 
 === "Ingress"
 
-    Use `deploy/k8s/direct` (or the release's `install-direct.yaml`). The example has the patches below commented out.
-
-    On both Ingresses (the webhook's matches `/webhook` only), set:
-
-    - the host, which **must match** `EXEMPLAR_API_URL`'s host in `settings.yaml` (for the webhook, `EXEMPLAR_WEBHOOK_URL`'s, if set). It is written twice; `go test ./deploy` checks that the example overlays agree;
-    - the class, `ingressClassName`;
-    - TLS: the Secret holding the host's certificate in `spec.tls`. If a load balancer in front of the controller ends TLS, remove `spec.tls` instead (`{op: remove, path: /spec/tls}`): the certificate lives on the load balancer, not in a Secret. Traefik serves an Ingress that has `spec.tls` only on TLS routers, and plain HTTP from the load balancer gets a 404.
-
-    Then admit the controller. `exemplar-webhook-from-ingress` and `exemplar-api-from-ingress` admit only the `ingress-nginx` namespace; **set your controller's namespace** unless it runs there:
-
-    ```yaml
-    - target: {kind: NetworkPolicy, name: "exemplar-(webhook|api)-from-ingress"}
-      patch: |-
-        - {op: replace, path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name, value: <controller-namespace>}
-    ```
-
-    A `/` inside a label key is written `~1` in a JSON patch path. If the load balancer sends to pod addresses with no controller in between (an AWS ALB with `target-type: ip`), the traffic comes from the VPC's addresses, not a namespace: replace the selector with the VPC's CIDR (`{op: replace, path: /spec/ingress/0/from/0, value: {ipBlock: {cidr: <vpc-cidr>}}}`).
-
-    Put org SSO in front of everything but `/webhook` (an IdP-aware proxy or ingress auth annotations). Behind a shared ALB that forwards to Traefik, see [How to install behind a shared ALB and Traefik](traefik-alb.md).
+    Use `deploy/k8s/direct` (or the release's `install-direct.yaml`), and uncomment the example's Ingress patches and its `replacements`. [How to install behind an ingress controller](ingress.md) has the steps: the class, TLS, and the controller's namespace, which the NetworkPolicies **must name**. Put org SSO in front of everything but `/webhook` (an IdP-aware proxy or ingress auth annotations).
 
 ## 5. Render, check and apply
 
@@ -115,5 +97,5 @@ The core manifests run each review as a Kubernetes Job of its own (`--launcher=k
 - **The tunnel's egress** is any public address on 7844. Cloudflare's edge ranges (or an FQDN policy for `region1.v2.argotunnel.com` and `region2.v2.argotunnel.com`) would narrow it.
 - **The tunnel's edge rules are outside the repo.** Without the WAF rule, anyone can post to `/webhook`, though deliveries are still HMAC-checked. Without Access, the API's own sign-in is the only gate. Nothing in the cluster can check them.
 - **The Kubernetes API's address.** The worker's NetworkPolicy reaches the API server on 443 and 6443 at any private address. Narrow it to the address and port of `kubectl get endpoints kubernetes -n default` in an overlay.
-- **The ingress namespace.** In Ingress builds, `exemplar-webhook-from-ingress` and `exemplar-api-from-ingress` admit the `ingress-nginx` namespace until the overlay names the cluster's controller ([step 4](#4-write-the-overlay)).
+- **The ingress namespace.** In Ingress builds, `exemplar-webhook-from-ingress` and `exemplar-api-from-ingress` admit the `ingress-nginx` namespace until the overlay names the cluster's controller ([How to install behind an ingress controller](ingress.md#3-admit-the-controller)).
 - **Debian packages** float within the pinned base snapshot. Rebuild on a new base digest to update them.

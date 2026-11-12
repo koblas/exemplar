@@ -62,6 +62,6 @@ Tunnel builds only: the tunnel's routing, matched by path (`^/webhook$` to the w
 
 - The build: a release's `install-tunnel.yaml` or `install-direct.yaml`, or `deploy/k8s/base?ref=<version>` with both image digests ([Releases and images](releases.md)).
 - The search volume's size and storage class (500Gi on `local-ssd` as placeholders).
-- For Ingress builds, the host, class and TLS secret on both Ingresses, and the ingress controller's namespace in the two NetworkPolicy patches.
+- For Ingress builds, the class and TLS secret on both Ingresses, their host (copied from `EXEMPLAR_API_URL` by a kustomize replacement in the example overlays), and the ingress controller's namespace in the two NetworkPolicies ([How to install behind an ingress controller](../guides/install/ingress.md)).
 - For `components/postgres`, the volume's size and class.
 - For `components/pgbouncer`, `default_pool_size` in the `exemplar-pgbouncer` ConfigMap, against the database's `max_connections`.

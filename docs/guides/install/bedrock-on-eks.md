@@ -62,6 +62,8 @@ The gateway runs with `automountServiceAccountToken: false`. The webhook mounts 
 kubectl -n exemplar get pod -l app.kubernetes.io/name=exemplar-gateway -o jsonpath='{.items[0].spec.volumes[*].name}'
 ```
 
+The list includes `aws-iam-token`. Without it the annotation isn't on the service account, or the pod started before it was: restart the gateway.
+
 ## 4. Set the region
 
 Set `EXEMPLAR_BEDROCK_REGION` in your overlay's `settings.yaml` (in `exemplar-settings`). Left empty, the gateway uses `AWS_REGION`, which the webhook sets to the cluster's region.
@@ -124,3 +126,13 @@ The gateway goes ready, and its log names no skipped `bedrock` provider. The ope
 
     A key wins over the role: with `bedrock-api-key` set, the gateway sends the key and ignores IRSA. A long-term key belongs to an IAM user (`aws iam create-service-specific-credential`), which many organizations' accounts can't create; a short-term key lasts at most 12 hours. A personal key runs every call as you, from a Secret others can read, so use one only for a trial and revoke it afterwards.
 - **VPC interface endpoints.** With `EXEMPLAR_BEDROCK_BASE_URL` pointing at an interface endpoint (or STS through one), the endpoint has a private address, which the gateway's egress rule excludes. Add an egress rule for the endpoint's subnet on 443.
+
+## With a coding agent
+
+An agent can run steps 3 to 6. These are the person's, each a **HANDOFF** in the sense of [How to run the quickstart from a coding agent](quickstart-for-agents.md#rules-for-the-agent):
+
+- model access in the Bedrock console (step 1);
+- the IAM role and its two policies (step 2), or the approval to create them with the person's AWS credentials. The agent gets the role's ARN back, nothing else;
+- a Bedrock API key, if that path is used: the person runs the `kubectl patch secret` command in their own terminal. The agent never sees the key and never prints `exemplar-providers`.
+
+The agent's check for step 6 is the gateway's log and readiness, not a model call of its own.
