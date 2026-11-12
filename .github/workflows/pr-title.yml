@@ -1,0 +1,29 @@
+name: pr-title
+
+# A squash merge puts the pull request's title on main as the commit
+# subject, where release-please reads it, so the title must parse like the
+# commits do (ci.yml's commits job; CONTRIBUTING.md, "Commit messages").
+# Its own workflow, so that editing a title re-runs this check and not all
+# of ci.yml.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Title is a Conventional Commit subject
+        # Through the environment: a title is untrusted text and must not be
+        # expanded into the script.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: .github/scripts/commitlint.sh --subject "$PR_TITLE"

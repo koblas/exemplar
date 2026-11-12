@@ -48,7 +48,9 @@ reword the offending commits with `git rebase -i` and force-push.
 
 Pull requests are merged with a merge commit, so each of their commits shows
 up in the changelog. Squash fix-ups before merging; merge subjects themselves
-are ignored.
+are ignored. A pull request's title follows the same format, checked by the
+`pr-title` workflow: a squash merge puts the title on `main` as the commit
+subject.
 
 ## Documentation
 
