@@ -7,16 +7,16 @@
 }:
 
 let
-  # Go 1.27.3 fixes the stdlib vulnerabilities govulncheck reports in earlier
-  # 1.27 releases (1.27.2: crypto/x509, GO-2026-6809; 1.27.1: net/http, http2,
-  # crypto/tls, html/template, net/textproto). nixpkgs channels lag behind,
-  # so build the official source release. Drop this override once go_1_27 is
-  # 1.27.3 there.
+  # Go 1.27.4 fixes the stdlib vulnerabilities govulncheck reports in earlier
+  # 1.27 releases (1.27.3: net/http, GO-2026-6859; 1.27.2: crypto/x509,
+  # GO-2026-6809; 1.27.1: net/http, http2, crypto/tls, html/template,
+  # net/textproto). nixpkgs channels lag behind, so build the official source
+  # release. Drop this override once go_1_27 is 1.27.4 there.
   go = pkgs.go_1_27.overrideAttrs (old: rec {
-    version = "1.27.3";
+    version = "1.27.4";
     src = pkgs.fetchurl {
       url = "https://go.dev/dl/go${version}.src.tar.gz";
-      sha256 = "6e7749035cf360f06b2575d162ea79df9fda8ef671889e5c375f8e50777f26bb"; # published on go.dev/dl
+      sha256 = "73cfb8571aec0c01177687db87163d46aa20e9779672772891aa17654d9a6099"; # published on go.dev/dl
     };
   });
 
