@@ -6,6 +6,21 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.14.0](https://github.com/koblas/exemplar/compare/v0.13.0...v0.14.0) (2026-11-12)
+
+
+### Features
+
+* **deploy:** install on EKS behind a shared ALB and Traefik, with Bedrock and RDS ([f51a632](https://github.com/koblas/exemplar/commit/f51a63264e625e659c0ede0e1f105913ee349987))
+* **deploy:** take the Ingress host from EXEMPLAR_API_URL in the example overlays ([f30eee7](https://github.com/koblas/exemplar/commit/f30eee7daca1f8c6d72bea9259366ec8b7dcb7a5))
+* **deploy:** wire Bedrock API key and region into the gateway ([f09b3cd](https://github.com/koblas/exemplar/commit/f09b3cd83d573009a48e4c6437840415f32637c3))
+
+
+### Bug Fixes
+
+* **deps:** bump Go to 1.27.4 for GO-2026-6859 ([1a359d7](https://github.com/koblas/exemplar/commit/1a359d7ca7b32ff155f8f4e2af5be726c00e3e33))
+* **deps:** bump Go to 1.27.4 for GO-2026-6859 ([11983ba](https://github.com/koblas/exemplar/commit/11983bab031c9aa810a032352624a7b83b26ecb7))
+
 ## [0.13.0](https://github.com/koblas/exemplar/compare/v0.12.0...v0.13.0) (2026-11-08)
 
 
