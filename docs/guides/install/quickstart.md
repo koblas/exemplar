@@ -92,7 +92,7 @@ The overlay is a directory of two files, `kustomization.yaml` and `settings.yaml
           - github.com/koblas/exemplar//deploy/k8s/components/postgres?ref=v0.13.0
         ```
 
-        Then, in the two `Ingress` patches, replace `exemplar.acme.com` with your host, and `nginx` with your controller's class if it differs (`kubectl get ingressclass` lists it).
+        Then, in the `Ingress` patch, replace `nginx` with your controller's class if it differs (`kubectl get ingressclass` lists it). The Ingress host comes from `settings.yaml`, through the `replacements` at the end of the file; in a release whose example has no `replacements:` block (v0.13.0 and earlier), also replace `exemplar.acme.com` in the two `Ingress` patches with your host. If the controller isn't in the `ingress-nginx` namespace, or a load balancer in front of it ends TLS, make the edits in [How to install behind an ingress controller](ingress.md).
 
     Leave the `patches:` block as it is: one replica of everything, reviews inside the worker pod, and the trial's storage sizes.
 

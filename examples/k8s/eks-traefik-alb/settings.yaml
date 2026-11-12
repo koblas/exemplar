@@ -1,0 +1,13 @@
+# The installation's values (docs/guides/install/production.md). The host
+# of EXEMPLAR_API_URL is also the host of every Ingress: kustomization.yaml's
+# replacements copy it from here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-settings
+  namespace: exemplar
+data:
+  EXEMPLAR_CONFIG_REPO: "acme/exemplar-config"
+  EXEMPLAR_API_URL: "https://exemplar.acme.com"
+  # The Bedrock region; empty uses the AWS_REGION that IRSA injects.
+  EXEMPLAR_BEDROCK_REGION: "us-east-1"

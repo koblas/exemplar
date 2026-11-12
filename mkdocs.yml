@@ -122,6 +122,10 @@ nav:
           - How to run Postgres in the cluster: guides/install/in-cluster-postgres.md
           - How to pool runner connections: guides/install/pool-runner-connections.md
           - How to install on GKE Autopilot: guides/install/gke-autopilot.md
+          - How to install behind an ingress controller: guides/install/ingress.md
+          - How to install behind a shared ALB and Traefik: guides/install/traefik-alb.md
+          - How to use Bedrock on EKS: guides/install/bedrock-on-eks.md
+          - How to set up RDS or Aurora PostgreSQL: guides/install/rds-aurora.md
           - How to run without exemplar-search: guides/install/without-search.md
           - How to add model providers: guides/install/model-providers.md
           - How to build your own images: guides/install/build-images.md

@@ -20,6 +20,7 @@ The Kubernetes manifests in [`deploy/`](https://github.com/koblas/exemplar/tree/
 | `stage-manifests.sh` | Copies `k8s/` with both digests pinned in `core/` for the release's Flux OCI artifact, and checks it renders the same as the install files. |
 | `../examples/k8s/acme/` | An example installation overlay: the default build, Docker Hub images, settings, sign-in, tunnel routes and search storage; the Ingress and Postgres pieces commented out. CI renders it. |
 | `../examples/k8s/quickstart/`, `quickstart-direct/` | The trial overlays (one replica, in-cluster Postgres, small requests) through the tunnel and through an Ingress. CI renders both. |
+| `../examples/k8s/eks-traefik-alb/` | The direct build on EKS behind a shared ALB that fronts Traefik: Ingresses of class `traefik` without `spec.tls`, the NetworkPolicies admitting Traefik's namespace, a cert-only member of the ALB's IngressGroup (`alb-member.yaml`), IRSA on `exemplar-gateway`, an outside Postgres. CI renders it. |
 
 ## Builds and inbound
 

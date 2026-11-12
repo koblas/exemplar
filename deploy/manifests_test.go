@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -826,7 +827,7 @@ func envNames(t *testing.T) map[string]bool {
 // every image the base names, pins each by digest, and lists only paths
 // that exist. CI renders it with kustomize; this catches drift without one.
 func TestExampleOverlays(t *testing.T) {
-	for _, dir := range []string{"../examples/k8s/acme", "../examples/k8s/quickstart", "../examples/k8s/quickstart-direct", "../examples/k8s/gke-autopilot"} {
+	for _, dir := range []string{"../examples/k8s/acme", "../examples/k8s/quickstart", "../examples/k8s/quickstart-direct", "../examples/k8s/gke-autopilot", "../examples/k8s/eks-traefik-alb"} {
 		t.Run(filepath.Base(dir), func(t *testing.T) { checkOverlay(t, dir) })
 	}
 }
@@ -900,6 +901,111 @@ func checkOverlay(t *testing.T, dir string) {
 	for _, p := range paths {
 		if _, err := os.Stat(filepath.Join(dir, as[string](t, p, "path"))); err != nil {
 			t.Errorf("example: %v", err)
+		}
+	}
+	checkOverlayHosts(t, dir, example)
+}
+
+// checkOverlayHosts keeps an overlay's host in one value. An overlay that
+// builds on direct takes its Ingress hosts from EXEMPLAR_API_URL in its
+// settings with a kustomize replacement. Any host an Ingress patch still
+// sets, and any rule host of an Ingress it adds (a shared load balancer's
+// member) that the replacement does not fill, is that URL's host, or
+// EXEMPLAR_WEBHOOK_URL's for the webhook when that is set.
+func checkOverlayHosts(t *testing.T, dir string, k obj) {
+	t.Helper()
+	replaced := false
+	for _, r := range list(k, "replacements") {
+		src := get(r, "source")
+		if str(src, "kind") != "ConfigMap" || str(src, "name") != "exemplar-settings" || str(src, "fieldPath") != "data.EXEMPLAR_API_URL" {
+			continue
+		}
+		// https://host splits on "/" into "https:", "" and the host.
+		if str(src, "options", "delimiter") != "/" || get(src, "options", "index") != uint64(2) {
+			t.Errorf("%s: the host replacement must take EXEMPLAR_API_URL's third /-separated part", dir)
+		}
+		for _, tg := range list(r, "targets") {
+			replaced = replaced || str(tg, "select", "kind") == "Ingress" && slices.Contains(list(tg, "fieldPaths"), any("spec.rules.0.host"))
+		}
+	}
+	direct := false
+	for _, r := range list(k, "resources") {
+		s, _ := r.(string)
+		direct = direct || strings.HasSuffix(s, "/deploy/k8s/direct")
+	}
+	if direct && !replaced {
+		t.Errorf("%s: builds on direct without a replacement that copies EXEMPLAR_API_URL's host to the Ingresses", dir)
+	}
+	settings := map[string]string{}
+	var resources []obj
+	for _, p := range append(list(k, "patches"), list(k, "resources")...) {
+		name := str(p, "path")
+		if p, ok := p.(string); ok {
+			name = p
+		}
+		if !strings.HasSuffix(name, ".yaml") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue // reported by checkOverlay
+		}
+		for _, d := range splitDocs(t, raw) {
+			if str(d, "kind") == "ConfigMap" && str(d, "metadata", "name") == "exemplar-settings" {
+				for _, key := range []string{"EXEMPLAR_API_URL", "EXEMPLAR_WEBHOOK_URL"} {
+					if v := str(d, "data", key); v != "" {
+						settings[key] = v
+					}
+				}
+			}
+			if str(d, "kind") == "Ingress" {
+				resources = append(resources, d)
+			}
+		}
+	}
+	hostOf := func(key string) string {
+		u, err := url.Parse(settings[key])
+		if err != nil {
+			t.Fatalf("%s: %s: %v", dir, key, err)
+		}
+		return u.Hostname()
+	}
+	api := hostOf("EXEMPLAR_API_URL")
+	webhook := api
+	if settings["EXEMPLAR_WEBHOOK_URL"] != "" {
+		webhook = hostOf("EXEMPLAR_WEBHOOK_URL")
+	}
+
+	for _, p := range list(k, "patches") {
+		if str(p, "target", "kind") != "Ingress" || str(p, "patch") == "" {
+			continue
+		}
+		name, want := str(p, "target", "name"), api
+		if name == "exemplar-webhook" {
+			want = webhook
+		}
+		var ops []obj
+		if err := yaml.Unmarshal([]byte(str(p, "patch")), &ops); err != nil {
+			t.Fatalf("Ingress %s patch: %v", name, err)
+		}
+		for _, op := range ops {
+			path := str(op, "path")
+			if !strings.HasSuffix(path, "/host") && !regexp.MustCompile(`/hosts/\d+$`).MatchString(path) {
+				continue
+			}
+			if got := get(op, "value"); got != want {
+				t.Errorf("Ingress %s: %s is %v, the settings' host is %s", name, path, got, want)
+			}
+		}
+	}
+	for _, d := range resources {
+		for _, r := range list(d, "spec", "rules") {
+			if got := str(r, "host"); got != "" && got != api && !replaced {
+				t.Errorf("Ingress %s: host %s, EXEMPLAR_API_URL's host is %s", str(d, "metadata", "name"), got, api)
+			}
+		}
+		if got := str(d, "metadata", "annotations", "external-dns.alpha.kubernetes.io/hostname"); got != "" && got != api && !replaced {
+			t.Errorf("Ingress %s: external-dns host %s, EXEMPLAR_API_URL's host is %s", str(d, "metadata", "name"), got, api)
 		}
 	}
 }
@@ -1057,4 +1163,22 @@ func sortedKeys(m obj) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// splitDocs decodes every YAML document in data.
+func splitDocs(t *testing.T, data []byte) []obj {
+	t.Helper()
+	var out []obj
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	for {
+		var d obj
+		if err := dec.Decode(&d); errors.Is(err, io.EOF) {
+			return out
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if d != nil {
+			out = append(out, d)
+		}
+	}
 }

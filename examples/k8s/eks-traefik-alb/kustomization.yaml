@@ -1,0 +1,82 @@
+# An installation on EKS behind a shared ALB that already fronts Traefik,
+# with Bedrock through IRSA and an outside Postgres (RDS or Aurora). Copy
+# this directory, replace the acme values and every <...>, and follow
+# docs/guides/install/traefik-alb.md and docs/guides/install/bedrock-on-eks.md.
+#
+# The traffic path:
+#
+#   client --HTTPS--> shared ALB (IngressGroup <alb-group>; certificate from
+#                     alb-member.yaml, which also gets the host its DNS record)
+#          --HTTP---> Service traefik:80 in namespace traefik
+#                     (entrypoint web here: use the one behind that port)
+#          --HTTP---> exemplar-api or exemplar-webhook in exemplar, by host
+#                     and path (the Ingresses below, class traefik)
+#
+# The exemplar Ingresses stay in the exemplar namespace: an Ingress backend
+# names a Service in its own namespace, and Traefik reads every namespace.
+# The ALB controller never sees them, since their class is traefik, so the
+# ALB gets the certificate and DNS from alb-member.yaml instead.
+#
+# Render: kubectl kustomize examples/k8s/eks-traefik-alb
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# No namespace: here. alb-member.yaml lives in Traefik's namespace, and a
+# top-level namespace would move it into exemplar.
+resources:
+  # Outside this repository, the release's install-direct.yaml, which pins
+  # the images (drop the images list below):
+  #   https://github.com/koblas/exemplar/releases/download/<version>/install-direct.yaml
+  - ../../../deploy/k8s/direct
+  - alb-member.yaml
+
+# Pin both images by digest (see examples/k8s/acme); all zeros fails to pull.
+images:
+  - name: exemplar
+    newName: docker.io/koblas/exemplar
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: exemplar-learning
+    newName: docker.io/koblas/exemplar-learning
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+patches:
+  - path: settings.yaml
+  # The ALB ends TLS and sends plain HTTP, and Traefik serves an Ingress
+  # with spec.tls only on TLS routers, so spec.tls goes. Pin the router to
+  # the entrypoint behind the Traefik Service port the ALB targets: web here,
+  # but names vary (docs/guides/install/traefik-alb.md, step 1). The host
+  # comes from settings.yaml (replacements, below).
+  - target: {kind: Ingress, name: "exemplar-(webhook|api)"}
+    patch: |-
+      - {op: replace, path: /spec/ingressClassName, value: traefik}
+      - {op: remove, path: /spec/tls}
+      - {op: add, path: /metadata/annotations, value: {traefik.ingress.kubernetes.io/router.entrypoints: web}}
+  # Admit Traefik's namespace instead of ingress-nginx.
+  - target: {kind: NetworkPolicy, name: "exemplar-(webhook|api)-from-ingress"}
+    patch: |-
+      - {op: replace, path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name, value: traefik}
+  # Bedrock through IRSA: the role the gateway assumes
+  # (docs/guides/install/bedrock-on-eks.md).
+  - target: {kind: ServiceAccount, name: exemplar-gateway}
+    patch: |-
+      - {op: add, path: /metadata/annotations, value: {eks.amazonaws.com/role-arn: "arn:aws:iam::<account-id>:role/<gateway-role>"}}
+  # exemplar-search's volume per replica, on EBS gp3, sized from the
+  # monorepo benchmark.
+  - target: {kind: StatefulSet, name: exemplar-search}
+    patch: |-
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/storageClassName, value: gp3}
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 500Gi}
+
+# The host is EXEMPLAR_API_URL's host: set it once, in settings.yaml. It
+# lands on both exemplar Ingresses and on the ALB member's rule and
+# external-dns record.
+replacements:
+  - source:
+      kind: ConfigMap
+      name: exemplar-settings
+      fieldPath: data.EXEMPLAR_API_URL
+      options: {delimiter: "/", index: 2}
+    targets:
+      - select: {kind: Ingress}
+        fieldPaths: [spec.rules.0.host]
+      - select: {kind: Ingress, name: exemplar-alb}
+        fieldPaths: ["metadata.annotations.[external-dns.alpha.kubernetes.io/hostname]"]

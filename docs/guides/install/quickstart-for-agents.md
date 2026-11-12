@@ -23,7 +23,7 @@ Collect these from the person before you start. Use the placeholders below in ev
 | `<first-repo>` | One repository to review in shadow, as `owner/name` | `acme/billing` |
 | `<host>` | The public host name GitHub will call, with no scheme | `exemplar.acme.com` |
 | `<version>` | An Exemplar release tag from the [releases page](https://github.com/koblas/exemplar/releases) | `v0.10.0` |
-| `<way-in>` | `tunnel` (Cloudflare Tunnel, the default) or `ingress` (an existing ingress controller) | `tunnel` |
+| `<way-in>` | `tunnel` (Cloudflare Tunnel, the default) or `ingress` (an existing ingress controller). Step 1 helps the person choose | `tunnel` |
 
 Preconditions the person must already have: a Kubernetes cluster at 1.29 or newer with a default StorageClass, `kubectl` pointed at it, an Anthropic API key they will paste into a browser, and, for `tunnel`, a Cloudflare account with a DNS zone for `<host>` and `cloudflared` installed. For `ingress`, an ingress controller, DNS for `<host>` pointing at it, and a TLS certificate.
 
@@ -54,6 +54,35 @@ kubectl get namespace exemplar
 ```
 
 Expect: `Error from server (NotFound)`. If the namespace already exists, this is not a fresh install. Stop and ask before continuing.
+
+Then look at how traffic gets into the cluster. These commands only read:
+
+```bash
+kubectl get ingressclass
+```
+
+```bash
+kubectl get deploy,daemonset -A | grep -iE 'ingress|traefik|kong|haproxy|contour|envoy'
+```
+
+```bash
+kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}/{.metadata.name} {.spec.ports[*].port}{"\n"}{end}'
+```
+
+```bash
+kubectl get ingress -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} class={.spec.ingressClassName} group={.metadata.annotations.alb\.ingress\.kubernetes\.io/group\.name}{"\n"}{end}'
+```
+
+Show the person what you found and agree `<way-in>` from this table. Record `<class>` and `<controller-namespace>` for step 4.
+
+| You found | Use | Follow |
+|---|---|---|
+| No IngressClass, or the person prefers no public ingress | `tunnel` | This page |
+| One controller with its own `LoadBalancer` Service on 443 | `ingress` | This page |
+| A controller reached on 80 behind a load balancer that holds the certificate | `ingress`, with `spec.tls` removed | This page, and [How to install behind an ingress controller](ingress.md#2-set-the-host-the-class-and-tls) |
+| Ingresses with an `alb` class and a `group=` name, and Traefik running | `ingress` behind the shared ALB | Stop the trial path. [How to install behind a shared ALB and Traefik](traefik-alb.md) |
+
+On EKS, also ask whether the models are on Bedrock ([How to use Bedrock on EKS](bedrock-on-eks.md)) and whether the database is RDS or Aurora ([How to set up RDS or Aurora PostgreSQL](rds-aurora.md)). Those pages mark their own **HANDOFF** steps.
 
 For `tunnel` only:
 
@@ -107,114 +136,66 @@ Expect: the repository's `validate` workflow run is green on the push. The other
 
     **HANDOFF.** Ask the person to point `<host>`'s DNS at the ingress controller and to provide a TLS certificate and key for it, or a cert-manager `Certificate` that will create a Secret named `exemplar-tls` in the `exemplar` namespace. If they give you files, keep them for step 5.
 
-    Check:
-
-    ```bash
-    kubectl get ingressclass
-    ```
-
-    Expect: the controller's class, usually `nginx`. Note the name if it differs; step 4 needs it.
+    `<class>` and `<controller-namespace>` are the ones step 1 found.
 
 ## Step 4: Write the overlay
 
-Create a directory `quickstart/` with two files. Do not clone this repository for it; the release install file carries everything.
+Fetch the example overlay at `<version>` and edit it. Do not clone this repository, and do not write the kustomization from memory: the example at the release's tag is the one that matches the release. `<version-no-v>` is `<version>` without the leading `v`.
 
 === "Cloudflare Tunnel"
 
-    `quickstart/kustomization.yaml`:
-
-    ```yaml
-    apiVersion: kustomize.config.k8s.io/v1beta1
-    kind: Kustomization
-    resources:
-      - https://github.com/koblas/exemplar/releases/download/<version>/install-tunnel.yaml
-    components:
-      - github.com/koblas/exemplar//deploy/k8s/components/postgres?ref=<version>
-    patches:
-      - path: settings.yaml
-      - target: {kind: Deployment, name: "exemplar-(api|webhook|gateway|worker|cloudflared)"}
-        patch: |-
-          - {op: replace, path: /spec/replicas, value: 1}
-      - target: {kind: StatefulSet, name: exemplar-search}
-        patch: |-
-          - {op: replace, path: /spec/replicas, value: 1}
-          - {op: remove, path: /spec/volumeClaimTemplates/0/spec/storageClassName}
-          - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 20Gi}
-          - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 2Gi}, limits: {cpu: "2", memory: 8Gi}}}
-      - target: {kind: Deployment, name: exemplar-worker}
-        patch: |-
-          - {op: replace, path: /spec/template/spec/containers/0/args/7, value: --launcher=in-process}
-          - {op: replace, path: /spec/template/spec/containers/0/args/8, value: --runner-quota=0}
-          - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 5Gi}, limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 20Gi}}}
-      - target: {kind: StatefulSet, name: exemplar-postgres}
-        patch: |-
-          - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 10Gi}
+    ```bash
+    curl -fsSL https://github.com/koblas/exemplar/archive/refs/tags/<version>.tar.gz | tar -xz --strip-components=3 exemplar-<version-no-v>/examples/k8s/quickstart
     ```
 
 === "Ingress"
 
-    `quickstart/kustomization.yaml`, with `<host>` filled in and `nginx` replaced if step 3 found another class:
-
-    ```yaml
-    apiVersion: kustomize.config.k8s.io/v1beta1
-    kind: Kustomization
-    resources:
-      - https://github.com/koblas/exemplar/releases/download/<version>/install-direct.yaml
-    components:
-      - github.com/koblas/exemplar//deploy/k8s/components/postgres?ref=<version>
-    patches:
-      - path: settings.yaml
-      - target: {kind: Ingress, name: exemplar-webhook}
-        patch: |-
-          - {op: replace, path: /spec/rules/0/host, value: <host>}
-          - {op: replace, path: /spec/tls/0/hosts/0, value: <host>}
-          - {op: replace, path: /spec/tls/0/secretName, value: exemplar-tls}
-          - {op: replace, path: /spec/ingressClassName, value: nginx}
-      - target: {kind: Ingress, name: exemplar-api}
-        patch: |-
-          - {op: replace, path: /spec/rules/0/host, value: <host>}
-          - {op: replace, path: /spec/tls/0/hosts/0, value: <host>}
-          - {op: replace, path: /spec/tls/0/secretName, value: exemplar-tls}
-          - {op: replace, path: /spec/ingressClassName, value: nginx}
-      - target: {kind: Deployment, name: "exemplar-(api|webhook|gateway|worker)"}
-        patch: |-
-          - {op: replace, path: /spec/replicas, value: 1}
-      - target: {kind: StatefulSet, name: exemplar-search}
-        patch: |-
-          - {op: replace, path: /spec/replicas, value: 1}
-          - {op: remove, path: /spec/volumeClaimTemplates/0/spec/storageClassName}
-          - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 20Gi}
-          - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 2Gi}, limits: {cpu: "2", memory: 8Gi}}}
-      - target: {kind: Deployment, name: exemplar-worker}
-        patch: |-
-          - {op: replace, path: /spec/template/spec/containers/0/args/7, value: --launcher=in-process}
-          - {op: replace, path: /spec/template/spec/containers/0/args/8, value: --runner-quota=0}
-          - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 5Gi}, limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 20Gi}}}
-      - target: {kind: StatefulSet, name: exemplar-postgres}
-        patch: |-
-          - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 10Gi}
+    ```bash
+    curl -fsSL https://github.com/koblas/exemplar/archive/refs/tags/<version>.tar.gz | tar -xz --strip-components=3 exemplar-<version-no-v>/examples/k8s/quickstart-direct && mv quickstart-direct quickstart
     ```
 
-`quickstart/settings.yaml`, for either way in:
+Expect: a directory `quickstart/` holding `kustomization.yaml` and `settings.yaml`.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: exemplar-settings
-  namespace: exemplar
-data:
-  EXEMPLAR_CONFIG_REPO: "<config-repo>"
-  EXEMPLAR_API_URL: "https://<host>"
-```
+Make these edits, and no others. Leave the `patches:` block as it is unless an edit below names it.
 
-These two files are the release's copies of [`examples/k8s/quickstart`](https://github.com/koblas/exemplar/tree/main/examples/k8s/quickstart) and [`examples/k8s/quickstart-direct`](https://github.com/koblas/exemplar/tree/main/examples/k8s/quickstart-direct); if the version you install has changed them, prefer the repository's copy at that tag and apply the same substitutions. Check the overlay renders before applying it:
+| File | Edit |
+|---|---|
+| `kustomization.yaml` | Under `resources:`, replace the `../../../deploy/k8s/base` (tunnel) or `../../../deploy/k8s/direct` (Ingress) line with `- https://github.com/koblas/exemplar/releases/download/<version>/install-tunnel.yaml` or `…/install-direct.yaml` |
+| `kustomization.yaml` | Under `components:`, replace the `../../../deploy/k8s/components/postgres` line with `- github.com/koblas/exemplar//deploy/k8s/components/postgres?ref=<version>` |
+| `kustomization.yaml` | Delete the whole `images:` block. The release file already pins both images |
+| `settings.yaml` | `EXEMPLAR_CONFIG_REPO: "<config-repo>"` and `EXEMPLAR_API_URL: "https://<host>"`, with no trailing slash |
+
+For `ingress`, also in `kustomization.yaml`:
+
+| When | Edit |
+|---|---|
+| `<class>` isn't `nginx` | In the `Ingress` patch, set `/spec/ingressClassName` to `<class>` |
+| `<controller-namespace>` isn't `ingress-nginx` | Uncomment the `NetworkPolicy` patch and set its value to `<controller-namespace>`. Without it the controller can't reach the pods |
+| A load balancer in front of the controller ends TLS | In the `Ingress` patch, replace the `/spec/tls/0/secretName` line with `- {op: remove, path: /spec/tls}`, and drop `spec.tls.0.hosts.0` from the `replacements` at the end of the file |
+
+The Ingress host is not edited: the file's `replacements` copy it from `EXEMPLAR_API_URL`. An example from a release that has no `replacements:` block sets the host in its Ingress patches instead; replace `exemplar.acme.com` there with `<host>`.
+
+Check the overlay renders before applying it:
 
 ```bash
 kubectl kustomize quickstart/ | grep -c '^kind:'
 ```
 
-Expect: a count above 30 and no error. An error naming the URL means `<version>` is not a release that has that install file.
+Expect: a count above 30 and no error. An error naming the release URL means `<version>` has no such install file. An error naming `../../../deploy` means a relative path is still there.
+
+```bash
+grep -rnE 'acme|example-org|example\.invalid|0{64}' quickstart/ | grep -v '^[^:]*:[0-9]*: *#'
+```
+
+Expect: no output. Any line is an example value still in the overlay.
+
+For `ingress`:
+
+```bash
+kubectl kustomize quickstart/ | grep -A14 '^kind: Ingress' | grep -E 'host|ingressClassName'
+```
+
+Expect: `<host>` and `<class>`, twice each.
 
 ## Step 5: Apply it
 
@@ -250,7 +231,7 @@ Then wait for exemplar-api:
 kubectl -n exemplar rollout status deployment/exemplar-api --timeout=180s
 ```
 
-Expect: `deployment "exemplar-api" successfully rolled out`. The other pods are **expected** to be not ready at this point. `kubectl -n exemplar get pods` shows them in `ContainerCreating` or `CreateContainerConfigError`, waiting on `exemplar-root-key` or a key of `exemplar-github-app`. `exemplar-postgres-0` starts now: exemplar-api wrote its password. The rest resolves in step 7. Do not try to fix it now.
+Expect: `deployment "exemplar-api" successfully rolled out`. The other pods are **expected** to be not ready at this point. `kubectl -n exemplar get pods` shows the webhook, gateway, worker, search and learn pods in `Init:0/1`, `ContainerCreating` or `CreateContainerConfigError`, with events such as `MountVolume.SetUp failed … references non-existent secret key: private-key`, waiting on `exemplar-root-key` or a key of `exemplar-github-app`. `exemplar-postgres-0` starts now: exemplar-api wrote its password. The rest resolves in step 7. Do not try to fix it now.
 
 ## Step 6: Check the host answers
 
