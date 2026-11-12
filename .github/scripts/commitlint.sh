@@ -4,6 +4,7 @@
 #
 #   commitlint.sh <rev-range>     every non-merge commit in the range (CI, make commitlint)
 #   commitlint.sh --file <path>   one message file (the .githooks/commit-msg hook)
+#   commitlint.sh --subject <text>  one subject, such as a pull request's title (pr-title.yml)
 #
 # A subject is "<type>[(<scope>)][!]: <description>", at most 100 characters.
 # git's own "Revert "..."" subjects pass. The hook also lets through merge
@@ -28,7 +29,7 @@ check() { # subject, label
 }
 
 usage() {
-  echo "usage: $0 <rev-range> | --file <commit-msg-file>" >&2
+  echo "usage: $0 <rev-range> | --file <commit-msg-file> | --subject <text>" >&2
   exit 2
 }
 
@@ -42,6 +43,15 @@ if [[ $# -eq 2 && $1 == --file ]]; then
     echo "Expected <type>[(scope)][!]: <description>, with type one of: ${types//|/, }" >&2
     exit 1
   fi
+  exit 0
+fi
+
+if [[ $# -eq 2 && $1 == --subject ]]; then
+  if ! check "$2" "title"; then
+    echo "Expected <type>[(scope)][!]: <description>, with type one of: ${types//|/, }" >&2
+    exit 1
+  fi
+  echo "title OK"
   exit 0
 fi
 
