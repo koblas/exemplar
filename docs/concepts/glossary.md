@@ -36,7 +36,7 @@ The words the rest of this site uses. Terms are in alphabetical order.
 : A rule with `kind: compiled`. It runs as an ast-grep or Semgrep pattern, with no model call.
 
 **Config CI**
-: The GitHub Actions workflows in `exemplar-config` (`eval.yml`, `nightly.yml`, `export-approval.yml`) that check every config PR before it can merge.
+: The GitHub Actions workflows in `exemplar-config` (`eval.yml`, `export-approval.yml`) that check every config PR before it can merge.
 
 **Coverage**
 : The share of a PR's in-scope changes that the review actually examined. Any coverage below 1.0 makes the PR ineligible for auto-approve.

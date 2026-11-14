@@ -21,18 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0 # the diff against the PR's base
-      - uses: actions/checkout@v5
+      # The released CLI for your installation's version (EXEMPLAR_VERSION).
+      - uses: ./.github/actions/setup-exemplar
         with:
-          repository: koblas/exemplar
-          ref: main # pin to a commit SHA once the sandbox org exists
-          path: .exemplar-src
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: .exemplar-src/go.mod
-      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
-        working-directory: .exemplar-src
+          version: ${{ vars.EXEMPLAR_VERSION }}
       - name: Check export approval
         env:
           GITHUB_TOKEN: ${{ github.token }} # reads this PR's reviews

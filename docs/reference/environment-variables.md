@@ -120,7 +120,7 @@ Read by `exemplar` subcommands as flag defaults ([The CLI](cli.md)) and by the w
 | `EXEMPLAR_EVAL_TOKEN` | `eval`, `volume`, `linter-overlap`, `calibrate` | A read-only GitHub token for the case repositories (`--token-env` names the variable; this is the default). `linter-overlap` needs `checks: read` on them. |
 | `EXEMPLAR_TEAMS_TOKEN` | `export-approval` | A token with `members: read`, to read the platform team's membership (`--team-token-env`). |
 | `EXEMPLAR_LINTER_OVERLAP` | config CI | Repository variable `true` turns the `linter-overlap` job on. |
-| `EXEMPLAR_CALIBRATION_DATABASE_URL` | config CI (`nightly.yml`) | A read-only database URL so nightly calibration includes `verifier_labels` from author feedback. Passed to the CLI as `EXEMPLAR_DATABASE_URL`. |
+| `EXEMPLAR_VERSION` | config CI | Repository variable: the `exemplar` release (for example `0.14.0`) the `setup-exemplar` action installs for every job. Defaults to the release the example came from. |
 | `EXEMPLAR_AUTH0_CLIENT_ID`, `EXEMPLAR_AUTH0_CLIENT_SECRET` | config CI | Repository secrets for the Auth0 client the `eval` job exchanges for `EXEMPLAR_TOKEN`. |
 
 ## Tests only
