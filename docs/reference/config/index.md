@@ -16,7 +16,7 @@
 | `platform/eligibility.yaml` | [platform/eligibility.yaml](eligibility.md) | `@security/appsec` | Repositories never reviewed, mined, indexed or sent to a provider. |
 | `platform/retention.yaml` | [platform/retention.yaml](retention.md) | `@security/appsec` | Retention periods in days. |
 | `CODEOWNERS` | | | The human gate: every change needs an owner's approval. |
-| `.github/workflows/` | | `@platform/exemplar @platform/devex` | Config CI: `eval.yml` (validate, eval, volume, linter-overlap, verifier-calibration), `nightly.yml` (nightly calibration), `export-approval.yml` (platform approval for `export:` changes). |
+| `.github/workflows/` | | `@platform/exemplar @platform/devex` | Config CI: `eval.yml` (validate, eval, volume, linter-overlap, verifier-calibration), `export-approval.yml` (platform approval for `export:` changes). |
 
 Recorded pull requests for the replay harness use a separate schema, [Recorded PR fixture](fixture.md), and live in this repository's `examples/fixtures/`; the three eval label kinds embed one.
 
