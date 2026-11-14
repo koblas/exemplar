@@ -1,6 +1,6 @@
 # How to set up config CI
 
-The workflows in `exemplar-config` (`.github/workflows/eval.yml`, `nightly.yml`, `export-approval.yml`, copied from [`examples/exemplar-config`](https://github.com/koblas/exemplar/tree/main/examples/exemplar-config)) validate every config PR. A fresh copy starts green: `validate` always runs (schemas, cross-file references, and the adversarial set in compromised mode, which needs no model access), and every other job is skipped until its repository variables exist.
+The workflows in `exemplar-config` (`.github/workflows/eval.yml` and `export-approval.yml`, copied from [`examples/exemplar-config`](https://github.com/koblas/exemplar/tree/main/examples/exemplar-config)) validate every config PR. A fresh copy starts green: `validate` always runs (schemas, cross-file references, and the adversarial set in compromised mode, which needs no model access), and every other job is skipped until its repository variables exist.
 
 | Job | Turn on with | Needs |
 |---|---|---|
@@ -8,7 +8,6 @@ The workflows in `exemplar-config` (`.github/workflows/eval.yml`, `nightly.yml`,
 | `volume`, `verifier-calibration` | variable `EXEMPLAR_GATEWAY_URL` | a route from GitHub Actions to exemplar-gateway, which no shipped build exposes, plus secrets `EXEMPLAR_GATEWAY_TOKEN` and `EXEMPLAR_EVAL_TOKEN` |
 | `linter-overlap` | variable `EXEMPLAR_LINTER_OVERLAP=true` | secret `EXEMPLAR_EVAL_TOKEN` with `checks: read` on the case repos |
 | `export-approval` | always on | secret `EXEMPLAR_TEAMS_TOKEN` with `members: read`, to read the platform team's membership (`GITHUB_TOKEN` cannot) |
-| `nightly` (verifier calibration over the seed labels and, with `EXEMPLAR_CALIBRATION_DATABASE_URL`, the labels from author feedback) | a schedule | the gateway secrets as for `volume`, and optionally a read-only database URL |
 
 ## 1. Turn on `eval`
 
@@ -24,7 +23,7 @@ The job sends the PR's merge-base and head (both pushed) to `/v1/evaluate` and t
 
 `volume` and `verifier-calibration` call exemplar-gateway directly. No shipped build exposes it outside the cluster: route to it (a private runner in the cluster, or an exposed Service behind your own controls) before setting `EXEMPLAR_GATEWAY_URL`. `EXEMPLAR_GATEWAY_TOKEN` is the derived gateway token, or its explicit override; `EXEMPLAR_EVAL_TOKEN` is a read-only GitHub token for the case repositories.
 
-`verifier-calibration` runs when a config PR changes what the verifier depends on (`providers.verifier`, `verifier`, `eval_thresholds.verifier`, or `evals/_verifier`), and likewise the auto-approve categorizer (`providers.categorizer`, `eval_thresholds.categorizer`, `evals/_categorizer`; skipped while there is no `providers.categorizer`). Otherwise it reports "not run".
+`verifier-calibration` runs when a config PR changes what the verifier depends on (`providers.verifier`, `verifier`, `eval_thresholds.verifier`, or `evals/_verifier`), and likewise the auto-approve categorizer (`providers.categorizer`, `eval_thresholds.categorizer`, `evals/_categorizer`; skipped while there is no `providers.categorizer`). Otherwise it reports "not run". The job only reports: the result that lifts the same-family block on auto-approve comes from the installation's nightly `exemplar-learn-calibrate` CronJob ([How to turn on auto-approve](../operate/auto-approve.md)), so config CI has no nightly job.
 
 ## 3. Turn on `linter-overlap`
 
@@ -36,4 +35,6 @@ Require the `validate` and `eval` checks and CODEOWNERS review in a ruleset on `
 
 ## Pin the CLI
 
-Each job builds the `exemplar` CLI from `koblas/exemplar` at `ref: main`. Pin that to a release tag or commit once you rely on it.
+Set the repository variable `EXEMPLAR_VERSION` to the release your installation runs (for example `0.14.0`). Each job installs that release's `exemplar` CLI through `.github/actions/setup-exemplar` and checks it against the release's `SHA256SUMS`, so config PRs are checked with the same schemas and rules as the cluster. Without the variable, the action installs the release the example came from. Update the variable when you upgrade the installation.
+
+A new push to a PR cancels the `eval` workflow run for the old head, so superseded commits spend no model calls.

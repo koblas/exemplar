@@ -1,0 +1,45 @@
+name: setup-exemplar
+description: >-
+  Install a released exemplar CLI at $RUNNER_TEMP/exemplar, checked
+  against the release's SHA256SUMS. Use the version your installation
+  runs, so config CI checks with the same schemas and rules as the cluster.
+
+inputs:
+  version:
+    description: >-
+      Release to install, such as 0.14.0. Set the repository variable
+      EXEMPLAR_VERSION to your installation's version; the default is
+      the release this example came from.
+    required: false
+    default: "" # empty: the default below
+runs:
+  using: composite
+  steps:
+    - name: Install the exemplar CLI
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        INPUT_VERSION: ${{ inputs.version }}
+        DEFAULT_VERSION: "0.14.0" # x-release-please-version
+        RUNNER_OS_NAME: ${{ runner.os }}
+        RUNNER_ARCH_NAME: ${{ runner.arch }}
+      run: |
+        set -euo pipefail
+        version="${INPUT_VERSION:-$DEFAULT_VERSION}"
+        tag="v${version#v}"
+        if [ "$RUNNER_OS_NAME" != Linux ]; then
+          echo "::error::setup-exemplar runs on Linux runners only"; exit 1
+        fi
+        case "$RUNNER_ARCH_NAME" in
+          X64) arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "::error::no exemplar release for $RUNNER_ARCH_NAME"; exit 1 ;;
+        esac
+        archive="exemplar_${tag}_linux_${arch}.tar.gz"
+        dir="$RUNNER_TEMP/exemplar-release"
+        mkdir -p "$dir"
+        gh release download "$tag" --repo koblas/exemplar --dir "$dir" \
+          --pattern "$archive" --pattern SHA256SUMS
+        (cd "$dir" && sha256sum -c SHA256SUMS --ignore-missing --strict)
+        tar -xzf "$dir/$archive" -C "$RUNNER_TEMP" exemplar
+        "$RUNNER_TEMP/exemplar" --version

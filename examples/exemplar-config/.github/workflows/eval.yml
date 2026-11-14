@@ -6,23 +6,23 @@ on:
 permissions:
   contents: read
 
+# A new push to the PR cancels the run for the old head: eval, volume and
+# verifier-calibration spend model calls on it.
+concurrency:
+  group: eval-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      # The exemplar CLI is built from a pinned commit of the exemplar repo
-      # until GoReleaser binaries are published.
-      - uses: actions/checkout@v5
         with:
-          repository: koblas/exemplar
-          ref: main # pin to a commit SHA once the sandbox org exists
-          path: .exemplar-src
-      - uses: actions/setup-go@v6
+          persist-credentials: false
+      # The released CLI for your installation's version (EXEMPLAR_VERSION).
+      - uses: ./.github/actions/setup-exemplar
         with:
-          go-version-file: .exemplar-src/go.mod
-      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
-        working-directory: .exemplar-src
+          version: ${{ vars.EXEMPLAR_VERSION }}
       - run: '"$RUNNER_TEMP/exemplar" validate .'
       # The adversarial set runs in compromised mode on every config change;
       # it needs no model access.
@@ -48,17 +48,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0 # the merge-base with the PR's base
-      - uses: actions/checkout@v5
+      # The released CLI for your installation's version (EXEMPLAR_VERSION).
+      - uses: ./.github/actions/setup-exemplar
         with:
-          repository: koblas/exemplar
-          ref: main # pin to a commit SHA once the sandbox org exists
-          path: .exemplar-src
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: .exemplar-src/go.mod
-      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
-        working-directory: .exemplar-src
+          version: ${{ vars.EXEMPLAR_VERSION }}
       - name: Get an exemplar-api token from Auth0
         env:
           AUTH0_DOMAIN: ${{ vars.EXEMPLAR_AUTH0_DOMAIN }}
@@ -96,17 +91,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: actions/checkout@v5
+      # The released CLI for your installation's version (EXEMPLAR_VERSION).
+      - uses: ./.github/actions/setup-exemplar
         with:
-          repository: koblas/exemplar
-          ref: main # pin to a commit SHA once the sandbox org exists
-          path: .exemplar-src
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: .exemplar-src/go.mod
-      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
-        working-directory: .exemplar-src
+          version: ${{ vars.EXEMPLAR_VERSION }}
       - name: Estimate volume
         env:
           EXEMPLAR_GATEWAY_URL: ${{ vars.EXEMPLAR_GATEWAY_URL }}
@@ -127,17 +117,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: actions/checkout@v5
+      # The released CLI for your installation's version (EXEMPLAR_VERSION).
+      - uses: ./.github/actions/setup-exemplar
         with:
-          repository: koblas/exemplar
-          ref: main # pin to a commit SHA once the sandbox org exists
-          path: .exemplar-src
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: .exemplar-src/go.mod
-      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
-        working-directory: .exemplar-src
+          version: ${{ vars.EXEMPLAR_VERSION }}
       - name: Check linter overlap
         env:
           EXEMPLAR_EVAL_TOKEN: ${{ secrets.EXEMPLAR_EVAL_TOKEN }}
@@ -160,17 +145,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: actions/checkout@v5
+      # The released CLI for your installation's version (EXEMPLAR_VERSION).
+      - uses: ./.github/actions/setup-exemplar
         with:
-          repository: koblas/exemplar
-          ref: main # pin to a commit SHA once the sandbox org exists
-          path: .exemplar-src
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: .exemplar-src/go.mod
-      - run: go build -o "$RUNNER_TEMP/exemplar" ./cmd/exemplar
-        working-directory: .exemplar-src
+          version: ${{ vars.EXEMPLAR_VERSION }}
       - name: Calibrate the verifier and auto-approve categorizer
         env:
           EXEMPLAR_GATEWAY_URL: ${{ vars.EXEMPLAR_GATEWAY_URL }}
