@@ -48,7 +48,7 @@ The runbook gives the run order, starts each learning job on demand with `kubect
 
 What tracing each beat found missing from the code, each built as a GitHub issue the demo's live run depends on.
 
-- **Embed job** (spec §8.3): nothing writes `extractions.embedding`, and `cluster` reads only rows that have one, so mining stops after extract. A Voyage route in the gateway and an embed job in `learning/` fill it.
+- **Embed job** (spec §8.3): built. `exemplar-learning embed` fills `extractions.embedding` through the gateway's `POST /v1/embeddings` (Voyage per `providers.embed`), so `cluster` has rows to read after extract.
 - **Second-family provider** (spec §6.13, PRD FR-E10): `gates.ReviewConfidence` is 0 when both categorizers share a family, and every route in `internal/llm` reports `anthropic`, so nothing can be approved. An adapter for a second family behind the gateway, configured as `providers.categorizer` side B, unblocks Stage 2 and the cross-family verifier (`exemplar-bnt.7`).
 - **Live baseline runs** (spec §6.3, item 10; T-0.2): `Engine.Baseline` is called only from `internal/replay`, and `baseline.sample_rate` is parsed and never read, so the baseline board has no live data. The worker samples production PRs and stores a `caller=baseline` review.
 - **UI eFP flag** (spec §9.4): `/ui/` marks a rule over the bar at a hardcoded 0.30 while demotion uses `feedback.efp_bar` (0.10), so a rule can be demoted without the UI flagging it.
