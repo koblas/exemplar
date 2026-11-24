@@ -74,8 +74,9 @@ the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md
 - Pull requests close issues with `Closes #N`; nothing is closed by hand without a
   reason. PR descriptions carry the history: what landed, decisions taken, how it is
   tested, and what is still missing (as issue links).
-- Issues up to #285 were migrated from beads on 2026-11-24; their bodies end
-  "Migrated from beads exemplar-…"; closed beads history is `.beads/issues.jsonl`
+- Issues up to #285 were migrated from beads on 2026-11-24; an issue's beads id
+  (`exemplar-…`, named by older commits) is in the first revision of its body,
+  in the issue's edit history; closed beads history is `.beads/issues.jsonl`
   at commit `3a23e68`.
 
 ## Environment and Commands
