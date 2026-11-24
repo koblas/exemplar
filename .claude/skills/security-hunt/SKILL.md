@@ -199,5 +199,5 @@ working, not a problem to apologise for.
 
 **Do not fix anything and do not edit `docs/security/known-non-issues.md`.** A confirmed
 finding is a named bug: the user decides whether it goes to `/go-service` (test first) or
-to `docs/plans/backlog.md`. Non-issue suggestions are the user's call too; that list
+to an issue (`/issue`). Non-issue suggestions are the user's call too; that list
 suppresses future findings, so nothing gets onto it unreviewed.

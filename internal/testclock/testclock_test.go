@@ -32,7 +32,7 @@ var waits = map[string][]string{
 }
 
 // skipDirs are directories under the module root holding no Go tests of ours.
-var skipDirs = []string{".git", ".devenv", ".direnv", ".beads", "learning", "node_modules", "testdata", "vendor"}
+var skipDirs = []string{".git", ".devenv", ".direnv", "learning", "node_modules", "testdata", "vendor"}
 
 var marker = regexp.MustCompile(`(?m)//\s*wallclock:[ \t]*(\S.*)?$`)
 
