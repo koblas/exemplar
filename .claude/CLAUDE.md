@@ -46,12 +46,14 @@ the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md
 - Track all work in GitHub Issues (`gh issue`, repo `koblas/exemplar`), never in
   markdown TODO lists, checklists or status tables. `docs/product/` stays the
   source of truth for what and why; an issue links to it and does not restate it.
-- Issue body, about 500 characters, four parts on their own lines: **Design:** the
-  doc path and heading anchor it implements (e.g.
-  `docs/product/spec/06-review-pipeline.md#646-running-without-exemplar-search`),
-  or "Not in the spec" and the code that motivates it; **State:** what the code
-  does today, naming the file or test that shows it; **Approach:** the change in one
-  sentence; **Done when:** the observable condition a closer checks. `/issue` files one.
+- Issue body, about 500 characters, readable without opening the repository, five
+  parts on their own lines: **Why:** what is wrong or missing and for whom, in one
+  sentence; **Design:** the stable ids it implements (`spec §6.4.6`, `FR-L1.9`,
+  `T-0.3`, `D6.5`; `docs/product/README.md` maps them to files), never a file path
+  or anchor, or "Not in the spec" and the code that motivates it; **State:** what
+  the code does today, naming the file or test that shows it; **Approach:** the
+  change in one sentence; **Done when:** the observable condition a closer checks.
+  `/issue` files one. Fix an older body (path links, copied briefs) when you touch it.
 - Labels: a type (`feature`, `task`, `bug`, `debt`, `decision`, `security`, `epic`,
   `idea` for unadopted ideas, with a "worth it when" line); a `phase:0`…`phase:6`
   label naming its PRD §14.1 phase (an epic carries its children's phases);
