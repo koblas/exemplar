@@ -108,7 +108,7 @@ Every candidate finding from Lanes 2 and 3 is sent to a verifier before validati
 | FR-F1 | For rules with `fix_policy: suggest` , when the fix is local to the anchored hunk, the finding includes a GitHub `suggestion` block the author can apply in one click. |
 | FR-F2 | Suggested fixes are validated in code: the patch must apply cleanly, stay within the anchored range, and (where a fast check exists, e.g. `gofmt` , a parser) must parse. Fixes failing validation are dropped; the finding is posted without a fix. |
 | FR-F3 | Applying a suggestion is the strongest acceptance signal and is tracked separately. |
-| FR-F4 | **Phase 5:** a Fixer that proposes edits in response to *human* review comments (reviewer leaves a comment → bot offers a suggestion), reusing the same harness and validation. |
+| FR-F4 (not built: #201) | **Phase 5:** a Fixer that proposes edits in response to *human* review comments (reviewer leaves a comment → bot offers a suggestion), reusing the same harness and validation. |
 
 <a id="88-public-api-sketch"></a>
 
@@ -150,7 +150,7 @@ Everything above describes one review of one commit. A PR is a sequence of pushe
 |---|---|
 | FR-C1 | **Incremental re-review on push.** A new push re-reviews only the files whose hunks changed since the last reviewed commit, plus any file a previously posted finding anchors to. Unchanged files keep their prior results. Rules run again only where their scope intersects the changed set. |
 | FR-C2 | **Finding identity across pushes.** Each finding has a stable key (rule id + file + normalized anchor content). A finding with the same key is never posted twice. A finding whose anchored lines were changed is re-verified: if it no longer holds, the bot resolves its own thread with a one-line note ("Addressed in `abc123` "); if it still holds, the existing thread is left in place, not re-posted. |
-| FR-C3 | **Dismissed stays dismissed.** A finding the author dismissed with a structured reason (§9) is not re-posted on later pushes to the same PR, even if the model would find it again. |
+| FR-C3 (not built: #294) | **Dismissed stays dismissed.** A finding the author dismissed with a structured reason (§9) is not re-posted on later pushes to the same PR, even if the model would find it again. |
 | FR-C4 | **Rebase and force-push.** When the base changes or history is rewritten, prior comments are re-anchored by content; findings that no longer anchor to a visible hunk are resolved as outdated (FR-T2), not re-posted at a guessed location. The review is reconciled, not restarted. |
 | FR-C5 | **Draft PRs** are not reviewed until marked ready, unless the repo opts in to draft review. **Stacked PRs** are reviewed against their declared stack base (the parent branch), not the trunk, so findings are not duplicated down the stack. |
 | FR-C6 | **Config drift within a PR.** Each review records the config SHA it ran under (§17.4). If config changes mid-PR, findings from rules that were killed or demoted are resolved as outdated with a note; new rules apply only to the next push. |

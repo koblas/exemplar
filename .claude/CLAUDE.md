@@ -8,8 +8,8 @@ is `github.com/koblas/exemplar`. The spec is `docs/product/spec/` and the PRD
 `§` numbers and PRD sections to files (`FR-…` ids are PRD requirements). A PRD
 requirement that is not built ends its id cell with `(not built: #N)`.
 `docs/plans/README.md` maps the roadmap and requirement families to both.
-`docs/plans/ready-to-install.md` (§7 log ends 2026-10-24) and `docs/plans/phase-0.md`
-are frozen: don't add sections there. Binaries: `cmd/exemplar` (CLI), `cmd/exemplar-gateway`,
+`docs/plans/ready-to-install.md` is frozen: don't add sections there. The Phase 0
+plan, the head-start logs and the backlog are at commit `3a23e68` under `docs/plans/`. Binaries: `cmd/exemplar` (CLI), `cmd/exemplar-gateway`,
 `cmd/exemplar-search` (git mirror, zoekt index, internal API: search_text,
 find_definition, find_references, dependents), `cmd/exemplar-webhook` (GitHub
 webhook receiver), `cmd/exemplar-worker` (routes events, reviews live PRs and
@@ -73,8 +73,8 @@ the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md
   reason. PR descriptions carry the history: what landed, decisions taken, how it is
   tested, and what is still missing (as issue links).
 - Issues up to #285 were migrated from beads on 2026-11-24; their bodies end
-  "Migrated from beads exemplar-…". `.beads/issues.jsonl` holds closed beads history
-  until it is removed.
+  "Migrated from beads exemplar-…"; closed beads history is `.beads/issues.jsonl`
+  at commit `3a23e68`.
 
 ## Environment and Commands
 

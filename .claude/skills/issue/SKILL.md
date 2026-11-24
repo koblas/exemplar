@@ -67,7 +67,7 @@ prefixed with the requirement id or change row when it has one
 - **Order:** `order:H1`…`order:H5` for work in the spec §16 order of work.
 - **Other:** `blocked` when it waits on something outside the repository (a real org, a
   provider key, a sign-off), with the body saying on what; `testing` for test-technique work; `lane:direct|light|full` when triaged.
-- Priority labels (`priority:1`…`priority:4`) came from beads; set one only when the
+- Priority labels (`priority:1`…`priority:4`) came with the migrated issues; set one only when the
   work is clearly not the default.
 
 ## 4. Create, then link

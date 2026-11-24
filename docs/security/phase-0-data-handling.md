@@ -1,6 +1,6 @@
 # Phase 0 data handling: for Security sign-off
 
-**Purpose.** This document supports the Phase 0 exit criterion "eligibility list and retention signed off by Security" (spec §16, W9 in [the Phase 0 plan](../plans/phase-0.md)). It states what the Phase 0 code does with repository data, where each control lives, and what Security needs to decide.
+**Purpose.** This document supports the Phase 0 exit criterion "eligibility list and retention signed off by Security" (spec §16, W9 in [the Phase 0 plan](https://github.com/koblas/exemplar/blob/3a23e68d545cfa5e1b8140c732ab5a79e83d8891/docs/plans/phase-0.md)). It states what the Phase 0 code does with repository data, where each control lives, and what Security needs to decide.
 
 ## Decisions needed from Security
 
