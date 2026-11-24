@@ -6,8 +6,8 @@ The map of Exemplar's plans: which document says what, how to read the reference
 
 | Document | What it is |
 |---|---|
-| [`docs/spec/technical-spec.md`](../spec/technical-spec.md) | **The technical specification** (Draft 1.4), and the **canonical copy**: change the spec here. It covers architecture, pipeline, data model, security and the delivery plan, and is the source for every `§` reference. |
-| [`docs/spec/prd.md`](../spec/prd.md) | **The PRD** (v0.11), and the **canonical copy**: change the PRD here. It covers the problem, goals, personas, and the functional requirements (`FR-…`) the spec implements, with sample interactions (§17). |
+| [`docs/product/spec/`](../product/README.md) | **The technical specification** (Draft 1.4), one file per top-level section, and the **canonical copy**: change the spec here. It covers architecture, pipeline, data model, security and the delivery plan, and is the source for every `§` reference. |
+| [`docs/product/prd/`](../product/README.md) | **The PRD** (v0.11), one file per top-level section, and the **canonical copy**: change the PRD here. It covers the problem, goals, personas, and the functional requirements (`FR-…`) the spec implements, with sample interactions (§17). |
 | [`docs/plans/phase-0.md`](phase-0.md) | The Phase 0 implementation plan (§1–§8), its status (§9), and a dated log of the head starts up to 2026-10-17. Each "head start" section records what was built, the decisions taken, how it is tested, and what is still missing. No new sections go here. |
 | [`docs/plans/ready-to-install.md`](ready-to-install.md) | **The current plan**: making a first installation short and checkable (setup in the cluster, the GitHub App manifest flow, one root key, a setup page, release manifests). Its §7 logs work up to 2026-10-24; since then work is tracked in beads (`bd`), with history in close reasons and PR descriptions. |
 | [`docs/plans/demo.md`](demo.md) | The design for the **end-to-end demo** on a sandbox org: the four beats the audience sees, what produces each, the prerequisites from outside the repository, the demo kit, and the code the demo still needs. Status is in beads (epic exemplar-gf3). |
@@ -19,9 +19,9 @@ The map of Exemplar's plans: which document says what, how to read the reference
 ## Reading the references
 
 - **`§6.15`** is a section of the spec.
-- **`FR-D6`** is a functional requirement in the [PRD](../spec/prd.md). The letter is the requirement family. Each family has its own PRD section, and is specified in one place in the spec (spec §1.1).
+- **`FR-D6`** is a functional requirement in the [PRD](../product/README.md). The letter is the requirement family. Each family has its own PRD section, and is specified in one place in the spec (spec §1.1).
 - **`T-0.3`** is a Phase 0 acceptance test (spec §16).
-- **`D2.4`** is a phased deliverable in [PRD §14.1](../spec/prd.md#141-phased-deliverables); each issue in beads carries the `phase:N` label of the phase it belongs to.
+- **`D2.4`** is a phased deliverable in [PRD §14.1](../product/prd/14-rollout-plan.md#141-phased-deliverables); each issue in beads carries the `phase:N` label of the phase it belongs to.
 
 | Family | PRD area | PRD | Spec | Status |
 |---|---|---|---|---|

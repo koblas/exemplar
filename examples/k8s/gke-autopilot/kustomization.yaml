@@ -5,7 +5,7 @@
 # NOT YET VERIFIED ON A CLUSTER. It renders and passes the repository's
 # manifest checks; the §2.4.3 checks on a trial GKE project (local-SSD
 # search, GKE Sandbox, the runners' grace period, FQDN egress, cold start,
-# cost, connection limits) are tracked in beads and may change it.
+# cost, connection limits) are tracked in GitHub Issues (#219) and may change it.
 #
 # Render: kubectl kustomize examples/k8s/gke-autopilot
 apiVersion: kustomize.config.k8s.io/v1beta1

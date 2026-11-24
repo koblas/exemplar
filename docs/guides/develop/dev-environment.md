@@ -68,6 +68,6 @@ make contracts
 - `deploy/`: images and manifests;
 - `dashboards/`: Grafana;
 - `examples/exemplar-config/`: a starting config;
-- `docs/`: this site's pages (`mkdocs.yml`; `make docs`, `make docs-serve`), and the design documents (`docs/spec`, `docs/plans`, `docs/security`), which the site leaves out.
+- `docs/`: this site's pages (`mkdocs.yml`; `make docs`, `make docs-serve`), and the design documents (`docs/product`, `docs/plans`, `docs/security`), which the site leaves out.
 
 Commit subjects are Conventional Commits; [CONTRIBUTING.md](https://github.com/koblas/exemplar/blob/main/CONTRIBUTING.md) has the types and the release process.

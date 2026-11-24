@@ -24,7 +24,7 @@ import (
 
 // internalDirs are the directories under docs/ the site excludes
 // (mkdocs.yml exclude_docs); their pages are design documents.
-var internalDirs = []string{"spec", "plans", "security"}
+var internalDirs = []string{"product", "specs", "plans", "security"}
 
 // read returns a file's contents, failing the test when it can't.
 func read(t *testing.T, path string) string {

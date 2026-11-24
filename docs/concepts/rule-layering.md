@@ -28,4 +28,4 @@ Some rules are required. A preset rule in the `Security` category or with `block
 
 The repo file under `repos/` belongs to the platform team. Besides enrolment and the safety settings, its `disabled_global_rules` turns organization rules off for that one repo. A target repo can add its own rules in `.exemplar/rules/`, read from the PR's base branch so a PR cannot change the rules it is reviewed with. Its rule ids may not reuse an organization rule's id or the `exemplar.` prefix.
 
-The field-by-field details are in the [`global.yaml` reference](../reference/config/global.md) and the [rule reference](../reference/config/rule.md). The design rationale is in the [technical spec](https://github.com/koblas/exemplar/blob/main/docs/spec/technical-spec.md#31-rule-layering-and-presets).
+The field-by-field details are in the [`global.yaml` reference](../reference/config/global.md) and the [rule reference](../reference/config/rule.md). The design rationale is in the [technical spec](https://github.com/koblas/exemplar/blob/main/docs/product/spec/03-repositories-and-code-layout.md#31-rule-layering-and-presets).

@@ -7,7 +7,7 @@ paths:
 
 Conventions for the Go service. The repository map, work tracking and the
 ask-before rules are in `.claude/CLAUDE.md`; the design is in
-`docs/spec/technical-spec.md`.
+`docs/product/spec/` (`docs/product/README.md` maps § numbers to files).
 
 ## Checks
 
@@ -63,7 +63,7 @@ ask-before rules are in `.claude/CLAUDE.md`; the design is in
 
 ## Time and clocks
 
-The reasoning is in `docs/spec/technical-spec.md` §16.1 ("Time in tests"). The rules:
+The reasoning is in `docs/product/spec/16-delivery-plan.md` §16.1 ("Time in tests"). The rules:
 
 - **No injected clocks.** Production code calls `time.Now`, `time.Since`,
   `time.NewTimer` and so on directly. No `Now func() time.Time` fields, clock

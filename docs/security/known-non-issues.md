@@ -1,7 +1,7 @@
 # Threat model pointers and known non-issues
 
 What `/security-hunt` reads before it hunts. The threat model itself is **§13 of the
-[technical spec](../spec/technical-spec.md)** (the network boundary, the threat table,
+[technical spec](../product/spec/13-security-model.md)** (the network boundary, the threat table,
 and §13.1 data handling); this file only points at it, lists the authorization
 primitives a hunter must look for, and records the findings that keep coming back and
 why they are not bugs. Edit the non-issues list only after a human has reviewed the
