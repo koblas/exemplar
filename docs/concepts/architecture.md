@@ -1,6 +1,6 @@
 # Architecture
 
-This page shows how Exemplar is put together **as built in this repository**: the processes, how they talk to each other, and the paths work takes through them. The target design, with the reasoning behind it, is in the [technical specification](https://github.com/koblas/exemplar/blob/main/docs/spec/technical-spec.md). What is built and what is not is tracked in the [plans index](https://github.com/koblas/exemplar/blob/main/docs/plans/README.md).
+This page shows how Exemplar is put together **as built in this repository**: the processes, how they talk to each other, and the paths work takes through them. The target design, with the reasoning behind it, is in the [technical specification](https://github.com/koblas/exemplar/blob/main/docs/product/README.md). What is built and what is not is tracked in the [plans index](https://github.com/koblas/exemplar/blob/main/docs/plans/README.md).
 
 ## The big picture
 

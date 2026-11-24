@@ -61,7 +61,7 @@ every page is one of a tutorial (`docs/tutorials/`), a how-to guide
 (`docs/guides/<persona>/`, titled "How to …"), an explanation
 (`docs/concepts/`) or reference (`docs/reference/`), for one audience, and
 never cites the spec by section, a requirement id or a delivery phase.
-`docs/spec`, `docs/plans` and `docs/security` are design documents the site
+`docs/product`, `docs/plans` and `docs/security` are design documents the site
 leaves out.
 
 A behaviour change updates the pages, not the README: usually one how-to and

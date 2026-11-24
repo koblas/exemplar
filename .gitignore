@@ -22,6 +22,9 @@ __pycache__/
 # make outputs (binaries, replay, rendered manifests, the docs site)
 /out/
 
+# Run output for a feature (plans, check output, metrics), summarised in its retro
+/.runs/
+
 # Zensical's build cache (make docs)
 /.cache/
 

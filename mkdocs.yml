@@ -1,7 +1,7 @@
 # The user documentation, built by Zensical (https://zensical.org), which reads
 # this MkDocs-format file, and published to GitHub Pages by
 # .github/workflows/docs.yml. Build locally: make docs (or make docs-serve).
-# docs/spec, docs/plans and docs/security are internal design documents, kept
+# docs/product, docs/specs, docs/plans and docs/security are internal design documents, kept
 # in the repository only.
 #
 # The site follows the Divio documentation system (https://docs.divio.com/documentation-system/):
@@ -22,7 +22,8 @@ extra_css:
 extra_javascript:
   - javascripts/mermaid-zoom.js
 exclude_docs: |
-  spec/
+  product/
+  specs/
   plans/
   security/
   docs_test.go

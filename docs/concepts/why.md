@@ -1,6 +1,6 @@
 # Why Exemplar
 
-Exemplar has one goal: **give code reviewers their time back without lowering the bar.** AI made code cheap to write. It did nothing to make code cheaper to review. Pull requests (PRs) now show up faster than the people who have to read them. A team has two bad ways to cope: review less carefully, or merge less often. Exemplar adds a third: keep the review standard where it is, and spend human attention only on the PRs that need a human. This page makes the case for the product. The [product requirements](https://github.com/koblas/exemplar/blob/main/docs/spec/prd.md) are the long version.
+Exemplar has one goal: **give code reviewers their time back without lowering the bar.** AI made code cheap to write. It did nothing to make code cheaper to review. Pull requests (PRs) now show up faster than the people who have to read them. A team has two bad ways to cope: review less carefully, or merge less often. Exemplar adds a third: keep the review standard where it is, and spend human attention only on the PRs that need a human. This page makes the case for the product. The [product requirements](https://github.com/koblas/exemplar/blob/main/docs/product/README.md#prd) are the long version.
 
 ## The problem: review is the bottleneck now
 

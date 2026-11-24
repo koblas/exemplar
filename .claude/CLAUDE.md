@@ -3,14 +3,13 @@
 ## Scope
 
 This repository is Exemplar, a Go service deployed on Kubernetes. The Go module
-is `github.com/koblas/exemplar`. The spec is `docs/spec/technical-spec.md`
-(`§` references point there); the PRD is `docs/spec/prd.md` (`FR-…` requirement
-ids); `docs/plans/README.md` maps the roadmap and requirement families to
-both. Current work follows `docs/plans/ready-to-install.md`; its §7 log ends on
-2026-10-24: don't add sections there (history goes in `bd close --reason` and
-the PR description, see Work Tracking). `docs/plans/phase-0.md` is
-the Phase 0 plan (status in its §9) and the log of head starts up to 2026-10-17;
-don't add new sections there. Binaries: `cmd/exemplar` (CLI), `cmd/exemplar-gateway`,
+is `github.com/koblas/exemplar`. The spec is `docs/product/spec/` and the PRD
+`docs/product/prd/`, one file per top-level section; `docs/product/README.md` maps
+`§` numbers and PRD sections to files (`FR-…` ids are PRD requirements). A PRD
+requirement that is not built ends its id cell with `(not built: #N)`.
+`docs/plans/README.md` maps the roadmap and requirement families to both.
+`docs/plans/ready-to-install.md` (§7 log ends 2026-10-24) and `docs/plans/phase-0.md`
+are frozen: don't add sections there. Binaries: `cmd/exemplar` (CLI), `cmd/exemplar-gateway`,
 `cmd/exemplar-search` (git mirror, zoekt index, internal API: search_text,
 find_definition, find_references, dependents), `cmd/exemplar-webhook` (GitHub
 webhook receiver), `cmd/exemplar-worker` (routes events, reviews live PRs and
@@ -27,7 +26,7 @@ is the example installation overlay (CI renders it). `go test ./deploy` checks e
 `docs/reference/workloads.md`); keep components resource-only, since it reads them without kustomize. Grafana boards and alerts
 are in `dashboards/`; `go test ./dashboards` runs their SQL.
 User documentation is a Zensical site (`mkdocs.yml`, which Zensical reads; pages in `docs/` except
-`docs/spec`, `docs/plans`, `docs/security`), published to GitHub Pages by `docs.yml`.
+`docs/product`, `docs/plans`, `docs/security`), published to GitHub Pages by `docs.yml`.
 It follows the Divio system: `docs/tutorials`, `docs/guides/<persona>` (how-to),
 `docs/concepts`, `docs/reference`; `/docs` says which quadrant a change goes in.
 `make docs` runs `go test ./docs` (reference coverage of env vars, CLI commands and
@@ -44,33 +43,38 @@ the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md
 
 ## Work Tracking
 
-- Track all work in beads (`bd`, Dolt-backed, prefix `exemplar-`), never in
-  markdown TODO lists, checklists or status tables. `docs/spec/` stays the
-  source of truth for what and why; an issue carries a backlink (doc path plus
-  heading anchor, e.g. `docs/spec/technical-spec.md#646-running-without-exemplar-search`)
-  and its state, and does not restate the spec. The briefs in
-  `docs/plans/backlog.md` stay as design text that issues link to.
-- At session start run `bd ready`. Claim with `bd update <id> --status in_progress`.
-- File newly found work as its own issue under the right epic, linked to the
-  issue you were on: `bd create "<title>" -d "<backlink>" --parent <epic> --deps discovered-from:<id>`.
-  Order work with `blocks` dependencies and `order:H1`…`order:H5` labels;
-  every issue carries a `phase:0`…`phase:6` label naming its PRD §14.1 phase
-  (an epic carries the phases of its children); unadopted ideas are `deferred`
-  with the `idea` label.
-- Close with `bd close <id> --reason "<what landed, PR or commit>"`.
-- At session end export and commit the data: `bd export -o .beads/issues.jsonl`
-  from the checkout root, then commit `.beads/issues.jsonl` with the work (ask
-  before committing, as for any commit). Close reasons and PR descriptions
-  carry the history: what landed, decisions taken, how it is tested, and what is
-  still missing (file the missing pieces as issues). Only `.beads/` config and that export
-  are committed; the Dolt database is ignored.
-- Worktrees share the main checkout's database (`bd context` shows it). `no-push`
-  is set: never push Dolt data (`bd sync`, `bd dolt push`) without asking.
-- Recovery: in the checkout `bd context` names, move a corrupt database aside
-  (`mv .beads/embeddeddolt .beads/embeddeddolt.corrupt`), restore the tracked
-  files (`git checkout -- .beads`) and run `bd bootstrap --yes`, which imports
-  `.beads/issues.jsonl` when origin has no Dolt data. Ask before deleting the
-  moved-aside copy.
+- Track all work in GitHub Issues (`gh issue`, repo `koblas/exemplar`), never in
+  markdown TODO lists, checklists or status tables. `docs/product/` stays the
+  source of truth for what and why; an issue links to it and does not restate it.
+- Issue body, about 500 characters, four parts on their own lines: **Design:** the
+  doc path and heading anchor it implements (e.g.
+  `docs/product/spec/06-review-pipeline.md#646-running-without-exemplar-search`),
+  or "Not in the spec" and the code that motivates it; **State:** what the code
+  does today, naming the file or test that shows it; **Approach:** the change in one
+  sentence; **Done when:** the observable condition a closer checks. `/issue` files one.
+- Labels: a type (`feature`, `task`, `bug`, `debt`, `decision`, `security`, `epic`,
+  `idea` for unadopted ideas, with a "worth it when" line); a `phase:0`…`phase:6`
+  label naming its PRD §14.1 phase (an epic carries its children's phases);
+  `order:H1`…`order:H5` for order of work; `lane:direct|light|full` set at triage.
+- An epic is a parent issue; work under it is a sub-issue. Order with blocked-by
+  dependencies (`gh api repos/koblas/exemplar/issues/<n>/dependencies/blocked_by`).
+- At session start list open, unblocked issues (`gh issue list --label order:H1`, or
+  the GitHub Project) and claim one by assigning it (`gh issue edit <n> --add-assignee @me`).
+  An issue with a blocked-by link or the `blocked` label (waits on something outside the
+  repository) is not workable.
+- Work found during a task becomes a new issue before the task continues, under the
+  right epic, with "Found in #N" in the body. A debt issue says what was deferred,
+  why, and what should trigger paying it; a PR that defers anything links it.
+- Review findings below major severity are filed as issues, not fixed in the same PR.
+- Feature specs for user-visible changes are `docs/specs/<slug>.md` (format in
+  `docs/specs/README.md`); a Full-lane feature also gets `<slug>.retro.md`. Run output
+  goes to the gitignored `.runs/<slug>/`.
+- Pull requests close issues with `Closes #N`; nothing is closed by hand without a
+  reason. PR descriptions carry the history: what landed, decisions taken, how it is
+  tested, and what is still missing (as issue links).
+- Issues up to #285 were migrated from beads on 2026-11-24; their bodies end
+  "Migrated from beads exemplar-…". `.beads/issues.jsonl` holds closed beads history
+  until it is removed.
 
 ## Environment and Commands
 
@@ -78,7 +82,7 @@ the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md
 - Check tool availability first. Devenv provides Git, Go 1.27.4, golangci-lint v2.15,
   ripgrep, ast-grep, Semgrep, universal-ctags, Python 3.13 and uv, but not
   Postgres (tests run it with testcontainers), kubectl, Helm, or container tooling
-  (`gh` and `bd` come from the host). Do not silently install tools or change devenv.
+  (`gh` comes from the host). Do not silently install tools or change devenv.
 - The root `Makefile` (and `learning/Makefile`) wraps the CI commands; `make help`
   lists targets. `make check` is the quick gate, `make ci` mirrors ci.yml. Keep the
   Makefiles and `.github/workflows/ci.yml` in step when either changes.
@@ -103,10 +107,10 @@ the `/ui/` web UI: steps, states, errors, copy) and `.claude/rules/docs-voice.md
 - `/security-hunt [scope|all]`: six-phase security review with subagents (map, hunt by
   class, dedupe, validate, report) into gitignored `.security/`; reads
   `docs/security/known-non-issues.md`. Expensive; the user runs it, CI never does.
-- `/bd-ticket <work or id>`: file or reshape a beads issue (backlink, State, Approach,
-  Done when, parent epic, phase/order labels, deps). `/pr-close [ids]`: run the gate,
+- `/issue <work or #n>`: file or reshape a GitHub issue (Design, State, Approach,
+  Done when, parent epic, phase/order labels, blocked-by). `/pr-close [#n]`: run the gate,
   write the PR description (what landed, decisions, tests with the §16.1 technique
-  used or skipped, what is still missing as issues), `bd close --reason`, export.
+  used or skipped, what is still missing as issues), with `Closes #N`.
 - `/docs <behavior change or page>`: document a change in the right Divio quadrant,
   then run `make docs`. `/docs-audit [area]`: read-only report of quadrant mixing,
   coverage gaps, internal references and stale notes.

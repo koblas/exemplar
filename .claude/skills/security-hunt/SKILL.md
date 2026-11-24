@@ -29,7 +29,7 @@ tool calls reach a checkout, `exemplar-search` and GitHub; the gateway alone hol
 keys; the worker alone holds the App's write key and posts comments, check runs and
 approvals. The learning CronJobs read review history and open config PRs. **Everything a
 model reads is untrusted, and so is everything a model writes**: the spec's security
-model is §13 of `docs/spec/technical-spec.md`, and the threat model's known non-issues
+model is §13 of the spec (`docs/product/spec/13-security-model.md`), and the threat model's known non-issues
 are in `docs/security/known-non-issues.md`.
 
 ## Budget

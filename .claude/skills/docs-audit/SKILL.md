@@ -10,7 +10,7 @@ disable-model-invocation: true
 Audit this scope: $ARGUMENTS (default: all). Do not edit, format, commit or
 build anything. Produce a report.
 
-The site is `mkdocs.yml` plus `docs/` without `docs/spec`, `docs/plans` and
+The site is `mkdocs.yml` plus `docs/` without `docs/product`, `docs/plans` and
 `docs/security`. The quadrant rules are in `.claude/skills/docs/SKILL.md` and
 `docs/guides/develop/docs.md`; read them first.
 
@@ -51,7 +51,7 @@ documented thing that no longer exists in the code as stale.
 ## 3. Internal references
 
 Grep the public pages for `§`, `FR-`, `PRD`, `T-0.`, `Phase <digit>`, and for
-links into `docs/spec`, `docs/plans` or `docs/security` that are not GitHub
+links into `docs/product`, `docs/plans` or `docs/security` that are not GitHub
 URLs. Report each with its line.
 
 ## 4. Stale notes

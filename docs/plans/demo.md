@@ -1,6 +1,6 @@
 # End-to-end demo
 
-The design for a live demonstration of Exemplar on a sandbox GitHub org: what the audience sees, what produces each part, the data it needs and how it is triggered. It is the first time the whole system runs against real GitHub and a real model, so it doubles as the Phase 0 live runs (T-0.1, T-0.2; spec §16). Status is tracked in beads under the demo epic; this page holds the design and does not track progress.
+The design for a live demonstration of Exemplar on a sandbox GitHub org: what the audience sees, what produces each part, the data it needs and how it is triggered. It is the first time the whole system runs against real GitHub and a real model, so it doubles as the Phase 0 live runs (T-0.1, T-0.2; spec §16). Status is tracked in GitHub Issues under the demo epic; this page holds the design and does not track progress.
 
 The install workflow is used as it stands (setup page over a port-forward, show-and-apply Secret). Refining it is the `exemplar-ffj` epic and stays out of scope here.
 
@@ -46,7 +46,7 @@ The runbook gives the run order, starts each learning job on demand with `kubect
 
 ## 4. Code the demo needs
 
-What tracing each beat found missing from the code, each built as a beads issue the demo's live run depends on.
+What tracing each beat found missing from the code, each built as a GitHub issue the demo's live run depends on.
 
 - **Embed job** (spec §8.3): nothing writes `extractions.embedding`, and `cluster` reads only rows that have one, so mining stops after extract. A Voyage route in the gateway and an embed job in `learning/` fill it.
 - **Second-family provider** (spec §6.13, PRD FR-E10): `gates.ReviewConfidence` is 0 when both categorizers share a family, and every route in `internal/llm` reports `anthropic`, so nothing can be approved. An adapter for a second family behind the gateway, configured as `providers.categorizer` side B, unblocks Stage 2 and the cross-family verifier (`exemplar-bnt.7`).
