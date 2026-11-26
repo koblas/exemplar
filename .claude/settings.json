@@ -25,6 +25,14 @@
       }
     ]
   },
+  "extraKnownMarketplaces": {
+    "content-buddy": {
+      "source": { "source": "github", "repo": "koblas/content_buddy" }
+    }
+  },
+  "enabledPlugins": {
+    "pipeline@content-buddy": true
+  },
   "permissions": {
     "allow": [
       "Bash(git status *)",
