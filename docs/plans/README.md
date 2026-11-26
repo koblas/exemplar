@@ -23,7 +23,7 @@ The Phase 0 plan with its dated head-start log, the ready-to-install §7 log and
 - **`FR-D6`** is a functional requirement in the [PRD](../product/README.md). The letter is the requirement family. Each family has its own PRD section, and is specified in one place in the spec (spec §1.1).
 - **`T-0.3`** is a Phase 0 acceptance test (spec §16).
 - **`D2.4`** is a phased deliverable in [PRD §14.1](../product/prd/14-rollout-plan.md#141-phased-deliverables); each issue carries the `phase:N` label of the phase it belongs to.
-- **`#123`** is a GitHub issue or pull request. Issues up to #285 were migrated from the old tracker; their bodies end with its id (`exemplar-…`) that older commits and PR descriptions name.
+- **`#123`** is a GitHub issue or pull request. Issues up to #285 were migrated from the old tracker; the id it gave an issue (`exemplar-…`), which older commits and PR descriptions name, is in the first revision of the issue's body (its edit history on GitHub).
 
 | Family | PRD area | PRD | Spec |
 |---|---|---|---|
