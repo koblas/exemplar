@@ -1,0 +1,32 @@
+name: process-checks
+
+# Workflow checks that need GitHub itself or no toolchain at all, on every pull request.
+#
+# - not-built: every `(not built: #N)` mark in docs/product/ names an OPEN issue. The script is the
+#   pipeline plugin's `scripts/not-built.py`, checked out from koblas/throughline at a pinned commit.
+#   It runs on every PR, not only ones touching docs/product/: an issue closed elsewhere leaves its
+#   mark wrong, and the next PR is where that shows.
+#
+# The throughline pin is also in ci.yml's diff-coverage job; bump both together.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/throughline
+          ref: 40cb78205ff33235bb2a2456dad94a2dffe4f46b
+          path: .throughline
+      - name: Not-built marks match open issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .throughline/plugins/pipeline/scripts/not-built.py
