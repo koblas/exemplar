@@ -14,12 +14,12 @@
     ]
   },
   "extraKnownMarketplaces": {
-    "content-buddy": {
-      "source": { "source": "github", "repo": "koblas/content_buddy" }
+    "throughline": {
+      "source": { "source": "github", "repo": "koblas/throughline" }
     }
   },
   "enabledPlugins": {
-    "pipeline@content-buddy": true
+    "pipeline@throughline": true
   },
   "permissions": {
     "allow": [
