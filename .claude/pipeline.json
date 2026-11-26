@@ -1,0 +1,60 @@
+{
+  "pass_conditions": [
+    "gate_rounds <= 2",
+    "dev_runs_max <= 8",
+    "stops <= 1",
+    "cost_per_scenario_usd <= 5"
+  ],
+  "feature_budget_usd": 75,
+  "security_paths": "^internal/(auth0|oidc|svcauth|feedbacklink|webhook|envcfg|redact)/",
+  "build_definitions": "(^|/)Makefile$|^devenv\\.|^\\.envrc$|^\\.golangci\\.ya?ml$|^db/sqlc\\.yaml$|^werf[^/]*\\.yaml$",
+  "requests": {
+    "sqlc": {
+      "command": ["make", "sqlc"],
+      "note": "After editing db/queries/*.sql or a migration: regenerates internal/store/queries; `make sqlc-check` confirms it is current."
+    }
+  },
+  "test_support_paths": "^internal/testclock/",
+  "generated_roots": ["internal/store/queries/"],
+  "top_dirs": ["cmd", "internal", "db", "deploy", "dashboards", "schema", "docs", ".claude"],
+  "copy_sources": {
+    "roots": [{"path": "cmd"}, {"path": "internal"}],
+    "suffixes": [".go", ".html", ".tmpl", ".js", ".css"],
+    "skip_dirs": ["queries", ".devenv", ".direnv"]
+  },
+  "runner": {
+    "required_tools": ["go", "golangci-lint", "git", "make"],
+    "worktree_gomodcache": true,
+    "resume_prefix": ["direnv", "exec", "."]
+  },
+  "surfaces": {
+    "go": {
+      "language": "go",
+      "root": ".",
+      "changes": ["."],
+      "production": {"include": ["**/*.go"], "exclude": ["**/*_test.go", "internal/store/queries/**"]},
+      "tests": {"include": ["**/*_test.go"]},
+      "reviewers": {"correctness": "correctness-reviewer", "test": "pipeline:test-reviewer"},
+      "covers": {"correctness": "production Go logic", "test": "Go tests"},
+      "lint": {"include": ["**/*.go"], "exclude": ["internal/store/queries/**"], "command": ["golangci-lint", "run", "{package}"], "only_file": true},
+      "format": {
+        "include": ["**/*.go"],
+        "exclude": ["internal/store/queries/**"],
+        "tool": "golangci-lint",
+        "steps": [
+          {"label": "golangci-lint fmt {file}", "command": ["golangci-lint", "fmt", "{abs}"], "cwd": ".", "timeout": 60},
+          {"label": "go vet {package}", "command": ["go", "vet", "{package}"], "timeout": 120}
+        ]
+      },
+      "phase": [
+        {"name": "build", "command": ["go", "build", "./..."]},
+        {"name": "tidy", "command": ["go", "mod", "tidy", "-diff"]},
+        {"name": "lint", "command": ["golangci-lint", "run", "{packages/...}"]},
+        {"name": "test", "command": ["go", "test", "-count=1", "-v", "{cover}", "{packages}", "{run}"]}
+      ],
+      "full_gates": [
+        {"name": "make check", "command": ["make", "check"]}
+      ]
+    }
+  }
+}
