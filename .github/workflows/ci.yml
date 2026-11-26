@@ -50,7 +50,7 @@ jobs:
             case "$f" in
               docs/*.go) code=true ;;
               docs/* | mkdocs.yml) docs=true ;;
-              .claude/* | README.md | CHANGELOG.md | CONTRIBUTING.md | ARCHITECTURE.md | .release-please-manifest.json) ;;
+              .claude/* | README.md | CHANGELOG.md | CONTRIBUTING.md | ARCHITECTURE.md | SECURITY.md | .release-please-manifest.json) ;;
               *) code=true ;;
             esac
             echo "$f"
@@ -121,6 +121,51 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
           key: go-test-${{ matrix.mode }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+
+  # Every Go block the pull request adds or changes runs in a test. The check
+  # is the pipeline plugin's diff-coverage.py from koblas/throughline at a
+  # pinned commit (also pinned in process-checks.yml; bump both together).
+  # Same engines and requirements as the test job, so a skipped test cannot
+  # leave a changed block looking uncovered.
+  diff-coverage:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    env:
+      EXEMPLAR_REQUIRE_DB: "1"
+      EXEMPLAR_REQUIRE_ENGINES: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/checkout@v5
+        with:
+          repository: koblas/throughline
+          ref: 40cb78205ff33235bb2a2456dad94a2dffe4f46b
+          path: .throughline
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-plain-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-plain-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-plain-${{ runner.os }}-
+      # Same versions as devenv.nix and the test job.
+      - name: Install engines
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q universal-ctags clang-format ripgrep
+          npm install -g @ast-grep/cli@0.45.1
+          pipx install semgrep==1.172.0
+      - name: Changed Go blocks run in a test
+        run: .github/scripts/diff-coverage.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
   generated:
     needs: changes
