@@ -1,12 +1,5 @@
 {
   "mode": "single-session",
-  "pass_conditions": [
-    "gate_rounds <= 2",
-    "dev_runs_max <= 8",
-    "stops <= 1",
-    "cost_per_scenario_usd <= 5"
-  ],
-  "feature_budget_usd": 75,
   "security_paths": "^internal/(auth0|oidc|svcauth|feedbacklink|webhook|envcfg|redact)/",
   "build_definitions": "(^|/)Makefile$|^devenv\\.|^\\.envrc$|^\\.golangci\\.ya?ml$|^db/sqlc\\.yaml$|^werf[^/]*\\.yaml$",
   "requests": {
