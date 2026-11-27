@@ -319,3 +319,22 @@ jobs:
           # The Flux OCI artifact's tree must render the same.
           deploy/stage-manifests.sh "sha256:$(printf '1%.0s' $(seq 64))" "sha256:$(printf '2%.0s' $(seq 64))" rendered-release staged-release
           go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary -kubernetes-version 1.33.0 rendered-release/install-*.yaml
+
+  # The one check main requires for this workflow. It always runs, needs
+  # every other job, and fails if any of them failed or was cancelled; a job
+  # skipped because the pull request does not touch code counts as passing.
+  # Without it the test legs and images are required nowhere: a skipped
+  # matrix job reports as the literal "test (${{ matrix.mode }})", so
+  # requiring "test (plain)" would block docs-only and release PRs.
+  ci-ok:
+    if: always()
+    needs: [changes, test, diff-coverage, generated, commits, docs, lint, vuln, fuzz, adversarial, python, images]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success | skipped) ;; *) exit 1 ;; esac
+          done
