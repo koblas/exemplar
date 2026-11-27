@@ -81,9 +81,19 @@ If a Done when line is not met, do not close it: say what is missing, file it
 with `/issue` ("Found in #N"), and close only if the remainder is a separate
 issue the user agrees to split off. Nothing is closed by hand without a reason.
 
-## 5. Report
+## 5. The retro
+
+When the branch closes the last open sub-issue of a `lane:full` feature
+issue (its spec is `docs/specs/<slug>.md`), run `/pipeline:retro <slug>`
+once the PR has merged, passing `--pr N` for each of the feature's PRs if
+its own search finds the wrong ones. This repository runs in single-session
+mode, so `pipeline.py next` never runs and this is the only place a retro is
+written. The retro file goes in a follow-up commit; committing it is the
+user's call.
+
+## 6. Report
 
 Say: the PR title and the body file's path, each issue the PR closes (#N),
-each issue filed, the checks that ran with their result, and the checks that
-did not run. Opening the PR and pushing are the user's call; when asked, use
+each issue filed, the checks that ran with their result, the checks that
+did not run, and whether a retro is due. Opening the PR and pushing are the user's call; when asked, use
 `gh pr create --body-file` with the saved body.

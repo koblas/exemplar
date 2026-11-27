@@ -142,7 +142,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: koblas/throughline
-          ref: 40cb78205ff33235bb2a2456dad94a2dffe4f46b
+          ref: a8ea23e81487e867acc1c5f4c026ceb5083e3454
           path: .throughline
       - uses: actions/setup-go@v6
         with:
