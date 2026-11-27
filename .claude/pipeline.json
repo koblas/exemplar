@@ -1,4 +1,5 @@
 {
+  "mode": "single-session",
   "pass_conditions": [
     "gate_rounds <= 2",
     "dev_runs_max <= 8",
@@ -21,11 +22,6 @@
     "roots": [{"path": "cmd"}, {"path": "internal"}],
     "suffixes": [".go", ".html", ".tmpl", ".js", ".css"],
     "skip_dirs": ["queries", ".devenv", ".direnv"]
-  },
-  "runner": {
-    "required_tools": ["go", "golangci-lint", "git", "make"],
-    "worktree_gomodcache": true,
-    "resume_prefix": ["direnv", "exec", "."]
   },
   "surfaces": {
     "go": {
