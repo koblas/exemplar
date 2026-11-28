@@ -20,7 +20,7 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         INPUT_VERSION: ${{ inputs.version }}
-        DEFAULT_VERSION: "0.14.0" # x-release-please-version
+        DEFAULT_VERSION: "0.15.0" # x-release-please-version
         RUNNER_OS_NAME: ${{ runner.os }}
         RUNNER_ARCH_NAME: ${{ runner.arch }}
       run: |
