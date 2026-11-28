@@ -6,6 +6,14 @@ entry from the Conventional Commits merged to `main`; see
 
 <!-- release-please inserts new entries above the first version heading. -->
 
+## [0.15.0](https://github.com/koblas/exemplar/compare/v0.14.0...v0.15.0) (2026-11-28)
+
+
+### Features
+
+* **claude:** adopt the content-buddy pipeline plugin ([d02119c](https://github.com/koblas/exemplar/commit/d02119c9f70f839a37eba094f6579d401af2bb52))
+* **claude:** adopt the content-buddy pipeline plugin ([20b441f](https://github.com/koblas/exemplar/commit/20b441f4804d8ca1a8b3d8a2f475e432a78957cd))
+
 ## [0.14.0](https://github.com/koblas/exemplar/compare/v0.13.0...v0.14.0) (2026-11-12)
 
 
