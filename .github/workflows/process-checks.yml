@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: koblas/throughline
-          ref: 52d7d622eeefaa840e1cd2c6b7f83355dad5d5d8
+          ref: 9d1f4588da583d9c92b069734d512dbbb86dd690
           path: .throughline
       - name: Not-built marks match open issues
         env:

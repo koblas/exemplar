@@ -20,8 +20,9 @@ pull requests against them. One Go module at the repo root (`github.com/koblas/e
   with the config's `sqlc` request (`make sqlc`); `make sqlc-check` proves it is current.
 - `deploy/` (Kustomize, werf images; `go test ./deploy` checks builds against the code),
   `dashboards/` (`go test ./dashboards`), `schema/`, `docs/` (Zensical site; `go test ./docs`).
-- `learning/` — a Python (uv) project. **Not a pipeline surface**: the plugin supports Go and
-  TypeScript only, so pipeline work there gets no checks or gate. Verify it by hand
+- `learning/` — a Python (uv) project. **Not a pipeline surface**: the plugin builds in Go and
+  TypeScript, and a Python surface would need a repo-supplied language adapter that Exemplar
+  does not have yet, so pipeline work there gets no checks or gate. Verify it by hand
   (`make py-check`) and say so in the report.
 
 Product docs: `docs/product/spec/` (the technical spec, `§` numbers) and `docs/product/prd/`

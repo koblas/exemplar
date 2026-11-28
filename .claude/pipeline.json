@@ -9,6 +9,7 @@
     }
   },
   "test_support_paths": "^internal/testclock/",
+  "briefs": {"correctness-reviewer": ["proof.md"]},
   "generated_roots": ["internal/store/queries/"],
   "top_dirs": ["cmd", "internal", "db", "deploy", "dashboards", "schema", "docs", ".claude"],
   "copy_sources": {
