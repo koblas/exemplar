@@ -13,6 +13,15 @@ A feature spec has four sections:
    scenario has a sub-issue under the feature's issue.
 4. **Links:** the product spec sections, the feature issue, and the pull requests.
 
-A retro records escapes by class and stage, cost by stage, and rule candidates.
+`spec-check.py <slug> --approval`, run once the scenarios are approved, writes the approval
+record `**Approved**: <date> scenarios <digest>`. `pipeline.py open-issues <slug>` refuses a
+spec without it, or whose scenarios changed after it was written: re-approve and re-run
+`--approval`. `open-issues` opens the feature issue and one sub-issue per scenario, labelled
+with the lane; the PR closes them with `Closes #N`. Work found and not fixed is an issue draft
+(`pipeline.py debt`), filed with `pipeline.py file-issues <slug> --yes`. Both scripts are in the
+pipeline plugin's `scripts/`.
+
+A retro (`/pipeline:retro <slug>`) records escapes by class and stage, cost by stage, and rule
+candidates.
 Run output (plans for large scenarios, check output, metrics) goes to `.runs/<slug>/`,
 which is gitignored.
